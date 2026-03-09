@@ -218,6 +218,28 @@ def print_invoice(invoice_id):
     invoice_lines = model.get_invoice_lines(invoice_id)
     sac_summary = model.get_invoice_sac_summary(invoice_id)
 
+    # If vessel details are missing, re-fetch live from the bill chain
+    if not (invoice.get('vessel_name') or '').strip():
+        try:
+            conn_v = get_db()
+            cur_v = get_cursor(conn_v)
+            cur_v.execute(
+                'SELECT bill_id FROM invoice_bill_mapping WHERE invoice_id=%s ORDER BY id LIMIT 1',
+                [invoice_id]
+            )
+            bm = cur_v.fetchone()
+            conn_v.close()
+            if bm:
+                vd_resp = get_bill_vessel_details(bm['bill_id'])
+                vd = vd_resp.get_json() if hasattr(vd_resp, 'get_json') else {}
+                invoice = dict(invoice)
+                for fld in ('vessel_name', 'vessel_call_no', 'commodity',
+                            'date_of_berthing', 'date_of_sailing', 'grt_of_vessel', 'cargo_quantity'):
+                    if vd.get(fld) and not (invoice.get(fld) or ''):
+                        invoice[fld] = vd[fld]
+        except Exception:
+            pass
+
     # Port config for header GSTIN etc.
     config = get_module_config('FIN01')
     port_config = {
@@ -601,62 +623,88 @@ def get_customer_bank(customer_type, customer_id):
 
 @bp.route('/api/module/FINV01/bill-vessel-details/<int:bill_id>')
 def get_bill_vessel_details(bill_id):
-    """Trace a bill back to vessel/cargo details via LUEU01 chain, then bill_header fallback"""
+    """Trace a bill back to vessel/cargo details via LUEU01 chain, then bill_header fallback.
+    Collects ALL linked sources and concatenates unique values with commas."""
     if 'user_id' not in session:
         return jsonify({'error': 'Not logged in'}), 401
     conn = get_db()
     cur = get_cursor(conn)
     result = {}
     try:
-        # Primary path: bill_lines → lueu_lines → ldud_header/mbc_header
+        # Primary path: bill_lines → lueu_lines → ldud_header/mbc_header (ALL lines)
         cur.execute('''
-            SELECT ll.source_type, ll.source_id, ll.cargo_name AS eu_cargo, ll.quantity AS eu_qty
+            SELECT DISTINCT ll.source_type, ll.source_id,
+                            ll.cargo_name AS eu_cargo, ll.quantity AS eu_qty
             FROM bill_lines bl
             JOIN lueu_lines ll ON ll.id = bl.eu_line_id
             WHERE bl.bill_id = %s AND bl.eu_line_id IS NOT NULL
-            LIMIT 1
         ''', [bill_id])
-        eu = cur.fetchone()
+        eu_rows = cur.fetchall()
 
-        if eu:
-            src_type = (eu['source_type'] or '').upper()
-            src_id   = eu['source_id']
+        if eu_rows:
+            vessel_names, vcn_docs, commodities = [], [], []
+            berthing_dates, sailing_dates, grts = [], [], []
+            total_qty = 0
 
-            if src_type == 'LDUD' and src_id:
+            # Separate LDUD and MBC source IDs
+            ldud_ids = list({r['source_id'] for r in eu_rows
+                             if (r['source_type'] or '').upper() == 'LDUD' and r['source_id']})
+            mbc_ids  = list({r['source_id'] for r in eu_rows
+                             if (r['source_type'] or '').upper() == 'MBC'  and r['source_id']})
+
+            if ldud_ids:
                 cur.execute('''
-                    SELECT v.vessel_name, v.vcn_doc_num, v.vessel_master_doc,
+                    SELECT DISTINCT v.vessel_name, v.vcn_doc_num, v.vessel_master_doc,
                            l.nor_tendered, l.discharge_completed
                     FROM ldud_header l
                     JOIN vcn_header v ON v.id = l.vcn_id
-                    WHERE l.id = %s
-                ''', [src_id])
-                row = cur.fetchone()
-                if row:
-                    result['vessel_name']      = row['vessel_name'] or ''
-                    result['vessel_call_no']   = row['vcn_doc_num'] or ''
-                    result['date_of_berthing'] = _fmt_date(row['nor_tendered'])
-                    result['date_of_sailing']  = _fmt_date(row['discharge_completed'])
-                    # Fetch GRT from vessels master
+                    WHERE l.id = ANY(%s)
+                    ORDER BY v.vessel_name
+                ''', (ldud_ids,))
+                for row in cur.fetchall():
+                    if row['vessel_name'] and row['vessel_name'] not in vessel_names:
+                        vessel_names.append(row['vessel_name'])
+                    if row['vcn_doc_num'] and row['vcn_doc_num'] not in vcn_docs:
+                        vcn_docs.append(row['vcn_doc_num'])
+                    if row['nor_tendered']:
+                        d = _fmt_date(row['nor_tendered'])
+                        if d and d not in berthing_dates:
+                            berthing_dates.append(d)
+                    if row['discharge_completed']:
+                        d = _fmt_date(row['discharge_completed'])
+                        if d and d not in sailing_dates:
+                            sailing_dates.append(d)
                     if row.get('vessel_master_doc'):
                         cur.execute('SELECT gt FROM vessels WHERE doc_num=%s LIMIT 1',
                                     [row['vessel_master_doc']])
                         vrow = cur.fetchone()
-                        result['grt_of_vessel'] = vrow['gt'] if vrow else ''
-                result['commodity']      = eu['eu_cargo'] or ''
-                result['cargo_quantity'] = eu['eu_qty']
+                        if vrow and vrow['gt'] and str(vrow['gt']) not in grts:
+                            grts.append(str(vrow['gt']))
 
-            elif src_type == 'MBC' and src_id:
+            if mbc_ids:
                 cur.execute('''
                     SELECT mbc_name, cargo_name, bl_quantity
-                    FROM mbc_header WHERE id = %s
-                ''', [src_id])
-                row = cur.fetchone()
-                if row:
-                    result['vessel_name']    = row['mbc_name'] or ''
-                    result['commodity']      = row['cargo_name'] or ''
-                    result['cargo_quantity'] = row['bl_quantity']
-                if not result.get('commodity'):
-                    result['commodity'] = eu['eu_cargo'] or ''
+                    FROM mbc_header WHERE id = ANY(%s)
+                ''', (mbc_ids,))
+                for row in cur.fetchall():
+                    if row['mbc_name'] and row['mbc_name'] not in vessel_names:
+                        vessel_names.append(row['mbc_name'])
+                    if row['cargo_name'] and row['cargo_name'] not in commodities:
+                        commodities.append(row['cargo_name'])
+
+            for r in eu_rows:
+                if r['eu_cargo'] and r['eu_cargo'] not in commodities:
+                    commodities.append(r['eu_cargo'])
+                if r['eu_qty']:
+                    total_qty += float(r['eu_qty'] or 0)
+
+            result['vessel_name']      = ', '.join(vessel_names)
+            result['vessel_call_no']   = ', '.join(vcn_docs)
+            result['date_of_berthing'] = ', '.join(berthing_dates)
+            result['date_of_sailing']  = ', '.join(sailing_dates)
+            result['grt_of_vessel']    = ', '.join(grts) if grts else ''
+            result['commodity']        = ', '.join(commodities)
+            result['cargo_quantity']   = total_qty if total_qty else None
 
         else:
             # Fallback: bill_header.source_type / source_id
@@ -684,7 +732,6 @@ def get_bill_vessel_details(bill_id):
                     result['vessel_call_no']   = row['vcn_doc_num'] or ''
                     result['date_of_berthing'] = _fmt_date(row['nor_tendered'])
                     result['date_of_sailing']  = _fmt_date(row['discharge_completed'])
-                    # Fetch GRT from vessels master
                     if row.get('vessel_master_doc'):
                         cur.execute('SELECT gt FROM vessels WHERE doc_num=%s LIMIT 1',
                                     [row['vessel_master_doc']])
