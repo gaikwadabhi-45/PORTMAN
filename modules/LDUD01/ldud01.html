@@ -478,6 +478,7 @@
     let dirtySubSections = {};
     let headerDirty = false;
     let _isSaving = false;
+    let dirtyRowIds = new Set();
     let stowageHoldMeta = {}; // Hold metadata per LDUD ID
     let vesselOpsHoldFields = {}; // Dynamic vessel ops hold columns per LDUD ID
     let currentOperationTypes = {}; // Track operation type per ldud ID
@@ -1041,6 +1042,8 @@
         table.on('cellEdited', function(cell) {
             if (_isSaving) return;
             headerDirty = true;
+            const id = cell.getRow().getData().id;
+            if (id) dirtyRowIds.add(String(id));
             showUnsavedBanner();
         });
         table.on('rowAdded', function() {
@@ -2231,6 +2234,7 @@
             let savedCount = 0;
             for (const row of rows) {
                 const data = row.getData();
+                if (data.id && !dirtyRowIds.has(String(data.id))) continue;
                 const res = await fetch("/api/module/LDUD01/save", {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -2242,6 +2246,7 @@
                     savedCount++;
                 }
             }
+            dirtyRowIds.clear();
             showStatus(`Saved ${savedCount} row(s)`, 'saved');
             hideUnsavedBanner();
             editMode = false;

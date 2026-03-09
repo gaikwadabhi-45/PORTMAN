@@ -119,6 +119,7 @@
     addToRecent('LUEU01', 'Load Unload Equipment Utilization');
 
     let table;
+    let dirtyRowIds = new Set();
     let currentEquipment = null;
     let vcnOptions = [];
     let mbcOptions = [];
@@ -459,6 +460,8 @@
 
         // Recompute Diff (Hrs) when from_time or to_time is edited
         table.on("cellEdited", function(cell) {
+            const id = cell.getRow().getData().id;
+            if (id) dirtyRowIds.add(String(id));
             if (cell.getField() === "from_time" || cell.getField() === "to_time") {
                 var d = cell.getRow().getData();
                 cell.getRow().update({diff_hrs: calcDiffHrs(d.from_time, d.to_time)});
@@ -551,6 +554,8 @@
         for (const row of rows) {
             const data = row.getData();
             if (!data.id && !data.entry_date) continue;
+            // Skip unchanged existing rows
+            if (data.id && !dirtyRowIds.has(String(data.id))) continue;
 
             // Set equipment name
             data.equipment_name = currentEquipment;
@@ -569,6 +574,7 @@
             const result = await res.json();
             if (result.id) { row.update({id: result.id}); savedCount++; }
         }
+        dirtyRowIds.clear();
         showStatus(`Saved ${savedCount} row(s)`, 'saved');
     }
 

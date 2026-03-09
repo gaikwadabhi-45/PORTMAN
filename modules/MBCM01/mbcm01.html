@@ -53,8 +53,14 @@
             {title: "MBC Owner Name", field: "mbc_owner_name", editor: canEdit ? "list" : false, width: 180,
                 editorParams: {values: mbcOwnerOptions, autocomplete: false, allowEmpty: true}}
         ],
-        selectable: true
+        selectable: true,
+        cellEdited: function(cell) {
+            const id = cell.getRow().getData().id;
+            if (id) dirtyRowIds.add(String(id));
+        }
     });
+
+    let dirtyRowIds = new Set();
 
     if (localStorage.getItem('theme') === 'dark') {
         document.getElementById('table').classList.add('tabulator-dark');
@@ -82,19 +88,22 @@
     }
 
     async function saveAll() {
+        let savedCount = 0;
         for (const row of table.getRows()) {
             const data = row.getData();
-            if (data.mbc_name) {
-                const res = await fetch('/api/module/MBCM01/save', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                const result = await res.json();
-                row.update({id: result.id});
-            }
+            if (!data.mbc_name) continue;
+            if (data.id && !dirtyRowIds.has(String(data.id))) continue;
+            const res = await fetch('/api/module/MBCM01/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            row.update({id: result.id});
+            savedCount++;
         }
-        alert('Saved');
+        dirtyRowIds.clear();
+        alert(`Saved ${savedCount} row(s)`);
     }
 </script>
 {% endblock %}

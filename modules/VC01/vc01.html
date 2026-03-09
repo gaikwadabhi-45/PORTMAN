@@ -103,8 +103,9 @@
         let savedCount = 0;
         for (const row of rows) {
             const data = row.getData();
-            // Save all rows - existing rows with id and new rows without id
-            console.log('Saving row:', data.id || 'new', data);
+            const rowKey = data.id ? String(data.id) : 'new_' + row.getPosition();
+            // Only save new rows (no id) or rows that were actually edited
+            if (data.id && !dirtyRowIds.has(rowKey)) continue;
             const success = await saveRow(data, row);
             if (success) savedCount++;
         }

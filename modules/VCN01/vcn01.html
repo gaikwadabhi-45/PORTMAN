@@ -463,6 +463,7 @@
     let dirtySubSections = {};
     let headerDirty = false;
     let _isSaving = false;
+    let dirtyRowIds = new Set();
 
     const currentUser = '{{ session.username }}';
     const permissions = {
@@ -758,6 +759,8 @@
         table.on('cellEdited', function(cell) {
             if (_isSaving) return;
             headerDirty = true;
+            const id = cell.getRow().getData().id;
+            if (id) dirtyRowIds.add(String(id));
             showUnsavedBanner();
         });
         table.on('rowAdded', function() {
@@ -1311,6 +1314,8 @@
             let savedCount = 0, errorMsg = '';
             for (const row of rows) {
                 const data = row.getData();
+                // Skip unchanged existing rows
+                if (data.id && !dirtyRowIds.has(String(data.id))) continue;
                 const res = await fetch("/api/module/VCN01/save", {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -1327,6 +1332,7 @@
             if (errorMsg && savedCount === 0) {
                 showStatus(errorMsg, 'unsaved');
             } else {
+                dirtyRowIds.clear();
                 showStatus(`Saved ${savedCount} row(s)`, 'saved');
                 hideUnsavedBanner();
                 editMode = false;
