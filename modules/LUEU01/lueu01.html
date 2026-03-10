@@ -697,7 +697,7 @@
                 cfg.values.map(v => `<label><input type="checkbox" class="filter-checkbox" value="${v}"> ${v}</label>`).join('')
             }</div>`;
         } else if (cfg.type === 'range') {
-            container.innerHTML = `<input class="filter-from" type="date"> <span style="font-size:12px">to</span> <input class="filter-to" type="date">`;
+            container.innerHTML = `<input class="filter-from" type="datetime-local"> <span style="font-size:12px">to</span> <input class="filter-to" type="datetime-local">`;
         }
     }
 
@@ -714,8 +714,9 @@
                 const checked = [...row.querySelectorAll('.filter-checkbox:checked')].map(cb => cb.value);
                 if (checked.length) filters.push({ field: col, type: 'multi', values: checked });
             } else if (cfg.type === 'range') {
-                const from = (row.querySelector('.filter-from') || {}).value || '';
-                const to   = (row.querySelector('.filter-to')   || {}).value || '';
+                // entry_date is a DATE column — strip the time component before sending
+                const from = ((row.querySelector('.filter-from') || {}).value || '').slice(0, 10);
+                const to   = ((row.querySelector('.filter-to')   || {}).value || '').slice(0, 10);
                 if (from || to) filters.push({ field: col, type: 'range', from, to });
             }
         });

@@ -135,16 +135,26 @@ def _diff_mins(row, col_from, col_to):
 
 
 def _build_date_where(source, date_col, from_date, to_date):
-    """Return (where_clause_str, params_tuple) for the chosen date column."""
+    """Return (where_clause_str, params_tuple) for the chosen date column.
+
+    Inputs may be 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM' (datetime-local).
+    - is_dt=True  (timestamp columns): full TIMESTAMP comparison; T→space.
+    - is_dt=False (date columns):      date-only comparison; time part stripped.
+    """
     col_map  = DATE_COL_FILTERS.get(source, {})
     default  = DATE_COL_DEFAULTS.get(source, '')
     key      = date_col if date_col in col_map else default
     expr, is_dt = col_map.get(key, col_map.get(default, ("'1900-01-01'", False)))
     if is_dt:
-        clause = f"NULLIF({expr}::TEXT, '') IS NOT NULL AND LEFT({expr}::TEXT, 10) BETWEEN %s AND %s"
+        from_val = (from_date or '').replace('T', ' ') or '1900-01-01 00:00'
+        to_val   = (to_date   or '').replace('T', ' ') or '2999-12-31 23:59'
+        clause = (f"NULLIF({expr}::TEXT, '') IS NOT NULL"
+                  f" AND {expr}::TIMESTAMP BETWEEN %s AND %s")
     else:
+        from_val = (from_date or '')[:10] or '1900-01-01'
+        to_val   = (to_date   or '')[:10] or '2999-12-31'
         clause = f"NULLIF({expr}, '') IS NOT NULL AND {expr} BETWEEN %s AND %s"
-    return clause, (from_date, to_date)
+    return clause, (from_val, to_val)
 
 
 @bp.route('/api/module/RP01/pivot/data/<source>')

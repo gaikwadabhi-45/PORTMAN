@@ -12,11 +12,14 @@
 <link  href="https://cdnjs.cloudflare.com/ajax/libs/pivottable/2.23.0/pivot.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pivottable/2.23.0/pivot.min.js"></script>
 
-<!-- Plotly chart renderers: plotly-basic is served from the official Plotly CDN
-     because cdnjs only carries the full plotly.js bundle, not the -basic variant. -->
-<script src="https://cdn.plot.ly/plotly-basic-2.35.2.min.js"></script>
+<!-- Full Plotly bundle required for 3D chart renderers (scatter3d, surface) -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pivottable/2.23.0/plotly_renderers.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pivottable/2.23.0/export_renderers.min.js"></script>
+<!-- SheetJS (needed by PivotTable.js export_renderers) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- ExcelJS for styled pivot Excel export with embedded chart images -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
 <style>
 /* ── Page header ─────────────────────────────────────────── */
@@ -386,6 +389,76 @@ td.pvtAxisContainer.pvtCols::before {
 }
 .saved-item-del:hover { color: #c0392b; }
 .saved-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--text-secondary); }
+
+/* ── Chart export modal ──────────────────────────────────── */
+.chart-modal-box {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 24px;
+    width: 700px;
+    max-width: 96vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.chart-modal-box h3 { margin: 0 0 4px; font-size: 15px; color: var(--text-primary); }
+.chart-modal-sub { font-size: 11px; color: var(--text-secondary); margin: 0 0 16px; }
+.chart-preview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.chart-card {
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+}
+.chart-card.selected { border-color: #4a90d9; }
+.chart-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+.chart-card-header input[type="checkbox"] { cursor: pointer; }
+.chart-card-badge {
+    margin-left: auto;
+    font-size: 9px;
+    font-weight: 700;
+    background: #27ae60;
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 10px;
+    letter-spacing: 0.3px;
+}
+.chart-card-preview {
+    height: 160px;
+    background: rgba(0,0,0,0.02);
+}
+.chart-card-reason {
+    font-size: 10px;
+    color: var(--text-secondary);
+    padding: 5px 10px 7px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+.chart-export-note {
+    font-size: 10px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 7px 10px;
+    margin-bottom: 14px;
+    line-height: 1.5;
+}
 </style>
 {% endblock %}
 
@@ -414,12 +487,12 @@ td.pvtAxisContainer.pvtCols::before {
         <select id="date-col-sel" style="min-width:170px"></select>
     </div>
     <div class="toolbar-group">
-        <label for="f-from">From Date</label>
-        <input type="date" id="f-from">
+        <label for="f-from">From</label>
+        <input type="datetime-local" id="f-from" style="min-width:155px">
     </div>
     <div class="toolbar-group">
-        <label for="f-to">To Date</label>
-        <input type="date" id="f-to">
+        <label for="f-to">To</label>
+        <input type="datetime-local" id="f-to" style="min-width:155px">
     </div>
     <button type="button" class="tb-btn primary" id="load-btn" onclick="loadData()">&#9654; Load Data</button>
     <button type="button" class="tb-btn success" id="save-btn" onclick="openSaveModal()" disabled>&#128190; Save Report</button>
@@ -428,6 +501,7 @@ td.pvtAxisContainer.pvtCols::before {
         <div class="saved-list" id="saved-list"></div>
     </div>
     <button type="button" class="tb-btn neutral" id="csv-btn" onclick="exportCSV()" disabled>&#8595; Export CSV</button>
+    <button type="button" class="tb-btn neutral" id="pivot-excel-btn" onclick="exportPivotExcel()" disabled>&#8595; Pivot Excel</button>
 </div>
 
 <div class="status-bar" id="status-bar">Select a data source and date range, then click Load Data.</div>
@@ -436,6 +510,22 @@ td.pvtAxisContainer.pvtCols::before {
     <div id="pivot-placeholder">
         <div class="ph-icon">&#128202;</div>
         <div>No data loaded &mdash; choose a source and click Load Data</div>
+    </div>
+</div>
+
+<!-- Chart Export modal -->
+<div class="modal-overlay" id="chart-export-modal" onclick="if(event.target===this)closeChartModal()">
+    <div class="chart-modal-box">
+        <h3>&#128202; Export Pivot to Excel</h3>
+        <p class="chart-modal-sub">Select chart types to include. Excel will download with formatted pivot data; selected charts download as PNG images.</p>
+        <div class="chart-preview-grid" id="chart-preview-grid"></div>
+        <div class="chart-export-note">
+            &#9432;&nbsp; The Excel file will include a styled pivot table on the first sheet. Each selected chart is embedded as a full image on its own sheet tab inside the same workbook.
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="tb-btn neutral" onclick="closeChartModal()">Cancel</button>
+            <button type="button" class="tb-btn primary" id="do-export-btn" onclick="doExportPivotExcel()">&#8595; Export Excel + Charts</button>
+        </div>
     </div>
 </div>
 
@@ -505,14 +595,14 @@ let _source  = null;
 let _pivotEl = null;
 let _saved   = [];
 
-/* ── Init date defaults & populate date-col dropdown ──────── */
+/* ── Init datetime defaults & populate date-col dropdown ──── */
 (function () {
     const n = new Date();
     const y = n.getFullYear();
     const m = String(n.getMonth() + 1).padStart(2, '0');
     const d = String(n.getDate()).padStart(2, '0');
-    document.getElementById('f-from').value = `${y}-${m}-01`;
-    document.getElementById('f-to').value   = `${y}-${m}-${d}`;
+    document.getElementById('f-from').value = `${y}-${m}-01T00:00`;
+    document.getElementById('f-to').value   = `${y}-${m}-${d}T23:59`;
     onSourceChange();
 })();
 
@@ -547,6 +637,7 @@ function loadData() {
             setStatus(`${rows.length.toLocaleString()} rows loaded \u2014 ${srcLabel(src)}.`, false);
             document.getElementById('save-btn').disabled = false;
             document.getElementById('csv-btn').disabled  = false;
+            document.getElementById('pivot-excel-btn').disabled = false;
         })
         .catch(err => { console.error(err); setStatus('Error: ' + err.message, true); })
         .finally(() => {
@@ -699,6 +790,7 @@ function loadSaved(id) {
             setStatus(`Loaded \u201c${rep.name}\u201d \u2014 ${rows.length.toLocaleString()} rows.`, false);
             document.getElementById('save-btn').disabled = false;
             document.getElementById('csv-btn').disabled  = false;
+            document.getElementById('pivot-excel-btn').disabled = false;
         })
         .catch(err => setStatus('Error: ' + err.message, true));
 }
@@ -709,6 +801,302 @@ function delSaved(e, id) {
     fetch(`/api/module/RP01/pivot/saved-reports/${id}`, { method: 'DELETE' })
         .then(() => refreshSaved())
         .catch(console.error);
+}
+
+/* ── Chart export modal state ───────────────────────────── */
+let _chartDefs = [];
+
+/* ── Open chart export modal ─────────────────────────────── */
+function exportPivotExcel() {
+    const tbl = document.querySelector('#pivot-holder table.pvtTable');
+    if (!tbl) { alert('No pivot table to export. Load data and configure the pivot first.'); return; }
+    openChartModal();
+}
+
+function openChartModal() {
+    const pivData = extractPivotData();
+    _chartDefs = autoSuggestCharts(pivData);
+
+    const grid = document.getElementById('chart-preview-grid');
+    grid.innerHTML = '';
+    _chartDefs.forEach((c, i) => {
+        const card = document.createElement('div');
+        card.className = 'chart-card' + (c.suggested ? ' selected' : '');
+        card.id = `chart-card-${i}`;
+        card.innerHTML = `
+            <label class="chart-card-header" onclick="toggleChartCard(${i})">
+                <input type="checkbox" id="chart-chk-${i}" ${c.suggested ? 'checked' : ''} onclick="event.stopPropagation();updateCardSelected(${i})">
+                <span>${c.icon} ${c.label}</span>
+                ${c.suggested ? '<span class="chart-card-badge">SUGGESTED</span>' : ''}
+            </label>
+            <div class="chart-card-preview" id="chart-preview-${i}"></div>
+            <div class="chart-card-reason">${c.reason}</div>`;
+        grid.appendChild(card);
+        if (pivData && pivData.rowLabels.length) {
+            setTimeout(() => renderChartPreview(i, c, pivData), 60 * i + 30);
+        }
+    });
+
+    document.getElementById('chart-export-modal').classList.add('open');
+}
+
+function closeChartModal() {
+    document.getElementById('chart-export-modal').classList.remove('open');
+}
+
+function toggleChartCard(i) {
+    const chk = document.getElementById(`chart-chk-${i}`);
+    chk.checked = !chk.checked;
+    updateCardSelected(i);
+}
+
+function updateCardSelected(i) {
+    const chk = document.getElementById(`chart-chk-${i}`);
+    const card = document.getElementById(`chart-card-${i}`);
+    card.classList.toggle('selected', chk.checked);
+}
+
+/* ── Extract chart data from rendered pivot DOM ─────────── */
+function extractPivotData() {
+    const tbl = document.querySelector('#pivot-holder table.pvtTable');
+    if (!tbl) return null;
+
+    const bodyRows = Array.from(tbl.querySelectorAll('tbody tr'));
+    const rowLabels = [], totals = [];
+
+    bodyRows.forEach(tr => {
+        const ths = Array.from(tr.querySelectorAll('th'));
+        const label = ths.map(th => th.textContent.trim()).filter(Boolean).join(' / ');
+        if (!label || /^(totals?|grand)/i.test(label)) return;
+
+        const tds = Array.from(tr.querySelectorAll('td'));
+        if (!tds.length) return;
+        // Prefer last td (total column), fall back to first
+        const valTd = tds[tds.length - 1];
+        const num = parseFloat(valTd.textContent.trim().replace(/,/g, ''));
+        if (!isNaN(num)) {
+            rowLabels.push(label);
+            totals.push(num);
+        }
+    });
+
+    return { rowLabels, totals };
+}
+
+/* ── Auto-suggest chart types based on pivot structure ───── */
+function autoSuggestCharts(pivData) {
+    const pivOpts = _pivotEl ? _pivotEl.data('pivotUIOptions') : null;
+    const rows = (pivOpts && pivOpts.rows) || [];
+    const cols = (pivOpts && pivOpts.cols) || [];
+    const rowCount = pivData ? pivData.rowLabels.length : 0;
+
+    const dateKw = ['date', 'month', 'year', 'week', 'day', 'time'];
+    const hasDate = [...rows, ...cols].some(f => dateKw.some(kw => f.toLowerCase().includes(kw)));
+    const fewCategories = rowCount > 0 && rowCount <= 7;
+
+    return [
+        {
+            type: 'bar', label: 'Bar Chart', icon: '&#x1F4CA;', suggested: true,
+            reason: 'Comparing values across ' + (rows[0] || 'categories')
+        },
+        {
+            type: 'line', label: 'Line Chart', icon: '&#x1F4C8;', suggested: hasDate,
+            reason: hasDate ? 'Trends over time (' + rows[0] + ')' : 'Good for trends over ordered data'
+        },
+        {
+            type: 'pie', label: 'Pie Chart', icon: '&#x1F967;', suggested: fewCategories && cols.length === 0,
+            reason: fewCategories ? `Proportions across ${rowCount} categories` : 'Best with fewer than 8 categories'
+        },
+    ];
+}
+
+/* ── Render a mini Plotly chart in the preview area ──────── */
+function renderChartPreview(i, chartDef, pivData) {
+    const el = document.getElementById(`chart-preview-${i}`);
+    if (!el || !pivData || !pivData.rowLabels.length) {
+        if (el) el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#aaa;">No data</div>';
+        return;
+    }
+    const layout = {
+        margin: { t: 6, b: 28, l: 36, r: 6 },
+        height: 158,
+        paper_bgcolor: 'transparent',
+        plot_bgcolor: 'rgba(0,0,0,0.02)',
+        font: { size: 9, family: 'Calibri,Arial,sans-serif' },
+        showlegend: false,
+        xaxis: { tickangle: -30, automargin: true },
+    };
+
+    let trace;
+    const labels = pivData.rowLabels;
+    const vals   = pivData.totals;
+
+    if (chartDef.type === 'pie') {
+        trace = { type: 'pie', labels, values: vals, textinfo: 'label+percent', textposition: 'inside',
+                  marker: { colors: ['#2E75B6','#ED7D31','#A9D18E','#FFC000','#70AD47','#FF6384','#5B9BD5'] } };
+        delete layout.xaxis;
+    } else {
+        trace = {
+            type: chartDef.type === 'line' ? 'scatter' : 'bar',
+            mode: chartDef.type === 'line' ? 'lines+markers' : undefined,
+            x: labels, y: vals,
+            marker: { color: '#2E75B6' },
+            line: chartDef.type === 'line' ? { color: '#2E75B6', width: 2 } : undefined,
+        };
+    }
+    Plotly.newPlot(el, [trace], layout, { displayModeBar: false, responsive: true });
+}
+
+/* ── Build ExcelJS workbook: styled pivot sheet + chart image sheets ── */
+async function buildExcelWorkbook(tbl, selectedCharts) {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'PORTMAN RP01';
+    workbook.created = new Date();
+
+    const ws = workbook.addWorksheet('Pivot Data');
+
+    // Parse DOM table, tracking rowspan/colspan
+    const allTrs = Array.from(tbl.querySelectorAll('tr'));
+    const numRows = allTrs.length;
+    const theadRowCount = tbl.querySelectorAll('thead tr').length;
+
+    const grid = Array.from({ length: numRows }, () => ({}));
+    const occupied = new Set();
+    const merges = [];
+
+    allTrs.forEach((tr, rIdx) => {
+        let c = 0;
+        Array.from(tr.querySelectorAll('th, td')).forEach(cell => {
+            while (occupied.has(`${rIdx},${c}`)) c++;
+            const rs = parseInt(cell.getAttribute('rowspan') || '1');
+            const cs = parseInt(cell.getAttribute('colspan') || '1');
+            const raw = cell.textContent.trim();
+            const num = parseFloat(raw.replace(/,/g, ''));
+            grid[rIdx][c] = {
+                value: (cell.tagName === 'TD' && !isNaN(num) && raw !== '') ? num : raw,
+                isHeader: cell.tagName === 'TH',
+                isNumeric: cell.tagName === 'TD' && !isNaN(num) && raw !== '',
+                isLastRow: rIdx === numRows - 1,
+            };
+            if (rs > 1 || cs > 1) merges.push({ r1: rIdx, c1: c, r2: rIdx + rs - 1, c2: c + cs - 1 });
+            for (let dr = 0; dr < rs; dr++)
+                for (let dc = 0; dc < cs; dc++)
+                    if (dr > 0 || dc > 0) occupied.add(`${rIdx + dr},${c + dc}`);
+            c += cs;
+        });
+    });
+
+    const numCols = Math.max(...allTrs.map((_, r) => Math.max(0, ...Object.keys(grid[r]).map(Number)))) + 1;
+
+    const HDR_BG = 'FF2E75B6', HDR_FG = 'FFFFFFFF';
+    const ROW_HDR_BG = 'FFDEEAF1', TOTAL_BG = 'FFBDD7EE';
+    const BORDER = { style: 'thin', color: { argb: 'FFB8CCE4' } };
+    const mkBorder = () => ({ top: BORDER, bottom: BORDER, left: BORDER, right: BORDER });
+
+    for (let r = 0; r < numRows; r++) {
+        const exRow = ws.getRow(r + 1);
+        exRow.height = r < theadRowCount ? 22 : 16;
+
+        for (let c = 0; c < numCols; c++) {
+            if (occupied.has(`${r},${c}`)) continue;
+            const cell = grid[r][c];
+            if (!cell) continue;
+
+            const exCell = exRow.getCell(c + 1);
+            exCell.value = cell.value;
+            exCell.border = mkBorder();
+
+            const isHdr   = r < theadRowCount;
+            const isTotal = cell.isLastRow || c === numCols - 1;
+
+            if (isHdr) {
+                exCell.font      = { name: 'Calibri', size: 10, bold: true, color: { argb: HDR_FG } };
+                exCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: HDR_BG } };
+                exCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            } else if (isTotal) {
+                exCell.font      = { name: 'Calibri', size: 10, bold: true };
+                exCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTAL_BG } };
+                exCell.alignment = { horizontal: cell.isNumeric ? 'right' : 'left', vertical: 'middle' };
+                if (cell.isNumeric) exCell.numFmt = '#,##0.##';
+            } else if (!cell.isNumeric || cell.isHeader) {
+                exCell.font      = { name: 'Calibri', size: 10 };
+                exCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: ROW_HDR_BG } };
+                exCell.alignment = { horizontal: 'left', vertical: 'middle' };
+            } else {
+                exCell.font      = { name: 'Calibri', size: 10 };
+                exCell.alignment = { horizontal: 'right', vertical: 'middle' };
+                exCell.numFmt    = '#,##0.##';
+            }
+        }
+        exRow.commit();
+    }
+
+    // Apply merged cells
+    merges.forEach(({ r1, c1, r2, c2 }) => {
+        try { ws.mergeCells(r1 + 1, c1 + 1, r2 + 1, c2 + 1); } catch (_) {}
+    });
+
+    // Auto column widths
+    for (let c = 0; c < numCols; c++) {
+        let maxLen = 8;
+        for (let r = 0; r < numRows; r++) {
+            const cell = grid[r][c];
+            if (cell && cell.value != null) maxLen = Math.max(maxLen, String(cell.value).length + 2);
+        }
+        ws.getColumn(c + 1).width = Math.min(maxLen, 32);
+    }
+
+    ws.views = [{ state: 'frozen', ySplit: theadRowCount }];
+
+    // Add each selected chart as an image on its own sheet
+    for (const { chartDef, el } of selectedCharts) {
+        try {
+            const imgData = await Plotly.toImage(el, { format: 'png', width: 960, height: 580 });
+            const base64  = imgData.split(',')[1];
+            const imgId   = workbook.addImage({ base64, extension: 'png' });
+            const cws     = workbook.addWorksheet(chartDef.label);
+            cws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 960, height: 580 } });
+        } catch (e) {
+            console.warn(`Chart embed failed (${chartDef.label}):`, e);
+        }
+    }
+
+    return workbook;
+}
+
+/* ── Perform the export ──────────────────────────────────── */
+async function doExportPivotExcel() {
+    const tbl = document.querySelector('#pivot-holder table.pvtTable');
+    if (!tbl) return;
+
+    const btn = document.getElementById('do-export-btn');
+    btn.disabled = true;
+    btn.textContent = 'Exporting\u2026';
+
+    try {
+        const selected = _chartDefs
+            .map((c, i) => ({ chartDef: c, i, el: document.getElementById(`chart-preview-${i}`) }))
+            .filter(({ i, el }) => document.getElementById(`chart-chk-${i}`)?.checked && el);
+
+        const workbook = await buildExcelWorkbook(tbl, selected);
+        const buffer   = await workbook.xlsx.writeBuffer();
+        const blob     = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url      = URL.createObjectURL(blob);
+        const a        = document.createElement('a');
+        a.href         = url;
+        a.download     = `Pivot_${_source || 'report'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error(e);
+        alert('Export failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '&#8595; Export Excel + Charts';
+        closeChartModal();
+    }
 }
 
 /* ── Export CSV (raw data) ───────────────────────────────── */
