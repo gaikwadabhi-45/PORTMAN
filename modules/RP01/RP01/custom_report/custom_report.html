@@ -405,6 +405,8 @@ td.pvtAxisContainer.pvtCols::before {
             <option value="mbc-ops">MBC Operation</option>
             <option value="vessel-ops">Vessel Operation</option>
             <option value="vessel-barge">Vessel - Barge Lines</option>
+            <option value="lueu-equipment">LUEU - Equipment Utilization</option>
+            <option value="mbc-tat">MBC TAT Analysis</option>
         </select>
     </div>
     <div class="toolbar-group">
@@ -483,6 +485,16 @@ const DATE_COLS = {
             { key: 'discharge_completed', label: 'Discharge Completed' },
             { key: 'commenced_loading',   label: 'Commenced Loading' },
             { key: 'completed_loading',   label: 'Completed Loading' },
+        ],
+    },
+    'lueu-equipment': {
+        filterable: [
+            { key: 'entry_date', label: 'Date' },
+        ],
+    },
+    'mbc-tat': {
+        filterable: [
+            { key: 'doc_date', label: 'Doc Date' },
         ],
     },
 };
@@ -727,9 +739,11 @@ function setStatus(msg, isErr) {
 }
 function srcLabel(s) {
     return {
-        'mbc-ops':      'MBC Operation',
-        'vessel-ops':   'Vessel Operation',
-        'vessel-barge': 'Vessel - Barge Lines',
+        'mbc-ops':        'MBC Operation',
+        'vessel-ops':     'Vessel Operation',
+        'vessel-barge':   'Vessel - Barge Lines',
+        'lueu-equipment': 'LUEU - Equipment Utilization',
+        'mbc-tat':        'MBC TAT Analysis',
     }[s] || s;
 }
 function esc(s) {

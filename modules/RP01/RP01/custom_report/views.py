@@ -64,7 +64,7 @@ def custom_report_index():
 
 # ── Data sources ─────────────────────────────────────────────────────────────
 
-VALID_SOURCES = {'mbc-ops', 'vessel-ops', 'vessel-barge'}
+VALID_SOURCES = {'mbc-ops', 'vessel-ops', 'vessel-barge', 'lueu-equipment', 'mbc-tat'}
 
 # Maps date_col key → (sql_expression, is_datetime)
 # is_datetime=True  → filter uses LEFT(expr::TEXT, 10)
@@ -90,14 +90,48 @@ DATE_COL_FILTERS = {
         'commenced_loading':     ("bl.commenced_loading", True),
         'completed_loading':     ("bl.completed_loading", True),
     },
+    'lueu-equipment': {
+        'entry_date': ("l.entry_date", False),
+    },
+    'mbc-tat': {
+        'doc_date': ("h.doc_date", False),
+    },
 }
 
 # Default date_col key per source (used when none specified)
 DATE_COL_DEFAULTS = {
-    'mbc-ops':      'doc_date',
-    'vessel-ops':   'nor_tendered',
-    'vessel-barge': 'nor_tendered',
+    'mbc-ops':        'doc_date',
+    'vessel-ops':     'nor_tendered',
+    'vessel-barge':   'nor_tendered',
+    'lueu-equipment': 'entry_date',
+    'mbc-tat':        'doc_date',
 }
+
+
+def _diff_mins(row, col_from, col_to):
+    """Compute duration in minutes between two timestamp columns in a row dict."""
+    def parse(v):
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, date):
+            return datetime(v.year, v.month, v.day)
+        s = str(v).strip()
+        if not s:
+            return None
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M', '%Y-%m-%d'):
+            try:
+                return datetime.strptime(s, fmt)
+            except ValueError:
+                pass
+        return None
+
+    a, b = parse(row.get(col_from)), parse(row.get(col_to))
+    if not a or not b:
+        return None
+    delta = (b - a).total_seconds() / 60
+    return round(delta, 1) if delta >= 0 else None
 
 
 def _build_date_where(source, date_col, from_date, to_date):
@@ -225,9 +259,83 @@ def pivot_data(source):
                 LIMIT 10000
             """, where_params)
 
+        elif source == 'lueu-equipment':
+            cur.execute(f"""
+                SELECT
+                    COALESCE(l.equipment_name, '')      AS "Equipment",
+                    COALESCE(l.shift, '')               AS "Shift",
+                    COALESCE(l.source_display, '')      AS "VCN / MBC",
+                    COALESCE(l.barge_name, '')          AS "Barge / MBC Name",
+                    COALESCE(l.cargo_name, '')          AS "Cargo",
+                    COALESCE(l.delay_name, '')          AS "Delay",
+                    COALESCE(l.system_name, '')         AS "System",
+                    COALESCE(l.route_name, '')          AS "Route",
+                    COALESCE(l.berth_name, '')          AS "Berth",
+                    COALESCE(l.shift_incharge, '')      AS "Shift Incharge",
+                    COALESCE(l.operator_name, '')       AS "Operator",
+                    COALESCE(l.quantity_uom, '')        AS "UOM",
+                    COALESCE(CAST(l.quantity AS TEXT), '') AS "Quantity"
+                FROM lueu_lines l
+                WHERE {where_clause}
+                ORDER BY l.id DESC
+                LIMIT 10000
+            """, where_params)
+
+        elif source == 'mbc-tat':
+            cur.execute(f"""
+                SELECT
+                    h.doc_num                                           AS doc_num,
+                    COALESCE(h.mbc_name, '')                           AS mbc_name,
+                    COALESCE(h.operation_type, '')                     AS operation_type,
+                    COALESCE(h.cargo_name, '')                         AS cargo_name,
+                    COALESCE(CAST(h.bl_quantity AS TEXT), '')          AS bl_quantity,
+                    COALESCE(h.doc_status, '')                         AS doc_status,
+                    COALESCE(h.created_by, '')                         AS created_by,
+                    lp.arrived_load_port,    lp.loading_commenced,   lp.loading_completed,
+                    lp.cast_off_load_port,
+                    dp.arrival_gull_island,  dp.departure_gull_island, dp.vessel_arrival_port,
+                    dp.unloading_commenced,  dp.unloading_completed,
+                    dp.vessel_cast_off,      dp.sailed_out_load_port
+                FROM mbc_header h
+                LEFT JOIN mbc_load_port_lines      lp ON lp.mbc_id = h.id
+                LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
+                WHERE {where_clause}
+                ORDER BY h.doc_date ASC, h.id ASC
+                LIMIT 10000
+            """, where_params)
+
         rows = [_row_to_dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+    # Post-process mbc-tat: replace raw timestamps with computed duration columns
+    if source == 'mbc-tat':
+        processed = []
+        for r in rows:
+            processed.append({
+                'Doc No':                        r.get('doc_num', ''),
+                'MBC Name':                      r.get('mbc_name', ''),
+                'Operation Type':                r.get('operation_type', ''),
+                'Cargo':                         r.get('cargo_name', ''),
+                'BL Quantity':                   r.get('bl_quantity', ''),
+                'Status':                        r.get('doc_status', ''),
+                'Created By':                    r.get('created_by', ''),
+                'Preberthing (min)':             _diff_mins(r, 'arrived_load_port',     'loading_commenced'),
+                'Loading Time (min)':            _diff_mins(r, 'loading_commenced',      'loading_completed'),
+                'Wait After Load (min)':         _diff_mins(r, 'loading_completed',      'cast_off_load_port'),
+                'Total at Jaigad (min)':         _diff_mins(r, 'arrived_load_port',     'cast_off_load_port'),
+                'Transit Jaigad-Gull (min)':     _diff_mins(r, 'cast_off_load_port',    'arrival_gull_island'),
+                'Gull Waiting (min)':            _diff_mins(r, 'arrival_gull_island',   'departure_gull_island'),
+                'Gull-Dharamtar (min)':          _diff_mins(r, 'departure_gull_island', 'vessel_arrival_port'),
+                'Jaigad-Dharamtar (min)':        _diff_mins(r, 'cast_off_load_port',    'vessel_arrival_port'),
+                'Preberthing Dharamtar (min)':   _diff_mins(r, 'vessel_arrival_port',   'unloading_commenced'),
+                'Unloading Time (min)':          _diff_mins(r, 'unloading_commenced',   'unloading_completed'),
+                'Wait After Unload (min)':       _diff_mins(r, 'unloading_completed',   'vessel_cast_off'),
+                'Total at Dharamtar (min)':      _diff_mins(r, 'vessel_arrival_port',   'vessel_cast_off'),
+                'Dharamtar-Jaigad (min)':        _diff_mins(r, 'vessel_cast_off',       'sailed_out_load_port'),
+                'TAT (min)':                     _diff_mins(r, 'arrived_load_port',     'sailed_out_load_port'),
+            })
+        rows = processed
 
     return jsonify(rows)
 
