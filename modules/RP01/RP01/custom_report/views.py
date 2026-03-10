@@ -66,6 +66,52 @@ def custom_report_index():
 
 VALID_SOURCES = {'mbc-ops', 'vessel-ops', 'vessel-barge'}
 
+# Maps date_col key → (sql_expression, is_datetime)
+# is_datetime=True  → filter uses LEFT(expr::TEXT, 10)
+# is_datetime=False → filter uses expr directly
+DATE_COL_FILTERS = {
+    'mbc-ops': {
+        'doc_date':               ("h.doc_date", False),
+        'created_date':           ("h.created_date", False),
+        'lp_loading_commenced':   ("COALESCE(lp.loading_commenced, elp.loading_commenced)", True),
+        'lp_loading_completed':   ("COALESCE(lp.loading_completed, elp.loading_completed)", True),
+        'dp_unloading_commenced': ("dp.unloading_commenced", True),
+        'dp_unloading_completed': ("dp.unloading_completed", True),
+    },
+    'vessel-ops': {
+        'nor_tendered':       ("h.nor_tendered", True),
+        'discharge_date':     ("h.discharge_commenced", True),
+        'completion_date':    ("h.discharge_completed", True),
+    },
+    'vessel-barge': {
+        'nor_tendered':          ("h.nor_tendered", True),
+        'discharge_commenced':   ("h.discharge_commenced", True),
+        'discharge_completed':   ("h.discharge_completed", True),
+        'commenced_loading':     ("bl.commenced_loading", True),
+        'completed_loading':     ("bl.completed_loading", True),
+    },
+}
+
+# Default date_col key per source (used when none specified)
+DATE_COL_DEFAULTS = {
+    'mbc-ops':      'doc_date',
+    'vessel-ops':   'nor_tendered',
+    'vessel-barge': 'nor_tendered',
+}
+
+
+def _build_date_where(source, date_col, from_date, to_date):
+    """Return (where_clause_str, params_tuple) for the chosen date column."""
+    col_map  = DATE_COL_FILTERS.get(source, {})
+    default  = DATE_COL_DEFAULTS.get(source, '')
+    key      = date_col if date_col in col_map else default
+    expr, is_dt = col_map.get(key, col_map.get(default, ("'1900-01-01'", False)))
+    if is_dt:
+        clause = f"NULLIF({expr}::TEXT, '') IS NOT NULL AND LEFT({expr}::TEXT, 10) BETWEEN %s AND %s"
+    else:
+        clause = f"NULLIF({expr}, '') IS NOT NULL AND {expr} BETWEEN %s AND %s"
+    return clause, (from_date, to_date)
+
 
 @bp.route('/api/module/RP01/pivot/data/<source>')
 @login_required
@@ -76,20 +122,19 @@ def pivot_data(source):
     from_date, to_date = _default_dates()
     from_date = request.args.get('from_date', from_date)
     to_date   = request.args.get('to_date',   to_date)
+    date_col  = request.args.get('date_col',  DATE_COL_DEFAULTS.get(source, ''))
+
+    where_clause, where_params = _build_date_where(source, date_col, from_date, to_date)
 
     conn = get_db()
     cur  = get_cursor(conn)
 
     try:
         if source == 'mbc-ops':
-            # One row per MBC record. Import uses mbc_load_port_lines + mbc_discharge_port_lines.
-            # Export uses mbc_export_load_port_lines; discharge port columns are NULL.
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
-                    -- Header
                     h.doc_num                                           AS "Doc No",
                     COALESCE(h.doc_series, '')                          AS "Doc Series",
-                    COALESCE(h.doc_date, '')                            AS "Doc Date",
                     COALESCE(h.mbc_name, '')                            AS "MBC Name",
                     COALESCE(h.operation_type, '')                      AS "Operation Type",
                     COALESCE(h.cargo_type, '')                          AS "Cargo Type",
@@ -98,55 +143,29 @@ def pivot_data(source):
                     COALESCE(h.quantity_uom, '')                        AS "UOM",
                     COALESCE(h.doc_status, '')                          AS "Status",
                     COALESCE(h.created_by, '')                          AS "Created By",
-                    COALESCE(h.created_date, '')                        AS "Created Date",
                     COALESCE(
                         STRING_AGG(DISTINCT cd.customer_name, ', ')
                             FILTER (WHERE cd.customer_name IS NOT NULL),
                     '')                                                 AS "Customer",
-
-                    -- Load Port (Import: mbc_load_port_lines; Export: mbc_export_load_port_lines)
-                    COALESCE(lp.eta, '')                                AS "LP ETA",
-                    COALESCE(lp.arrived_load_port, elp.arrived_at_port, '')  AS "LP Arrived",
-                    COALESCE(lp.alongside_berth, elp.alongside_at_berth, '') AS "LP Alongside Berth",
-                    COALESCE(lp.loading_commenced, elp.loading_commenced, '') AS "LP Loading Commenced",
-                    COALESCE(lp.loading_completed, elp.loading_completed, '') AS "LP Loading Completed",
-                    COALESCE(lp.cast_off_load_port, elp.cast_off_from_berth, '') AS "LP Cast Off",
-                    COALESCE(elp.sailed_out_from_port, '')              AS "LP Sailed Out (Export)",
-                    COALESCE(elp.eta_at_gull_island, '')                AS "LP ETA Gull Island (Export)",
                     COALESCE(elp.unloaded_by, '')                       AS "LP Unloaded By (Export)",
                     COALESCE(elp.berth_master, '')                      AS "LP Berth Master (Export)",
-
-                    -- Discharge Port (Import only; NULL for Export)
-                    COALESCE(dp.sailed_out_load_port::TEXT, '')         AS "DP Sailed Out Load Port",
-                    COALESCE(dp.arrived_yellow_crane::TEXT, '')         AS "DP Arrived Yellow Crane",
-                    COALESCE(dp.arrival_gull_island, '')                AS "DP Arrival Gull Island",
-                    COALESCE(dp.departure_gull_island, '')              AS "DP Departure Gull Island",
-                    COALESCE(dp.vessel_arrival_port, '')                AS "DP Vessel Arrival Port",
-                    COALESCE(dp.vessel_all_made_fast, '')               AS "DP Vessel All Made Fast",
-                    COALESCE(dp.unloading_commenced, '')                AS "DP Unloading Commenced",
-                    COALESCE(dp.unloading_completed, '')                AS "DP Unloading Completed",
-                    COALESCE(dp.cleaning_commenced, '')                 AS "DP Cleaning Commenced",
-                    COALESCE(dp.cleaning_completed, '')                 AS "DP Cleaning Completed",
-                    COALESCE(dp.vessel_cast_off, '')                    AS "DP Vessel Cast Off",
                     COALESCE(dp.vessel_unloaded_by, '')                 AS "DP Vessel Unloaded By",
                     COALESCE(dp.vessel_unloading_berth, '')             AS "DP Unloading Berth",
                     COALESCE(dp.discharge_stop_shifting, '')            AS "DP Stop Shifting",
                     COALESCE(dp.discharge_start_shifting, '')           AS "DP Start Shifting"
-
                 FROM mbc_header h
                 LEFT JOIN mbc_load_port_lines        lp  ON lp.mbc_id  = h.id
                 LEFT JOIN mbc_export_load_port_lines elp ON elp.mbc_id = h.id
                 LEFT JOIN mbc_discharge_port_lines   dp  ON dp.mbc_id  = h.id
                 LEFT JOIN mbc_customer_details       cd  ON cd.mbc_id  = h.id
-                WHERE NULLIF(h.doc_date, '') IS NOT NULL
-                  AND h.doc_date BETWEEN %s AND %s
+                WHERE {where_clause}
                 GROUP BY h.id, lp.id, elp.id, dp.id
-                ORDER BY h.doc_date DESC, h.id DESC
+                ORDER BY h.id DESC
                 LIMIT 10000
-            """, (from_date, to_date))
+            """, where_params)
 
         elif source == 'vessel-ops':
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
                     h.doc_num                                           AS "Doc No",
                     h.vcn_doc_num                                       AS "VCN No",
@@ -155,9 +174,6 @@ def pivot_data(source):
                     COALESCE(v.vessel_agent_name, '')                   AS "Vessel Agent",
                     COALESCE(STRING_AGG(DISTINCT cd.cargo_name, ', '), '') AS "Cargo",
                     COALESCE(ROUND(CAST(SUM(cd.bl_quantity) AS NUMERIC), 0), 0) AS "BL Qty (MT)",
-                    LEFT(COALESCE(h.nor_tendered, ''), 10)              AS "NOR Tendered Date",
-                    LEFT(COALESCE(h.discharge_commenced, ''), 10)       AS "Discharge Date",
-                    LEFT(COALESCE(h.discharge_completed,  ''), 10)      AS "Completion Date",
                     CASE
                         WHEN NULLIF(h.discharge_commenced, '') IS NOT NULL
                          AND NULLIF(h.discharge_completed,  '') IS NOT NULL
@@ -173,19 +189,17 @@ def pivot_data(source):
                 FROM ldud_header h
                 LEFT JOIN vcn_header v ON v.id = h.vcn_id
                 LEFT JOIN vcn_cargo_declaration cd ON cd.vcn_id = h.vcn_id
-                WHERE NULLIF(h.nor_tendered, '') IS NOT NULL
-                  AND LEFT(h.nor_tendered, 10) BETWEEN %s AND %s
+                WHERE {where_clause}
                 GROUP BY h.id, h.doc_num, h.vcn_doc_num, h.vessel_name,
                          v.operation_type, h.operation_type, v.vessel_agent_name,
                          h.nor_tendered, h.discharge_commenced, h.discharge_completed, h.doc_status
                 ORDER BY h.nor_tendered DESC
                 LIMIT 10000
-            """, (from_date, to_date))
+            """, where_params)
 
         elif source == 'vessel-barge':
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
-                    -- Header
                     h.doc_num                                               AS "Doc No",
                     COALESCE(h.vcn_doc_num, '')                            AS "VCN No",
                     COALESCE(h.vessel_name, '')                            AS "Vessel",
@@ -193,64 +207,23 @@ def pivot_data(source):
                     COALESCE(v.vessel_agent_name, '')                      AS "Vessel Agent",
                     COALESCE(h.doc_status, '')                             AS "Status",
                     COALESCE(h.created_by, '')                             AS "Created By",
-                    COALESCE(h.created_date, '')                           AS "Created Date",
-
-                    -- LDUD Header timestamps
-                    COALESCE(h.nor_tendered::TEXT, '')                     AS "NOR Tendered",
-                    COALESCE(h.anchored_datetime::TEXT, '')                AS "Anchored Date/Time",
-                    COALESCE(h.arrival_inner_anchorage::TEXT, '')          AS "Arrival Inner Anchorage",
-                    COALESCE(h.arrival_outer_anchorage::TEXT, '')          AS "Arrival Outer Anchorage",
-                    COALESCE(h.arrived_mbpt::TEXT, '')                     AS "Arrived MBPT",
-                    COALESCE(h.arrived_mfl::TEXT, '')                      AS "Arrived MFL",
-                    COALESCE(h.free_pratique_granted::TEXT, '')            AS "Free Pratique Granted",
-                    COALESCE(h.nor_tendered::TEXT, '')                     AS "NOR Tendered",
-                    COALESCE(h.nor_accepted::TEXT, '')                     AS "NOR Accepted",
-                    COALESCE(h.discharge_commenced::TEXT, '')              AS "Discharge Commenced",
-                    COALESCE(h.discharge_completed::TEXT, '')              AS "Discharge Completed",
-                    COALESCE(h.custom_clearance::TEXT, '')                 AS "Custom Clearance",
-                    COALESCE(h.agent_stevedore_onboard::TEXT, '')          AS "Agent/Stevedore Onboard",
-                    COALESCE(h.initial_draft_survey_from::TEXT, '')        AS "Initial Draft Survey From",
-                    COALESCE(h.initial_draft_survey_to::TEXT, '')          AS "Initial Draft Survey To",
                     COALESCE(h.initial_draft_survey_quantity::TEXT, '')    AS "Initial Draft Survey Qty",
-                    COALESCE(h.final_draft_survey_from::TEXT, '')          AS "Final Draft Survey From",
-                    COALESCE(h.final_draft_survey_to::TEXT, '')            AS "Final Draft Survey To",
-
-                    -- Barge Line
                     COALESCE(bl.trip_number::TEXT, '')                     AS "Trip No",
                     COALESCE(bl.hold_name, '')                             AS "Hold",
                     COALESCE(bl.barge_name, '')                            AS "Barge",
                     COALESCE(bl.contractor_name, '')                       AS "Contractor",
                     COALESCE(bl.cargo_name, '')                            AS "Cargo",
                     COALESCE(bl.bpt_bfl, '')                               AS "BPT/BFL",
-                    COALESCE(bl.along_side_vessel::TEXT, '')               AS "Alongside Vessel",
-                    COALESCE(bl.commenced_loading::TEXT, '')               AS "Commenced Loading",
-                    COALESCE(bl.completed_loading::TEXT, '')               AS "Completed Loading",
-                    COALESCE(bl.cast_off_mv::TEXT, '')                     AS "Cast Off MV",
-                    COALESCE(bl.anchored_gull_island::TEXT, '')            AS "Anchored Gull Island",
-                    COALESCE(bl.aweigh_gull_island::TEXT, '')              AS "Aweigh Gull Island",
-                    COALESCE(bl.along_side_berth::TEXT, '')                AS "Alongside Berth",
-                    COALESCE(bl.commence_discharge_berth::TEXT, '')        AS "Commence Discharge Berth",
-                    COALESCE(bl.completed_discharge_berth::TEXT, '')       AS "Completed Discharge Berth",
-                    COALESCE(bl.cast_off_berth::TEXT, '')                  AS "Cast Off Berth",
-                    COALESCE(bl.cast_off_berth_nt::TEXT, '')               AS "Cast Off Berth NT",
                     COALESCE(bl.discharge_quantity::TEXT, '')              AS "Discharge Qty",
                     COALESCE(bl.crane_loaded_from, '')                     AS "Crane Loaded From",
-                    COALESCE(bl.trip_start::TEXT, '')                      AS "Trip Start",
-                    COALESCE(bl.amf_at_port::TEXT, '')                     AS "AMF At Port",
-                    COALESCE(bl.cast_off_port::TEXT, '')                   AS "Cast Off Port",
-                    COALESCE(bl.port_crane, '')                            AS "Port Crane",
-                    COALESCE(bl.cast_off_loading_berth::TEXT, '')          AS "Cast Off Loading Berth",
-                    COALESCE(bl.anchored_gull_island_empty::TEXT, '')      AS "Anchored Gull Island (Empty)",
-                    COALESCE(bl.aweigh_gull_island_empty::TEXT, '')        AS "Aweigh Gull Island (Empty)"
-
+                    COALESCE(bl.port_crane, '')                            AS "Port Crane"
                 FROM ldud_header h
                 LEFT JOIN vcn_header v ON v.id = h.vcn_id
                 LEFT JOIN ldud_barge_lines bl ON bl.ldud_id = h.id
-                WHERE NULLIF(h.nor_tendered, '') IS NOT NULL
-                  AND LEFT(h.nor_tendered, 10) BETWEEN %s AND %s
+                WHERE {where_clause}
                 ORDER BY h.nor_tendered DESC, h.id, bl.trip_number
                 LIMIT 10000
-            """, (from_date, to_date))
+            """, where_params)
 
         rows = [_row_to_dict(r) for r in cur.fetchall()]
     finally:

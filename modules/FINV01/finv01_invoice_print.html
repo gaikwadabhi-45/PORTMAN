@@ -38,11 +38,23 @@
         .btn-print { background: #3498db; color: #fff; }
         .btn-back  { background: #95a5a6; color: #fff; }
 
-        /* ── Invoice copy wrapper ── */
+        /* ── Invoice copy wrapper — fixed A4 height, footer pinned to bottom ── */
         .invoice-copy {
             width: 210mm;
+            min-height: 281mm; /* 297mm - 2×8mm @page margins */
             margin: 8px auto;
             background: #fff;
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #000;
+        }
+        .inv-body {
+            flex: 1; /* grows to fill space, pushing footer down */
+            display: flex;
+            flex-direction: column;
+        }
+        .inv-footer-block {
+            margin-top: auto; /* pins to bottom of .invoice-copy */
         }
 
         /* ── Cancelled banner ── */
@@ -363,6 +375,7 @@
     <div class="cancelled-banner">*** CANCELLED INVOICE ***</div>
     {% endif %}
 
+    <div class="inv-body">
     <!-- ══ 1. Header: Logo | Copy type + Rule text + QR ══ -->
     <div class="inv-header">
         <div class="header-logo">
@@ -581,6 +594,9 @@
         {{ invoice.amount_in_words or '' }}
     </div>
 
+    </div><!-- /.inv-body -->
+
+    <div class="inv-footer-block">
     <!-- ══ 10. Payment Details + Authorised Signatory ══ -->
     <div class="payment-row">
         <div class="payment-col">
@@ -634,6 +650,7 @@
         Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), MUMBAI, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
         {% endif %}
     </div>
+    </div><!-- /.inv-footer-block -->
 
 </div><!-- /.invoice-copy -->
 {% endmacro %}

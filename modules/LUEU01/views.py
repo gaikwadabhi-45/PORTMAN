@@ -32,10 +32,13 @@ def view():
 @bp.route('/api/module/LUEU01/data')
 @login_required
 def get_data():
+    import json as _json
     page = request.args.get('page', 1, type=int)
     size = request.args.get('size', 20, type=int)
     equipment_name = request.args.get('equipment', None)
-    return jsonify(model.get_all_lines(page, size, equipment_name))
+    filters_raw = request.args.get('filters', None)
+    filters = _json.loads(filters_raw) if filters_raw else []
+    return jsonify(model.get_all_lines(page, size, equipment_name, filters))
 
 @bp.route('/api/module/LUEU01/save', methods=['POST'])
 @login_required
@@ -103,13 +106,13 @@ def get_mbc_options():
     options = model.get_mbc_options()
     result = []
     for opt in options:
-        doc_date = opt.get('doc_date', '')
         display = f"{opt['doc_num']} / {opt['mbc_name']}"
         result.append({
             'value': display,
             'label': display,
             'type': 'MBC',
-            'id': opt['id']
+            'id': opt['id'],
+            'cargo_name': opt.get('cargo_name') or ''
         })
     return jsonify(result)
 

@@ -85,6 +85,44 @@
     #equipmentView { display: none; }
     #buttonView { display: block; }
 
+    /* ── New-row highlight ─────────────────────────────────── */
+    .tabulator-row.new-row-highlight { background: #fffde7 !important; border-left: 3px solid #f59e0b !important; }
+    .tabulator-row.new-row-highlight .tabulator-cell { background: #fffde7 !important; }
+
+    /* ── Filter panel ──────────────────────────────────────── */
+    .filter-panel {
+        background: #f7fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+    }
+    .dark-theme .filter-panel { background: #1e293b; border-color: #334155; }
+    .filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+    }
+    .filter-col-select, .filter-text-input, .filter-from, .filter-to {
+        padding: 4px 8px;
+        border: 1px solid #cbd5e0;
+        border-radius: 4px;
+        font-size: 12px;
+        background: white;
+    }
+    .dark-theme .filter-col-select,
+    .dark-theme .filter-text-input,
+    .dark-theme .filter-from,
+    .dark-theme .filter-to { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+    .filter-multi-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .filter-multi-list label { display: flex; gap: 4px; align-items: center; font-size: 12px; cursor: pointer; }
+    .filter-remove { background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
+    .filter-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .btn-filter-add { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .btn-filter-apply { background: #3182ce; color: white; border: none; padding: 5px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .btn-filter-clear { background: #e2e8f0; color: #2d3748; border: none; padding: 5px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
 </style>
 <div class="module-header">
     <h2>Load Unload Equipment Utilization</h2>
@@ -107,7 +145,16 @@
         {% if permissions.can_add %}<button class="btn btn-add" onclick="addRow()">+ Add Row</button>{% endif %}
         {% if permissions.can_delete %}<button class="btn btn-delete" onclick="deleteSelected()">Delete Selected</button>{% endif %}
         {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll()">Save (Ctrl+S)</button>{% endif %}
+        <button class="btn" style="font-size:12px;padding:4px 12px;" onclick="toggleFilterPanel()">&#9881; Filters <span id="filterBadge" style="display:none;background:#3182ce;color:white;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span></button>
         <div class="row-info">Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span></div>
+    </div>
+    <div id="filterPanel" class="filter-panel" style="display:none;">
+        <div id="filterRows"></div>
+        <div class="filter-actions">
+            <button class="btn-filter-add" onclick="addFilterRow()">+ Add Filter</button>
+            <button class="btn-filter-apply" onclick="applyFilters()">Apply</button>
+            <button class="btn-filter-clear" onclick="clearFilters()">Clear All</button>
+        </div>
     </div>
     <div id="table"></div>
 </div>
@@ -121,6 +168,7 @@
     let table;
     let dirtyRowIds = new Set();
     let currentEquipment = null;
+    let currentFilters = [];
     let vcnOptions = [];
     let mbcOptions = [];
     let mbcNames = [];
@@ -222,6 +270,10 @@
 
     function goBack() {
         currentEquipment = null;
+        currentFilters = [];
+        document.getElementById('filterRows').innerHTML = '';
+        updateFilterBadge();
+        document.getElementById('filterPanel').style.display = 'none';
         document.getElementById('equipmentView').style.display = 'none';
         document.getElementById('buttonView').style.display = 'block';
         if (table) { table.destroy(); table = null; }
@@ -448,12 +500,25 @@
             pagination: true,
             paginationMode: "remote",
             paginationSize: 20,
+            paginationSizeSelector: [20, 50, 75, 100, true],
             ajaxURL: "/api/module/LUEU01/data",
-            ajaxParams: {equipment: equipName},
+            ajaxParams: function() {
+                var p = {equipment: currentEquipment};
+                if (currentFilters.length) p.filters = JSON.stringify(currentFilters);
+                return p;
+            },
             ajaxResponse: function(url, params, response) {
                 document.getElementById('rowCount').textContent = response.data.length;
                 document.getElementById('totalCount').textContent = response.total;
                 return response;
+            },
+            rowFormatter: function(row) {
+                var el = row.getElement();
+                if (row.getData()._is_new) {
+                    el.classList.add('new-row-highlight');
+                } else {
+                    el.classList.remove('new-row-highlight');
+                }
             },
             selectable: true
         });
@@ -468,16 +533,18 @@
             }
         });
 
-        // Auto-fill barge_name when VCN/MBC changes
+        // Auto-fill barge_name / cargo_name when VCN/MBC changes
         table.on("cellEdited", function(cell) {
             if (cell.getField() === "source_display") {
                 const sourceDisplay = cell.getValue() || '';
                 const mbcMatch = mbcOptions.find(m => m.label === sourceDisplay);
                 if (mbcMatch) {
                     const parts = sourceDisplay.split(' / ');
-                    if (parts.length >= 2) {
-                        cell.getRow().update({barge_name: parts[1], cargo_name: ''});
-                    }
+                    const mbcName = parts.length >= 2 ? parts[1] : '';
+                    cell.getRow().update({
+                        barge_name: mbcName,
+                        cargo_name: mbcMatch.cargo_name || ''
+                    });
                 } else {
                     cell.getRow().update({barge_name: '', cargo_name: ''});
                 }
@@ -508,26 +575,26 @@
     function addRow() {
         var rows = table.getRows();
         var newData = {
+            _is_new: true,
             created_by: currentUser,
             entry_date: getTodayDate(),
             equipment_name: currentEquipment,
             quantity_uom: defaultUom || undefined
         };
         if (rows.length > 0) {
-            var lastData = rows[rows.length - 1].getData();
+            var topData = rows[0].getData();
             var copyFields = [
                 'source_type', 'source_id', 'source_display', 'barge_name', 'cargo_name',
                 'delay_name', 'operation_type', 'quantity_uom', 'route_name',
                 'entry_date', 'shift', 'system_name', 'berth_name', 'shift_incharge', 'operator_name', 'remarks'
             ];
             copyFields.forEach(function(f) {
-                if (lastData[f] != null && lastData[f] !== '') newData[f] = lastData[f];
+                if (topData[f] != null && topData[f] !== '') newData[f] = topData[f];
             });
-            // from_time of new row = to_time of previous row
-            if (lastData.to_time) newData.from_time = lastData.to_time;
-            // to_time left blank so user fills it in
+            // from_time of new row = to_time of previous top row
+            if (topData.to_time) newData.from_time = topData.to_time;
         }
-        table.addRow(newData, false);
+        table.addRow(newData, true);
     }
 
     function deleteSelected() {
@@ -566,13 +633,17 @@
             if (vcnMatch) { data.source_type = 'VCN'; data.source_id = vcnMatch.id; }
             else if (mbcMatch) { data.source_type = 'MBC'; data.source_id = mbcMatch.id; }
 
+            // Strip local-only flag before sending to server
+            const payload = Object.assign({}, data);
+            delete payload._is_new;
+
             const res = await fetch("/api/module/LUEU01/save", {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
+                body: JSON.stringify(payload)
             });
             const result = await res.json();
-            if (result.id) { row.update({id: result.id}); savedCount++; }
+            if (result.id) { row.update({id: result.id, _is_new: false}); savedCount++; }
         }
         dirtyRowIds.clear();
         showStatus(`Saved ${savedCount} row(s)`, 'saved');
@@ -581,6 +652,96 @@
     document.addEventListener('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveAll(); }
     });
+
+    // ── Filter panel ──────────────────────────────────────────────────────────
+    const FILTER_CONFIG = {
+        entry_date:     { label: 'Date',            type: 'range' },
+        shift:          { label: 'Shift',           type: 'multi',   values: ['A', 'B', 'C'] },
+        source_display: { label: 'VCN / MBC',       type: 'contains' },
+        barge_name:     { label: 'Barge / MBC Name',type: 'contains' },
+        cargo_name:     { label: 'Cargo',           type: 'contains' },
+        delay_name:     { label: 'Delay',           type: 'contains' },
+        berth_name:     { label: 'Berth',           type: 'contains' },
+        operator_name:  { label: 'Operator',        type: 'contains' },
+        route_name:     { label: 'Route',           type: 'contains' },
+    };
+
+    function toggleFilterPanel() {
+        const panel = document.getElementById('filterPanel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function addFilterRow() {
+        const container = document.getElementById('filterRows');
+        const colOptions = Object.entries(FILTER_CONFIG)
+            .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+        const row = document.createElement('div');
+        row.className = 'filter-row';
+        row.innerHTML = `
+            <select class="filter-col-select" onchange="onFilterColChange(this)">
+                <option value="">-- Column --</option>${colOptions}
+            </select>
+            <div class="filter-value-container"></div>
+            <button class="filter-remove" onclick="this.closest('.filter-row').remove();updateFilterBadge();">&times;</button>`;
+        container.appendChild(row);
+    }
+
+    function onFilterColChange(sel) {
+        const container = sel.closest('.filter-row').querySelector('.filter-value-container');
+        const col = sel.value;
+        if (!col) { container.innerHTML = ''; return; }
+        const cfg = FILTER_CONFIG[col];
+        if (cfg.type === 'contains') {
+            container.innerHTML = `<input class="filter-text-input" type="text" placeholder="contains...">`;
+        } else if (cfg.type === 'multi') {
+            container.innerHTML = `<div class="filter-multi-list">${
+                cfg.values.map(v => `<label><input type="checkbox" class="filter-checkbox" value="${v}"> ${v}</label>`).join('')
+            }</div>`;
+        } else if (cfg.type === 'range') {
+            container.innerHTML = `<input class="filter-from" type="date"> <span style="font-size:12px">to</span> <input class="filter-to" type="date">`;
+        }
+    }
+
+    function collectFilters() {
+        const filters = [];
+        document.querySelectorAll('#filterRows .filter-row').forEach(function(row) {
+            const col = (row.querySelector('.filter-col-select') || {}).value;
+            if (!col) return;
+            const cfg = FILTER_CONFIG[col];
+            if (cfg.type === 'contains') {
+                const v = (row.querySelector('.filter-text-input') || {}).value || '';
+                if (v.trim()) filters.push({ field: col, type: 'contains', value: v.trim() });
+            } else if (cfg.type === 'multi') {
+                const checked = [...row.querySelectorAll('.filter-checkbox:checked')].map(cb => cb.value);
+                if (checked.length) filters.push({ field: col, type: 'multi', values: checked });
+            } else if (cfg.type === 'range') {
+                const from = (row.querySelector('.filter-from') || {}).value || '';
+                const to   = (row.querySelector('.filter-to')   || {}).value || '';
+                if (from || to) filters.push({ field: col, type: 'range', from, to });
+            }
+        });
+        return filters;
+    }
+
+    function applyFilters() {
+        currentFilters = collectFilters();
+        updateFilterBadge();
+        if (table) table.replaceData();
+    }
+
+    function clearFilters() {
+        document.getElementById('filterRows').innerHTML = '';
+        currentFilters = [];
+        updateFilterBadge();
+        if (table) table.replaceData();
+    }
+
+    function updateFilterBadge() {
+        const active = collectFilters().length;
+        const badge = document.getElementById('filterBadge');
+        if (badge) { badge.textContent = active; badge.style.display = active > 0 ? 'inline' : 'none'; }
+    }
+    // ── End filter panel ──────────────────────────────────────────────────────
 
     loadMasterData();
 </script>

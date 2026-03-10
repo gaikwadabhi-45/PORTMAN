@@ -1,21 +1,45 @@
 from database import get_db, get_cursor
 
 
-def get_all_lines(page=1, size=20, equipment_name=None):
+def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     conn = get_db()
     cur = get_cursor(conn)
     offset = (page - 1) * size
 
-    if equipment_name:
-        cur.execute('SELECT COUNT(*) as cnt FROM lueu_lines WHERE equipment_name = %s', [equipment_name])
-        total = cur.fetchone()['cnt']
-        cur.execute('SELECT * FROM lueu_lines WHERE equipment_name = %s ORDER BY id DESC LIMIT %s OFFSET %s',
-                    [equipment_name, size, offset])
-    else:
-        cur.execute('SELECT COUNT(*) as cnt FROM lueu_lines')
-        total = cur.fetchone()['cnt']
-        cur.execute('SELECT * FROM lueu_lines ORDER BY id DESC LIMIT %s OFFSET %s', [size, offset])
+    allowed = {'entry_date', 'shift', 'source_display', 'barge_name', 'cargo_name',
+               'delay_name', 'berth_name', 'operator_name', 'route_name'}
+    where_clauses, params = [], []
 
+    if equipment_name:
+        where_clauses.append('equipment_name = %s')
+        params.append(equipment_name)
+
+    for f in (filters or []):
+        field = f.get('field', '')
+        if field not in allowed:
+            continue
+        ftype = f.get('type')
+        if ftype == 'contains' and f.get('value'):
+            where_clauses.append(f"{field} ILIKE %s")
+            params.append(f"%{f['value']}%")
+        elif ftype == 'multi' and f.get('values'):
+            ph = ','.join(['%s'] * len(f['values']))
+            where_clauses.append(f"{field} IN ({ph})")
+            params.extend(f['values'])
+        elif ftype == 'range':
+            if f.get('from'):
+                where_clauses.append(f"{field} >= %s")
+                params.append(f['from'])
+            if f.get('to'):
+                where_clauses.append(f"{field} <= %s")
+                params.append(f['to'])
+
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+    cur.execute(f'SELECT COUNT(*) as cnt FROM lueu_lines {where_sql}', params)
+    total = cur.fetchone()['cnt']
+    cur.execute(f'SELECT * FROM lueu_lines {where_sql} ORDER BY id DESC LIMIT %s OFFSET %s',
+                params + [size, offset])
     rows = cur.fetchall()
     conn.close()
 
@@ -155,10 +179,10 @@ def get_vcn_options():
 
 
 def get_mbc_options():
-    """Get MBC entries for dropdown with doc_date"""
+    """Get MBC entries for dropdown with doc_date and cargo_name"""
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT id, doc_num, mbc_name, doc_date FROM mbc_header ORDER BY doc_num DESC')
+    cur.execute('SELECT id, doc_num, mbc_name, doc_date, cargo_name FROM mbc_header ORDER BY doc_num DESC')
     rows = cur.fetchall()
     conn.close()
     return [dict(r) for r in rows]

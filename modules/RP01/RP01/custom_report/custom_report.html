@@ -401,11 +401,15 @@ td.pvtAxisContainer.pvtCols::before {
 <div class="toolbar">
     <div class="toolbar-group">
         <label for="src-sel">Data Source</label>
-        <select id="src-sel">
+        <select id="src-sel" onchange="onSourceChange()">
             <option value="mbc-ops">MBC Operation</option>
             <option value="vessel-ops">Vessel Operation</option>
             <option value="vessel-barge">Vessel - Barge Lines</option>
         </select>
+    </div>
+    <div class="toolbar-group">
+        <label for="date-col-sel">Date Column</label>
+        <select id="date-col-sel" style="min-width:170px"></select>
     </div>
     <div class="toolbar-group">
         <label for="f-from">From Date</label>
@@ -453,13 +457,43 @@ td.pvtAxisContainer.pvtCols::before {
 </div>
 
 <script>
+/* ── Date column definitions per source ──────────────────── */
+const DATE_COLS = {
+    'mbc-ops': {
+        filterable: [
+            { key: 'doc_date',               label: 'Doc Date' },
+            { key: 'created_date',           label: 'Created Date' },
+            { key: 'lp_loading_commenced',   label: 'LP Loading Commenced' },
+            { key: 'lp_loading_completed',   label: 'LP Loading Completed' },
+            { key: 'dp_unloading_commenced', label: 'DP Unloading Commenced' },
+            { key: 'dp_unloading_completed', label: 'DP Unloading Completed' },
+        ],
+    },
+    'vessel-ops': {
+        filterable: [
+            { key: 'nor_tendered',    label: 'NOR Tendered Date' },
+            { key: 'discharge_date',  label: 'Discharge Date' },
+            { key: 'completion_date', label: 'Completion Date' },
+        ],
+    },
+    'vessel-barge': {
+        filterable: [
+            { key: 'nor_tendered',        label: 'NOR Tendered' },
+            { key: 'discharge_commenced', label: 'Discharge Commenced' },
+            { key: 'discharge_completed', label: 'Discharge Completed' },
+            { key: 'commenced_loading',   label: 'Commenced Loading' },
+            { key: 'completed_loading',   label: 'Completed Loading' },
+        ],
+    },
+};
+
 /* ── State ───────────────────────────────────────────────── */
 let _data    = null;
 let _source  = null;
 let _pivotEl = null;
 let _saved   = [];
 
-/* ── Init date defaults ──────────────────────────────────── */
+/* ── Init date defaults & populate date-col dropdown ──────── */
 (function () {
     const n = new Date();
     const y = n.getFullYear();
@@ -467,20 +501,32 @@ let _saved   = [];
     const d = String(n.getDate()).padStart(2, '0');
     document.getElementById('f-from').value = `${y}-${m}-01`;
     document.getElementById('f-to').value   = `${y}-${m}-${d}`;
+    onSourceChange();
 })();
+
+/* ── Populate Date Column dropdown when source changes ────── */
+function onSourceChange() {
+    const src = document.getElementById('src-sel').value;
+    const sel = document.getElementById('date-col-sel');
+    const cols = (DATE_COLS[src] || {}).filterable || [];
+    sel.innerHTML = cols.map(c =>
+        `<option value="${c.key}">${c.label}</option>`
+    ).join('');
+}
 
 /* ── Load data ───────────────────────────────────────────── */
 function loadData() {
-    const src  = document.getElementById('src-sel').value;
-    const from = document.getElementById('f-from').value;
-    const to   = document.getElementById('f-to').value;
-    const btn  = document.getElementById('load-btn');
+    const src     = document.getElementById('src-sel').value;
+    const dateCol = document.getElementById('date-col-sel').value;
+    const from    = document.getElementById('f-from').value;
+    const to      = document.getElementById('f-to').value;
+    const btn     = document.getElementById('load-btn');
 
     btn.disabled = true;
     btn.textContent = 'Loading\u2026';
     setStatus('Fetching data\u2026', false);
 
-    fetch(`/api/module/RP01/pivot/data/${src}?from_date=${from}&to_date=${to}`)
+    fetch(`/api/module/RP01/pivot/data/${src}?from_date=${from}&to_date=${to}&date_col=${dateCol}`)
         .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
         .then(rows => {
             _data   = rows;
@@ -516,7 +562,6 @@ function renderPivot(rows, cfg) {
             rendererName:        'Table',
             unusedAttrsVertical: false,
             menuLimit:           300,
-            hiddenAttributes:    [],
         },
         cfg || {}
     );
@@ -540,6 +585,10 @@ function getConfig() {
         rendererName:   o.rendererName   || 'Table',
         inclusions:     o.inclusions     || {},
         exclusions:     o.exclusions     || {},
+        // Date filter state
+        date_col:  document.getElementById('date-col-sel').value,
+        from_date: document.getElementById('f-from').value,
+        to_date:   document.getElementById('f-to').value,
     };
 }
 
@@ -612,11 +661,24 @@ function loadSaved(id) {
     const rep = _saved.find(r => r.id === id);
     if (!rep) return;
     document.getElementById('src-sel').value = rep.data_source;
+    onSourceChange();
     document.getElementById('saved-list').classList.remove('open');
-    const from = document.getElementById('f-from').value;
-    const to   = document.getElementById('f-to').value;
+
+    // Restore saved date filter state if present
+    const cfg      = rep.config || {};
+    const dateCol  = cfg.date_col  || '';
+    const fromDate = cfg.from_date || document.getElementById('f-from').value;
+    const toDate   = cfg.to_date   || document.getElementById('f-to').value;
+
+    if (dateCol) {
+        const sel = document.getElementById('date-col-sel');
+        if ([...sel.options].some(o => o.value === dateCol)) sel.value = dateCol;
+    }
+    document.getElementById('f-from').value = fromDate;
+    document.getElementById('f-to').value   = toDate;
+
     setStatus('Loading\u2026', false);
-    fetch(`/api/module/RP01/pivot/data/${rep.data_source}?from_date=${from}&to_date=${to}`)
+    fetch(`/api/module/RP01/pivot/data/${rep.data_source}?from_date=${fromDate}&to_date=${toDate}&date_col=${dateCol}`)
         .then(r => r.json())
         .then(rows => {
             _data   = rows;
