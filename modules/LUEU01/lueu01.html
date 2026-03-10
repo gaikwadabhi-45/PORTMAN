@@ -298,18 +298,7 @@
         const rowData = row.getData();
         const sourceDisplay = rowData.source_display || '';
 
-        let options = [];
-        const vcnMatch = vcnOptions.find(v => v.label === sourceDisplay);
-        if (vcnMatch) {
-            fetch(`/api/module/LUEU01/barges/${vcnMatch.id}`)
-                .then(r => r.json())
-                .then(barges => { options = barges; renderSelect(options); });
-        } else {
-            const mbcMatch = mbcOptions.find(m => m.label === sourceDisplay);
-            if (mbcMatch) { options = mbcNames; renderSelect(options); }
-            else { renderSelect(options); }
-        }
-
+        // Declare select BEFORE any renderSelect calls
         var select = document.createElement("select");
         select.style.width = "100%";
         select.style.boxSizing = "border-box";
@@ -325,7 +314,18 @@
                 select.appendChild(option);
             });
         }
-        renderSelect([]);
+
+        const vcnMatch = vcnOptions.find(v => v.label === sourceDisplay);
+        if (vcnMatch) {
+            renderSelect([]);
+            fetch(`/api/module/LUEU01/barges/${vcnMatch.id}`)
+                .then(r => r.json())
+                .then(barges => { renderSelect(barges); });
+        } else {
+            const mbcMatch = mbcOptions.find(m => m.label === sourceDisplay);
+            if (mbcMatch) { renderSelect(mbcNames); }
+            else { renderSelect([]); }
+        }
 
         onRendered(function() { select.focus(); });
         select.addEventListener("change", function() { success(select.value); });
@@ -360,27 +360,26 @@
             });
         }
 
-        // Try to get cargo from barge
+        // Try to get cargo from barge (VCN) or from MBC
         const vcnMatch = vcnOptions.find(v => v.label === sourceDisplay);
+        const mbcMatch = mbcOptions.find(m => m.label === sourceDisplay);
         if (vcnMatch && bargeName) {
+            renderSelect([]);
             fetch(`/api/module/LUEU01/barge-cargos/${vcnMatch.id}?barge=${encodeURIComponent(bargeName)}`)
                 .then(r => r.json())
                 .then(cargos => {
-                    if (cargos.length === 1) {
-                        success(cargos[0]);
-                        return;
-                    }
-                    if (cargos.length > 1) {
-                        renderSelect(cargos);
-                        return;
-                    }
-                    renderSelect(cargoList);
+                    if (cargos.length === 1) { success(cargos[0]); return; }
+                    renderSelect(cargos.length > 0 ? cargos : cargoList);
                 });
+        } else if (mbcMatch) {
+            // For MBC: show MBC's own cargo as first option, then full list
+            const mbcCargo = mbcMatch.cargo_name || '';
+            const opts = mbcCargo ? [mbcCargo, ...cargoList.filter(c => c !== mbcCargo)] : cargoList;
+            renderSelect(opts);
+            if (mbcCargo && !cell.getValue()) success(mbcCargo);
         } else {
             renderSelect(cargoList);
         }
-
-        renderSelect([]);
 
         onRendered(function() { select.focus(); });
         select.addEventListener("change", function() { success(select.value); });
