@@ -9,6 +9,7 @@ from .vessel_discharged import views as _vessel_discharged_views  # noqa: regist
 from .custom_report    import views as _custom_report_views       # noqa: registers custom-report routes on bp
 from .dashboard        import views as _dashboard_views           # noqa: registers dashboard routes on bp
 from .daily_ops         import views as _daily_ops_views        # noqa: registers daily-ops routes on bp
+from .shift_report      import views as _shift_report_views    # noqa: registers shift-report routes on bp
 
 def login_required(f):
     @wraps(f)

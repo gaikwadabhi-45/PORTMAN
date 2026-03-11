@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}Shift Report — RP01{% endblock %}
+
+{% block head %}
+<style>
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 18px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--border-color);
+    }
+    .page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+    .module-badge {
+        background: #4a90d9;
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+    .breadcrumb {
+        font-size: 11px; color: var(--text-secondary); margin-bottom: 14px;
+    }
+    .breadcrumb a { color: #4a90d9; text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: flex-end;
+        margin-bottom: 14px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 12px 14px;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-group label {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .filter-group input, .filter-group select {
+        padding: 5px 9px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 12px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        height: 30px;
+    }
+    .filter-group input:focus, .filter-group select:focus { outline: none; border-color: #4a90d9; }
+    .filter-btn {
+        padding: 0 18px;
+        height: 30px;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        align-self: flex-end;
+    }
+    .filter-btn.primary { background: #4a90d9; color: #fff; }
+    .filter-btn.primary:hover { background: #357abd; }
+    .filter-btn.primary:disabled { background: #aaa; cursor: not-allowed; }
+    .filter-btn.secondary { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); }
+    .filter-btn.secondary:hover { background: var(--bg-secondary); border-color: #4a90d9; }
+
+    /* Preview tables */
+    .preview-section {
+        margin-top: 20px;
+    }
+    .preview-section h3 {
+        font-size: 14px;
+        color: var(--text-primary);
+        margin: 0 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .preview-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        margin-bottom: 20px;
+    }
+    .preview-table th, .preview-table td {
+        border: 1px solid var(--border-color);
+        padding: 5px 8px;
+        text-align: center;
+    }
+    .preview-table th {
+        background: var(--bg-secondary);
+        font-weight: 600;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .preview-table td:first-child {
+        text-align: left;
+        font-weight: 600;
+    }
+    .preview-table .total-row td {
+        font-weight: 700;
+        background: var(--bg-secondary);
+    }
+    .preview-table .type-header td {
+        font-weight: 700;
+        background: #f0f4fa;
+        text-align: left;
+    }
+    .preview-table .type-total td {
+        font-weight: 600;
+        background: #f8f9fa;
+        font-style: italic;
+    }
+    .no-data {
+        font-size: 12px;
+        color: var(--text-secondary);
+        padding: 20px;
+        text-align: center;
+        background: var(--bg-secondary);
+        border-radius: 6px;
+    }
+    .loading {
+        font-size: 12px;
+        color: var(--text-secondary);
+        padding: 12px;
+    }
+    .preview-table .overflow-wrapper {
+        overflow-x: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Shift Report</h2>
+    <span class="module-badge">RP01</span>
+</div>
+<div class="breadcrumb">
+    <a href="/module/RP01/">Reports</a> &rsaquo; Shift Report
+</div>
+
+<div class="filter-bar">
+    <div class="filter-group">
+        <label for="entry-date">Entry Date</label>
+        <input type="date" id="entry-date">
+    </div>
+    <div class="filter-group">
+        <label for="shift-select">Shift</label>
+        <select id="shift-select">
+            <option value="">-- Select --</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+        </select>
+    </div>
+    <button type="button" class="filter-btn primary" id="preview-btn" onclick="loadPreview()">Preview</button>
+    <button type="button" class="filter-btn primary" id="dl-btn" onclick="downloadReport()">&#8595; Download Excel</button>
+</div>
+
+<div id="preview-area"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    document.getElementById('entry-date').value = `${y}-${m}-${d}`;
+});
+
+function _getParams() {
+    const entryDate = document.getElementById('entry-date').value;
+    const shift = document.getElementById('shift-select').value;
+    if (!entryDate || !shift) {
+        alert('Please select both date and shift.');
+        return null;
+    }
+    return { entryDate, shift };
+}
+
+function loadPreview() {
+    const p = _getParams();
+    if (!p) return;
+
+    const btn = document.getElementById('preview-btn');
+    const area = document.getElementById('preview-area');
+    btn.disabled = true;
+    btn.textContent = 'Loading\u2026';
+    area.innerHTML = '<div class="loading">Loading preview\u2026</div>';
+
+    fetch(`/api/module/RP01/shift-report/preview?entry_date=${p.entryDate}&shift=${p.shift}`)
+        .then(r => { if (!r.ok) throw new Error('Server error'); return r.json(); })
+        .then(data => {
+            area.innerHTML = '';
+            area.appendChild(buildCargoTable(data.cargo_pivot));
+            area.appendChild(buildDelayTable(data.delays));
+        })
+        .catch(err => {
+            area.innerHTML = `<div class="no-data">${err.message || 'Failed to load preview.'}</div>`;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Preview';
+        });
+}
+
+function downloadReport() {
+    const p = _getParams();
+    if (!p) return;
+
+    const btn = document.getElementById('dl-btn');
+    btn.disabled = true;
+    btn.textContent = 'Preparing\u2026';
+
+    fetch(`/api/module/RP01/shift-report/download?entry_date=${p.entryDate}&shift=${p.shift}`)
+        .then(res => {
+            if (!res.ok) throw new Error('Download failed');
+            const disp = res.headers.get('Content-Disposition') || '';
+            const match = disp.match(/filename="(.+?)"/);
+            const filename = match ? match[1] : `ShiftReport_${p.entryDate}_${p.shift}.xlsx`;
+            return res.blob().then(blob => ({ blob, filename }));
+        })
+        .then(({ blob, filename }) => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        })
+        .catch(err => {
+            alert(err.message || 'Download failed.');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = '\u2193 Download Excel';
+        });
+}
+
+/* ── Build Cargo Pivot Table ───────────────────────────────────────────────── */
+
+function buildCargoTable(pivot) {
+    const section = document.createElement('div');
+    section.className = 'preview-section';
+    section.innerHTML = '<h3>Cargo Handled (Shift Pivot)</h3>';
+
+    const data = pivot.data;
+    const equipments = pivot.equipments;
+    const routes = pivot.routes;
+    const cargos = Object.keys(data).sort();
+
+    if (!cargos.length) {
+        section.innerHTML += '<div class="no-data">No cargo data for this shift.</div>';
+        return section;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.style.overflowX = 'auto';
+
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+
+    // Header row 1: equipment groups
+    let row1 = '<tr><th rowspan="2">Cargo Name</th>';
+    equipments.forEach(eq => {
+        row1 += `<th colspan="${routes.length + 1}">${eq}</th>`;
+    });
+    row1 += '<th rowspan="2">Grand Total</th></tr>';
+
+    // Header row 2: routes + total per equipment
+    let row2 = '<tr>';
+    equipments.forEach(() => {
+        routes.forEach(rt => { row2 += `<th>${rt}</th>`; });
+        row2 += '<th>Total</th>';
+    });
+    row2 += '</tr>';
+
+    let thead = `<thead>${row1}${row2}</thead>`;
+
+    // Data rows
+    let tbody = '<tbody>';
+    const grandByCol = {};
+
+    cargos.forEach(cargo => {
+        let tr = `<tr><td>${cargo}</td>`;
+        let cargoGrand = 0;
+        let colIdx = 0;
+
+        equipments.forEach(eq => {
+            let eqTotal = 0;
+            routes.forEach(rt => {
+                const qty = (data[cargo] && data[cargo][eq] && data[cargo][eq][rt]) || 0;
+                grandByCol[colIdx] = (grandByCol[colIdx] || 0) + qty;
+                tr += `<td>${qty ? Math.round(qty) : ''}</td>`;
+                eqTotal += qty;
+                colIdx++;
+            });
+            grandByCol[colIdx] = (grandByCol[colIdx] || 0) + eqTotal;
+            tr += `<td><b>${eqTotal ? Math.round(eqTotal) : ''}</b></td>`;
+            cargoGrand += eqTotal;
+            colIdx++;
+        });
+
+        grandByCol['grand'] = (grandByCol['grand'] || 0) + cargoGrand;
+        tr += `<td><b>${cargoGrand ? Math.round(cargoGrand) : ''}</b></td></tr>`;
+        tbody += tr;
+    });
+
+    // Total row
+    let totalRow = '<tr class="total-row"><td>Grand Total</td>';
+    let colIdx = 0;
+    equipments.forEach(() => {
+        routes.forEach(() => {
+            const v = grandByCol[colIdx] || 0;
+            totalRow += `<td>${v ? Math.round(v) : ''}</td>`;
+            colIdx++;
+        });
+        const v = grandByCol[colIdx] || 0;
+        totalRow += `<td>${v ? Math.round(v) : ''}</td>`;
+        colIdx++;
+    });
+    totalRow += `<td>${grandByCol['grand'] ? Math.round(grandByCol['grand']) : ''}</td></tr>`;
+    tbody += totalRow + '</tbody>';
+
+    table.innerHTML = thead + tbody;
+    wrapper.appendChild(table);
+    section.appendChild(wrapper);
+    return section;
+}
+
+/* ── Build Delay Table ─────────────────────────────────────────────────────── */
+
+function buildDelayTable(delays) {
+    const section = document.createElement('div');
+    section.className = 'preview-section';
+    section.innerHTML = '<h3>Delay Breakdown</h3>';
+
+    if (!delays.length) {
+        section.innerHTML += '<div class="no-data">No delay data for this shift.</div>';
+        return section;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'preview-table';
+
+    let thead = `<thead><tr>
+        <th>Delay Type</th><th>Activity</th><th>Equipment</th>
+        <th>System</th><th>Receiving Route</th>
+        <th>From</th><th>To</th><th>Total</th>
+    </tr></thead>`;
+
+    // Group by delay_type
+    const grouped = {};
+    delays.forEach(d => {
+        if (!grouped[d.delay_type]) grouped[d.delay_type] = [];
+        grouped[d.delay_type].push(d);
+    });
+
+    let tbody = '<tbody>';
+    let grandTotal = 0;
+
+    Object.keys(grouped).sort().forEach(dtype => {
+        const items = grouped[dtype];
+        let typeTotal = 0;
+
+        items.forEach((d, i) => {
+            const mins = d.total_minutes || 0;
+            typeTotal += mins;
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            const totalStr = mins ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}` : '';
+            tbody += `<tr>
+                <td>${i === 0 ? dtype : ''}</td>
+                <td>${d.delay_name}</td>
+                <td>${d.equipment_name}</td>
+                <td>${d.system_name}</td>
+                <td>${d.route_name}</td>
+                <td>${d.from_time}</td>
+                <td>${d.to_time}</td>
+                <td>${totalStr}</td>
+            </tr>`;
+        });
+
+        grandTotal += typeTotal;
+        const th = Math.floor(typeTotal / 60);
+        const tm = typeTotal % 60;
+        tbody += `<tr class="type-total">
+            <td colspan="7" style="text-align:right">${dtype} Total</td>
+            <td>${typeTotal ? `${String(th).padStart(2,'0')}:${String(tm).padStart(2,'0')}` : ''}</td>
+        </tr>`;
+    });
+
+    const gh = Math.floor(grandTotal / 60);
+    const gm = grandTotal % 60;
+    tbody += `<tr class="total-row">
+        <td colspan="7" style="text-align:right">Grand Total</td>
+        <td>${grandTotal ? `${String(gh).padStart(2,'0')}:${String(gm).padStart(2,'0')}` : ''}</td>
+    </tr>`;
+    tbody += '</tbody>';
+
+    table.innerHTML = thead + tbody;
+    section.appendChild(table);
+    return section;
+}
+</script>
+{% endblock %}

@@ -152,7 +152,9 @@ def _load_cutoff():
 
 # ── Data fetchers ───────────────────────────────────────────────────────────
 
-def _fetch_data(report_date, operation_type):
+def _fetch_data(report_date):
+    """Fetch all non-closed vessels from LDUD01, with BL qty from VCN
+    and unloaded qty from LUEU01."""
     window_end   = datetime(report_date.year, report_date.month, report_date.day, 7, 0, 0)
     window_start = window_end - timedelta(hours=24)
     ws_str = window_start.strftime('%Y-%m-%d %H:%M:%S')
@@ -161,23 +163,21 @@ def _fetch_data(report_date, operation_type):
     conn = get_db()
     cur  = get_cursor(conn)
 
+    # All non-closed vessels (Draft or Partial Close)
     cur.execute("""
         SELECT h.id, h.vcn_id, h.vessel_name, h.operation_type,
-               h.nor_tendered, h.discharge_commenced, h.discharge_completed
+               h.nor_tendered, h.discharge_commenced, h.discharge_completed,
+               h.doc_status
         FROM ldud_header h
-        WHERE h.discharge_commenced IS NOT NULL
-          AND h.nor_tendered IS NOT NULL AND h.nor_tendered != ''
-          AND h.operation_type = %s
-          AND h.discharge_commenced < %s
-          AND (h.discharge_completed IS NULL OR h.discharge_completed > %s)
-        ORDER BY h.discharge_commenced ASC
-        LIMIT 5
-    """, (operation_type, we_str, ws_str))
+        WHERE h.doc_status != 'Closed'
+        ORDER BY h.discharge_commenced ASC NULLS LAST
+    """)
     vessels = [dict(r) for r in cur.fetchall()]
 
     ldud_ids = [v['id']     for v in vessels]
     vcn_ids  = [v['vcn_id'] for v in vessels if v.get('vcn_id')]
 
+    # BL quantities from VCN (both import and export)
     bl_import  = {}
     bl_export  = {}
     vcn_meta   = {}
@@ -201,31 +201,40 @@ def _fetch_data(report_date, operation_type):
         """, (vcn_ids,))
         vcn_meta = {r['id']: r['importer_exporter_name'] or '' for r in cur.fetchall()}
 
-    ops_24h     = {}
-    ops_till    = {}
-    barge_stats = {}
-
+    # Unloaded quantities from LUEU01 — total per source vessel
+    lueu_total = {}
+    lueu_24h   = {}
     if ldud_ids:
+        # Total unloaded till report date 7AM
         cur.execute("""
-            SELECT ldud_id, COALESCE(SUM(quantity), 0) AS qty
-            FROM ldud_vessel_operations
-            WHERE ldud_id = ANY(%s)
-              AND start_time >= %s AND start_time < %s
-            GROUP BY ldud_id
-        """, (ldud_ids, ws_str, we_str))
-        for r in cur.fetchall():
-            ops_24h[r['ldud_id']] = float(r['qty'])
-
-        cur.execute("""
-            SELECT ldud_id, COALESCE(SUM(quantity), 0) AS qty
-            FROM ldud_vessel_operations
-            WHERE ldud_id = ANY(%s)
-              AND start_time < %s
-            GROUP BY ldud_id
+            SELECT source_id, COALESCE(SUM(quantity), 0) AS qty
+            FROM lueu_lines
+            WHERE source_type = 'LDUD'
+              AND source_id = ANY(%s)
+              AND entry_date IS NOT NULL
+              AND (entry_date || ' ' || COALESCE(from_time, '00:00')) < %s
+            GROUP BY source_id
         """, (ldud_ids, we_str))
         for r in cur.fetchall():
-            ops_till[r['ldud_id']] = float(r['qty'])
+            lueu_total[r['source_id']] = float(r['qty'])
 
+        # 24h unloaded
+        cur.execute("""
+            SELECT source_id, COALESCE(SUM(quantity), 0) AS qty
+            FROM lueu_lines
+            WHERE source_type = 'LDUD'
+              AND source_id = ANY(%s)
+              AND entry_date IS NOT NULL
+              AND (entry_date || ' ' || COALESCE(from_time, '00:00')) >= %s
+              AND (entry_date || ' ' || COALESCE(from_time, '00:00')) < %s
+            GROUP BY source_id
+        """, (ldud_ids, ws_str, we_str))
+        for r in cur.fetchall():
+            lueu_24h[r['source_id']] = float(r['qty'])
+
+    # Barge status snapshot
+    barge_stats = {}
+    if ldud_ids:
         _STATUS_KEYS = (
             'at_jetty', 'waiting_discharge', 'waiting_empty_jetty',
             'at_gull_loaded', 'under_loading', 'waiting_loading', 'in_transit_jetty_to_mv',
@@ -282,13 +291,13 @@ def _fetch_data(report_date, operation_type):
         vid        = v.get('vcn_id')
         op         = v.get('operation_type', '')
         bl_qty     = (bl_export.get(vid, 0) if op == 'Export' else bl_import.get(vid, 0)) if vid else 0
-        discharged = ops_till.get(lid, 0)
+        unloaded   = lueu_total.get(lid, 0)
         bs         = barge_stats.get(lid, {})
         v['stevedore_group']        = vcn_meta.get(vid, '') if vid else ''
         v['bl_qty']                 = bl_qty
-        v['ops_24h']                = ops_24h.get(lid, 0)
-        v['ops_till']               = discharged
-        v['balance']                = bl_qty - discharged
+        v['ops_24h']                = lueu_24h.get(lid, 0)
+        v['ops_till']               = unloaded
+        v['balance']                = bl_qty - unloaded
         v['num_barges']             = len(bs.get('all', set())) or ''
         v['at_jetty']               = _make_names(bs, 'at_jetty')
         v['waiting_discharge']      = _make_names(bs, 'waiting_discharge')
@@ -336,7 +345,6 @@ def _fetch_cargo_handled(report_date):
             SELECT route_name, COALESCE(SUM(quantity), 0) AS qty
             FROM lueu_lines
             WHERE route_name IS NOT NULL AND route_name != ''
-              AND equipment_name = 'Barge Crane'
               AND entry_date IS NOT NULL
               AND (entry_date || ' ' || COALESCE(from_time, '00:00')) >= %s
               AND (entry_date || ' ' || COALESCE(from_time, '00:00')) < %s
@@ -468,7 +476,7 @@ def _fmt_tide_dt(dt_str):
 
 # ── Excel builder ───────────────────────────────────────────────────────────
 
-def _build_excel(vessels, report_date, operation_type,
+def _build_excel(vessels, report_date,
                  day_rows=None, month_rows=None, tide_rows=None,
                  mbc_day=None, mbc_month=None):
     from openpyxl import Workbook
@@ -555,10 +563,10 @@ def _build_excel(vessels, report_date, operation_type,
     _cell(2, 8, '')
     _cell(2, 9, '')
 
-    label_discharge = 'Discharged /Loaded till Date'
-    label_balance   = 'Balance on Board /to Load'
-    label_commenced = 'Disch Commenced' if operation_type == 'Import' else 'Loading Commenced'
-    label_completed = 'Disch Completed' if operation_type == 'Import' else 'Loading Completed'
+    label_discharge = 'Unloaded till Date (LUEU)'
+    label_balance   = 'Balance'
+    label_commenced = 'Disch Commenced'
+    label_completed = 'Disch Completed'
 
     _q = lambda x: int(round(x)) if x else ''
     _n = lambda x: x if x else ''
@@ -741,26 +749,23 @@ def _build_excel(vessels, report_date, operation_type,
 @bp.route('/api/module/RP01/daily-ops/download')
 @login_required
 def daily_ops_download():
-    date_str       = request.args.get('report_date', date.today().strftime('%Y-%m-%d'))
-    operation_type = request.args.get('operation_type', 'Import')
+    date_str = request.args.get('report_date', date.today().strftime('%Y-%m-%d'))
 
-    if operation_type not in ('Import', 'Export'):
-        return Response('Invalid operation type', status=400)
     try:
         report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
     except ValueError:
         return Response('Invalid date', status=400)
 
-    vessels = _fetch_data(report_date, operation_type)
+    vessels = _fetch_data(report_date)
     if not vessels:
-        return Response(f'No active {operation_type} vessels on the selected date', status=404)
+        return Response('No active (non-closed) vessels found', status=404)
 
     day_rows, month_rows = _fetch_cargo_handled(report_date)
     tide_rows            = _fetch_tide_data(report_date)
     mbc_day, mbc_month   = _fetch_mbc_cargo(report_date)
-    buf = _build_excel(vessels, report_date, operation_type,
+    buf = _build_excel(vessels, report_date,
                        day_rows, month_rows, tide_rows, mbc_day, mbc_month)
-    fname = f'DailyOps_{operation_type}_{date_str}.xlsx'
+    fname = f'DailyOps_{date_str}.xlsx'
     return Response(
         buf.getvalue(),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -218,13 +218,6 @@
         <label for="report-date">Report Date</label>
         <input type="date" id="report-date">
     </div>
-    <div class="filter-group">
-        <label for="operation-type">Operation Type</label>
-        <select id="operation-type">
-            <option value="Import">Import</option>
-            <option value="Export">Export</option>
-        </select>
-    </div>
     <button type="button" class="filter-btn primary" id="dl-btn" onclick="downloadReport()">&#8595; Download Excel</button>
     <button type="button" class="filter-btn secondary" onclick="openCutoffModal()">Cutoff Settings</button>
 </div>
@@ -303,20 +296,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
 function downloadReport() {
     const reportDate = document.getElementById('report-date').value;
-    const opType     = document.getElementById('operation-type').value;
     const btn        = document.getElementById('dl-btn');
     if (!reportDate) { alert('Please select a report date.'); return; }
 
     btn.disabled    = true;
     btn.textContent = 'Preparing\u2026';
 
-    fetch(`/api/module/RP01/daily-ops/download?report_date=${reportDate}&operation_type=${opType}`)
+    fetch(`/api/module/RP01/daily-ops/download?report_date=${reportDate}`)
         .then(res => {
-            if (res.status === 404) throw new Error('No active vessels on the selected date.');
+            if (res.status === 404) throw new Error('No active (non-closed) vessels found.');
             if (!res.ok) throw new Error('Server error ' + res.status);
             const disposition = res.headers.get('Content-Disposition') || '';
             const match = disposition.match(/filename="(.+?)"/);
-            const filename = match ? match[1] : `DailyOps_${opType}_${reportDate}.xlsx`;
+            const filename = match ? match[1] : `DailyOps_${reportDate}.xlsx`;
             return res.blob().then(blob => ({ blob, filename }));
         })
         .then(({ blob, filename }) => {
