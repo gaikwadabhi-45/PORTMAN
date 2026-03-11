@@ -20,7 +20,9 @@
       "Bash(awk 'NR>=365,NR<=400' \"d:/PORTMAN/modules/LDUD01/ldud01.html\")",
       "Bash(awk 'NR>=396,NR<=420' \"d:/PORTMAN/modules/VCN01/vcn01.html\")",
       "Bash(awk 'NR>=389,NR<=410' \"d:/PORTMAN/modules/MBC01/mbc01.html\")",
-      "Bash(alembic history --verbose)"
+      "Bash(alembic history --verbose)",
+      "Bash(find /d/PORTMAN -type f -name database.py -o -name schema* -o -name *migration*)",
+      "Bash(find /d/PORTMAN -name daily_ops.html -o -name mbc_sof*.html -o -name vessel_sof*.html)"
     ]
   }
 }

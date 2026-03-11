@@ -8,7 +8,7 @@ from .mbc_tat    import views as _mbc_tat_views     # noqa: registers mbc-tat ro
 from .vessel_discharged import views as _vessel_discharged_views  # noqa: registers vessel-discharged routes on bp
 from .custom_report    import views as _custom_report_views       # noqa: registers custom-report routes on bp
 from .dashboard        import views as _dashboard_views           # noqa: registers dashboard routes on bp
-
+from .daily_ops         import views as _daily_ops_views        # noqa: registers daily-ops routes on bp
 
 def login_required(f):
     @wraps(f)

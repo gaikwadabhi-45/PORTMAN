@@ -153,10 +153,21 @@
         <div class="card-arrow">Open &rarr;</div>
     </a>
 
-
+    <a class="report-card" href="/module/RP01/daily-ops/">
+        <div class="card-icon">
+            <img src="{{ url_for('static', filename='img/time.png') }}" alt="MBC Logo">
+        </div>
+        <div class="card-title">Daily Operations Report</div>
+        <div class="card-desc">
+            Daily summary of vessel operations, including arrivals, departures, cargo operations, and idle times. Download a formatted Excel report with day-wise details and performance metrics.
+        </div>
+        <div class="card-arrow">Open &rarr;</div>
+    </a>
     <!-- Custom Report Designer -->
     <a class="report-card" href="/module/RP01/custom-report/">
-        <div class="card-icon">&#128202;</div>
+        <div class="card-icon">
+            <img src="{{ url_for('static', filename='img/custom_report.png') }}" alt="MBC Logo">
+        </div>
         <div class="card-title">Custom Report Designer</div>
         <div class="card-desc">
             Build your own pivot reports with drag-and-drop fields. Choose any data source, arrange rows and columns, pick an aggregator or chart type, and save your configurations for reuse.
@@ -166,7 +177,9 @@
 
     <!-- Operations Dashboard -->
     <a class="report-card" href="/module/RP01/dashboard/">
-        <div class="card-icon">&#128200;</div>
+        <div class="card-icon">
+            <img src="{{ url_for('static', filename='img/graph.png') }}" alt="MBC Logo">
+        </div>
         <div class="card-title">Dashboard Widgets</div>
         <div class="card-desc">
             Interactive dashboard widgets configuration with a pivot table and live charts.

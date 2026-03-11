@@ -507,6 +507,16 @@ pivot = new WebDataRocks({
     },
     reportchange: function () {
         if (_loaded) { updateKPIs(); updateCharts(); }
+    },
+    dataloaded: function () {
+        setTimeout(function() {
+            _syncRawFromPivot();
+            if (_loaded) { updateKPIs(); updateCharts(); }
+        }, 300);
+    },
+    datachanged: function () {
+        _syncRawFromPivot();
+        if (_loaded) { updateKPIs(); updateCharts(); }
     }
 });
 
