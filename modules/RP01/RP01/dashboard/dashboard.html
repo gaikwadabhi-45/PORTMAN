@@ -1,0 +1,939 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Widgets — RP01{% endblock %}
+
+{% block head %}
+<!-- WebDataRocks pivot table -->
+<link href="https://cdn.webdatarocks.com/latest/webdatarocks.min.css" rel="stylesheet">
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.toolbar.min.js"></script>
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.js"></script>
+
+<!-- Highcharts (cdnjs mirror — code.highcharts.com blocks direct hotlinking) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/highcharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/highcharts-3d.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/exporting.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/export-data.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/drilldown.min.js"></script>
+
+<!-- WebDataRocks ↔ Highcharts connector -->
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.highcharts.js"></script>
+
+<style>
+/* ── Page header ─────────────────────────────────────────── */
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border-color);
+}
+.page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+.module-badge {
+    background: #4a90d9; color: #fff;
+    padding: 3px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+}
+.breadcrumb {
+    font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;
+}
+.breadcrumb a { color: #4a90d9; text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+.toolbar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.toolbar-group label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.toolbar-group select,
+.toolbar-group input[type="datetime-local"] {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 28px;
+}
+.toolbar-group select:focus,
+.toolbar-group input[type="datetime-local"]:focus { outline: none; border-color: #4a90d9; }
+.tb-btn {
+    padding: 0 14px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    align-self: flex-end;
+    white-space: nowrap;
+}
+.tb-btn.primary  { background: #4a90d9; color: #fff; }
+.tb-btn.primary:hover  { background: #357abd; }
+.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Status bar ──────────────────────────────────────────── */
+.status-bar {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    min-height: 16px;
+}
+.status-bar.error { color: #e74c3c; }
+
+/* ── Pivot wrapper ───────────────────────────────────────── */
+#wdr-component {
+    margin-bottom: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* ── Chart panels ────────────────────────────────────────── */
+.chart-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 4px;
+}
+.chart-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.chart-type-sel {
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.chart-type-sel:focus { outline: none; border-color: #4a90d9; }
+.chart-container {
+    height: 350px;
+    padding: 4px;
+}
+
+/* ── KPI stat cards ──────────────────────────────────────── */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.kpi-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 14px 16px 12px;
+    border-left: 4px solid #2E75B6;
+    transition: border-color 0.2s;
+}
+.kpi-card:nth-child(2) { border-left-color: #ED7D31; }
+.kpi-card:nth-child(3) { border-left-color: #A9D18E; }
+.kpi-card:nth-child(4) { border-left-color: #FFC000; }
+.kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.kpi-label select {
+    font-size: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 1px 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    max-width: 120px;
+}
+.kpi-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* ── Chart panel settings ───────────────────────────────── */
+.chart-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    flex-wrap: wrap;
+}
+.chart-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-right: auto;
+}
+.chart-opt-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+.chart-opt-group select {
+    font-size: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 2px 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.chart-opt-group input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+}
+.chart-opt-group label {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* ── Placeholder ─────────────────────────────────────────── */
+.chart-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #aaa;
+    font-size: 12px;
+    font-family: Verdana, sans-serif;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Dashboard Widgets</h2>
+    <span class="module-badge">RP01</span>
+</div>
+<div class="breadcrumb">
+    <a href="/module/RP01/">Reports</a> &rsaquo; Dashboard Widgets
+</div>
+
+<div class="toolbar">
+    <div class="toolbar-group">
+        <label for="src-sel">Data Source</label>
+        <select id="src-sel" onchange="onSourceChange()">
+            <option value="mbc-ops">MBC Operation</option>
+            <option value="vessel-ops">Vessel Operation</option>
+            <option value="vessel-barge">Vessel - Barge Lines</option>
+            <option value="lueu-equipment">LUEU - Equipment Utilization</option>
+            <option value="mbc-tat">MBC TAT Analysis</option>
+        </select>
+    </div>
+    <div class="toolbar-group">
+        <label for="date-col-sel">Date Column</label>
+        <select id="date-col-sel" style="min-width:170px"></select>
+    </div>
+    <div class="toolbar-group">
+        <label for="f-from">From</label>
+        <input type="datetime-local" id="f-from" style="min-width:155px">
+    </div>
+    <div class="toolbar-group">
+        <label for="f-to">To</label>
+        <input type="datetime-local" id="f-to" style="min-width:155px">
+    </div>
+    <button type="button" class="tb-btn primary" id="load-btn" onclick="loadData()">&#9654; Load Data</button>
+</div>
+
+<div class="status-bar" id="status-bar">Select a data source and date range, then click Load Data.</div>
+
+<div id="wdr-component"></div>
+
+<!-- KPI stat cards -->
+<div class="kpi-row" id="kpi-row">
+    <div class="kpi-card">
+        <div class="kpi-label">Total Records</div>
+        <div class="kpi-value" id="kpi-count">—</div>
+        <div class="kpi-sub" id="kpi-count-sub">Load data to see stats</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Sum of <select id="kpi-field-1" onchange="updateKPIs()"></select></div>
+        <div class="kpi-value" id="kpi-sum">—</div>
+        <div class="kpi-sub" id="kpi-sum-sub"></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Average of <select id="kpi-field-2" onchange="updateKPIs()"></select></div>
+        <div class="kpi-value" id="kpi-avg">—</div>
+        <div class="kpi-sub" id="kpi-avg-sub"></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">
+            <select id="kpi-agg-3" onchange="updateKPIs()" style="width:50px">
+                <option value="min">Min</option>
+                <option value="max" selected>Max</option>
+            </select>
+            of <select id="kpi-field-3" onchange="updateKPIs()"></select>
+        </div>
+        <div class="kpi-value" id="kpi-minmax">—</div>
+        <div class="kpi-sub" id="kpi-minmax-sub"></div>
+    </div>
+</div>
+
+<div class="chart-panels">
+    <div class="chart-panel">
+        <div class="chart-panel-header">
+            <span class="chart-panel-title">Chart 1</span>
+            <div class="chart-opt-group">
+                <select id="chart-type-1" class="chart-type-sel" onchange="updateChart(1)">
+                    <option value="column" selected>Column</option>
+                    <option value="bar">Bar</option>
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                    <option value="pie">Pie</option>
+                </select>
+            </div>
+            <div class="chart-opt-group">
+                <select id="chart-palette-1" onchange="updateChart(1)" title="Color palette">
+                    <option value="default">Default</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                    <option value="forest">Forest</option>
+                    <option value="berry">Berry</option>
+                    <option value="monochrome">Mono</option>
+                </select>
+            </div>
+            <div class="chart-opt-group">
+                <input type="checkbox" id="chart-labels-1" onchange="updateChart(1)">
+                <label for="chart-labels-1">Labels</label>
+            </div>
+        </div>
+        <div id="chart-container-1" class="chart-container">
+            <div class="chart-placeholder">Load data and arrange the pivot to see charts</div>
+        </div>
+    </div>
+    <div class="chart-panel">
+        <div class="chart-panel-header">
+            <span class="chart-panel-title">Chart 2</span>
+            <div class="chart-opt-group">
+                <select id="chart-type-2" class="chart-type-sel" onchange="updateChart(2)">
+                    <option value="column">Column</option>
+                    <option value="bar">Bar</option>
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                    <option value="pie" selected>Pie</option>
+                </select>
+            </div>
+            <div class="chart-opt-group">
+                <select id="chart-palette-2" onchange="updateChart(2)" title="Color palette">
+                    <option value="default">Default</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                    <option value="forest">Forest</option>
+                    <option value="berry">Berry</option>
+                    <option value="monochrome">Mono</option>
+                </select>
+            </div>
+            <div class="chart-opt-group">
+                <input type="checkbox" id="chart-labels-2" onchange="updateChart(2)" checked>
+                <label for="chart-labels-2">Labels</label>
+            </div>
+        </div>
+        <div id="chart-container-2" class="chart-container">
+            <div class="chart-placeholder">Load data and arrange the pivot to see charts</div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ── Date column definitions per source ──────────────────── */
+var DATE_COLS = {
+    'mbc-ops': {
+        filterable: [
+            { key: 'doc_date',               label: 'Doc Date' },
+            { key: 'created_date',           label: 'Created Date' },
+            { key: 'lp_loading_commenced',   label: 'LP Loading Commenced' },
+            { key: 'lp_loading_completed',   label: 'LP Loading Completed' },
+            { key: 'dp_unloading_commenced', label: 'DP Unloading Commenced' },
+            { key: 'dp_unloading_completed', label: 'DP Unloading Completed' },
+        ],
+    },
+    'vessel-ops': {
+        filterable: [
+            { key: 'nor_tendered',    label: 'NOR Tendered Date' },
+            { key: 'discharge_date',  label: 'Discharge Date' },
+            { key: 'completion_date', label: 'Completion Date' },
+        ],
+    },
+    'vessel-barge': {
+        filterable: [
+            { key: 'nor_tendered',        label: 'NOR Tendered' },
+            { key: 'discharge_commenced', label: 'Discharge Commenced' },
+            { key: 'discharge_completed', label: 'Discharge Completed' },
+            { key: 'commenced_loading',   label: 'Commenced Loading' },
+            { key: 'completed_loading',   label: 'Completed Loading' },
+        ],
+    },
+    'lueu-equipment': {
+        filterable: [
+            { key: 'entry_date', label: 'Date' },
+        ],
+    },
+    'mbc-tat': {
+        filterable: [
+            { key: 'doc_date', label: 'Doc Date' },
+        ],
+    },
+};
+
+/* ── State ───────────────────────────────────────────────── */
+var _source  = null;
+var _loaded  = false;
+var _rawData = [];
+var pivot    = null;
+
+/* ── Color palettes ──────────────────────────────────────── */
+var PALETTES = {
+    default:    ['#2E75B6','#ED7D31','#A9D18E','#FFC000','#70AD47','#5B9BD5','#FF6384','#C9B2D6'],
+    ocean:      ['#264653','#2A9D8F','#E9C46A','#F4A261','#E76F51','#287271','#8AB17D','#EFB366'],
+    sunset:     ['#F94144','#F3722C','#F8961E','#F9C74F','#90BE6D','#43AA8B','#577590','#F9844A'],
+    forest:     ['#2D6A4F','#40916C','#52B788','#74C69D','#95D5B2','#1B4332','#B7E4C7','#D8F3DC'],
+    berry:      ['#7400B8','#6930C3','#5E60CE','#5390D9','#4EA8DE','#48BFE3','#56CFE1','#64DFDF'],
+    monochrome: ['#212529','#495057','#6C757D','#ADB5BD','#CED4DA','#343A40','#868E96','#DEE2E6'],
+};
+var CHART_COLORS = PALETTES.default;
+
+if (typeof Highcharts !== 'undefined') {
+    Highcharts.setOptions({
+        colors: CHART_COLORS,
+        credits: { enabled: false },
+        chart: { style: { fontFamily: 'Calibri, Arial, sans-serif' } },
+        exporting: { enabled: true },
+        legend: { verticalAlign: 'bottom', layout: 'horizontal' },
+    });
+}
+
+/* ── Init: set date defaults + populate date column dropdown ── */
+(function () {
+    var n = new Date();
+    var y = n.getFullYear();
+    var m = String(n.getMonth() + 1).padStart(2, '0');
+    var d = String(n.getDate()).padStart(2, '0');
+    document.getElementById('f-from').value = y + '-' + m + '-01T00:00';
+    document.getElementById('f-to').value   = y + '-' + m + '-' + d + 'T23:59';
+    onSourceChange();
+})();
+
+/* ── Populate Date Column dropdown when source changes ────── */
+function onSourceChange() {
+    var src = document.getElementById('src-sel').value;
+    var sel = document.getElementById('date-col-sel');
+    var cols = (DATE_COLS[src] || {}).filterable || [];
+    sel.innerHTML = cols.map(function (c) {
+        return '<option value="' + c.key + '">' + c.label + '</option>';
+    }).join('');
+}
+
+/* ── Sync _rawData when a report file is opened via toolbar ── */
+function _syncRawFromPivot() {
+    try {
+        var report = pivot.getReport();
+        var ds = report && report.dataSource ? report.dataSource : {};
+        // If the opened report has inline data, adopt it
+        if (ds.data && Array.isArray(ds.data) && ds.data.length > 1) {
+            _rawData = ds.data;
+            _loaded = true;
+            populateKPIFields(_rawData);
+        }
+    } catch (e) { /* ignore during initial load */ }
+}
+
+/* ── Initialize WebDataRocks (empty until data is loaded) ── */
+pivot = new WebDataRocks({
+    container: '#wdr-component',
+    toolbar: true,
+    width: '100%',
+    report: {
+        dataSource: { data: [{ '': '' }] },
+        options: {
+            grid: { type: 'compact', showTotals: 'on', showGrandTotals: 'on' }
+        }
+    },
+    beforetoolbarcreated: function(toolbar) {
+        var tabs = toolbar.getTabs();
+        toolbar.getTabs = function() {
+            return tabs.filter(function(tab) {
+                var hide = ['wdr-tab-connect', 'wdr-tab-fullscreen', 'wdr-tab-format', 'wdr-tab-options'];
+                return hide.indexOf(tab.id) === -1;
+            });
+        };
+    },
+    reportcomplete: function () {
+        _syncRawFromPivot();
+        if (_loaded) { updateKPIs(); updateCharts(); }
+    },
+    reportchange: function () {
+        if (_loaded) { updateKPIs(); updateCharts(); }
+    }
+});
+
+/* ── Load data from API ──────────────────────────────────── */
+function loadData() {
+    var src     = document.getElementById('src-sel').value;
+    var dateCol = document.getElementById('date-col-sel').value;
+    var from    = document.getElementById('f-from').value;
+    var to      = document.getElementById('f-to').value;
+    var btn     = document.getElementById('load-btn');
+
+    btn.disabled = true;
+    btn.textContent = 'Loading\u2026';
+    setStatus('Fetching data\u2026', false);
+
+    fetch('/api/module/RP01/pivot/data/' + src +
+          '?from_date=' + encodeURIComponent(from) +
+          '&to_date='   + encodeURIComponent(to) +
+          '&date_col='  + encodeURIComponent(dateCol))
+        .then(function (r) {
+            if (!r.ok) throw new Error('Server error ' + r.status);
+            return r.json();
+        })
+        .then(function (rows) {
+            _source  = src;
+            _loaded  = true;
+            _rawData = rows;
+
+            if (!rows.length) {
+                setStatus('No rows returned for this date range.', true);
+                return;
+            }
+
+            populateKPIFields(rows);
+            pivot.updateData({ data: rows });
+            setStatus(rows.length.toLocaleString() + ' rows loaded \u2014 ' + srcLabel(src) + '.', false);
+        })
+        .catch(function (err) {
+            console.error(err);
+            setStatus('Error: ' + err.message, true);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = '&#9654; Load Data';
+        });
+}
+
+/* ── Chart rendering ─────────────────────────────────────── */
+function updateCharts() {
+    updateChart(1);
+    updateChart(2);
+}
+
+function updateChart(n) {
+    var type = document.getElementById('chart-type-' + n).value;
+    var containerId = 'chart-container-' + n;
+
+    if (typeof Highcharts === 'undefined') return;
+
+    // Check if drilldown is possible (2+ row fields in the pivot)
+    var drillInfo = getDrilldownInfo();
+
+    if (drillInfo) {
+        renderDrilldownChart(n, type, containerId, drillInfo);
+    } else {
+        renderFlatChart(n, type, containerId);
+    }
+}
+
+/* ── Flat chart (no drilldown — single row dimension) ───── */
+function renderFlatChart(n, type, containerId) {
+    var palette = getChartPalette(n);
+    var labelsOn = getDataLabelsEnabled(n);
+    try {
+        pivot.highcharts.getData(
+            { type: type },
+            function (data) {
+                data.chart = data.chart || {};
+                data.chart.type      = type;
+                data.chart.renderTo  = containerId;
+                data.chart.height    = 340;
+                data.colors          = palette;
+                data.title           = { text: '', style: { fontSize: '13px' } };
+                data.tooltip         = data.tooltip || {};
+                data.tooltip.shared  = true;
+                data.plotOptions     = data.plotOptions || {};
+                data.plotOptions.series = data.plotOptions.series || {};
+                data.plotOptions.series.dataLabels = {
+                    enabled: labelsOn,
+                    format: type === 'pie' ? '{point.name}: {point.y:,.0f}' : '{point.y:,.1f}',
+                    style: { fontSize: '10px', fontWeight: '500', textOutline: '1px white' }
+                };
+                if (data.series) {
+                    data.series.forEach(function(s, i) {
+                        s.color = s.color || palette[i % palette.length];
+                    });
+                }
+
+                Highcharts.chart(containerId, data);
+            },
+            function (data) {
+                Highcharts.chart(containerId, data);
+            }
+        );
+    } catch (e) {
+        console.warn('Chart ' + n + ' flat render skipped:', e.message);
+    }
+}
+
+/* ── Read pivot config to detect drilldown rows ─────────── */
+function getDrilldownInfo() {
+    if (!_rawData.length) return null;
+    try {
+        var report = pivot.getReport();
+        var slice  = report && report.slice ? report.slice : {};
+        var rows   = slice.rows || [];
+        var measures = slice.measures || [];
+
+        console.log('[drilldown] slice.rows:', JSON.stringify(rows));
+        console.log('[drilldown] slice.measures:', JSON.stringify(measures));
+        console.log('[drilldown] raw data sample keys:', Object.keys(_rawData[0]));
+
+        // Need at least 2 row dimensions for drilldown
+        if (rows.length < 2) return null;
+
+        // All row field names in order (supports N levels)
+        // WebDataRocks uniqueName may have extra suffixes — strip them
+        var rawKeys = Object.keys(_rawData[0]);
+        var rowFields = rows.map(function(r) {
+            var name = r.uniqueName;
+            // Direct match
+            if (rawKeys.indexOf(name) >= 0) return name;
+            // WebDataRocks sometimes wraps names — try without quotes/brackets
+            var cleaned = name.replace(/[\[\]"']/g, '');
+            if (rawKeys.indexOf(cleaned) >= 0) return cleaned;
+            // Case-insensitive match
+            var lower = name.toLowerCase();
+            for (var i = 0; i < rawKeys.length; i++) {
+                if (rawKeys[i].toLowerCase() === lower) return rawKeys[i];
+            }
+            return name; // fallback to original
+        });
+
+        // Determine aggregation: use first measure, or fall back to count
+        var measureField = null;
+        var aggType = 'count';
+        if (measures.length && measures[0].uniqueName) {
+            var mName = measures[0].uniqueName;
+            // Same matching logic for measure field
+            if (rawKeys.indexOf(mName) >= 0) {
+                measureField = mName;
+            } else {
+                var mCleaned = mName.replace(/[\[\]"']/g, '');
+                if (rawKeys.indexOf(mCleaned) >= 0) {
+                    measureField = mCleaned;
+                } else {
+                    var mLower = mName.toLowerCase();
+                    for (var j = 0; j < rawKeys.length; j++) {
+                        if (rawKeys[j].toLowerCase() === mLower) { measureField = rawKeys[j]; break; }
+                    }
+                    if (!measureField) measureField = mName;
+                }
+            }
+            aggType = (measures[0].aggregation || 'sum').toLowerCase();
+        }
+
+        console.log('[drilldown] resolved rowFields:', rowFields, 'measure:', measureField, 'agg:', aggType);
+
+        return {
+            rowFields: rowFields,
+            measureField: measureField,
+            aggType: aggType
+        };
+    } catch (e) {
+        console.error('[drilldown] getDrilldownInfo error:', e);
+        return null;
+    }
+}
+
+/* ── Aggregate raw data for a single group key ──────────── */
+function aggregateValues(values, aggType) {
+    if (!values.length) return 0;
+    if (aggType === 'count') return values.length;
+    var nums = values.map(function(v) { return parseFloat(v) || 0; });
+    if (aggType === 'sum')     return nums.reduce(function(a, b) { return a + b; }, 0);
+    if (aggType === 'average') return nums.reduce(function(a, b) { return a + b; }, 0) / nums.length;
+    if (aggType === 'min')     return Math.min.apply(null, nums);
+    if (aggType === 'max')     return Math.max.apply(null, nums);
+    return nums.reduce(function(a, b) { return a + b; }, 0); // default sum
+}
+
+/* ── Build N-level drilldown series recursively ─────────── */
+function buildDrilldownLevels(rows, fields, measureField, aggType, level, parentPath, chartType) {
+    // rows      = subset of _rawData matching the parent filter
+    // fields    = all row field names [field0, field1, field2, ...]
+    // level     = current depth (0 = top level)
+    // parentPath = pipe-separated parent key path for unique IDs
+    // chartType = Highcharts series type to propagate to sub-series
+
+    var fieldName = fields[level];
+    var hasDeeper = level + 1 < fields.length;
+    var nextField = hasDeeper ? fields[level + 1] : null;
+
+    // Group rows by current field
+    var groups = {};
+    rows.forEach(function(row) {
+        var key = String(row[fieldName] || '(empty)');
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(row);
+    });
+
+    var keys = Object.keys(groups).sort();
+
+    // Build data points for this level
+    var dataPoints = keys.map(function(key) {
+        var groupRows = groups[key];
+        var vals = groupRows.map(function(r) { return measureField ? r[measureField] : 1; });
+        var agg = aggregateValues(vals, aggType);
+        var drillId = parentPath ? parentPath + '|' + key : key;
+        var point = {
+            name: key,
+            y: Math.round(agg * 100) / 100
+        };
+        if (hasDeeper) point.drilldown = drillId;
+        return point;
+    });
+
+    // Collect drilldown sub-series (this level's children + deeper)
+    var allDrillSeries = [];
+
+    if (hasDeeper) {
+        keys.forEach(function(key) {
+            var groupRows = groups[key];
+            var drillId = parentPath ? parentPath + '|' + key : key;
+
+            // Recurse to build the next level down
+            var deeper = buildDrilldownLevels(groupRows, fields, measureField, aggType, level + 1, drillId, chartType);
+
+            allDrillSeries.push({
+                id: drillId,
+                type: chartType,
+                name: key + ' \u2014 by ' + nextField,
+                colorByPoint: true,
+                data: deeper.dataPoints
+            });
+
+            // Collect any deeper drilldown series from recursion
+            allDrillSeries = allDrillSeries.concat(deeper.drillSeries);
+        });
+    }
+
+    return { dataPoints: dataPoints, drillSeries: allDrillSeries };
+}
+
+/* ── Build and render N-level drilldown chart ───────────── */
+function renderDrilldownChart(n, type, containerId, info) {
+    var palette = getChartPalette(n);
+    var labelsOn = getDataLabelsEnabled(n);
+    var fields = info.rowFields;
+    var chartType = type === 'pie' ? 'pie' : (type || 'column');
+
+    // Build all levels recursively, passing chartType so sub-series inherit it
+    var result = buildDrilldownLevels(_rawData, fields, info.measureField, info.aggType, 0, '', chartType);
+
+    // Determine chart title parts
+    var aggLabel = info.aggType === 'count' ? 'Count' :
+                   (info.aggType.charAt(0).toUpperCase() + info.aggType.slice(1) +
+                    (info.measureField ? ' of ' + info.measureField : ''));
+
+    var levelCount = fields.length;
+
+    Highcharts.chart(containerId, {
+        chart: {
+            type: chartType,
+            height: 340
+        },
+        colors: palette,
+        title: {
+            text: aggLabel + ' by ' + fields[0],
+            style: { fontSize: '13px' }
+        },
+        subtitle: {
+            text: 'Click to drill down' + (levelCount > 2 ? ' (' + (levelCount - 1) + ' levels)' : '') + ': ' + fields.join(' \u2192 '),
+            style: { fontSize: '10px', color: '#888' }
+        },
+        xAxis: chartType !== 'pie' ? {
+            type: 'category',
+            labels: { rotation: -30, style: { fontSize: '10px' } }
+        } : undefined,
+        yAxis: chartType !== 'pie' ? {
+            title: { text: aggLabel, style: { fontSize: '11px' } }
+        } : undefined,
+        tooltip: {
+            headerFormat: '<span style="font-size:11px">{series.name}</span><br>',
+            pointFormat: chartType === 'pie'
+                ? '<b>{point.name}</b>: {point.y:,.1f} ({point.percentage:.1f}%)'
+                : '<b>{point.name}</b>: {point.y:,.1f}'
+        },
+        plotOptions: {
+            series: {
+                borderWidth: 0,
+                cursor: 'pointer',
+                dataLabels: {
+                    enabled: labelsOn,
+                    format: chartType === 'pie' ? '{point.name}: {point.y:,.0f}' : '{point.y:,.1f}',
+                    style: { fontSize: '10px', fontWeight: '500', textOutline: '1px white' }
+                }
+            }
+        },
+        series: [{
+            name: fields[0],
+            colorByPoint: true,
+            data: result.dataPoints
+        }],
+        drilldown: {
+            allowPointDrilldown: true,
+            activeAxisLabelStyle: { textDecoration: 'none', fontStyle: 'normal', color: '#333' },
+            breadcrumbs: {
+                position: { align: 'right' },
+                showFullPath: true,
+                style: { fontSize: '11px' },
+                separator: { text: ' \u203A ' }
+            },
+            series: result.drillSeries
+        }
+    });
+}
+
+/* ── KPI cards ──────────────────────────────────────────── */
+function populateKPIFields(rows) {
+    if (!rows.length) return;
+    // Find numeric columns
+    var keys = Object.keys(rows[0]);
+    var numericFields = keys.filter(function(k) {
+        // Check first 20 rows to see if column is numeric
+        var sample = rows.slice(0, 20);
+        var numCount = sample.filter(function(r) {
+            var v = r[k];
+            return v !== '' && v !== null && v !== undefined && !isNaN(parseFloat(v));
+        }).length;
+        return numCount > sample.length * 0.5; // >50% numeric
+    });
+
+    var opts = numericFields.map(function(f) {
+        return '<option value="' + f + '">' + f + '</option>';
+    }).join('');
+
+    ['kpi-field-1', 'kpi-field-2', 'kpi-field-3'].forEach(function(id) {
+        var sel = document.getElementById(id);
+        var prev = sel.value;
+        sel.innerHTML = opts;
+        // Restore previous selection if still exists
+        if (prev && numericFields.indexOf(prev) >= 0) sel.value = prev;
+    });
+
+    updateKPIs();
+}
+
+function updateKPIs() {
+    if (!_rawData.length) return;
+
+    // Card 1: Total Records
+    document.getElementById('kpi-count').textContent = _rawData.length.toLocaleString();
+    document.getElementById('kpi-count-sub').textContent = srcLabel(_source);
+
+    // Card 2: Sum
+    var f1 = document.getElementById('kpi-field-1').value;
+    if (f1) {
+        var sum = 0;
+        _rawData.forEach(function(r) { sum += parseFloat(r[f1]) || 0; });
+        document.getElementById('kpi-sum').textContent = formatKPI(sum);
+        document.getElementById('kpi-sum-sub').textContent = f1;
+    }
+
+    // Card 3: Average
+    var f2 = document.getElementById('kpi-field-2').value;
+    if (f2) {
+        var total = 0;
+        _rawData.forEach(function(r) { total += parseFloat(r[f2]) || 0; });
+        var avg = total / _rawData.length;
+        document.getElementById('kpi-avg').textContent = formatKPI(avg);
+        document.getElementById('kpi-avg-sub').textContent = f2;
+    }
+
+    // Card 4: Min / Max
+    var f3 = document.getElementById('kpi-field-3').value;
+    var agg3 = document.getElementById('kpi-agg-3').value;
+    if (f3) {
+        var vals = _rawData.map(function(r) { return parseFloat(r[f3]); }).filter(function(v) { return !isNaN(v); });
+        var result = agg3 === 'min' ? Math.min.apply(null, vals) : Math.max.apply(null, vals);
+        document.getElementById('kpi-minmax').textContent = formatKPI(result);
+        document.getElementById('kpi-minmax-sub').textContent = f3;
+    }
+}
+
+function formatKPI(v) {
+    if (Math.abs(v) >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+    if (Math.abs(v) >= 10000)   return (v / 1000).toFixed(1) + 'K';
+    if (Number.isInteger(v))    return v.toLocaleString();
+    return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+/* ── Chart option helpers ───────────────────────────────── */
+function getChartPalette(n) {
+    var key = document.getElementById('chart-palette-' + n).value;
+    return PALETTES[key] || PALETTES.default;
+}
+
+function getDataLabelsEnabled(n) {
+    return document.getElementById('chart-labels-' + n).checked;
+}
+
+/* ── Helpers ─────────────────────────────────────────────── */
+function setStatus(msg, isErr) {
+    var el = document.getElementById('status-bar');
+    el.textContent = msg;
+    el.className = 'status-bar' + (isErr ? ' error' : '');
+}
+
+function srcLabel(s) {
+    return {
+        'mbc-ops':        'MBC Operation',
+        'vessel-ops':     'Vessel Operation',
+        'vessel-barge':   'Vessel - Barge Lines',
+        'lueu-equipment': 'LUEU - Equipment Utilization',
+        'mbc-tat':        'MBC TAT Analysis',
+    }[s] || s;
+}
+</script>
+{% endblock %}
