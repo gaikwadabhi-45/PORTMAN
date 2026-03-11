@@ -251,7 +251,7 @@ function downloadReport() {
 function buildCargoTable(pivot) {
     const section = document.createElement('div');
     section.className = 'preview-section';
-    section.innerHTML = '<h3>Cargo Handled (Shift Pivot)</h3>';
+    section.innerHTML = '<h3>Cargo Handled</h3>';
 
     const data = pivot.data;
     const equipments = pivot.equipments;
@@ -358,36 +358,52 @@ function buildDelayTable(delays) {
         <th>From</th><th>To</th><th>Total</th>
     </tr></thead>`;
 
-    // Group by delay_type
+    // Group by delay_type, then by activity within each type
     const grouped = {};
     delays.forEach(d => {
-        if (!grouped[d.delay_type]) grouped[d.delay_type] = [];
-        grouped[d.delay_type].push(d);
+        if (!grouped[d.delay_type]) grouped[d.delay_type] = {};
+        if (!grouped[d.delay_type][d.delay_name]) grouped[d.delay_type][d.delay_name] = [];
+        grouped[d.delay_type][d.delay_name].push(d);
     });
 
     let tbody = '<tbody>';
     let grandTotal = 0;
 
     Object.keys(grouped).sort().forEach(dtype => {
-        const items = grouped[dtype];
+        const activities = grouped[dtype];
+        const actNames = Object.keys(activities).sort();
+        // Count total rows for this delay type (for rowspan)
+        let typeRowCount = 0;
+        actNames.forEach(an => { typeRowCount += activities[an].length; });
         let typeTotal = 0;
+        let typeRowIdx = 0;
 
-        items.forEach((d, i) => {
-            const mins = d.total_minutes || 0;
-            typeTotal += mins;
-            const h = Math.floor(mins / 60);
-            const m = mins % 60;
-            const totalStr = mins ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}` : '';
-            tbody += `<tr>
-                <td>${i === 0 ? dtype : ''}</td>
-                <td>${d.delay_name}</td>
-                <td>${d.equipment_name}</td>
-                <td>${d.system_name}</td>
-                <td>${d.route_name}</td>
-                <td>${d.from_time}</td>
-                <td>${d.to_time}</td>
-                <td>${totalStr}</td>
-            </tr>`;
+        actNames.forEach(actName => {
+            const actItems = activities[actName];
+            actItems.forEach((d, i) => {
+                const mins = d.total_minutes || 0;
+                typeTotal += mins;
+                const h = Math.floor(mins / 60);
+                const m = mins % 60;
+                const totalStr = mins ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}` : '';
+                tbody += '<tr>';
+                // Delay Type column — merged across all rows of this type
+                if (typeRowIdx === 0) {
+                    tbody += `<td rowspan="${typeRowCount}" style="font-weight:700;background:#f0f4fa">${dtype}</td>`;
+                }
+                // Activity column — merged across rows of same activity
+                if (i === 0) {
+                    tbody += `<td rowspan="${actItems.length}">${actName}</td>`;
+                }
+                tbody += `<td>${d.equipment_name}</td>
+                    <td>${d.system_name}</td>
+                    <td>${d.route_name}</td>
+                    <td>${d.from_time}</td>
+                    <td>${d.to_time}</td>
+                    <td>${totalStr}</td>
+                </tr>`;
+                typeRowIdx++;
+            });
         });
 
         grandTotal += typeTotal;

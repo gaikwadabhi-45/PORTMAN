@@ -224,104 +224,189 @@ def _build_cargo_sheet(wb, entry_date, shift, cargo_pivot):
     data = cargo_pivot['data']
     equipments = cargo_pivot['equipments']
     routes = cargo_pivot['routes']
+    cargo_names = sorted(data.keys())
 
     if not equipments or not routes:
         _cell(ws, 1, 1, 'No cargo data found for this shift.', align=_left)
         return
 
-    # Header structure:
-    # Row 1: Title
-    # Row 2: "Cargo Name" | Equipment1 (spanning routes) | Equipment2 (spanning) | ... | Grand Total
-    # Row 3:              | Route1 | Route2 | ... | Total | Route1 | Route2 | ... | Total | ...
-    # Data rows follow
+    # Pre-compute aggregates for the simpler tables
+    # cargo -> equipment -> total across routes
+    equip_totals = {}
+    # cargo -> route -> total across equipments
+    route_totals = {}
+    for cargo in cargo_names:
+        equip_totals[cargo] = {}
+        route_totals[cargo] = {}
+        for equip in equipments:
+            et = sum(data.get(cargo, {}).get(equip, {}).get(rt, 0) for rt in routes)
+            equip_totals[cargo][equip] = et
+        for route in routes:
+            rt_val = sum(data.get(cargo, {}).get(eq, {}).get(route, 0) for eq in equipments)
+            route_totals[cargo][route] = rt_val
 
+    row = 1
+
+    # ── Helper: write a title bar ────────────────────────────────────────
+    def _title_bar(start_row, ncols, title):
+        ws.merge_cells(start_row=start_row, start_column=1,
+                       end_row=start_row, end_column=ncols)
+        _cell(ws, start_row, 1, title, bold=True, fill_color='4472C4', align=_ctr)
+        ws.cell(start_row, 1).font = Font(name='Calibri', bold=True, size=12, color='FFFFFF')
+        for ci in range(2, ncols + 1):
+            c = ws.cell(start_row, ci)
+            c.fill = _fill('4472C4')
+            c.border = _bdr
+
+    def _ival(v):
+        return int(round(v)) if v else ''
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TABLE 1 — Cargo × Equipment (no route breakdown)
+    # ══════════════════════════════════════════════════════════════════════
+    t1_cols = 1 + len(equipments) + 1  # cargo + equipments + grand total
+    _title_bar(row, t1_cols,
+               f'Cargo by Equipment | Date: {entry_date} | Shift: {shift}')
+    row += 1
+
+    _cell(ws, row, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
+    for i, eq in enumerate(equipments):
+        _cell(ws, row, 2 + i, eq, bold=True, fill_color='D9E2F3', align=_ctr)
+    _cell(ws, row, t1_cols, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
+    row += 1
+
+    col_sums_t1 = {}
+    for cargo in cargo_names:
+        _cell(ws, row, 1, cargo, align=_left)
+        grand = 0
+        for i, eq in enumerate(equipments):
+            v = equip_totals[cargo].get(eq, 0)
+            ci = 2 + i
+            _cell(ws, row, ci, _ival(v), align=_ctr)
+            col_sums_t1[ci] = col_sums_t1.get(ci, 0) + v
+            grand += v
+        _cell(ws, row, t1_cols, _ival(grand), bold=True, align=_ctr)
+        col_sums_t1[t1_cols] = col_sums_t1.get(t1_cols, 0) + grand
+        row += 1
+
+    _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
+    for ci in range(2, t1_cols + 1):
+        _cell(ws, row, ci, _ival(col_sums_t1.get(ci, 0)),
+              bold=True, fill_color='D9E2F3', align=_ctr)
+    row += 2  # blank row gap
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TABLE 2 — Cargo × Route (no equipment breakdown)
+    # ══════════════════════════════════════════════════════════════════════
+    t2_cols = 1 + len(routes) + 1
+    _title_bar(row, t2_cols,
+               f'Cargo by Route | Date: {entry_date} | Shift: {shift}')
+    row += 1
+
+    _cell(ws, row, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
+    for i, rt in enumerate(routes):
+        _cell(ws, row, 2 + i, rt, bold=True, fill_color='D9E2F3', align=_ctr)
+    _cell(ws, row, t2_cols, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
+    row += 1
+
+    col_sums_t2 = {}
+    for cargo in cargo_names:
+        _cell(ws, row, 1, cargo, align=_left)
+        grand = 0
+        for i, rt in enumerate(routes):
+            v = route_totals[cargo].get(rt, 0)
+            ci = 2 + i
+            _cell(ws, row, ci, _ival(v), align=_ctr)
+            col_sums_t2[ci] = col_sums_t2.get(ci, 0) + v
+            grand += v
+        _cell(ws, row, t2_cols, _ival(grand), bold=True, align=_ctr)
+        col_sums_t2[t2_cols] = col_sums_t2.get(t2_cols, 0) + grand
+        row += 1
+
+    _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
+    for ci in range(2, t2_cols + 1):
+        _cell(ws, row, ci, _ival(col_sums_t2.get(ci, 0)),
+              bold=True, fill_color='D9E2F3', align=_ctr)
+    row += 2  # blank row gap
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TABLE 3 — Full Cargo × Equipment × Route pivot (merged headers)
+    # ══════════════════════════════════════════════════════════════════════
     n_routes = len(routes)
     cols_per_equip = n_routes + 1  # routes + equipment total
-    total_data_cols = len(equipments) * cols_per_equip + 1  # +1 for grand total
-    total_cols = 1 + total_data_cols  # +1 for cargo name col
+    t3_cols = 1 + len(equipments) * cols_per_equip + 1  # cargo col + data + grand total
 
-    # Title row
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
-    _cell(ws, 1, 1, f'Shift Report - Cargo Handled | Date: {entry_date} | Shift: {shift}',
-          bold=True, fill_color='4472C4', align=_ctr)
-    ws.cell(1, 1).font = _font(bold=True, size=12)
-    ws.cell(1, 1).font = Font(name='Calibri', bold=True, size=12, color='FFFFFF')
-    for ci in range(2, total_cols + 1):
-        c = ws.cell(1, ci)
-        c.fill = _fill('4472C4')
-        c.border = _bdr
+    _title_bar(row, t3_cols,
+               f'Cargo by Equipment & Route | Date: {entry_date} | Shift: {shift}')
+    row += 1
 
-    # Row 2: Equipment group headers
-    _cell(ws, 2, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
+    # Equipment group header row (merged across route sub-columns)
+    _cell(ws, row, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
+    ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
     col = 2
     for equip in equipments:
-        ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + n_routes)
-        _cell(ws, 2, col, equip, bold=True, fill_color='D9E2F3', align=_ctr)
+        ws.merge_cells(start_row=row, start_column=col,
+                       end_row=row, end_column=col + n_routes)
+        _cell(ws, row, col, equip, bold=True, fill_color='D9E2F3', align=_ctr)
         for ci in range(col + 1, col + n_routes + 1):
-            c = ws.cell(2, ci)
+            c = ws.cell(row, ci)
             c.fill = _fill('D9E2F3')
             c.border = _bdr
         col += cols_per_equip
-    _cell(ws, 2, col, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
+    ws.merge_cells(start_row=row, start_column=col, end_row=row + 1, end_column=col)
+    _cell(ws, row, col, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
+    row += 1
 
-    # Row 3: Route sub-headers + Total per equipment
-    _cell(ws, 3, 1, '', fill_color='E2EFDA', align=_ctr)
+    # Route sub-header row
     col = 2
-    for _equip in equipments:
-        for route in routes:
-            _cell(ws, 3, col, route, bold=True, fill_color='E2EFDA', align=_ctr)
+    for _eq in equipments:
+        for rt in routes:
+            _cell(ws, row, col, rt, bold=True, fill_color='E2EFDA', align=_ctr)
             col += 1
-        _cell(ws, 3, col, 'Total', bold=True, fill_color='E2EFDA', align=_ctr)
+        _cell(ws, row, col, 'Total', bold=True, fill_color='E2EFDA', align=_ctr)
         col += 1
-    _cell(ws, 3, col, '', fill_color='E2EFDA', align=_ctr)
+    row += 1
 
     # Data rows
-    row = 4
-    grand_totals_by_col = {}  # col_index -> running total
-    cargo_names = sorted(data.keys())
-
+    grand_totals_by_col = {}
     for cargo in cargo_names:
-        _cell(ws, row, 1, cargo, bold=False, fill_color='FFFFFF', align=_left)
+        _cell(ws, row, 1, cargo, align=_left)
         col = 2
         cargo_grand = 0
         for equip in equipments:
             equip_total = 0
-            for route in routes:
-                qty = data.get(cargo, {}).get(equip, {}).get(route, 0)
-                _cell(ws, row, col, int(round(qty)) if qty else '', align=_ctr)
+            for rt in routes:
+                qty = data.get(cargo, {}).get(equip, {}).get(rt, 0)
+                _cell(ws, row, col, _ival(qty), align=_ctr)
                 grand_totals_by_col[col] = grand_totals_by_col.get(col, 0) + qty
                 equip_total += qty
                 col += 1
-            _cell(ws, row, col, int(round(equip_total)) if equip_total else '',
-                  bold=True, align=_ctr)
+            _cell(ws, row, col, _ival(equip_total), bold=True, align=_ctr)
             grand_totals_by_col[col] = grand_totals_by_col.get(col, 0) + equip_total
             cargo_grand += equip_total
             col += 1
-        _cell(ws, row, col, int(round(cargo_grand)) if cargo_grand else '',
-              bold=True, align=_ctr)
+        _cell(ws, row, col, _ival(cargo_grand), bold=True, align=_ctr)
         grand_totals_by_col[col] = grand_totals_by_col.get(col, 0) + cargo_grand
         row += 1
 
     # Grand Total row
     _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
     col = 2
-    for _equip in equipments:
-        for _route in routes:
-            val = grand_totals_by_col.get(col, 0)
-            _cell(ws, row, col, int(round(val)) if val else '',
+    for _eq in equipments:
+        for _rt in routes:
+            _cell(ws, row, col, _ival(grand_totals_by_col.get(col, 0)),
                   bold=True, fill_color='D9E2F3', align=_ctr)
             col += 1
-        val = grand_totals_by_col.get(col, 0)
-        _cell(ws, row, col, int(round(val)) if val else '',
+        _cell(ws, row, col, _ival(grand_totals_by_col.get(col, 0)),
               bold=True, fill_color='D9E2F3', align=_ctr)
         col += 1
-    val = grand_totals_by_col.get(col, 0)
-    _cell(ws, row, col, int(round(val)) if val else '',
+    _cell(ws, row, col, _ival(grand_totals_by_col.get(col, 0)),
           bold=True, fill_color='D9E2F3', align=_ctr)
 
     # Column widths
     ws.column_dimensions['A'].width = 25
-    for ci in range(2, total_cols + 1):
+    max_col = max(t1_cols, t2_cols, t3_cols)
+    for ci in range(2, max_col + 1):
         ws.column_dimensions[get_column_letter(ci)].width = 14
 
 
