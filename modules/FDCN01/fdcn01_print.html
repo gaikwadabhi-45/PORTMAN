@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Tax Invoice {{ invoice.invoice_number }}</title>
+    <title>{{ 'Debit Note' if header.doc_type == 'DN' else 'Credit Note' }} {{ header.doc_number }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @page { size: A4; margin: 8mm; }
@@ -38,10 +38,10 @@
         .btn-print { background: #3498db; color: #fff; }
         .btn-back  { background: #95a5a6; color: #fff; }
 
-        /* ── Invoice copy wrapper — fixed A4 height, footer pinned to bottom ── */
+        /* -- Invoice copy wrapper -- */
         .invoice-copy {
             width: 210mm;
-            min-height: 281mm; /* 297mm - 2×8mm @page margins */
+            min-height: 281mm;
             margin: 8px auto;
             background: #fff;
             display: flex;
@@ -49,15 +49,15 @@
             border: 2px solid #000;
         }
         .inv-body {
-            flex: 1; /* grows to fill space, pushing footer down */
+            flex: 1;
             display: flex;
             flex-direction: column;
         }
         .inv-footer-block {
-            margin-top: auto; /* pins to bottom of .invoice-copy */
+            margin-top: auto;
         }
 
-        /* ── Cancelled banner ── */
+        /* -- Cancelled banner -- */
         .cancelled-banner {
             border: 2px solid #c0392b;
             background: #fdf0f0;
@@ -71,7 +71,7 @@
             margin-bottom: 2px;
         }
 
-        /* ══ Header: Logo left | Copy type + rule + QR right ══ */
+        /* -- Header: Logo left | Copy type + rule + QR right -- */
         .inv-header {
             border: 1px solid #000;
             display: flex;
@@ -97,14 +97,6 @@
             line-height: 1.45;
             color: #000;
             text-align: center;
-        }
-        .company-tax-title {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            margin-top: 3px;
-            text-align: center;
-            width: 100%;
         }
         .header-right {
             width: 155px;
@@ -135,7 +127,7 @@
             font-size: 6px; color: #999; text-align: center;
         }
 
-        /* ── TAX INVOICE title ── */
+        /* -- Title row -- */
         .inv-title-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -147,7 +139,7 @@
             letter-spacing: 2px;
         }
 
-        /* ── IRN row ── */
+        /* -- IRN row -- */
         .irn-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -158,7 +150,7 @@
         }
         .irn-row strong { font-weight: 700; }
 
-        /* ── ACK row (4 cells) ── */
+        /* -- ACK row -- */
         .ack-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -173,7 +165,7 @@
         .ack-table td:last-child { border-right: none; }
         .ack-label { font-weight: 700; }
 
-        /* ── Billed To / Ship To ── */
+        /* -- Billed To / Issued By -- */
         .parties-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -191,7 +183,7 @@
         .party-kv      { display: flex; font-size: 8px; line-height: 1.6; }
         .party-kv .pk  { font-weight: 700; min-width: 90px; }
 
-        /* ── Vessel / Invoice metadata grid (4 columns: label|value|label|value) ── */
+        /* -- Document metadata grid (4 columns) -- */
         .vessel-section {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -210,7 +202,7 @@
         .vl { font-weight: 700; white-space: nowrap; }
         .vv { font-size: 8.5px; }
 
-        /* ── Line items ── */
+        /* -- Line items -- */
         .items-section {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -244,7 +236,7 @@
         }
         .num { text-align: right; font-variant-numeric: tabular-nums; }
 
-        /* ── Bottom: Remarks (left) + Totals (right) ── */
+        /* -- Bottom: Remarks (left) + Totals (right) -- */
         .bottom-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -280,7 +272,7 @@
             background: #f0f0f0;
         }
 
-        /* ── Amount in words ── */
+        /* -- Amount in words -- */
         .words-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -290,7 +282,7 @@
         }
         .words-label { font-weight: 700; display: block; margin-bottom: 1px; }
 
-        /* ── Payment Details + Signatory ── */
+        /* -- Payment Details + Signatory -- */
         .payment-row {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
@@ -329,7 +321,7 @@
             text-align: center;
         }
 
-        /* ── Corporate footer ── */
+        /* -- Corporate footer -- */
         .corp-footer {
             border: 1px solid #000;
             border-top: none;
@@ -339,7 +331,7 @@
             text-align: center;
         }
 
-        /* ── SAC summary mini-table ── */
+        /* -- SAC summary mini-table -- */
         .sac-table { width: 100%; border-collapse: collapse; font-size: 7.5px; margin-top: 5px; }
         .sac-table th, .sac-table td { padding: 2px 4px; border: 1px solid #ccc; }
         .sac-table th { background: #f0f0f0; }
@@ -350,33 +342,32 @@
 
 <div class="no-print">
     <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
-    <button class="btn-back" onclick="location.href='/module/FINV01/invoices'">Back to Invoices</button>
+    <button class="btn-back" onclick="location.href='/module/FDCN01/list'">Back to List</button>
 </div>
 
-{# ────────────────────────────────────────────────
-   MACRO: one full invoice copy
-   copy_label = "ORIGINAL FOR RECEIPIENT" | "DUPLICATE FOR SUPPLIER"
-   ──────────────────────────────────────────────── #}
+{% set doc_label = 'DEBIT NOTE' if header.doc_type == 'DN' else 'CREDIT NOTE' %}
+{% set doc_label_short = 'Debit Note' if header.doc_type == 'DN' else 'Credit Note' %}
+
+{# -- MACRO: one full copy -- #}
 {% macro render_copy(copy_label) %}
 
-{% set sub     = invoice.subtotal|float %}
-{% set cgst_a  = invoice.cgst_amount|float %}
-{% set sgst_a  = invoice.sgst_amount|float %}
-{% set igst_a  = invoice.igst_amount|float %}
-{% set total_a = invoice.total_amount|float %}
-{% set rnd_off = invoice.round_off|float if invoice.round_off else 0 %}
+{% set sub     = header.subtotal|float %}
+{% set cgst_a  = header.cgst_amount|float %}
+{% set sgst_a  = header.sgst_amount|float %}
+{% set igst_a  = header.igst_amount|float %}
+{% set total_a = header.total_amount|float %}
 {% set cgst_pct = ((cgst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 {% set sgst_pct = ((sgst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 {% set igst_pct = ((igst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 
 <div class="invoice-copy">
 
-    {% if invoice.invoice_status == 'Cancelled' %}
-    <div class="cancelled-banner">*** CANCELLED INVOICE ***</div>
+    {% if header.doc_status == 'Cancelled' %}
+    <div class="cancelled-banner">*** CANCELLED {{ doc_label }} ***</div>
     {% endif %}
 
     <div class="inv-body">
-    <!-- ══ 1. Header: Logo | Copy type + Rule text + QR ══ -->
+    <!-- 1. Header: Logo | Copy type + Rule text + QR -->
     <div class="inv-header">
         <div class="header-logo">
             <img src="/static/img/logo31.png" alt="JSW Dharamtar Port Pvt. Ltd.">
@@ -390,10 +381,10 @@
         </div>
         <div class="header-right">
             <div class="copy-type">{{ copy_label }}</div>
-            <div class="rule-text">TAX INVOICE ISSUED UNDER RULE<br>46 OF CGST RULES 2017</div>
+            <div class="rule-text">{{ doc_label }} ISSUED UNDER RULE<br>46 OF CGST RULES 2017</div>
             <div class="qr-area">
-                {% if invoice.gst_qr_code %}
-                <img src="{{ invoice.gst_qr_code }}" alt="QR Code">
+                {% if header.gst_qr_code %}
+                <img src="{{ header.gst_qr_code }}" alt="QR Code">
                 {% else %}
                 <div class="qr-placeholder">QR Code<br>(after IRN)</div>
                 {% endif %}
@@ -401,92 +392,77 @@
         </div>
     </div>
 
-    <!-- ══ 2. TAX INVOICE title ══ -->
-    <div class="inv-title-row">TAX INVOICE</div>
+    <!-- 2. Title -->
+    <div class="inv-title-row">{{ doc_label }}</div>
 
-    <!-- ══ 3. IRN ══ -->
+    <!-- 3. IRN -->
     <div class="irn-row">
         <strong>IRN:</strong>
-        {{ invoice.gst_irn or '(IRN will be generated after e-Invoice posting to IRP)' }}
+        {{ header.gst_irn or '(IRN will be generated after e-Invoice posting to IRP)' }}
     </div>
 
-    <!-- ══ 4. ACK NO / ACK Date ══ -->
+    <!-- 4. ACK NO / ACK Date -->
     <div class="ack-row">
         <table class="ack-table">
             <tr>
                 <td style="width:60px;"><span class="ack-label">ACK NO</span></td>
-                <td>{{ invoice.gst_ack_number or '—' }}</td>
+                <td>{{ header.gst_ack_number or '—' }}</td>
                 <td style="width:70px;"><span class="ack-label">ACK Date</span></td>
-                <td>{{ invoice.gst_ack_date[8:10] ~ '-' ~ invoice.gst_ack_date[5:7] ~ '-' ~ invoice.gst_ack_date[0:4] if invoice.gst_ack_date else '—' }}</td>
+                <td>{{ header.gst_ack_date[8:10] ~ '-' ~ header.gst_ack_date[5:7] ~ '-' ~ header.gst_ack_date[0:4] if header.gst_ack_date else '—' }}</td>
             </tr>
         </table>
     </div>
 
-    <!-- ══ 5. Billed To / Ship To ══ -->
+    <!-- 5. Billed To / Issued By -->
     <div class="parties-row">
         <div class="party-col">
-            <div class="party-heading">Billed To :</div>
-            <div class="party-name">{{ invoice.customer_name }}</div>
-            {% if invoice.billing_address %}<div class="party-line">{{ invoice.billing_address }}</div>{% endif %}
-            {% if invoice.customer_city %}
-            <div class="party-line">{{ invoice.customer_city }}{% if invoice.customer_pincode %} {{ invoice.customer_pincode }}{% endif %}</div>
-            {% endif %}
-            <div class="party-kv"><span class="pk">Place Of Supply:</span><span>{{ invoice.customer_city or 'Maharashtra' }}</span></div>
-            <div class="party-kv"><span class="pk">State Code:</span><span>{{ invoice.customer_gst_state_code or '27' }}</span></div>
-            <div class="party-kv"><span class="pk">GSTIN:</span><span>{{ invoice.customer_gstin or '—' }}</span></div>
+            <div class="party-heading">{{ 'Billed To :' if header.doc_type == 'DN' else 'Credit To :' }}</div>
+            <div class="party-name">{{ header.customer_name }}</div>
+            <div class="party-kv"><span class="pk">Place Of Supply:</span><span>Maharashtra</span></div>
+            <div class="party-kv"><span class="pk">State Code:</span><span>{{ header.customer_gst_state_code or '27' }}</span></div>
+            <div class="party-kv"><span class="pk">GSTIN:</span><span>{{ header.customer_gstin or '—' }}</span></div>
+            <div class="party-kv"><span class="pk">GL Code:</span><span>{{ header.customer_gl_code or '—' }}</span></div>
         </div>
         <div class="party-col">
-            <div class="party-heading">Ship To :</div>
-            <div class="party-name">{{ invoice.ship_to_name or invoice.customer_name }}</div>
-            {% if invoice.ship_to_address or invoice.billing_address %}
-            <div class="party-line">{{ invoice.ship_to_address or invoice.billing_address }}</div>
-            {% endif %}
-            {% if invoice.customer_city %}
-            <div class="party-line">{{ invoice.customer_city }}{% if invoice.customer_pincode %} {{ invoice.customer_pincode }}{% endif %}</div>
-            {% endif %}
-            <div class="party-kv"><span class="pk">State Code:</span><span>{{ invoice.ship_to_state_code or invoice.customer_gst_state_code or '27' }}</span></div>
-            <div class="party-kv"><span class="pk">State Name:</span><span>Maharashtra</span></div>
-            <div class="party-kv"><span class="pk">GSTIN:</span><span>{{ invoice.ship_to_gstin or invoice.customer_gstin or '—' }}</span></div>
+            <div class="party-heading">Issued By :</div>
+            <div class="party-name">{{ port_config.seller_legal_name or 'JSW Dharamtar Port Pvt. Ltd.' }}</div>
+            <div class="party-kv"><span class="pk">GSTIN:</span><span>{{ port_config.seller_gstin or '27AACCJ9361Q1ZS' }}</span></div>
         </div>
     </div>
 
-    <!-- ══ 6. Vessel / Invoice metadata (4-column: label | value | label | value) ══ -->
+    <!-- 6. Document metadata grid -->
     <div class="vessel-section">
         <table class="vessel-table">
             <tr>
-                <td style="width:22%;"><span class="vl">Vessel Name:</span></td>
-                <td style="width:28%;"><span class="vv">{{ invoice.vessel_name or '' }}</span></td>
-                <td style="width:22%;"><span class="vl">Invoice No:</span></td>
-                <td style="width:28%;"><span class="vv" style="font-weight:700;">{{ invoice.invoice_number }}</span></td>
+                <td style="width:22%;"><span class="vl">Document No:</span></td>
+                <td style="width:28%;"><span class="vv" style="font-weight:700;">{{ header.doc_number }}</span></td>
+                <td style="width:22%;"><span class="vl">Document Date:</span></td>
+                <td style="width:28%;"><span class="vv">{{ header.doc_date[8:10] ~ '-' ~ header.doc_date[5:7] ~ '-' ~ header.doc_date[0:4] if header.doc_date else '' }}</span></td>
             </tr>
             <tr>
-                <td><span class="vl">Vessel Call No:</span></td>
-                <td><span class="vv">{{ invoice.vessel_call_no or '' }}</span></td>
-                <td><span class="vl">Invoice Date:</span></td>
-                <td><span class="vv">{{ invoice.invoice_date[8:10] ~ '-' ~ invoice.invoice_date[5:7] ~ '-' ~ invoice.invoice_date[0:4] if invoice.invoice_date else '' }}</span></td>
+                <td><span class="vl">Financial Year:</span></td>
+                <td><span class="vv">{{ header.financial_year }}</span></td>
+                <td><span class="vl">Status:</span></td>
+                <td><span class="vv">{{ header.doc_status }}</span></td>
             </tr>
             <tr>
-                <td><span class="vl">Commodity:</span></td>
-                <td><span class="vv">{{ invoice.commodity or '' }}</span></td>
-                <td><span class="vl">Date Of Berthing:</span></td>
-                <td><span class="vv">{{ invoice.date_of_berthing[8:10] ~ '-' ~ invoice.date_of_berthing[5:7] ~ '-' ~ invoice.date_of_berthing[0:4] if invoice.date_of_berthing else '' }}</span></td>
+                <td><span class="vl">Orig. Invoice No:</span></td>
+                <td><span class="vv">{{ header.original_invoice_number or header.original_invoice_number_display or '—' }}</span></td>
+                <td><span class="vl">Orig. Invoice Date:</span></td>
+                <td><span class="vv">{{ header.original_invoice_date[8:10] ~ '-' ~ header.original_invoice_date[5:7] ~ '-' ~ header.original_invoice_date[0:4] if header.original_invoice_date else '—' }}</span></td>
             </tr>
+            {% if header.sap_document_number %}
             <tr>
-                <td><span class="vl">Exchange Rate:</span></td>
-                <td><span class="vv">{{ invoice.exchange_rate or '1.0' }}</span></td>
-                <td><span class="vl">Date Of Sailing :</span></td>
-                <td><span class="vv">{{ invoice.date_of_sailing[8:10] ~ '-' ~ invoice.date_of_sailing[5:7] ~ '-' ~ invoice.date_of_sailing[0:4] if invoice.date_of_sailing else '' }}</span></td>
+                <td><span class="vl">SAP Document:</span></td>
+                <td><span class="vv">{{ header.sap_document_number }}</span></td>
+                <td><span class="vl">SAP Posting Date:</span></td>
+                <td><span class="vv">{{ header.sap_posting_date[8:10] ~ '-' ~ header.sap_posting_date[5:7] ~ '-' ~ header.sap_posting_date[0:4] if header.sap_posting_date else '' }}</span></td>
             </tr>
-            <tr>
-                <td><span class="vl">Cargo Quantity:</span></td>
-                <td><span class="vv">{% if invoice.cargo_quantity %}{{ "%.2f"|format(invoice.cargo_quantity|float) }}{% endif %}</span></td>
-                <td><span class="vl">Currency:</span></td>
-                <td><span class="vv">{{ invoice.currency_code or 'INR' }}</span></td>
-            </tr>
+            {% endif %}
         </table>
     </div>
 
-    <!-- ══ 7. Line Items ══ -->
+    <!-- 7. Line Items -->
     <div class="items-section">
         <table class="items-table">
             <thead>
@@ -494,13 +470,16 @@
                     <th style="width:28px; text-align:center;">Sl.No</th>
                     <th>Description Of Service</th>
                     <th style="width:56px;">SAC Code</th>
-                    <th style="width:68px;" class="num">Rate</th>
-                    <th style="width:60px;" class="num">Units</th>
-                    <th style="width:90px;" class="num">Amount(Rs)</th>
+                    <th style="width:50px;" class="num">Qty</th>
+                    <th style="width:38px;">UOM</th>
+                    <th style="width:62px;" class="num">Orig. Rate</th>
+                    <th style="width:62px;" class="num">Revised Rate</th>
+                    <th style="width:58px;" class="num">Diff</th>
+                    <th style="width:78px;" class="num">Amount(Rs)</th>
                 </tr>
             </thead>
             <tbody>
-                {% for line in invoice_lines %}
+                {% for line in lines %}
                 <tr>
                     <td style="text-align:center;">{{ loop.index }}</td>
                     <td>
@@ -510,27 +489,32 @@
                         {% endif %}
                     </td>
                     <td>{{ line.sac_code or '—' }}</td>
-                    <td class="num">{{ "%.2f"|format(line.rate|float) }}</td>
                     <td class="num">{{ "%.2f"|format(line.quantity|float) }}</td>
+                    <td>{{ line.uom or '' }}</td>
+                    <td class="num">{{ "%.2f"|format(line.original_rate|float) }}</td>
+                    <td class="num">{{ "%.2f"|format(line.revised_rate|float) }}</td>
+                    <td class="num">{{ "%.2f"|format(line.rate_difference|float) }}</td>
                     <td class="num">{{ "%.2f"|format(line.line_amount|float) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr class="subtotal-row">
-                    <td colspan="5" style="text-align:right; border-right:1px solid #000;">Sub Total</td>
+                    <td colspan="8" style="text-align:right; border-right:1px solid #000;">Sub Total</td>
                     <td class="num">{{ "%.2f"|format(sub) }}</td>
                 </tr>
             </tfoot>
         </table>
     </div>
 
-    <!-- ══ 8. Remarks (left) + Totals grid (right) ══ -->
+    <!-- 8. Remarks (left) + Totals grid (right) -->
     <div class="bottom-row">
         <div class="remarks-col">
-            {% if invoice.remarks %}
-            <div class="rem-label">Remarks :</div>
-            <div>{{ invoice.remarks }}</div>
+            <div class="rem-label">Reason for {{ doc_label_short }}:</div>
+            <div>Rate revision against agreement</div>
+            {% if header.remarks %}
+            <div class="rem-label" style="margin-top:6px;">Remarks :</div>
+            <div>{{ header.remarks }}</div>
             {% endif %}
             {% if sac_summary %}
             <div style="font-weight:700; margin-top:6px; margin-bottom:2px; font-size:8px;">HSN/SAC Summary:</div>
@@ -576,10 +560,6 @@
                     <td>Discount :</td>
                     <td>0.00</td>
                 </tr>
-                <tr>
-                    <td>Rounding Off :</td>
-                    <td>{{ "%.2f"|format(rnd_off) }}</td>
-                </tr>
                 <tr class="total-row">
                     <td>Total in INR is :</td>
                     <td>{{ "%.2f"|format(total_a) }}</td>
@@ -588,16 +568,16 @@
         </div>
     </div>
 
-    <!-- ══ 9. Amount in Words ══ -->
+    <!-- 9. Amount in Words -->
     <div class="words-row">
         <span class="words-label">Amount in Words :</span>
-        {{ invoice.amount_in_words or '' }}
+        {{ header.amount_in_words or '' }}
     </div>
 
     </div><!-- /.inv-body -->
 
     <div class="inv-footer-block">
-    <!-- ══ 10. Payment Details + Authorised Signatory ══ -->
+    <!-- 10. Payment Details + Authorised Signatory -->
     <div class="payment-row">
         <div class="payment-col">
             {% if payment_bank %}
@@ -642,7 +622,7 @@
         </div>
     </div>
 
-    <!-- ══ 11. Corporate office footer ══ -->
+    <!-- 11. Corporate office footer -->
     <div class="corp-footer">
         {% if payment_bank and payment_bank.corporate_office_address %}
         Corporate Off: {{ payment_bank.corporate_office_address }}
@@ -655,7 +635,7 @@
 </div><!-- /.invoice-copy -->
 {% endmacro %}
 
-{# ── Render both copies ── #}
+{# -- Render both copies -- #}
 {{ render_copy("ORIGINAL FOR RECEIPIENT") }}
 {{ render_copy("DUPLICATE FOR SUPPLIER") }}
 

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}DN/CN Doc Series - PORTMAN{% endblock %}
+
+{% block content %}
+<style>
+    .ds-form { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #ddd); border-radius: 6px; padding: 15px; margin-top: 15px; display: none; }
+    .ds-form h3 { margin: 0 0 12px 0; font-size: 13px; color: var(--primary-color, #2c3e50); border-bottom: 2px solid var(--primary-color, #2c3e50); padding-bottom: 5px; }
+    .ds-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+    .ds-field label { display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-bottom: 3px; color: var(--text-muted, #7f8c8d); }
+    .ds-field input, .ds-field select { width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid var(--border-color, #ddd); border-radius: 3px; box-sizing: border-box; background: var(--input-bg, #fff); color: var(--text-color, #2c3e50); }
+</style>
+
+<div class="module-header">
+    <h2>DN/CN Document Series</h2>
+    <span class="module-code">FDCN01</span>
+</div>
+
+<div class="toolbar">
+    {% if permissions.can_add %}
+    <button class="btn btn-add" onclick="showForm()">+ New Series</button>
+    {% endif %}
+    {% if permissions.can_delete %}
+    <button class="btn btn-delete" onclick="deleteSelected()">Delete Selected</button>
+    {% endif %}
+    <div class="row-info">Rows: <span id="rowCount">0</span></div>
+</div>
+
+<div id="table"></div>
+
+<!-- Form -->
+<div id="dsForm" class="ds-form">
+    <h3>Document Series <span id="formTitle"></span>
+        <button type="button" class="btn" style="float:right;background:#95a5a6;color:white;padding:4px 10px;font-size:11px;" onclick="hideForm()">Close</button>
+        {% if permissions.can_add or permissions.can_edit %}
+        <button type="button" class="btn btn-save" style="float:right;margin-right:5px;padding:4px 10px;font-size:11px;" onclick="saveDS()">Save</button>
+        {% endif %}
+    </h3>
+    <input type="hidden" id="dsId">
+    <div class="ds-grid">
+        <div class="ds-field">
+            <label>Series Name</label>
+            <input type="text" id="dsName" placeholder="e.g. JSW DN Series">
+        </div>
+        <div class="ds-field">
+            <label>Prefix</label>
+            <input type="text" id="dsPrefix" placeholder="e.g. DN">
+        </div>
+        <div class="ds-field">
+            <label>Type</label>
+            <select id="dsType">
+                <option value="DN">Debit Note (DN)</option>
+                <option value="CN">Credit Note (CN)</option>
+            </select>
+        </div>
+        <div class="ds-field">
+            <label>Default</label>
+            <select id="dsDefault">
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+            </select>
+        </div>
+        <div class="ds-field">
+            <label>Active</label>
+            <select id="dsActive">
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+            </select>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    addToRecent('FDCN01', 'DN/CN Doc Series');
+    const MODULE = 'FDCN01';
+    let table;
+
+    function initTable() {
+        table = new Tabulator("#table", {
+            height: "calc(100vh - 200px)",
+            layout: "fitData",
+            columns: [
+                {formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", headerSort: false, width: 40},
+                {title: "ID", field: "id", width: 60},
+                {title: "Series Name", field: "name", width: 200},
+                {title: "Prefix", field: "prefix", width: 100},
+                {title: "Type", field: "type", width: 100, formatter: function(c) {
+                    const v = c.getValue();
+                    return v === 'DN' ? '<span style="color:#2e86c1;font-weight:600">Debit Note</span>' : '<span style="color:#b7950b;font-weight:600">Credit Note</span>';
+                }},
+                {title: "Default", field: "is_default", width: 80, hozAlign: "center", formatter: function(c) {
+                    return c.getValue() ? '<span style="color:#27ae60;font-weight:700">Yes</span>' : 'No';
+                }},
+                {title: "Active", field: "is_active", width: 80, hozAlign: "center", formatter: function(c) {
+                    return c.getValue() ? '<span style="color:#27ae60">Active</span>' : '<span style="color:#e74c3c">Inactive</span>';
+                }},
+                {title: "", formatter: function(c) {
+                    return '<button class="btn" style="background:#3498db;color:white;padding:2px 8px;font-size:10px" onclick="event.stopPropagation();editDS('+c.getRow().getData().id+')">Edit</button>';
+                }, width: 60, headerSort: false}
+            ],
+            selectable: true
+        });
+        if (localStorage.getItem('theme') === 'dark') {
+            document.getElementById('table').classList.add('tabulator-dark');
+        }
+        loadData();
+    }
+
+    async function loadData() {
+        const res = await fetch(`/api/module/${MODULE}/doc-series/data`);
+        const data = await res.json();
+        table.setData(data);
+        document.getElementById('rowCount').textContent = data.length;
+    }
+
+    function showForm(data) {
+        document.getElementById('dsId').value = data ? data.id : '';
+        document.getElementById('dsName').value = data ? data.name : '';
+        document.getElementById('dsPrefix').value = data ? data.prefix : '';
+        document.getElementById('dsType').value = data ? data.type : 'DN';
+        document.getElementById('dsDefault').value = data ? String(data.is_default) : 'false';
+        document.getElementById('dsActive').value = data ? String(data.is_active) : 'true';
+        document.getElementById('formTitle').textContent = data ? `- Edit #${data.id}` : '- New';
+        document.getElementById('dsForm').style.display = 'block';
+        document.getElementById('dsForm').scrollIntoView({behavior: 'smooth'});
+    }
+
+    function hideForm() { document.getElementById('dsForm').style.display = 'none'; }
+
+    function editDS(id) {
+        const row = table.getData().find(r => r.id === id);
+        if (row) showForm(row);
+    }
+
+    async function saveDS() {
+        const payload = {
+            id: document.getElementById('dsId').value || null,
+            name: document.getElementById('dsName').value,
+            prefix: document.getElementById('dsPrefix').value,
+            type: document.getElementById('dsType').value,
+            is_default: document.getElementById('dsDefault').value === 'true',
+            is_active: document.getElementById('dsActive').value === 'true'
+        };
+        if (!payload.name || !payload.prefix) { alert('Name and Prefix are required'); return; }
+        const res = await fetch(`/api/module/${MODULE}/doc-series/save`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (result.success) { hideForm(); loadData(); } else { alert(result.error || 'Error'); }
+    }
+
+    async function deleteSelected() {
+        const selected = table.getSelectedRows();
+        if (!selected.length) { alert('Select series to delete'); return; }
+        if (!confirm(`Delete ${selected.length} series?`)) return;
+        for (let row of selected) {
+            await fetch(`/api/module/${MODULE}/doc-series/delete`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: row.getData().id})
+            });
+        }
+        loadData();
+    }
+
+    initTable();
+</script>
+{% endblock %}

@@ -266,6 +266,98 @@ def build_credit_note_payload(cn_header, cn_lines):
     return {'Record_Header': [header]}
 
 
+# ---------------------------------------------------------------------------
+# FDCN01 Debit/Credit Note builder
+# ---------------------------------------------------------------------------
+def build_fdcn_payload(fdcn_header, fdcn_lines):
+    """
+    Build DynaportInvoice JSON for a Debit Note or Credit Note (FDCN01).
+
+    Debit Note: Invoice_Credit='I', Document_type='DBN'
+    Credit Note: Invoice_Credit='C', Document_type='CRN'
+    """
+    config = get_active_config()
+    if not config:
+        raise ValueError('No active SAP configuration found')
+
+    default_company = config.get('company_code', '5171')
+    payment_term = config.get('default_payment_term') or config.get('payment_term') or '51'
+
+    cust_company = _get_customer_company_code(
+        fdcn_header.get('customer_type'),
+        fdcn_header.get('customer_id')
+    )
+    company = cust_company or default_company
+
+    is_debit = fdcn_header.get('doc_type') == 'DN'
+
+    items = []
+    for line in fdcn_lines:
+        items.append({
+            'GL_account': line.get('gl_code') or '',
+            'Tax_code': line.get('sap_tax_code') or '',
+            'Profit_center': line.get('profit_center') or '',
+            'Cost_center': line.get('cost_center') or '',
+            'Amount': _fmt_amount(line.get('line_amount')),
+            'Item_text': (line.get('service_name') or '')[:50],
+        })
+
+        cgst = float(line.get('cgst_amount') or 0)
+        if cgst > 0:
+            items.append({
+                'GL_account': line.get('gl_code') or '',
+                'Tax_code': line.get('sap_tax_code') or '',
+                'Profit_center': line.get('profit_center') or '',
+                'Cost_center': line.get('cost_center') or '',
+                'Amount': _fmt_amount(cgst),
+                'Item_text': f"CGST @ {line.get('cgst_rate', '')}%",
+            })
+
+        sgst = float(line.get('sgst_amount') or 0)
+        if sgst > 0:
+            items.append({
+                'GL_account': line.get('gl_code') or '',
+                'Tax_code': line.get('sap_tax_code') or '',
+                'Profit_center': line.get('profit_center') or '',
+                'Cost_center': line.get('cost_center') or '',
+                'Amount': _fmt_amount(sgst),
+                'Item_text': f"SGST @ {line.get('sgst_rate', '')}%",
+            })
+
+        igst = float(line.get('igst_amount') or 0)
+        if igst > 0:
+            items.append({
+                'GL_account': line.get('gl_code') or '',
+                'Tax_code': line.get('sap_tax_code') or '',
+                'Profit_center': line.get('profit_center') or '',
+                'Cost_center': line.get('cost_center') or '',
+                'Amount': _fmt_amount(igst),
+                'Item_text': f"IGST @ {line.get('igst_rate', '')}%",
+            })
+
+    doc_date = _fmt_date(fdcn_header.get('doc_date'))
+
+    header = {
+        'Invoice_Credit': 'I' if is_debit else 'C',
+        'Document_type': 'DBN' if is_debit else 'CRN',
+        'Company_code': company,
+        'Business_place': company,
+        'Section_code': company,
+        'Credit_Control_Area': company,
+        'Plant': company,
+        'Customer_code': fdcn_header.get('customer_gl_code') or '',
+        'Payment_term': payment_term,
+        'Document_date': doc_date,
+        'Posting_date': doc_date,
+        'Base_date': doc_date,
+        'Header_text': (fdcn_header.get('doc_number') or '')[:25],
+        'Reference_no': (fdcn_header.get('doc_number') or '')[:16],
+        'ITEM': items,
+    }
+
+    return {'Record_Header': [header]}
+
+
 def build_invoice_reversal_payload(invoice_header, invoice_lines):
     """
     Build reversal payload for invoice cancellation.

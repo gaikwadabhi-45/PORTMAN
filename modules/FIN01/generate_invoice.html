@@ -97,6 +97,7 @@
                     <th style="width:24px"></th>
                     <th>Bill Number</th>
                     <th>Bill Date</th>
+                    <th>Agreement</th>
                     <th>Source</th>
                     <th>Customer Type</th>
                     <th>Customer Name</th>
@@ -123,7 +124,8 @@
                     <td><input type="checkbox" class="bill-select" onchange="validateSelection()"></td>
                     <td><span class="bill-expand-btn" onclick="toggleBillLines({{ row.id }}, this)" title="View bill lines">&#9654;</span></td>
                     <td><strong>{{ row.bill_number }}</strong></td>
-                    <td>{{ row.bill_date }}</td>
+                    <td>{{ row.bill_date[8:10] ~ '-' ~ row.bill_date[5:7] ~ '-' ~ row.bill_date[0:4] if row.bill_date else '' }}</td>
+                    <td>{{ row.agreement_display or '-' }}</td>
                     <td>{% if row.source_display %}<span class="source-badge">{{ row.source_type }}: {{ row.source_display }}</span>{% endif %}</td>
                     <td>{{ row.customer_type }}</td>
                     <td>{{ row.customer_name }}</td>
@@ -134,7 +136,7 @@
                     <td>{{ row.currency_code }}</td>
                 </tr>
                 <tr class="bill-lines-row" id="lines-row-{{ row.id }}">
-                    <td colspan="12">
+                    <td colspan="13">
                         <div class="bill-lines-panel" id="lines-panel-{{ row.id }}">
                             <div style="font-size:10px;color:#555;margin-bottom:4px;font-weight:600;">
                                 Bill Lines for {{ row.bill_number }}
@@ -148,7 +150,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="12" style="text-align:center;color:#999;padding:20px;">No approved bills found for invoicing</td>
+                    <td colspan="13" style="text-align:center;color:#999;padding:20px;">No approved bills found for invoicing</td>
                 </tr>
                 {% endfor %}
             </tbody>

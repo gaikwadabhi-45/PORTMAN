@@ -6,6 +6,7 @@ from modules.VAM01 import model as vam01_model
 from modules.VCUM01 import model as vcum_model
 from modules.FSTM01 import model as fstm_model
 from modules.FCRM01 import model as fcrm_model
+from modules.VCG01 import model as vcg_model
 
 @bp.route('/module/FCAM01/')
 def index():
@@ -37,6 +38,11 @@ def entry(agreement_id=None):
     customers = vcum_model.get_data()[0] or []
     service_types = fstm_model.get_all_service_types() or []
     currencies = fcrm_model.get_all_currencies() or []
+    cargo_list = vcg_model.get_all() or []
+
+    # Identify cargo handling service type IDs (CHGL01, CHGU01)
+    cargo_service_ids = [s['id'] for s in service_types
+                         if s.get('service_code') in ('CHGL01', 'CHGU01')]
 
     header_data = None
     lines_data = []
@@ -56,6 +62,8 @@ def entry(agreement_id=None):
                          customers=customers,
                          service_types=service_types,
                          currencies=currencies,
+                         cargo_list=cargo_list,
+                         cargo_service_ids=cargo_service_ids,
                          perms=perms,
                          username=session.get('username'))
 

@@ -118,6 +118,7 @@
                     <th style="width:22px;"></th>
                     <th>Bill Number</th>
                     <th>Date</th>
+                    <th>Agreement</th>
                     <th>Source</th>
                     <th>Customer</th>
                     <th style="text-align:right;">Subtotal</th>
@@ -144,7 +145,8 @@
                     <td><input type="checkbox" class="bill-select" onchange="validateSelection()"></td>
                     <td><span class="bill-expand-btn" onclick="toggleBillLines({{ row.id }}, this)">&#9654;</span></td>
                     <td><strong>{{ row.bill_number }}</strong></td>
-                    <td>{{ row.bill_date }}</td>
+                    <td>{{ row.bill_date[8:10] ~ '-' ~ row.bill_date[5:7] ~ '-' ~ row.bill_date[0:4] if row.bill_date else '' }}</td>
+                    <td>{{ row.agreement_display or '-' }}</td>
                     <td>{% if row.source_display %}<span class="source-badge">{{ row.source_type }}: {{ row.source_display }}</span>{% endif %}</td>
                     <td>{{ row.customer_name }}</td>
                     <td class="num">{{ "%.2f"|format(row.subtotal) }}</td>
@@ -153,7 +155,7 @@
                     <td>{{ row.currency_code }}</td>
                 </tr>
                 <tr id="lines-row-{{ row.id }}">
-                    <td colspan="10" style="padding:0;">
+                    <td colspan="11" style="padding:0;">
                         <div class="bill-lines-panel" id="lines-panel-{{ row.id }}">
                             <div id="lines-content-{{ row.id }}"><em style="font-size:10px;color:var(--text-secondary);">Loading…</em></div>
                         </div>
@@ -161,7 +163,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px;">
+                    <td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px;">
                         No approved bills available for invoicing.
                     </td>
                 </tr>
@@ -586,4 +588,3 @@ document.getElementById('paymentTerms').addEventListener('change', calculateTota
 loadDocSeries();
 </script>
 {% endblock %}
-

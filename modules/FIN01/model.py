@@ -25,14 +25,30 @@ def get_bill_data(page=1, size=20, status_filter=None):
     where_clause = ""
     params = []
     if status_filter:
-        where_clause = "WHERE bill_status = %s"
+        where_clause = "WHERE b.bill_status = %s"
         params.append(status_filter)
 
-    cur.execute(f'SELECT COUNT(*) FROM bill_header {where_clause}', params)
+    cur.execute(f'SELECT COUNT(*) FROM bill_header b {where_clause}', params)
     total = cur.fetchone()['count']
     cur.execute(f'''
-        SELECT * FROM bill_header {where_clause}
-        ORDER BY id DESC
+        SELECT
+            b.*,
+            ca.agreement_code,
+            ca.agreement_name,
+            NULLIF(
+                TRIM(
+                    COALESCE(ca.agreement_code, '') ||
+                    CASE
+                        WHEN COALESCE(ca.agreement_name, '') <> '' THEN ' - ' || ca.agreement_name
+                        ELSE ''
+                    END
+                ),
+                ''
+            ) AS agreement_display
+        FROM bill_header b
+        LEFT JOIN customer_agreements ca ON b.agreement_id = ca.id
+        {where_clause}
+        ORDER BY b.id DESC
         LIMIT %s OFFSET %s
     ''', params + [size, (page-1)*size])
     rows = cur.fetchall()
@@ -71,7 +87,25 @@ def get_bill_by_id(bill_id):
     """Get bill header by ID"""
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT * FROM bill_header WHERE id = %s', (bill_id,))
+    cur.execute('''
+        SELECT
+            b.*,
+            ca.agreement_code,
+            ca.agreement_name,
+            NULLIF(
+                TRIM(
+                    COALESCE(ca.agreement_code, '') ||
+                    CASE
+                        WHEN COALESCE(ca.agreement_name, '') <> '' THEN ' - ' || ca.agreement_name
+                        ELSE ''
+                    END
+                ),
+                ''
+            ) AS agreement_display
+        FROM bill_header b
+        LEFT JOIN customer_agreements ca ON b.agreement_id = ca.id
+        WHERE b.id = %s
+    ''', (bill_id,))
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else None

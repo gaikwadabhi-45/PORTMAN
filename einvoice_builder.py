@@ -246,6 +246,65 @@ def build_einvoice_from_credit_note(cn_header, cn_lines):
 
 
 # ---------------------------------------------------------------------------
+# FDCN01 Debit/Credit Note builder
+# ---------------------------------------------------------------------------
+def build_einvoice_from_fdcn(fdcn_header, fdcn_lines):
+    """
+    Build IRP e-invoice JSON for a Debit Note or Credit Note (FDCN01).
+
+    Debit Note: DocDtls.Typ = 'DBN'
+    Credit Note: DocDtls.Typ = 'CRN'
+    Includes PrecDocDtls referencing the original invoice.
+    """
+    # Map fdcn fields to the format expected by build_einvoice_from_invoice
+    mapped_header = {
+        'invoice_number': fdcn_header.get('doc_number', ''),
+        'invoice_date': fdcn_header.get('doc_date'),
+        'customer_gstin': fdcn_header.get('customer_gstin'),
+        'customer_gst_state_code': fdcn_header.get('customer_gst_state_code'),
+        'customer_name': fdcn_header.get('customer_name'),
+    }
+
+    # Map lines — use line_amount, line_total, and GST fields as-is
+    mapped_lines = []
+    for line in fdcn_lines:
+        mapped_lines.append({
+            'service_name': line.get('service_name', ''),
+            'sac_code': line.get('sac_code'),
+            'quantity': line.get('quantity'),
+            'uom': line.get('uom'),
+            'rate': abs(float(line.get('rate_difference') or 0)),
+            'line_amount': line.get('line_amount'),
+            'cgst_rate': line.get('cgst_rate'),
+            'sgst_rate': line.get('sgst_rate'),
+            'igst_rate': line.get('igst_rate'),
+            'cgst_amount': line.get('cgst_amount'),
+            'sgst_amount': line.get('sgst_amount'),
+            'igst_amount': line.get('igst_amount'),
+            'line_total': line.get('line_total'),
+        })
+
+    result = build_einvoice_from_invoice(mapped_header, mapped_lines)
+
+    # Override document type based on DN or CN
+    is_debit = fdcn_header.get('doc_type') == 'DN'
+    result['DocDtls']['Typ'] = 'DBN' if is_debit else 'CRN'
+    result['DocDtls']['No'] = fdcn_header.get('doc_number', '')
+    result['DocDtls']['Dt'] = _fmt_date(fdcn_header.get('doc_date'))
+
+    # Add original invoice reference
+    orig_inv_number = fdcn_header.get('original_invoice_number') or \
+                      fdcn_header.get('original_invoice_number_display') or ''
+    if orig_inv_number:
+        result['PrecDocDtls'] = [{
+            'InvNo': orig_inv_number,
+            'InvDt': _fmt_date(fdcn_header.get('original_invoice_date')),
+        }]
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # UOM mapping (IRP uses specific unit codes)
 # ---------------------------------------------------------------------------
 _UOM_MAP = {

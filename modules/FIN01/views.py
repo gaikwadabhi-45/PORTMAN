@@ -361,7 +361,7 @@ def get_customer_agreements(customer_id):
 
 @bp.route('/api/module/FIN01/agreement-rate/<customer_type>/<int:customer_id>/<int:service_type_id>')
 def get_agreement_rate(customer_type, customer_id, service_type_id):
-    """Get rate from active customer/agent agreement. Optionally filter by agreement_id."""
+    """Get rate from active customer/agent agreement. Optionally filter by agreement_id and cargo_name."""
     if 'user_id' not in session:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -371,19 +371,60 @@ def get_agreement_rate(customer_type, customer_id, service_type_id):
     cur = get_cursor(conn)
     today = datetime.now().strftime('%Y-%m-%d')
     agreement_id = request.args.get('agreement_id')
+    cargo_name = request.args.get('cargo_name')
 
     if agreement_id:
+        # Try cargo-specific rate first
+        if cargo_name:
+            cur.execute('''
+                SELECT cal.rate, cal.uom, cal.currency_code,
+                       ca.agreement_code, ca.agreement_name, cal.cargo_name
+                FROM customer_agreement_lines cal
+                INNER JOIN customer_agreements ca ON cal.agreement_id = ca.id
+                WHERE ca.id = %s AND cal.service_type_id = %s AND cal.cargo_name = %s
+            ''', [agreement_id, service_type_id, cargo_name])
+            row = cur.fetchone()
+            if row:
+                conn.close()
+                return jsonify({'success': True, 'data': dict(row)})
+
+        # Fallback to generic (no cargo) rate
         cur.execute('''
             SELECT cal.rate, cal.uom, cal.currency_code,
-                   ca.agreement_code, ca.agreement_name
+                   ca.agreement_code, ca.agreement_name, cal.cargo_name
             FROM customer_agreement_lines cal
             INNER JOIN customer_agreements ca ON cal.agreement_id = ca.id
             WHERE ca.id = %s AND cal.service_type_id = %s
+              AND (cal.cargo_id IS NULL OR cal.cargo_name IS NULL)
         ''', [agreement_id, service_type_id])
     else:
+        # Try cargo-specific rate first
+        if cargo_name:
+            cur.execute('''
+                SELECT cal.rate, cal.uom, cal.currency_code,
+                       ca.agreement_code, ca.agreement_name, cal.cargo_name
+                FROM customer_agreement_lines cal
+                INNER JOIN customer_agreements ca ON cal.agreement_id = ca.id
+                WHERE ca.customer_type = %s
+                AND ca.customer_id = %s
+                AND cal.service_type_id = %s
+                AND cal.cargo_name = %s
+                AND ca.is_active = 1
+                AND ca.agreement_status = 'Approved'
+                AND ca.valid_from <= %s
+                AND (ca.valid_to IS NULL OR ca.valid_to >= %s)
+                ORDER BY ca.valid_from DESC
+                LIMIT 1
+            ''', [customer_type, customer_id, service_type_id, cargo_name, today, today])
+            row = cur.fetchone()
+            if row:
+                conn.close()
+                return jsonify({'success': True, 'data': dict(row)})
+
+        # Fallback to generic rate
         cur.execute('''
             SELECT cal.rate, cal.uom, cal.currency_code,
-                   ca.agreement_code, ca.agreement_name
+                   ca.agreement_code, ca.agreement_name, cal.cargo_name
             FROM customer_agreement_lines cal
             INNER JOIN customer_agreements ca ON cal.agreement_id = ca.id
             WHERE ca.customer_type = %s
@@ -403,6 +444,52 @@ def get_agreement_rate(customer_type, customer_id, service_type_id):
         return jsonify({'success': True, 'data': dict(row)})
     else:
         return jsonify({'success': False, 'error': 'No valid agreement found'})
+
+
+@bp.route('/api/module/FIN01/cargo-rates/<customer_type>/<int:customer_id>/<int:service_type_id>')
+def get_cargo_rates(customer_type, customer_id, service_type_id):
+    """Get all cargo-specific rates for a service type from the agreement."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    from datetime import datetime
+    conn = get_db()
+    cur = get_cursor(conn)
+    today = datetime.now().strftime('%Y-%m-%d')
+    agreement_id = request.args.get('agreement_id')
+
+    if agreement_id:
+        cur.execute('''
+            SELECT cal.rate, cal.uom, cal.currency_code, cal.cargo_id, cal.cargo_name
+            FROM customer_agreement_lines cal
+            INNER JOIN customer_agreements ca ON cal.agreement_id = ca.id
+            WHERE ca.id = %s AND cal.service_type_id = %s AND cal.cargo_name IS NOT NULL
+        ''', [agreement_id, service_type_id])
+    else:
+        cur.execute('''
+            SELECT cal.rate, cal.uom, cal.currency_code, cal.cargo_id, cal.cargo_name
+            FROM customer_agreement_lines cal
+            INNER JOIN customer_agreements ca ON cal.agreement_id = ca.id
+            WHERE ca.customer_type = %s
+            AND ca.customer_id = %s
+            AND cal.service_type_id = %s
+            AND cal.cargo_name IS NOT NULL
+            AND ca.is_active = 1
+            AND ca.agreement_status = 'Approved'
+            AND ca.valid_from <= %s
+            AND (ca.valid_to IS NULL OR ca.valid_to >= %s)
+            ORDER BY ca.valid_from DESC
+        ''', [customer_type, customer_id, service_type_id, today, today])
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    # Build a map: cargo_name -> rate
+    rate_map = {}
+    for r in rows:
+        if r['cargo_name'] and r['cargo_name'] not in rate_map:
+            rate_map[r['cargo_name']] = r['rate']
+
+    return jsonify({'success': True, 'rates': rate_map})
 
 
 @bp.route('/api/module/FIN01/customer-billables/<customer_type>/<int:customer_id>')
@@ -514,9 +601,26 @@ def get_customer_billables(customer_type, customer_id):
 
     # --- C. Already billed lines for reference ---
     cur.execute("""
-        SELECT bl.*, bh.bill_number, bh.bill_date, bh.bill_status
+        SELECT
+            bl.*,
+            bh.bill_number,
+            bh.bill_date,
+            bh.bill_status,
+            ca.agreement_code,
+            ca.agreement_name,
+            NULLIF(
+                TRIM(
+                    COALESCE(ca.agreement_code, '') ||
+                    CASE
+                        WHEN COALESCE(ca.agreement_name, '') <> '' THEN ' - ' || ca.agreement_name
+                        ELSE ''
+                    END
+                ),
+                ''
+            ) AS agreement_display
         FROM bill_lines bl
         JOIN bill_header bh ON bl.bill_id = bh.id
+        LEFT JOIN customer_agreements ca ON bh.agreement_id = ca.id
         WHERE bh.customer_type = %s AND bh.customer_id = %s
         ORDER BY bh.id DESC, bl.id
         LIMIT 50

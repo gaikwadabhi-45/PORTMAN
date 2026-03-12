@@ -187,6 +187,7 @@
                     <tr>
                         <th>Bill #</th>
                         <th>Bill Date</th>
+                        <th>Agreement</th>
                         <th>Service</th>
                         <th>Qty</th>
                         <th>Rate</th>
@@ -195,7 +196,7 @@
                     </tr>
                 </thead>
                 <tbody id="billedBody">
-                    <tr><td colspan="7" class="empty-state">No billed history</td></tr>
+                    <tr><td colspan="8" class="empty-state">No billed history</td></tr>
                 </tbody>
             </table>
         </div>
@@ -232,6 +233,14 @@ let billableData = null;
 let serviceTypesMap = {};
 let gstRatesMap = {};
 let customerData = null;
+
+function formatDateDMY(value) {
+    if (!value) return '';
+    const text = String(value).trim();
+    const m = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    return text;
+}
 
 // Load service types with GST info
 async function loadServiceTypes() {
@@ -272,7 +281,9 @@ async function onCustomerSelected() {
     const json = await resp.json();
     agreementSel.innerHTML = '<option value="">-- Auto-detect from agreement --</option>';
     (json.data || []).forEach(ag => {
-        agreementSel.innerHTML += `<option value="${ag.id}">${ag.agreement_code} - ${ag.agreement_name} (${ag.valid_from} to ${ag.valid_to || 'Open'})</option>`;
+        const fromDate = formatDateDMY(ag.valid_from);
+        const toDate = ag.valid_to ? formatDateDMY(ag.valid_to) : 'Open';
+        agreementSel.innerHTML += `<option value="${ag.id}">${ag.agreement_code} - ${ag.agreement_name} (${fromDate} to ${toDate})</option>`;
     });
 }
 
@@ -351,18 +362,74 @@ function renderCargoCards(cards) {
 
         const sacDisplay = card.sac_code ? `<span style="font-size:10px; color:#7f8c8d; margin-left:15px;">SAC: ${card.sac_code}</span>` : '';
 
-        const rateSection = card.is_billable ? `
-            <div class="card-rate-row">
-                <label>Rate</label>
-                <input type="number" step="0.01" id="cargo_rate_${idx}" placeholder="0.00"
-                    onchange="recalcTotals()"
-                    data-qty="${card.total_quantity}">
-                <span style="font-size:11px; color:#555;">per ${card.uom || 'MT'}</span>
-                ${sacDisplay}
-                <label style="margin-left:20px;">Amount</label>
-                <input type="text" id="cargo_amount_${idx}" readonly style="width:120px; background:#ecf0f1; font-weight:700;">
-            </div>
-        ` : `<div style="padding:8px 0; color:#c0392b; font-size:11px;">🔒 LDUD not yet closed — billing not available for this document</div>`;
+        // Group lines by cargo_name to build per-cargo rate rows
+        const cargoGroups = {};
+        lines.forEach(l => {
+            const cn = l.cargo_name || '_default';
+            if (!cargoGroups[cn]) cargoGroups[cn] = { cargo_name: l.cargo_name || '', qty: 0 };
+            cargoGroups[cn].qty += parseFloat(l.quantity || 0);
+        });
+        const cargoNames = Object.keys(cargoGroups);
+        const hasMultipleCargo = cargoNames.length > 1 || (cargoNames.length === 1 && cargoNames[0] !== '_default');
+
+        // Store cargo groups on the card for later use
+        card._cargoGroups = cargoGroups;
+        card._hasMultipleCargo = hasMultipleCargo;
+
+        let rateSection = '';
+        if (!card.is_billable) {
+            rateSection = `<div style="padding:8px 0; color:#c0392b; font-size:11px;">🔒 LDUD not yet closed — billing not available for this document</div>`;
+        } else if (hasMultipleCargo) {
+            // Per-cargo rate table
+            let cargoRateRows = '';
+            let ci = 0;
+            for (const cn of cargoNames) {
+                const g = cargoGroups[cn];
+                cargoRateRows += `
+                    <tr>
+                        <td style="font-weight:600; font-size:11px;">${g.cargo_name || 'Other'}</td>
+                        <td style="text-align:right; font-size:11px;">${g.qty.toFixed(2)} ${card.uom || 'MT'}</td>
+                        <td><input type="number" step="0.01" class="cargo-sub-rate" id="cargo_rate_${idx}_${ci}"
+                            data-card-idx="${idx}" data-cargo-name="${g.cargo_name}" data-qty="${g.qty}"
+                            placeholder="0.00" onchange="recalcTotals()" style="width:90px; padding:3px 5px; font-size:11px;"></td>
+                        <td style="text-align:right; font-weight:600; font-size:11px;" id="cargo_sub_amt_${idx}_${ci}">0.00</td>
+                    </tr>
+                `;
+                ci++;
+            }
+            rateSection = `
+                <div style="margin-top:8px; border-top:1px solid #ecf0f1; padding-top:8px;">
+                    <div style="font-size:10px; font-weight:600; color:#7f8c8d; text-transform:uppercase; margin-bottom:5px;">Rates by Cargo ${sacDisplay}</div>
+                    <table style="width:100%; font-size:11px; border-collapse:collapse;">
+                        <thead><tr>
+                            <th style="text-align:left; padding:3px 5px; font-size:10px; color:#7f8c8d;">Cargo</th>
+                            <th style="text-align:right; padding:3px 5px; font-size:10px; color:#7f8c8d;">Qty</th>
+                            <th style="padding:3px 5px; font-size:10px; color:#7f8c8d;">Rate</th>
+                            <th style="text-align:right; padding:3px 5px; font-size:10px; color:#7f8c8d;">Amount</th>
+                        </tr></thead>
+                        <tbody>${cargoRateRows}</tbody>
+                        <tfoot><tr>
+                            <td colspan="3" style="text-align:right; font-weight:700; padding:5px; border-top:1px solid #ddd;">Total</td>
+                            <td style="text-align:right; font-weight:700; padding:5px; border-top:1px solid #ddd;" id="cargo_amount_${idx}">0.00</td>
+                        </tr></tfoot>
+                    </table>
+                </div>
+            `;
+        } else {
+            // Single rate (original behavior)
+            rateSection = `
+                <div class="card-rate-row">
+                    <label>Rate</label>
+                    <input type="number" step="0.01" id="cargo_rate_${idx}" placeholder="0.00"
+                        onchange="recalcTotals()"
+                        data-qty="${card.total_quantity}">
+                    <span style="font-size:11px; color:#555;">per ${card.uom || 'MT'}</span>
+                    ${sacDisplay}
+                    <label style="margin-left:20px;">Amount</label>
+                    <input type="text" id="cargo_amount_${idx}" readonly style="width:120px; background:#ecf0f1; font-weight:700;">
+                </div>
+            `;
+        }
 
         const checkbox = card.is_billable ? `<input type="checkbox" class="cargo-check" data-idx="${idx}" onchange="recalcTotals()">` : '';
 
@@ -391,31 +458,69 @@ function renderCargoCards(cards) {
         `;
         container.appendChild(div);
 
-        // Auto-load rate from agreement if service_type_id is known
+        // Auto-load rate from agreement
         if (card.is_billable && card.service_type_id) {
-            loadCargoRate(idx, card.service_type_id, card.total_quantity);
+            loadCargoRate(idx, card.service_type_id, card);
         }
     });
 }
 
-async function loadCargoRate(idx, serviceTypeId, qty) {
+async function loadCargoRate(idx, serviceTypeId, card) {
     const ct = document.getElementById('customerType').value;
     const cid = document.getElementById('customerId').value;
     const agId = document.getElementById('agreementId').value;
-    let url = `/api/module/FIN01/agreement-rate/${ct}/${cid}/${serviceTypeId}`;
-    if (agId) url += `?agreement_id=${agId}`;
 
-    try {
-        const resp = await fetch(url);
-        const json = await resp.json();
-        if (json.success) {
-            const rateInput = document.getElementById(`cargo_rate_${idx}`);
-            if (rateInput) {
-                rateInput.value = parseFloat(json.data.rate || 0).toFixed(2);
+    if (card._hasMultipleCargo) {
+        // Fetch all cargo-specific rates
+        let url = `/api/module/FIN01/cargo-rates/${ct}/${cid}/${serviceTypeId}`;
+        if (agId) url += `?agreement_id=${agId}`;
+
+        try {
+            const resp = await fetch(url);
+            const json = await resp.json();
+            if (json.success && json.rates) {
+                // Fill per-cargo rate inputs
+                document.querySelectorAll(`[id^="cargo_rate_${idx}_"]`).forEach(input => {
+                    const cargoName = input.dataset.cargoName;
+                    if (cargoName && json.rates[cargoName] != null) {
+                        input.value = parseFloat(json.rates[cargoName]).toFixed(2);
+                    }
+                });
                 recalcTotals();
             }
-        }
-    } catch(e) {}
+        } catch(e) {}
+
+        // Also try a generic (non-cargo) rate as fallback for unfilled inputs
+        let genUrl = `/api/module/FIN01/agreement-rate/${ct}/${cid}/${serviceTypeId}`;
+        if (agId) genUrl += `?agreement_id=${agId}`;
+        try {
+            const resp = await fetch(genUrl);
+            const json = await resp.json();
+            if (json.success) {
+                const fallbackRate = parseFloat(json.data.rate || 0).toFixed(2);
+                document.querySelectorAll(`[id^="cargo_rate_${idx}_"]`).forEach(input => {
+                    if (!input.value) input.value = fallbackRate;
+                });
+                recalcTotals();
+            }
+        } catch(e) {}
+    } else {
+        // Single rate (original behavior)
+        let url = `/api/module/FIN01/agreement-rate/${ct}/${cid}/${serviceTypeId}`;
+        if (agId) url += `?agreement_id=${agId}`;
+
+        try {
+            const resp = await fetch(url);
+            const json = await resp.json();
+            if (json.success) {
+                const rateInput = document.getElementById(`cargo_rate_${idx}`);
+                if (rateInput) {
+                    rateInput.value = parseFloat(json.data.rate || 0).toFixed(2);
+                    recalcTotals();
+                }
+            }
+        } catch(e) {}
+    }
 }
 
 function renderOtherServices(records) {
@@ -437,7 +542,7 @@ function renderOtherServices(records) {
                 data-qty="${rec.billable_quantity || 0}" data-stype="${rec.service_type_id || ''}"
                 onchange="onServiceChecked(this)"></td>
             <td>${rec.record_number}</td>
-            <td>${rec.record_date || ''}</td>
+            <td>${formatDateDMY(rec.record_date || '')}</td>
             <td>${rec.service_name || ''}</td>
             <td>${parseFloat(rec.billable_quantity || 0).toFixed(2)}</td>
             <td>${rec.billable_uom || st.uom || ''}</td>
@@ -489,13 +594,14 @@ function toggleAllServices(masterCb) {
 function renderBilledHistory(items) {
     const tbody = document.getElementById('billedBody');
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No prior billing history</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No prior billing history</td></tr>';
         return;
     }
     tbody.innerHTML = items.map(item => `
         <tr>
             <td>${item.bill_number || ''}</td>
-            <td>${item.bill_date || ''}</td>
+            <td>${formatDateDMY(item.bill_date || '')}</td>
+            <td>${item.agreement_display || '-'}</td>
             <td>${item.service_name || item.description || ''}</td>
             <td>${parseFloat(item.quantity || 0).toFixed(2)}</td>
             <td>${parseFloat(item.rate || 0).toFixed(2)}</td>
@@ -503,6 +609,35 @@ function renderBilledHistory(items) {
             <td>${item.bill_status || ''}</td>
         </tr>
     `).join('');
+}
+
+function calcCargoCardAmount(idx, card) {
+    // Calculate total amount for a cargo card (handles both single and multi-cargo)
+    let cardTotal = 0;
+    if (card._hasMultipleCargo) {
+        // Sum per-cargo sub-amounts
+        let ci = 0;
+        for (const cn of Object.keys(card._cargoGroups)) {
+            const rateInput = document.getElementById(`cargo_rate_${idx}_${ci}`);
+            const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+            const qty = card._cargoGroups[cn].qty;
+            const subAmt = qty * rate;
+            const subAmtEl = document.getElementById(`cargo_sub_amt_${idx}_${ci}`);
+            if (subAmtEl) subAmtEl.textContent = subAmt.toFixed(2);
+            cardTotal += subAmt;
+            ci++;
+        }
+        const totalEl = document.getElementById(`cargo_amount_${idx}`);
+        if (totalEl) totalEl.textContent = '₹' + cardTotal.toFixed(2);
+    } else {
+        const rateInput = document.getElementById(`cargo_rate_${idx}`);
+        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+        const qty = parseFloat(card.total_quantity || 0);
+        cardTotal = qty * rate;
+        const amtEl = document.getElementById(`cargo_amount_${idx}`);
+        if (amtEl) amtEl.value = '₹' + cardTotal.toFixed(2);
+    }
+    return cardTotal;
 }
 
 function recalcTotals() {
@@ -513,25 +648,15 @@ function recalcTotals() {
     document.querySelectorAll('.cargo-check:checked').forEach(cb => {
         const idx = cb.dataset.idx;
         const card = billableData.cargo_handling[parseInt(idx)];
-        const rateInput = document.getElementById(`cargo_rate_${idx}`);
-        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-        const qty = parseFloat(card.total_quantity || 0);
-        const amount = qty * rate;
-        const amtEl = document.getElementById(`cargo_amount_${idx}`);
-        if (amtEl) amtEl.value = '₹' + amount.toFixed(2);
-        subtotal += amount;
+        subtotal += calcCargoCardAmount(idx, card);
         selectedCount++;
     });
 
-    // Also update unchecked cargo amounts
+    // Also update unchecked cargo amounts (display only)
     document.querySelectorAll('.cargo-check:not(:checked)').forEach(cb => {
         const idx = cb.dataset.idx;
         const card = billableData.cargo_handling[parseInt(idx)];
-        const rateInput = document.getElementById(`cargo_rate_${idx}`);
-        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-        const qty = parseFloat(card.total_quantity || 0);
-        const amtEl = document.getElementById(`cargo_amount_${idx}`);
-        if (amtEl) amtEl.value = '₹' + (qty * rate).toFixed(2);
+        calcCargoCardAmount(idx, card);
     });
 
     // Service record items
@@ -583,21 +708,51 @@ async function generateBill() {
     document.querySelectorAll('.cargo-check:checked').forEach(cb => {
         const idx = parseInt(cb.dataset.idx);
         const card = billableData.cargo_handling[idx];
-        const rateInput = document.getElementById(`cargo_rate_${idx}`);
-        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-        const qty = parseFloat(card.total_quantity || 0);
-        lines.push({
-            line_type: 'cargo_handling',
-            service_type_id: card.service_type_id,
-            description: card.service_name + ' — ' + card.doc_label,
-            quantity: qty,
-            rate: rate,
-            uom: card.uom || 'MT',
-            line_amount: qty * rate,
-            source_type: card.source_type,
-            source_id: card.source_id,
-            eu_line_ids: (card.lines || []).map(l => l.id)
-        });
+
+        if (card._hasMultipleCargo) {
+            // Create separate bill lines per cargo group
+            let ci = 0;
+            for (const cn of Object.keys(card._cargoGroups)) {
+                const g = card._cargoGroups[cn];
+                const rateInput = document.getElementById(`cargo_rate_${idx}_${ci}`);
+                const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+                if (rate > 0 && g.qty > 0) {
+                    // Filter EU line IDs for this cargo
+                    const cargoEuLineIds = (card.lines || [])
+                        .filter(l => (l.cargo_name || '') === g.cargo_name)
+                        .map(l => l.id);
+                    lines.push({
+                        line_type: 'cargo_handling',
+                        service_type_id: card.service_type_id,
+                        description: card.service_name + ' — ' + (g.cargo_name || 'Other') + ' — ' + card.doc_label,
+                        quantity: g.qty,
+                        rate: rate,
+                        uom: card.uom || 'MT',
+                        line_amount: g.qty * rate,
+                        source_type: card.source_type,
+                        source_id: card.source_id,
+                        eu_line_ids: cargoEuLineIds
+                    });
+                }
+                ci++;
+            }
+        } else {
+            const rateInput = document.getElementById(`cargo_rate_${idx}`);
+            const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+            const qty = parseFloat(card.total_quantity || 0);
+            lines.push({
+                line_type: 'cargo_handling',
+                service_type_id: card.service_type_id,
+                description: card.service_name + ' — ' + card.doc_label,
+                quantity: qty,
+                rate: rate,
+                uom: card.uom || 'MT',
+                line_amount: qty * rate,
+                source_type: card.source_type,
+                source_id: card.source_id,
+                eu_line_ids: (card.lines || []).map(l => l.id)
+            });
+        }
     });
 
     // Collect other service lines

@@ -98,7 +98,7 @@
         <tr data-id="{{ row.id }}">
             <td><input type="checkbox" class="inv-select" value="{{ row.id }}"></td>
             <td>{{ row.invoice_number }}</td>
-            <td>{{ row.invoice_date }}</td>
+            <td>{{ row.invoice_date[8:10] ~ '-' ~ row.invoice_date[5:7] ~ '-' ~ row.invoice_date[0:4] if row.invoice_date else '' }}</td>
             <td>{{ row.financial_year }}</td>
             <td>{{ row.customer_name }}</td>
             <td>{{ row.customer_gstin }}</td>

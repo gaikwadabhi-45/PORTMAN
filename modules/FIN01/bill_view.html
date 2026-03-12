@@ -40,11 +40,15 @@
     <div class="info-grid">
         <div class="info-item">
             <label>Bill Date</label>
-            <div>{{ bill.bill_date }}</div>
+            <div>{{ bill.bill_date[8:10] ~ '-' ~ bill.bill_date[5:7] ~ '-' ~ bill.bill_date[0:4] if bill.bill_date else '' }}</div>
         </div>
         <div class="info-item">
             <label>Bill Series</label>
             <div>{{ bill.bill_series or 'BILL' }}</div>
+        </div>
+        <div class="info-item">
+            <label>Agreement</label>
+            <div>{{ bill.agreement_display or '-' }}</div>
         </div>
         <div class="info-item">
             <label>Source</label>
@@ -68,12 +72,12 @@
         </div>
         <div class="info-item">
             <label>Created Date</label>
-            <div>{{ bill.created_date }}</div>
+            <div>{{ bill.created_date[8:10] ~ '-' ~ bill.created_date[5:7] ~ '-' ~ bill.created_date[0:4] if bill.created_date else '' }}</div>
         </div>
         {% if bill.approved_by %}
         <div class="info-item">
             <label>Approved By</label>
-            <div>{{ bill.approved_by }} on {{ bill.approved_date }}</div>
+            <div>{{ bill.approved_by }} on {{ bill.approved_date[8:10] ~ '-' ~ bill.approved_date[5:7] ~ '-' ~ bill.approved_date[0:4] if bill.approved_date else '' }}</div>
         </div>
         {% endif %}
     </div>

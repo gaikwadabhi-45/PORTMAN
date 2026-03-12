@@ -1,0 +1,77 @@
+-- FDCN01: Debit / Credit Note tables
+-- Run this against the PostgreSQL database to create the required tables.
+
+CREATE TABLE IF NOT EXISTS fdcn_doc_series (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    prefix VARCHAR(20) NOT NULL,
+    type VARCHAR(5) NOT NULL CHECK (type IN ('DN', 'CN')),
+    is_default BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS fdcn_header (
+    id SERIAL PRIMARY KEY,
+    doc_number VARCHAR(50) UNIQUE,
+    doc_type VARCHAR(5) NOT NULL CHECK (doc_type IN ('DN', 'CN')),
+    doc_date DATE,
+    doc_series VARCHAR(20),
+    doc_series_seq INTEGER,
+    financial_year VARCHAR(10),
+    original_invoice_id INTEGER REFERENCES invoice_header(id),
+    original_invoice_number VARCHAR(50),
+    customer_id INTEGER,
+    customer_type VARCHAR(20),
+    customer_name VARCHAR(200),
+    customer_gstin VARCHAR(20),
+    customer_gst_state_code VARCHAR(5),
+    customer_gl_code VARCHAR(50),
+    subtotal NUMERIC(15,2) DEFAULT 0,
+    cgst_amount NUMERIC(15,2) DEFAULT 0,
+    sgst_amount NUMERIC(15,2) DEFAULT 0,
+    igst_amount NUMERIC(15,2) DEFAULT 0,
+    total_amount NUMERIC(15,2) DEFAULT 0,
+    doc_status VARCHAR(30) DEFAULT 'Draft',
+    rejection_reason TEXT,
+    created_by VARCHAR(100),
+    created_date DATE,
+    approved_by VARCHAR(100),
+    approved_date DATE,
+    sap_document_number VARCHAR(50),
+    sap_posting_date DATE,
+    sap_fiscal_year VARCHAR(10),
+    sap_company_code VARCHAR(10),
+    gst_irn VARCHAR(100),
+    gst_ack_number VARCHAR(50),
+    gst_ack_date DATE,
+    gst_qr_code TEXT,
+    posted_by VARCHAR(100),
+    posted_date DATE,
+    remarks TEXT
+);
+
+CREATE TABLE IF NOT EXISTS fdcn_lines (
+    id SERIAL PRIMARY KEY,
+    fdcn_id INTEGER NOT NULL REFERENCES fdcn_header(id) ON DELETE CASCADE,
+    invoice_line_id INTEGER,
+    service_type_id INTEGER,
+    service_name VARCHAR(200),
+    service_description TEXT,
+    quantity NUMERIC(15,4) DEFAULT 0,
+    uom VARCHAR(20),
+    original_rate NUMERIC(15,4) DEFAULT 0,
+    revised_rate NUMERIC(15,4) DEFAULT 0,
+    rate_difference NUMERIC(15,4) DEFAULT 0,
+    line_amount NUMERIC(15,2) DEFAULT 0,
+    gst_rate_id INTEGER,
+    cgst_rate NUMERIC(6,2) DEFAULT 0,
+    sgst_rate NUMERIC(6,2) DEFAULT 0,
+    igst_rate NUMERIC(6,2) DEFAULT 0,
+    cgst_amount NUMERIC(15,2) DEFAULT 0,
+    sgst_amount NUMERIC(15,2) DEFAULT 0,
+    igst_amount NUMERIC(15,2) DEFAULT 0,
+    line_total NUMERIC(15,2) DEFAULT 0,
+    gl_code VARCHAR(50),
+    sac_code VARCHAR(20),
+    remarks VARCHAR(500)
+);

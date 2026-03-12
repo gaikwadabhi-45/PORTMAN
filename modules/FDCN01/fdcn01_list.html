@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Debit / Credit Note - PORTMAN{% endblock %}
+
+{% block content %}
+<style>
+    .status-badge { padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; display: inline-block; }
+    .status-Draft { background: #fef9e7; color: #7d6608; }
+    .status-Pending { background: #fdebd0; color: #935116; }
+    .status-Approved { background: #d5f5e3; color: #1e8449; }
+    .status-Rejected { background: #fadbd8; color: #c0392b; }
+    .status-Posted { background: #d4efdf; color: #1a5276; }
+    .status-Cancelled { background: #f2f3f4; color: #7f8c8d; }
+    .type-badge { padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+    .type-DN { background: #ebf5fb; color: #2e86c1; }
+    .type-CN { background: #fef9e7; color: #b7950b; }
+    .filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 0; }
+    .filter-bar select { padding: 5px 8px; font-size: 11px; border: 1px solid #ddd; border-radius: 3px; }
+</style>
+
+<div class="module-header">
+    <h2>Debit / Credit Note</h2>
+    <span class="module-code">FDCN01</span>
+</div>
+
+<div class="toolbar">
+    {% if permissions.can_add %}
+    <button class="btn btn-add" onclick="location.href='/module/FDCN01/entry'">+ New DN/CN</button>
+    {% endif %}
+    <div class="filter-bar">
+        <select id="statusFilter" onchange="loadData()">
+            <option value="">All Status</option>
+            <option value="Draft">Draft</option>
+            <option value="Pending Approval">Pending Approval</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+            <option value="Posted to SAP">Posted to SAP</option>
+            <option value="Posted to GST">Posted to GST</option>
+            <option value="Cancelled">Cancelled</option>
+        </select>
+        <select id="typeFilter" onchange="loadData()">
+            <option value="">All Types</option>
+            <option value="DN">Debit Note</option>
+            <option value="CN">Credit Note</option>
+        </select>
+    </div>
+    <div class="row-info">Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span></div>
+</div>
+
+<div id="table"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    addToRecent('FDCN01', 'Debit / Credit Note');
+    const canEdit = {{ permissions.can_edit|default(0) }};
+    const canDelete = {{ permissions.can_delete|default(0) }};
+    const isApprover = {{ is_approver|tojson }};
+    let table;
+
+    function formatDateDMY(v) {
+        if (!v) return '';
+        const s = String(v).trim();
+        const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+        return s;
+    }
+
+    function statusFormatter(cell) {
+        const v = cell.getValue() || 'Draft';
+        let cls = 'Draft';
+        if (v.includes('Pending')) cls = 'Pending';
+        else if (v === 'Approved') cls = 'Approved';
+        else if (v === 'Rejected') cls = 'Rejected';
+        else if (v.includes('Posted')) cls = 'Posted';
+        else if (v === 'Cancelled') cls = 'Cancelled';
+        return `<span class="status-badge status-${cls}">${v}</span>`;
+    }
+
+    function typeFormatter(cell) {
+        const v = cell.getValue();
+        return `<span class="type-badge type-${v}">${v === 'DN' ? 'Debit Note' : 'Credit Note'}</span>`;
+    }
+
+    function actionFormatter(cell) {
+        const row = cell.getRow().getData();
+        let btns = `<button class="btn" style="background:#3498db;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();location.href='/module/FDCN01/entry?id=${row.id}'">Open</button>`;
+        if (row.doc_status === 'Draft' && canEdit) {
+            btns += `<button class="btn" style="background:#f39c12;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();submitDoc(${row.id})">Submit</button>`;
+        }
+        if (row.doc_status === 'Pending Approval' && isApprover) {
+            btns += `<button class="btn" style="background:#27ae60;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();approveDoc(${row.id})">Approve</button>`;
+            btns += `<button class="btn" style="background:#e74c3c;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();rejectDoc(${row.id})">Reject</button>`;
+        }
+        if (row.doc_status === 'Approved' && canEdit && !row.sap_document_number) {
+            btns += `<button class="btn" style="background:#8e44ad;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();postSAP(${row.id})">Post SAP</button>`;
+        }
+        if ((row.doc_status === 'Approved' || row.doc_status === 'Posted to SAP') && canEdit && !row.gst_irn) {
+            btns += `<button class="btn" style="background:#16a085;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();generateIRN(${row.id})">Gen IRN</button>`;
+        }
+        if (row.doc_status !== 'Cancelled' && row.id) {
+            btns += `<button class="btn" style="background:#95a5a6;color:white;padding:2px 8px;font-size:10px" onclick="event.stopPropagation();printDoc(${row.id})">Print</button>`;
+        }
+        return btns;
+    }
+
+    function initTable() {
+        table = new Tabulator("#table", {
+            height: "calc(100vh - 180px)",
+            layout: "fitData",
+            columns: [
+                {title: "Doc #", field: "doc_number", width: 150},
+                {title: "Type", field: "doc_type", width: 110, formatter: typeFormatter, hozAlign: "center"},
+                {title: "Date", field: "doc_date", width: 105, formatter: function(cell) { return formatDateDMY(cell.getValue()); }},
+                {title: "Customer", field: "customer_name", width: 200},
+                {title: "Orig. Invoice", field: "original_invoice_number", width: 150},
+                {title: "Orig. Bill #", field: "original_bill_numbers", width: 160},
+                {title: "Orig. Agreement", field: "original_agreement_refs", width: 220},
+                {title: "Subtotal", field: "subtotal", width: 100, hozAlign: "right", formatter: "money", formatterParams: {precision: 2}},
+                {title: "CGST", field: "cgst_amount", width: 80, hozAlign: "right", formatter: "money", formatterParams: {precision: 2}},
+                {title: "SGST", field: "sgst_amount", width: 80, hozAlign: "right", formatter: "money", formatterParams: {precision: 2}},
+                {title: "IGST", field: "igst_amount", width: 80, hozAlign: "right", formatter: "money", formatterParams: {precision: 2}},
+                {title: "Total", field: "total_amount", width: 110, hozAlign: "right", formatter: "money", formatterParams: {precision: 2}},
+                {title: "Status", field: "doc_status", width: 130, formatter: statusFormatter, hozAlign: "center"},
+                {title: "SAP Doc #", field: "sap_document_number", width: 120},
+                {title: "IRN", field: "gst_irn", width: 100, formatter: function(c) { return c.getValue() ? 'Yes' : ''; }},
+                {title: "Actions", formatter: actionFormatter, width: 350, headerSort: false, hozAlign: "center"},
+            ],
+            pagination: true,
+            paginationMode: "remote",
+            paginationSize: 20,
+            ajaxURL: '/api/module/FDCN01/data',
+            ajaxParams: function() {
+                return {
+                    status: document.getElementById('statusFilter').value,
+                    type: document.getElementById('typeFilter').value
+                };
+            },
+            ajaxResponse: function(url, params, response) {
+                document.getElementById('rowCount').textContent = response.data.length;
+                document.getElementById('totalCount').textContent = response.total;
+                return response;
+            }
+        });
+        if (localStorage.getItem('theme') === 'dark') {
+            document.getElementById('table').classList.add('tabulator-dark');
+        }
+    }
+
+    function loadData() { table.setData('/api/module/FDCN01/data', {
+        status: document.getElementById('statusFilter').value,
+        type: document.getElementById('typeFilter').value
+    }); }
+
+    async function submitDoc(id) {
+        if (!confirm('Submit this document for approval?')) return;
+        const r = await fetch('/api/module/FDCN01/submit', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+        const d = await r.json();
+        if (d.success) loadData(); else alert(d.error || 'Error');
+    }
+
+    async function approveDoc(id) {
+        if (!confirm('Approve this document?')) return;
+        const r = await fetch('/api/module/FDCN01/approve', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+        const d = await r.json();
+        if (d.success) loadData(); else alert(d.error || 'Error');
+    }
+
+    async function rejectDoc(id) {
+        const reason = prompt('Enter rejection reason:');
+        if (reason === null) return;
+        const r = await fetch('/api/module/FDCN01/reject', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id, reason})});
+        const d = await r.json();
+        if (d.success) loadData(); else alert(d.error || 'Error');
+    }
+
+    async function postSAP(id) {
+        if (!confirm('Post this document to SAP?')) return;
+        const r = await fetch('/api/module/FDCN01/post-sap', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+        const d = await r.json();
+        alert(d.message || (d.success ? 'Posted to SAP' : 'Error'));
+        if (d.success) loadData();
+    }
+
+    async function generateIRN(id) {
+        if (!confirm('Generate GST IRN for this document?')) return;
+        const r = await fetch('/api/module/FDCN01/generate-irn', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+        const d = await r.json();
+        alert(d.message || (d.success ? 'IRN Generated' : 'Error'));
+        if (d.success) loadData();
+    }
+
+    function printDoc(id) { window.open(`/module/FDCN01/print/${id}`, '_blank'); }
+
+    initTable();
+</script>
+{% endblock %}

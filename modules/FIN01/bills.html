@@ -59,6 +59,7 @@
         <tr>
             <th>Bill Number</th>
             <th>Bill Date</th>
+            <th>Agreement</th>
             <th>Source</th>
             <th>Customer</th>
             <th>Subtotal</th>
@@ -73,7 +74,8 @@
         {% for row in data %}
         <tr>
             <td>{{ row.bill_number }}</td>
-            <td>{{ row.bill_date }}</td>
+            <td>{{ row.bill_date[8:10] ~ '-' ~ row.bill_date[5:7] ~ '-' ~ row.bill_date[0:4] if row.bill_date else '' }}</td>
+            <td>{{ row.agreement_display or '-' }}</td>
             <td>{{ row.source_display }}</td>
             <td>{{ row.customer_name }}</td>
             <td style="text-align: right;">{{ "%.2f"|format(row.subtotal) }}</td>

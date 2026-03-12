@@ -97,23 +97,26 @@ def save_agreement_line(data):
     min_charge = to_none(data.get('min_charge'))
     max_charge = to_none(data.get('max_charge'))
     remarks = to_none(data.get('remarks'))
+    cargo_id = to_none(data.get('cargo_id'))
+    cargo_name = to_none(data.get('cargo_name'))
 
     if data.get('id'):
         cur.execute('''UPDATE customer_agreement_lines
             SET service_type_id=%s, service_name=%s, rate=%s, uom=%s,
-                currency_code=%s, min_charge=%s, max_charge=%s, remarks=%s
+                currency_code=%s, min_charge=%s, max_charge=%s, remarks=%s,
+                cargo_id=%s, cargo_name=%s
             WHERE id=%s''',
             [service_type_id, service_name, rate, uom, currency_code,
-             min_charge, max_charge, remarks, data['id']])
+             min_charge, max_charge, remarks, cargo_id, cargo_name, data['id']])
         row_id = data['id']
     else:
         cur.execute('''INSERT INTO customer_agreement_lines
             (agreement_id, service_type_id, service_name, rate, uom,
-             currency_code, min_charge, max_charge, remarks)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             currency_code, min_charge, max_charge, remarks, cargo_id, cargo_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id''',
             [data['agreement_id'], service_type_id, service_name, rate, uom,
-             currency_code, min_charge, max_charge, remarks])
+             currency_code, min_charge, max_charge, remarks, cargo_id, cargo_name])
         row_id = cur.fetchone()['id']
 
     conn.commit()
@@ -130,13 +133,38 @@ def delete_agreement_line(row_id):
     conn.close()
 
 
-def get_customer_rate(customer_type, customer_id, service_type_id, as_of_date=None):
-    """Get rate for a customer-service combination from active agreements"""
+def get_customer_rate(customer_type, customer_id, service_type_id, as_of_date=None, cargo_name=None):
+    """Get rate for a customer-service combination from active agreements.
+    For cargo handling services, optionally match by cargo_name first."""
     if as_of_date is None:
         as_of_date = datetime.now().strftime('%Y-%m-%d')
 
     conn = get_db()
     cur = get_cursor(conn)
+
+    # Try cargo-specific rate first if cargo_name provided
+    if cargo_name:
+        cur.execute('''
+            SELECT al.rate, al.uom, al.currency_code, al.min_charge, al.max_charge
+            FROM customer_agreement_lines al
+            JOIN customer_agreements ah ON al.agreement_id = ah.id
+            WHERE ah.customer_type = %s
+              AND ah.customer_id = %s
+              AND al.service_type_id = %s
+              AND al.cargo_name = %s
+              AND ah.agreement_status = 'Approved'
+              AND ah.is_active = 1
+              AND ah.valid_from <= %s
+              AND (ah.valid_to IS NULL OR ah.valid_to >= %s)
+            ORDER BY ah.valid_from DESC
+            LIMIT 1
+        ''', [customer_type, customer_id, service_type_id, cargo_name, as_of_date, as_of_date])
+        row = cur.fetchone()
+        if row:
+            conn.close()
+            return dict(row)
+
+    # Fallback to generic rate (no cargo_name)
     cur.execute('''
         SELECT al.rate, al.uom, al.currency_code, al.min_charge, al.max_charge
         FROM customer_agreement_lines al
