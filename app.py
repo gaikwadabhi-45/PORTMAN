@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from functools import wraps
 from database import get_db, get_cursor
+from config import SECRET_KEY
 
 app = Flask(__name__)
-app.secret_key = 'portman-secret-key-2024'
+app.secret_key = SECRET_KEY
 
 # Module registry
 MODULES = {}
