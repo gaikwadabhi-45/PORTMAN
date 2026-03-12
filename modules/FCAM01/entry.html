@@ -191,8 +191,10 @@
             <div class="copy-bar">
                 <label>Copy to all:</label>
                 <input type="number" step="0.01" id="copyRateInput" placeholder="Rate">
+                <input type="number" step="0.01" id="copyMinInput" placeholder="Min Charge">
+                <input type="number" step="0.01" id="copyMaxInput" placeholder="Max Charge">
                 <button class="btn btn-primary" onclick="copyRateToAll()" style="padding:4px 10px;">Apply to All</button>
-                <span style="font-size:10px; color:#7f8c8d; margin-left:5px;">Sets the same rate for all cargo names below</span>
+                <span style="font-size:10px; color:#7f8c8d; margin-left:5px;">Sets values for all visible rows</span>
             </div>
             <div style="margin-bottom:10px;">
                 <input type="text" id="cargoSearchInput" placeholder="Search cargo name, type or category..." style="width:100%; padding:7px 10px; font-size:12px; border:1px solid #ddd; border-radius:4px;" oninput="filterCargoRows()">
@@ -288,6 +290,8 @@ function openCargoModal(serviceTypeId, serviceName, uom) {
     currentCargoUom = uom;
     document.getElementById('cargoModalTitle').textContent = serviceName + ' - Cargo Rates';
     document.getElementById('copyRateInput').value = '';
+    document.getElementById('copyMinInput').value = '';
+    document.getElementById('copyMaxInput').value = '';
 
     const tbody = document.getElementById('cargoRatesBody');
     const existing = existingCargoLines[serviceTypeId] || {};
@@ -324,10 +328,14 @@ function closeCargoModal() {
 
 function copyRateToAll() {
     const rate = document.getElementById('copyRateInput').value;
-    if (!rate) { alert('Enter a rate first'); return; }
+    const min  = document.getElementById('copyMinInput').value;
+    const max  = document.getElementById('copyMaxInput').value;
+    if (!rate && !min && !max) { alert('Enter at least one value to copy'); return; }
     document.querySelectorAll('#cargoRatesBody tr').forEach(row => {
         if (row.style.display !== 'none') {
-            row.querySelector('.cargo-rate').value = rate;
+            if (rate) row.querySelector('.cargo-rate').value = rate;
+            if (min)  row.querySelector('.cargo-min').value  = min;
+            if (max)  row.querySelector('.cargo-max').value  = max;
         }
     });
 }
