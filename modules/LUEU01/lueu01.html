@@ -168,6 +168,9 @@
     let table;
     let dirtyRowIds = new Set();
     let currentEquipment = null;
+    let autoSaveTimer = null;
+    let autoSaveCountdown = null;
+    const AUTOSAVE_DELAY = 5000; // ms of inactivity before autosave
     let currentFilters = [];
     let vcnOptions = [];
     let mbcOptions = [];
@@ -203,6 +206,33 @@
         if (type === 'saved') {
             setTimeout(() => { status.textContent = ''; status.className = 'save-status'; }, 2000);
         }
+    }
+
+    function scheduleAutoSave() {
+        // Clear any existing timer/countdown
+        if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+        if (autoSaveCountdown) { clearInterval(autoSaveCountdown); autoSaveCountdown = null; }
+
+        let remaining = Math.round(AUTOSAVE_DELAY / 1000);
+        showStatus(`Unsaved changes — autosaving in ${remaining}s`, 'saving');
+
+        autoSaveCountdown = setInterval(() => {
+            remaining--;
+            if (remaining > 0) {
+                showStatus(`Unsaved changes — autosaving in ${remaining}s`, 'saving');
+            }
+        }, 1000);
+
+        autoSaveTimer = setTimeout(() => {
+            if (autoSaveCountdown) { clearInterval(autoSaveCountdown); autoSaveCountdown = null; }
+            autoSaveTimer = null;
+            saveAll();
+        }, AUTOSAVE_DELAY);
+    }
+
+    function cancelAutoSave() {
+        if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+        if (autoSaveCountdown) { clearInterval(autoSaveCountdown); autoSaveCountdown = null; }
     }
 
     async function loadMasterData() {
@@ -269,6 +299,7 @@
     }
 
     function goBack() {
+        cancelAutoSave();
         currentEquipment = null;
         currentFilters = [];
         document.getElementById('filterRows').innerHTML = '';
@@ -522,7 +553,7 @@
             selectable: true
         });
 
-        // Recompute Diff (Hrs) when from_time or to_time is edited
+        // Recompute Diff (Hrs) when from_time or to_time is edited; schedule autosave
         table.on("cellEdited", function(cell) {
             const id = cell.getRow().getData().id;
             if (id) dirtyRowIds.add(String(id));
@@ -530,6 +561,7 @@
                 var d = cell.getRow().getData();
                 cell.getRow().update({diff_hrs: calcDiffHrs(d.from_time, d.to_time)});
             }
+            if (permissions.can_add || permissions.can_edit) scheduleAutoSave();
         });
 
         // Auto-fill barge_name / cargo_name when VCN/MBC changes
@@ -571,7 +603,12 @@
         }
     }
 
-    function addRow() {
+    async function addRow() {
+        // Save any dirty rows before adding a new one
+        if (dirtyRowIds.size > 0) {
+            cancelAutoSave();
+            await saveAll();
+        }
         var rows = table.getRows();
         var newData = {
             _is_new: true,
@@ -613,6 +650,7 @@
     }
 
     async function saveAll() {
+        cancelAutoSave();
         showStatus('Saving...', 'saving');
         const rows = table.getRows();
         let savedCount = 0;
