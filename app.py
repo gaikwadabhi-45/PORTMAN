@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from functools import wraps
 from database import get_db, get_cursor
-from config import SECRET_KEY
+from config import SECRET_KEY, FLASK_ENV, SERVER_HOST, SERVER_PORT, SSL_CERT, SSL_KEY
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -180,4 +180,20 @@ def search_modules():
     return jsonify(results)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    is_production = FLASK_ENV == 'production'
+
+    ssl_context = None
+    if is_production:
+        if not SSL_CERT or not SSL_KEY:
+            raise RuntimeError(
+                "SSL_CERT and SSL_KEY must be set in the environment for production mode."
+            )
+        ssl_context = (SSL_CERT, SSL_KEY)
+
+    app.run(
+        host=SERVER_HOST,
+        port=SERVER_PORT,
+        debug=not is_production,
+        threaded=True,
+        ssl_context=ssl_context,
+    )
