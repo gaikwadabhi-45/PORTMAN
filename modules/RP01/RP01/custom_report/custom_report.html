@@ -571,6 +571,20 @@ td.pvtAxisContainer.pvtCols::before {
     </div>
     <button type="button" class="tb-btn neutral" id="csv-btn" onclick="exportCSV()" disabled>&#8595; Export CSV</button>
     <button type="button" class="tb-btn neutral" id="pivot-excel-btn" onclick="exportPivotExcel()" disabled>&#8595; Pivot Excel</button>
+    <div class="toolbar-group" id="order-controls" style="display:none;">
+        <label for="row-order-sel">Row Order</label>
+        <select id="row-order-sel" style="min-width:120px" onchange="applyOrdering()">
+            <option value="key_a_to_z">Key A→Z</option>
+            <option value="value_a_to_z">Value A→Z</option>
+            <option value="value_z_to_a">Value Z→A</option>
+        </select>
+        <label for="col-order-sel" style="margin-left:8px;">Col Order</label>
+        <select id="col-order-sel" style="min-width:120px" onchange="applyOrdering()">
+            <option value="key_a_to_z">Key A→Z</option>
+            <option value="value_a_to_z">Value A→Z</option>
+            <option value="value_z_to_a">Value Z→A</option>
+        </select>
+    </div>
 </div>
 
 <div class="status-bar" id="status-bar">Select a data source and date range, then click Load Data.</div>
@@ -724,6 +738,7 @@ function loadData() {
             document.getElementById('csv-btn').disabled  = false;
             document.getElementById('pivot-excel-btn').disabled = false;
             showCalcPanel();
+            document.getElementById('order-controls').style.display = '';
         })
         .catch(err => { console.error(err); setStatus('Error: ' + err.message, true); })
         .finally(() => {
@@ -745,15 +760,24 @@ function renderPivot(rows, cfg) {
         $.pivotUtilities.export_renderers
     );
 
+    const rowOrderSel = document.getElementById('row-order-sel');
+    const colOrderSel = document.getElementById('col-order-sel');
+
     const opts = Object.assign(
         {
             renderers:           renderers,
             rendererName:        'Table',
             unusedAttrsVertical: false,
             menuLimit:           300,
+            rowOrder:            rowOrderSel ? rowOrderSel.value : 'key_a_to_z',
+            colOrder:            colOrderSel ? colOrderSel.value : 'key_a_to_z',
         },
         cfg || {}
     );
+
+    /* sync selects to whatever config was restored */
+    if (rowOrderSel && opts.rowOrder) rowOrderSel.value = opts.rowOrder;
+    if (colOrderSel && opts.colOrder) colOrderSel.value = opts.colOrder;
 
     /* always pass renderers so the renderer dropdown stays populated */
     opts.renderers = renderers;
@@ -774,6 +798,8 @@ function getConfig() {
         rendererName:   o.rendererName   || 'Table',
         inclusions:     o.inclusions     || {},
         exclusions:     o.exclusions     || {},
+        rowOrder:       document.getElementById('row-order-sel')?.value || 'key_a_to_z',
+        colOrder:       document.getElementById('col-order-sel')?.value || 'key_a_to_z',
         // Date filter state
         date_col:  document.getElementById('date-col-sel').value,
         from_date: document.getElementById('f-from').value,
@@ -881,6 +907,7 @@ function loadSaved(id) {
             document.getElementById('save-btn').disabled = false;
             document.getElementById('csv-btn').disabled  = false;
             document.getElementById('pivot-excel-btn').disabled = false;
+            document.getElementById('order-controls').style.display = '';
             showCalcPanel();
         })
         .catch(err => setStatus('Error: ' + err.message, true));
@@ -1272,6 +1299,12 @@ function applyAndRefresh() {
     renderPivot(_data, cfg);
     const n = _calcDefs.filter(d => d.name && d.formula).length;
     setStatus(`Applied ${n} calculated field(s). ${_data.length.toLocaleString()} rows.`, false);
+}
+
+function applyOrdering() {
+    if (!_data || !_pivotEl) return;
+    const cfg = getConfig();
+    renderPivot(_data, cfg);
 }
 
 function applyCalcFields(rows) {

@@ -186,6 +186,7 @@ def pivot_data(source):
                     COALESCE(vc.cargo_category, '')                     AS "Cargo Category",
                     COALESCE(vc.cargo_category_2, '')                   AS "Cargo Category 2",
                     COALESCE(vc.cargo_sub_category, '')                 AS "Cargo Sub Category",
+                    COALESCE(vc.cargo_sub_category_2, '')               AS "Cargo Sub Category 2",
                     COALESCE(h.bl_quantity, 0)                          AS "BL Qty",
                     COALESCE(h.quantity_uom, '')                        AS "UOM",
                     COALESCE(h.doc_status, '')                          AS "Status",
@@ -199,18 +200,21 @@ def pivot_data(source):
                     COALESCE(dp.vessel_unloaded_by, '')                 AS "DP Vessel Unloaded By",
                     COALESCE(dp.vessel_unloading_berth, '')             AS "DP Unloading Berth",
                     COALESCE(dp.discharge_stop_shifting, '')            AS "DP Stop Shifting",
-                    COALESCE(dp.discharge_start_shifting, '')           AS "DP Start Shifting"
+                    COALESCE(dp.discharge_start_shifting, '')           AS "DP Start Shifting",
+                    COALESCE(h.doc_date::TEXT, '')                      AS "Doc Date",
+                    COALESCE(LEFT(h.doc_date::TEXT, 4), '')             AS "Year",
+                    COALESCE(LEFT(h.doc_date::TEXT, 7), '')             AS "Year-Month"
                 FROM mbc_header h
                 LEFT JOIN mbc_load_port_lines        lp  ON lp.mbc_id  = h.id
                 LEFT JOIN mbc_export_load_port_lines elp ON elp.mbc_id = h.id
                 LEFT JOIN mbc_discharge_port_lines   dp  ON dp.mbc_id  = h.id
                 LEFT JOIN mbc_customer_details       cd  ON cd.mbc_id  = h.id
                 LEFT JOIN LATERAL (
-                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    SELECT cargo_category, cargo_category_2, cargo_sub_category, cargo_sub_category_2
                     FROM vessel_cargo WHERE cargo_name = h.cargo_name LIMIT 1
                 ) vc ON TRUE
                 WHERE {where_clause}
-                GROUP BY h.id, lp.id, elp.id, dp.id, vc.cargo_category, vc.cargo_category_2, vc.cargo_sub_category
+                GROUP BY h.id, h.doc_date, lp.id, elp.id, dp.id, vc.cargo_category, vc.cargo_category_2, vc.cargo_sub_category, vc.cargo_sub_category_2
                 ORDER BY h.id DESC
                 LIMIT 10000
             """, where_params)
@@ -236,7 +240,10 @@ def pivot_data(source):
                         ), 2)
                         ELSE NULL
                     END                                                 AS "Actual Days",
-                    COALESCE(h.doc_status, '')                          AS "Status"
+                    COALESCE(h.doc_status, '')                          AS "Status",
+                    COALESCE(LEFT(h.nor_tendered::TEXT, 10), '')        AS "NOR Date",
+                    COALESCE(LEFT(h.nor_tendered::TEXT, 4), '')         AS "Year",
+                    COALESCE(LEFT(h.nor_tendered::TEXT, 7), '')         AS "Year-Month"
                 FROM ldud_header h
                 LEFT JOIN vcn_header v ON v.id = h.vcn_id
                 LEFT JOIN vcn_cargo_declaration cd ON cd.vcn_id = h.vcn_id
@@ -268,14 +275,19 @@ def pivot_data(source):
                     COALESCE(bl.discharge_quantity::TEXT, '')              AS "Discharge Qty",
                     COALESCE(bl.crane_loaded_from, '')                     AS "Crane Loaded From",
                     COALESCE(bl.port_crane, '')                            AS "Port Crane",
+                    COALESCE(vc.cargo_type, '')                    AS "Cargo Type",
                     COALESCE(vc.cargo_category, '')                AS "Cargo Category",
                     COALESCE(vc.cargo_category_2, '')              AS "Cargo Category 2",
-                    COALESCE(vc.cargo_sub_category, '')            AS "Cargo Sub Category"
+                    COALESCE(vc.cargo_sub_category, '')            AS "Cargo Sub Category",
+                    COALESCE(vc.cargo_sub_category_2, '')          AS "Cargo Sub Category 2",
+                    COALESCE(LEFT(h.nor_tendered::TEXT, 10), '')   AS "NOR Date",
+                    COALESCE(LEFT(h.nor_tendered::TEXT, 4), '')    AS "Year",
+                    COALESCE(LEFT(h.nor_tendered::TEXT, 7), '')    AS "Year-Month"
                 FROM ldud_header h
                 LEFT JOIN vcn_header v ON v.id = h.vcn_id
                 LEFT JOIN ldud_barge_lines bl ON bl.ldud_id = h.id
                 LEFT JOIN LATERAL (
-                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    SELECT cargo_type, cargo_category, cargo_category_2, cargo_sub_category, cargo_sub_category_2
                     FROM vessel_cargo WHERE cargo_name = bl.cargo_name LIMIT 1
                 ) vc ON TRUE
                 WHERE {where_clause}
@@ -303,16 +315,21 @@ def pivot_data(source):
                     COALESCE(l.to_time, '')             AS "_to_time",
                     COALESCE(pdt.to_sof, '')               AS "Delay To SOF",
                     COALESCE(pdt.type, '')                  AS "Delay Type",
+                    COALESCE(vc.cargo_type, '')             AS "Cargo Type",
                     COALESCE(vc.cargo_category, '')         AS "Cargo Category",
                     COALESCE(vc.cargo_category_2, '')       AS "Cargo Category 2",
-                    COALESCE(vc.cargo_sub_category, '')     AS "Cargo Sub Category"
+                    COALESCE(vc.cargo_sub_category, '')     AS "Cargo Sub Category",
+                    COALESCE(vc.cargo_sub_category_2, '')   AS "Cargo Sub Category 2",
+                    COALESCE(l.entry_date::TEXT, '')        AS "Date",
+                    COALESCE(LEFT(l.entry_date::TEXT, 4), '') AS "Year",
+                    COALESCE(LEFT(l.entry_date::TEXT, 7), '') AS "Year-Month"
                 FROM lueu_lines l
                 LEFT JOIN LATERAL (
                     SELECT to_sof, type
                     FROM port_delay_types WHERE name = l.delay_name LIMIT 1
                 ) pdt ON TRUE
                 LEFT JOIN LATERAL (
-                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    SELECT cargo_type, cargo_category, cargo_category_2, cargo_sub_category, cargo_sub_category_2
                     FROM vessel_cargo WHERE cargo_name = l.cargo_name LIMIT 1
                 ) vc ON TRUE
                 WHERE {where_clause}
@@ -330,9 +347,12 @@ def pivot_data(source):
                     COALESCE(CAST(h.bl_quantity AS TEXT), '')          AS bl_quantity,
                     COALESCE(h.doc_status, '')                         AS doc_status,
                     COALESCE(h.created_by, '')                         AS created_by,
+                    COALESCE(vc.cargo_type, '')               AS cargo_type,
                     COALESCE(vc.cargo_category, '')           AS cargo_category,
                     COALESCE(vc.cargo_category_2, '')         AS cargo_category_2,
                     COALESCE(vc.cargo_sub_category, '')       AS cargo_sub_category,
+                    COALESCE(vc.cargo_sub_category_2, '')     AS cargo_sub_category_2,
+                    COALESCE(h.doc_date::TEXT, '')            AS doc_date,
                     lp.arrived_load_port,    lp.loading_commenced,   lp.loading_completed,
                     lp.cast_off_load_port,
                     dp.arrival_gull_island,  dp.departure_gull_island, dp.vessel_arrival_port,
@@ -342,7 +362,7 @@ def pivot_data(source):
                 LEFT JOIN mbc_load_port_lines      lp ON lp.mbc_id = h.id
                 LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
                 LEFT JOIN LATERAL (
-                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    SELECT cargo_type, cargo_category, cargo_category_2, cargo_sub_category, cargo_sub_category_2
                     FROM vessel_cargo WHERE cargo_name = h.cargo_name LIMIT 1
                 ) vc ON TRUE
                 WHERE {where_clause}
@@ -382,9 +402,14 @@ def pivot_data(source):
                 'BL Quantity':                   r.get('bl_quantity', ''),
                 'Status':                        r.get('doc_status', ''),
                 'Created By':                    r.get('created_by', ''),
-                'Cargo Category':   r.get('cargo_category', ''),
-                'Cargo Category 2': r.get('cargo_category_2', ''),
-                'Cargo Sub Category': r.get('cargo_sub_category', ''),
+                'Doc Date':             r.get('doc_date', ''),
+                'Year':                 r.get('doc_date', '')[:4]  if r.get('doc_date') else '',
+                'Year-Month':           r.get('doc_date', '')[:7]  if r.get('doc_date') else '',
+                'Cargo Type':           r.get('cargo_type', ''),
+                'Cargo Category':       r.get('cargo_category', ''),
+                'Cargo Category 2':     r.get('cargo_category_2', ''),
+                'Cargo Sub Category':   r.get('cargo_sub_category', ''),
+                'Cargo Sub Category 2': r.get('cargo_sub_category_2', ''),
                 'Preberthing (min)':             _diff_mins(r, 'arrived_load_port',     'loading_commenced'),
                 'Loading Time (min)':            _diff_mins(r, 'loading_commenced',      'loading_completed'),
                 'Wait After Load (min)':         _diff_mins(r, 'loading_completed',      'cast_off_load_port'),
