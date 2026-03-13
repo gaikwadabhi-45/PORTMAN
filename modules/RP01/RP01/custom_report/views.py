@@ -183,6 +183,9 @@ def pivot_data(source):
                     COALESCE(h.operation_type, '')                      AS "Operation Type",
                     COALESCE(h.cargo_type, '')                          AS "Cargo Type",
                     COALESCE(h.cargo_name, '')                          AS "Cargo Name",
+                    COALESCE(vc.cargo_category, '')                     AS "Cargo Category",
+                    COALESCE(vc.cargo_category_2, '')                   AS "Cargo Category 2",
+                    COALESCE(vc.cargo_sub_category, '')                 AS "Cargo Sub Category",
                     COALESCE(h.bl_quantity, 0)                          AS "BL Qty",
                     COALESCE(h.quantity_uom, '')                        AS "UOM",
                     COALESCE(h.doc_status, '')                          AS "Status",
@@ -202,8 +205,12 @@ def pivot_data(source):
                 LEFT JOIN mbc_export_load_port_lines elp ON elp.mbc_id = h.id
                 LEFT JOIN mbc_discharge_port_lines   dp  ON dp.mbc_id  = h.id
                 LEFT JOIN mbc_customer_details       cd  ON cd.mbc_id  = h.id
+                LEFT JOIN LATERAL (
+                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    FROM vessel_cargo WHERE cargo_name = h.cargo_name LIMIT 1
+                ) vc ON TRUE
                 WHERE {where_clause}
-                GROUP BY h.id, lp.id, elp.id, dp.id
+                GROUP BY h.id, lp.id, elp.id, dp.id, vc.cargo_category, vc.cargo_category_2, vc.cargo_sub_category
                 ORDER BY h.id DESC
                 LIMIT 10000
             """, where_params)
@@ -260,10 +267,17 @@ def pivot_data(source):
                     COALESCE(bl.bpt_bfl, '')                               AS "BPT/BFL",
                     COALESCE(bl.discharge_quantity::TEXT, '')              AS "Discharge Qty",
                     COALESCE(bl.crane_loaded_from, '')                     AS "Crane Loaded From",
-                    COALESCE(bl.port_crane, '')                            AS "Port Crane"
+                    COALESCE(bl.port_crane, '')                            AS "Port Crane",
+                    COALESCE(vc.cargo_category, '')                AS "Cargo Category",
+                    COALESCE(vc.cargo_category_2, '')              AS "Cargo Category 2",
+                    COALESCE(vc.cargo_sub_category, '')            AS "Cargo Sub Category"
                 FROM ldud_header h
                 LEFT JOIN vcn_header v ON v.id = h.vcn_id
                 LEFT JOIN ldud_barge_lines bl ON bl.ldud_id = h.id
+                LEFT JOIN LATERAL (
+                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    FROM vessel_cargo WHERE cargo_name = bl.cargo_name LIMIT 1
+                ) vc ON TRUE
                 WHERE {where_clause}
                 ORDER BY h.nor_tendered DESC, h.id, bl.trip_number
                 LIMIT 10000
@@ -284,8 +298,23 @@ def pivot_data(source):
                     COALESCE(l.shift_incharge, '')      AS "Shift Incharge",
                     COALESCE(l.operator_name, '')       AS "Operator",
                     COALESCE(l.quantity_uom, '')        AS "UOM",
-                    COALESCE(CAST(l.quantity AS TEXT), '') AS "Quantity"
+                    COALESCE(CAST(l.quantity AS TEXT), '') AS "Quantity",
+                    COALESCE(l.from_time, '')           AS "_from_time",
+                    COALESCE(l.to_time, '')             AS "_to_time",
+                    COALESCE(pdt.to_sof, '')               AS "Delay To SOF",
+                    COALESCE(pdt.type, '')                  AS "Delay Type",
+                    COALESCE(vc.cargo_category, '')         AS "Cargo Category",
+                    COALESCE(vc.cargo_category_2, '')       AS "Cargo Category 2",
+                    COALESCE(vc.cargo_sub_category, '')     AS "Cargo Sub Category"
                 FROM lueu_lines l
+                LEFT JOIN LATERAL (
+                    SELECT to_sof, type
+                    FROM port_delay_types WHERE name = l.delay_name LIMIT 1
+                ) pdt ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    FROM vessel_cargo WHERE cargo_name = l.cargo_name LIMIT 1
+                ) vc ON TRUE
                 WHERE {where_clause}
                 ORDER BY l.id DESC
                 LIMIT 10000
@@ -301,6 +330,9 @@ def pivot_data(source):
                     COALESCE(CAST(h.bl_quantity AS TEXT), '')          AS bl_quantity,
                     COALESCE(h.doc_status, '')                         AS doc_status,
                     COALESCE(h.created_by, '')                         AS created_by,
+                    COALESCE(vc.cargo_category, '')           AS cargo_category,
+                    COALESCE(vc.cargo_category_2, '')         AS cargo_category_2,
+                    COALESCE(vc.cargo_sub_category, '')       AS cargo_sub_category,
                     lp.arrived_load_port,    lp.loading_commenced,   lp.loading_completed,
                     lp.cast_off_load_port,
                     dp.arrival_gull_island,  dp.departure_gull_island, dp.vessel_arrival_port,
@@ -309,6 +341,10 @@ def pivot_data(source):
                 FROM mbc_header h
                 LEFT JOIN mbc_load_port_lines      lp ON lp.mbc_id = h.id
                 LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
+                LEFT JOIN LATERAL (
+                    SELECT cargo_category, cargo_category_2, cargo_sub_category
+                    FROM vessel_cargo WHERE cargo_name = h.cargo_name LIMIT 1
+                ) vc ON TRUE
                 WHERE {where_clause}
                 ORDER BY h.doc_date ASC, h.id ASC
                 LIMIT 10000
@@ -317,6 +353,22 @@ def pivot_data(source):
         rows = [_row_to_dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+    # Post-process lueu-equipment: compute Diff Hrs from from_time / to_time (HH:MM)
+    if source == 'lueu-equipment':
+        def _calc_diff_hrs(from_t, to_t):
+            try:
+                fh, fm = int(from_t[:2]), int(from_t[3:5])
+                th, tm = int(to_t[:2]),   int(to_t[3:5])
+                from_mins = fh * 60 + fm
+                to_mins   = th * 60 + tm
+                diff = to_mins - from_mins if to_mins > from_mins else 1440 - from_mins + to_mins
+                return round(diff / 60, 2)
+            except Exception:
+                return None
+
+        for r in rows:
+            r['Diff Hrs'] = _calc_diff_hrs(r.pop('_from_time', ''), r.pop('_to_time', ''))
 
     # Post-process mbc-tat: replace raw timestamps with computed duration columns
     if source == 'mbc-tat':
@@ -330,6 +382,9 @@ def pivot_data(source):
                 'BL Quantity':                   r.get('bl_quantity', ''),
                 'Status':                        r.get('doc_status', ''),
                 'Created By':                    r.get('created_by', ''),
+                'Cargo Category':   r.get('cargo_category', ''),
+                'Cargo Category 2': r.get('cargo_category_2', ''),
+                'Cargo Sub Category': r.get('cargo_sub_category', ''),
                 'Preberthing (min)':             _diff_mins(r, 'arrived_load_port',     'loading_commenced'),
                 'Loading Time (min)':            _diff_mins(r, 'loading_commenced',      'loading_completed'),
                 'Wait After Load (min)':         _diff_mins(r, 'loading_completed',      'cast_off_load_port'),

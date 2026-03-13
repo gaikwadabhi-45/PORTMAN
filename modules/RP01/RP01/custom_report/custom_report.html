@@ -459,6 +459,75 @@ td.pvtAxisContainer.pvtCols::before {
     margin-bottom: 14px;
     line-height: 1.5;
 }
+
+/* ── Calculated Fields panel ─────────────────────────────── */
+.calc-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+}
+.calc-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.calc-panel-hint {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+.calc-field-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+.calc-input-name {
+    width: 130px;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+.calc-input-formula {
+    flex: 1;
+    min-width: 220px;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Consolas', monospace;
+}
+.calc-input-name:focus, .calc-input-formula:focus { outline: none; border-color: #4a90d9; }
+.calc-insert-sel {
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 26px;
+    max-width: 160px;
+}
+.calc-del-btn {
+    background: #e74c3c; color: white; border: none;
+    width: 22px; height: 22px; border-radius: 3px;
+    font-size: 14px; cursor: pointer; line-height: 1; flex-shrink: 0;
+}
+.calc-del-btn:hover { background: #c0392b; }
+.calc-error { font-size: 10px; color: #e74c3c; }
 </style>
 {% endblock %}
 
@@ -505,6 +574,19 @@ td.pvtAxisContainer.pvtCols::before {
 </div>
 
 <div class="status-bar" id="status-bar">Select a data source and date range, then click Load Data.</div>
+
+<div id="calc-panel" class="calc-panel" style="display:none;">
+    <div class="calc-panel-header">
+        <strong style="font-size:12px;color:var(--text-primary);">&#9881; Calculated Fields</strong>
+        <button type="button" class="tb-btn primary" style="height:26px;padding:0 10px;font-size:11px;" onclick="addCalcRow()">+ Add Field</button>
+        <button type="button" class="tb-btn success" style="height:26px;padding:0 10px;font-size:11px;" onclick="applyAndRefresh()">&#9654; Apply to Pivot</button>
+        <span class="calc-panel-hint">
+            Reference columns with <b>[Field Name]</b> &nbsp;|&nbsp; Operators: + &minus; &ast; /
+            &nbsp;|&nbsp; Functions: MIN(a,b) &nbsp;MAX(a,b) &nbsp;ABS(a) &nbsp;ROUND(a,n)
+        </span>
+    </div>
+    <div id="calc-rows"></div>
+</div>
 
 <div id="pivot-wrap">
     <div id="pivot-placeholder">
@@ -594,6 +676,8 @@ let _data    = null;
 let _source  = null;
 let _pivotEl = null;
 let _saved   = [];
+let _calcDefs = [];   // [{name, formula}, ...]
+let _rawData  = null; // unmodified rows before calc fields
 
 /* ── Init datetime defaults & populate date-col dropdown ──── */
 (function () {
@@ -631,13 +715,15 @@ function loadData() {
     fetch(`/api/module/RP01/pivot/data/${src}?from_date=${from}&to_date=${to}&date_col=${dateCol}`)
         .then(r => { if (!r.ok) throw new Error('Server error ' + r.status); return r.json(); })
         .then(rows => {
-            _data   = rows;
-            _source = src;
-            renderPivot(rows, null);
+            _rawData = rows;
+            _data    = applyCalcFields(rows);
+            _source  = src;
+            renderPivot(_data, null);
             setStatus(`${rows.length.toLocaleString()} rows loaded \u2014 ${srcLabel(src)}.`, false);
             document.getElementById('save-btn').disabled = false;
             document.getElementById('csv-btn').disabled  = false;
             document.getElementById('pivot-excel-btn').disabled = false;
+            showCalcPanel();
         })
         .catch(err => { console.error(err); setStatus('Error: ' + err.message, true); })
         .finally(() => {
@@ -692,6 +778,8 @@ function getConfig() {
         date_col:  document.getElementById('date-col-sel').value,
         from_date: document.getElementById('f-from').value,
         to_date:   document.getElementById('f-to').value,
+        // Calculated fields
+        calc_fields: _calcDefs.map(d => ({name: d.name, formula: d.formula})),
     };
 }
 
@@ -784,13 +872,16 @@ function loadSaved(id) {
     fetch(`/api/module/RP01/pivot/data/${rep.data_source}?from_date=${fromDate}&to_date=${toDate}&date_col=${dateCol}`)
         .then(r => r.json())
         .then(rows => {
-            _data   = rows;
-            _source = rep.data_source;
-            renderPivot(rows, rep.config);
+            _calcDefs = (cfg.calc_fields || []).map(d => ({name: d.name||'', formula: d.formula||''}));
+            _rawData  = rows;
+            _data     = applyCalcFields(rows);
+            _source   = rep.data_source;
+            renderPivot(_data, rep.config);
             setStatus(`Loaded \u201c${rep.name}\u201d \u2014 ${rows.length.toLocaleString()} rows.`, false);
             document.getElementById('save-btn').disabled = false;
             document.getElementById('csv-btn').disabled  = false;
             document.getElementById('pivot-excel-btn').disabled = false;
+            showCalcPanel();
         })
         .catch(err => setStatus('Error: ' + err.message, true));
 }
@@ -1117,6 +1208,106 @@ function exportCSV() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
+}
+
+/* ── Calculated fields ───────────────────────────────────── */
+function showCalcPanel() {
+    document.getElementById('calc-panel').style.display = '';
+    renderCalcRows();
+}
+
+function addCalcRow(name, formula) {
+    _calcDefs.push({name: name || '', formula: formula || ''});
+    renderCalcRows();
+}
+
+function removeCalcRow(i) {
+    _calcDefs.splice(i, 1);
+    renderCalcRows();
+}
+
+function renderCalcRows() {
+    const container = document.getElementById('calc-rows');
+    if (!_calcDefs.length) {
+        container.innerHTML = '<div style="font-size:11px;color:var(--text-secondary);padding:2px 0;">No calculated fields. Click "+ Add Field" to create one.</div>';
+        return;
+    }
+    const fields = (_rawData && _rawData.length) ? Object.keys(_rawData[0]) : [];
+    container.innerHTML = _calcDefs.map((cf, i) => `
+        <div class="calc-field-row">
+            <input class="calc-input-name" type="text" placeholder="Field Name" value="${esc(cf.name)}"
+                oninput="_calcDefs[${i}].name=this.value">
+            <span style="font-size:12px;color:var(--text-secondary);">=</span>
+            <input class="calc-input-formula" type="text" id="calc-formula-${i}"
+                placeholder="e.g. [BL Qty] * 1.1  or  MIN([A],[B])"
+                value="${esc(cf.formula)}"
+                oninput="_calcDefs[${i}].formula=this.value">
+            <select class="calc-insert-sel" onchange="insertFieldRef(${i},this)">
+                <option value="">Insert field\u2026</option>
+                ${fields.map(f => `<option value="${esc('['+f+']')}">${esc(f)}</option>`).join('')}
+            </select>
+            <button class="calc-del-btn" onclick="removeCalcRow(${i})" title="Remove">&times;</button>
+            <span class="calc-error" id="calc-err-${i}"></span>
+        </div>
+    `).join('');
+}
+
+function insertFieldRef(i, sel) {
+    if (!sel.value) return;
+    const inp = document.getElementById('calc-formula-' + i);
+    if (inp) {
+        const pos = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
+        inp.value = inp.value.slice(0, pos) + sel.value + inp.value.slice(pos);
+        _calcDefs[i].formula = inp.value;
+        inp.focus();
+        inp.setSelectionRange(pos + sel.value.length, pos + sel.value.length);
+    }
+    sel.value = '';
+}
+
+function applyAndRefresh() {
+    if (!_rawData) return;
+    _data = applyCalcFields(_rawData);
+    const cfg = _pivotEl ? getConfig() : null;
+    renderPivot(_data, cfg);
+    const n = _calcDefs.filter(d => d.name && d.formula).length;
+    setStatus(`Applied ${n} calculated field(s). ${_data.length.toLocaleString()} rows.`, false);
+}
+
+function applyCalcFields(rows) {
+    const defs = _calcDefs.filter(d => d.name && d.formula);
+    if (!defs.length) return rows;
+    return rows.map(row => {
+        const r = Object.assign({}, row);
+        defs.forEach(def => {
+            const val = evalFormula(def.formula, r);
+            r[def.name] = (val !== null) ? val : '';
+        });
+        return r;
+    });
+}
+
+function evalFormula(formula, row) {
+    try {
+        let expr = formula.replace(/\[([^\]]+)\]/g, (_, fname) => {
+            const v = parseFloat(row[fname]);
+            return isNaN(v) ? '0' : String(v);
+        });
+        expr = expr
+            .replace(/\bMIN\s*\(/gi,   'Math.min(')
+            .replace(/\bMAX\s*\(/gi,   'Math.max(')
+            .replace(/\bABS\s*\(/gi,   'Math.abs(')
+            .replace(/\bROUND\s*\(/gi, 'Math.round(');
+        // Safety check: after removing Math.xxx, only allow numbers/ops/parens/dots/commas/spaces/eE (scientific)
+        const stripped = expr.replace(/Math\.(min|max|abs|round)/g, '');
+        if (/[^0-9\s\+\-\*\/\.\(\),eE]/.test(stripped)) return null;
+        // eslint-disable-next-line no-new-func
+        const result = Function('"use strict";return(' + expr + ')')();
+        if (typeof result !== 'number' || !isFinite(result)) return null;
+        return Math.round(result * 1e6) / 1e6;
+    } catch (_) {
+        return null;
+    }
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
