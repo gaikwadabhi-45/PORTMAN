@@ -4,8 +4,9 @@ from . import model
 from database import get_user_permissions, get_module_config
 import sap_builder
 import sap_client
-import einvoice_builder
-import gsp_client
+import logging
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint('FDCN01', __name__, template_folder='.')
 MODULE_CODE = 'FDCN01'
@@ -324,7 +325,7 @@ def post_sap():
     if header.get('sap_document_number'):
         return jsonify({'success': False, 'error': 'Already posted to SAP'})
 
-    if header.get('doc_status') not in ('Approved', 'Posted to GST'):
+    if header.get('doc_status') not in ('Approved', 'SAP Failed'):
         return jsonify({'success': False, 'error': 'Document must be Approved first'})
 
     lines = model.get_fdcn_lines(fdcn_id)
@@ -340,6 +341,14 @@ def post_sap():
     if result['ok']:
         model.update_sap_details(fdcn_id, result['sap_document_number'], session.get('username'))
 
+    if not result['ok']:
+        from database import get_db as _gdb, get_cursor as _gc
+        conn = _gdb()
+        cur = _gc(conn)
+        cur.execute("UPDATE fdcn_header SET doc_status='SAP Failed' WHERE id=%s", [fdcn_id])
+        conn.commit()
+        conn.close()
+
     return jsonify({
         'success': result['ok'],
         'sap_document_number': result.get('sap_document_number'),
@@ -348,11 +357,10 @@ def post_sap():
     })
 
 
-# ===== API: GST IRN Integration =====
-
-@bp.route('/api/module/FDCN01/generate-irn', methods=['POST'])
+@bp.route('/api/module/FDCN01/fetch-irn', methods=['POST'])
 @login_required
-def generate_irn():
+def fetch_irn():
+    """Fetch IRN details from SAP (populated by Cygnet after e-invoice generation)"""
     perms = get_perms()
     if not perms.get('can_edit'):
         return jsonify({'success': False, 'error': 'No permission'}), 403
@@ -362,72 +370,32 @@ def generate_irn():
     if not header:
         return jsonify({'success': False, 'error': 'Document not found'}), 404
 
+    if not header.get('sap_document_number'):
+        return jsonify({'success': False, 'error': 'Document not yet posted to SAP'})
+
     if header.get('gst_irn'):
-        return jsonify({'success': False, 'error': 'IRN already generated'})
-
-    if header.get('doc_status') not in ('Approved', 'Posted to SAP'):
-        return jsonify({'success': False, 'error': 'Document must be Approved first'})
-
-    lines = model.get_fdcn_lines(fdcn_id)
-    einvoice_json = einvoice_builder.build_einvoice_from_fdcn(header, lines)
+        return jsonify({'success': False, 'error': 'IRN already present',
+                        'irn': header['gst_irn']})
 
     doc_type_label = 'DebitNote' if header['doc_type'] == 'DN' else 'CreditNote'
-    result = gsp_client.generate_irn(
-        einvoice_json, doc_type_label, fdcn_id,
-        header.get('doc_number', ''),
+    result = sap_client.fetch_irn_from_sap(
+        header.get('doc_number', ''), doc_type_label, fdcn_id,
         session.get('username')
     )
 
     if result['ok']:
         model.update_gst_details(
-            fdcn_id, result['irn'], result['ack_number'],
-            result.get('ack_date'), result.get('qr_code')
+            fdcn_id, result['irn'], result['ack_no'],
+            result.get('ack_date') or result.get('irn_date'),
+            None  # qr_code not fetched
         )
 
     return jsonify({
         'success': result['ok'],
-        'irn': result.get('irn'),
-        'ack_number': result.get('ack_number'),
+        'irn': result.get('irn', ''),
+        'ack_no': result.get('ack_no', ''),
+        'irn_date': result.get('irn_date', ''),
         'message': result['message'],
-        'log_id': result['log_id']
     })
 
 
-@bp.route('/api/module/FDCN01/cancel-irn', methods=['POST'])
-@login_required
-def cancel_irn():
-    perms = get_perms()
-    if not perms.get('can_edit'):
-        return jsonify({'success': False, 'error': 'No permission'}), 403
-
-    fdcn_id = request.json.get('id')
-    reason = request.json.get('reason', 'Data entry error')
-    header = model.get_fdcn_by_id(fdcn_id)
-    if not header:
-        return jsonify({'success': False, 'error': 'Document not found'}), 404
-
-    if not header.get('gst_irn'):
-        return jsonify({'success': False, 'error': 'No IRN to cancel'})
-
-    result = gsp_client.cancel_irn(
-        header['gst_irn'], reason,
-        'DebitNote' if header['doc_type'] == 'DN' else 'CreditNote',
-        fdcn_id, header.get('doc_number', ''), session.get('username')
-    )
-
-    if result['ok']:
-        from database import get_db, get_cursor
-        conn = get_db()
-        cur = get_cursor(conn)
-        cur.execute('''UPDATE fdcn_header
-            SET gst_irn=NULL, gst_ack_number=NULL, gst_ack_date=NULL, gst_qr_code=NULL,
-                doc_status='Approved'
-            WHERE id=%s''', [fdcn_id])
-        conn.commit()
-        conn.close()
-
-    return jsonify({
-        'success': result['ok'],
-        'message': result['message'],
-        'log_id': result['log_id']
-    })

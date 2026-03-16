@@ -25,7 +25,20 @@
       "Bash(find /d/PORTMAN -name daily_ops.html -o -name mbc_sof*.html -o -name vessel_sof*.html)",
       "Bash(find /d/PORTMAN -type f -name *.sql)",
       "Bash(find /d/PORTMAN -name \"*.py\" -type f -exec grep -l \"bill_header\\\\|agreement_id\" {})",
-      "Bash(xargs -I {} basename {})"
+      "Bash(xargs -I {} basename {})",
+      "WebFetch(domain:community.sap.com)",
+      "WebFetch(domain:wiki.scn.sap.com)",
+      "WebFetch(domain:www.sap-img.com)",
+      "WebFetch(domain:psapps-pswiki.cfapps.sap.hana.ondemand.com)",
+      "WebFetch(domain:www.saptechnicalguru.com)",
+      "WebFetch(domain:blogs.sap.com)",
+      "WebFetch(domain:www.stechies.com)",
+      "WebFetch(domain:sapland.com)",
+      "WebFetch(domain:leanx.eu)",
+      "WebFetch(domain:sap.erpref.com)",
+      "WebFetch(domain:www.se80.co.uk)",
+      "WebFetch(domain:www.sapdatasheet.org)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

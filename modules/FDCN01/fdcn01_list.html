@@ -35,7 +35,7 @@
             <option value="Approved">Approved</option>
             <option value="Rejected">Rejected</option>
             <option value="Posted to SAP">Posted to SAP</option>
-            <option value="Posted to GST">Posted to GST</option>
+            <option value="SAP Failed">SAP Failed</option>
             <option value="Cancelled">Cancelled</option>
         </select>
         <select id="typeFilter" onchange="loadData()">
@@ -92,11 +92,11 @@
             btns += `<button class="btn" style="background:#27ae60;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();approveDoc(${row.id})">Approve</button>`;
             btns += `<button class="btn" style="background:#e74c3c;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();rejectDoc(${row.id})">Reject</button>`;
         }
-        if (row.doc_status === 'Approved' && canEdit && !row.sap_document_number) {
-            btns += `<button class="btn" style="background:#8e44ad;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();postSAP(${row.id})">Post SAP</button>`;
+        if ((row.doc_status === 'Approved' || row.doc_status === 'SAP Failed') && canEdit && !row.sap_document_number) {
+            btns += `<button class="btn" style="background:#e67e22;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();postSAP(${row.id})">${row.doc_status === 'SAP Failed' ? 'Retry SAP' : 'Post SAP'}</button>`;
         }
-        if ((row.doc_status === 'Approved' || row.doc_status === 'Posted to SAP') && canEdit && !row.gst_irn) {
-            btns += `<button class="btn" style="background:#16a085;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();generateIRN(${row.id})">Gen IRN</button>`;
+        if (row.sap_document_number && !row.gst_irn && canEdit) {
+            btns += `<button class="btn" style="background:#27ae60;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();fetchIRN(${row.id})">Fetch IRN</button>`;
         }
         if (row.doc_status !== 'Cancelled' && row.id) {
             btns += `<button class="btn" style="background:#95a5a6;color:white;padding:2px 8px;font-size:10px" onclick="event.stopPropagation();printDoc(${row.id})">Print</button>`;
@@ -123,7 +123,12 @@
                 {title: "Total", field: "total_amount", width: 110, hozAlign: "right", formatter: "money", formatterParams: {precision: 2}},
                 {title: "Status", field: "doc_status", width: 130, formatter: statusFormatter, hozAlign: "center"},
                 {title: "SAP Doc #", field: "sap_document_number", width: 120},
-                {title: "IRN", field: "gst_irn", width: 100, formatter: function(c) { return c.getValue() ? 'Yes' : ''; }},
+                {title: "IRN", field: "gst_irn", width: 120, formatter: function(c) {
+                    const v = c.getValue();
+                    if (v) return `<span title="${v}">${v.substring(0,12)}...</span>`;
+                    const row = c.getRow().getData();
+                    return row.sap_document_number ? '<span style="color:#999">Pending</span>' : '';
+                }},
                 {title: "Actions", formatter: actionFormatter, width: 350, headerSort: false, hozAlign: "center"},
             ],
             pagination: true,
@@ -182,12 +187,13 @@
         if (d.success) loadData();
     }
 
-    async function generateIRN(id) {
-        if (!confirm('Generate GST IRN for this document?')) return;
-        const r = await fetch('/api/module/FDCN01/generate-irn', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
-        const d = await r.json();
-        alert(d.message || (d.success ? 'IRN Generated' : 'Error'));
-        if (d.success) loadData();
+    async function fetchIRN(id) {
+        try {
+            const r = await fetch('/api/module/FDCN01/fetch-irn', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+            const d = await r.json();
+            if (d.success) { alert('IRN fetched: ' + (d.irn || 'Success')); loadData(); }
+            else { alert(d.message || d.error || 'IRN not yet available'); }
+        } catch(e) { alert('Error: ' + e.message); }
     }
 
     function printDoc(id) { window.open(`/module/FDCN01/print/${id}`, '_blank'); }

@@ -97,19 +97,36 @@
         }
     }
 
+    let isSaving = false;
+
     async function saveAll() {
-        showStatus('Saving...', 'saving');
+        if (isSaving) return;  // prevent concurrent saves
+        // Capture and clear dirty set atomically before async work
+        const toSave = new Set(dirtyRowIds);
+        dirtyRowIds.clear();
+        if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+
         const rows = table.getRows();
-        let savedCount = 0;
+        // Collect rows that need saving: new rows (no id) or dirty rows
+        const rowsToSave = [];
         for (const row of rows) {
             const data = row.getData();
             const rowKey = data.id ? String(data.id) : 'new_' + row.getPosition();
-            // Only save new rows (no id) or rows that were actually edited
-            if (data.id && !dirtyRowIds.has(rowKey)) continue;
-            const success = await saveRow(data, row);
+            if (!data.id || toSave.has(rowKey)) {
+                rowsToSave.push(row);
+            }
+        }
+
+        if (rowsToSave.length === 0) return;  // nothing to save, no message
+
+        isSaving = true;
+        showStatus('Saving...', 'saving');
+        let savedCount = 0;
+        for (const row of rowsToSave) {
+            const success = await saveRow(row.getData(), row);
             if (success) savedCount++;
         }
-        dirtyRowIds.clear();
+        isSaving = false;
         showStatus(`Saved ${savedCount} row(s)`, 'saved');
         table.setData("/api/module/VC01/data");
     }
@@ -118,7 +135,7 @@
         if (autosaveTimer) clearTimeout(autosaveTimer);
         showStatus('Unsaved changes', 'unsaved');
         autosaveTimer = setTimeout(() => {
-            saveAll();
+            if (dirtyRowIds.size > 0) saveAll();
         }, 2000);
     }
 

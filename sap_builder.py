@@ -1,78 +1,106 @@
 """
 SAP DynaportInvoice JSON Payload Builder.
 
-Builds the {"Record_Header": [...]} structure from invoice/credit-note data.
+Builds the payload that mirrors the SAP PI/PO XML interface:
+  - MT_INV_IPORTMANtoECC_Req   → Invoices     (Document_Type = Y1)
+  - MT_CNDN_IPORTMANtoECC_Req  → CN / DN      (Document_Type = Y2)
 
-SAP JSON schema:
+JSON structure (mirrors XML field-for-field):
 {
-  "Record_Header": [{
-    "Invoice_Credit": "I" or "C",
-    "Document_type": "INV" or "CRN",
-    "Company_code": "5171",
-    "Business_place": "5171",
-    "Section_code": "5171",
-    "Credit_Control_Area": "5171",
-    "Plant": "5171",
-    "Customer_code": "...",
-    "Payment_term": "51",
-    "Document_date": "YYYYMMDD",
-    "Posting_date": "YYYYMMDD",
-    "Base_date": "YYYYMMDD",
-    "Header_text": "...",
-    "Reference_no": "...",
-    "ITEM": [{
-      "GL_account": "...",
-      "Tax_code": "...",
-      "Profit_center": "...",
-      "Cost_center": "...",
-      "Amount": "...",
-      "Item_text": "..."
-    }]
-  }]
+  "Record": {
+    "Company_Code":          "5000",
+    "Document_Date":         "24.04.2025",     ← DD.MM.YYYY
+    "Posting_Date":          "24.04.2025",
+    "Document_Type":         "Y1" or "Y2",
+    "Reference_Text":        "INV/001",
+    "Doc_Header_Text":       "INV/001",
+    "Currency":              "INR",
+    "Customer_Code":         "5100001",
+    "Invoice_Amount":        "118000.00",      ← total incl. GST
+    "IRN_No":                "",
+    "Ack_No":                "",
+    "IRN_Date":              "",
+    "Nature_of_transaction": "B2B" or "B2C",
+    "Cancellation_Flag":     "",               ← "X" for reversals
+    "Item": [
+      {
+        "Service_Code":   "OT0051",
+        "CGST_AMT":       "4500.00",
+        "SGST_AMT":       "4500.00",
+        "IGST_AMT":       "",
+        "Amount":         "50000.00",          ← taxable amount
+        "Text":           "MOORING CHARGES",
+        "Plant":          "5001",
+        "Business_Place": "5001",
+        "Section_Code":   "5001",
+        "Tax_Code":       "50",
+        "Profit_Center":  "500000",
+        "HSN_SAC":        "996759",
+        "TDS_Amount":     "",
+        "TCS_Amount":     "",
+        "Rounding_off":   ""
+      }
+    ]
+  }
 }
 
 Company code logic:
-- If the customer has a company_code set (inter-company), use it for
-  Company_code / Business_place / Section_code / Credit_Control_Area / Plant.
-- Otherwise, fall back to the active SAP config's company_code.
+  If customer has a company_code set (inter-company), that value overrides
+  Company_Code / Plant / Business_Place / Section_Code.
+  Otherwise falls back to active SAP config company_code.
 """
 from datetime import datetime
 from database import get_db, get_cursor
 from modules.SAPCFG.model import get_active_config
 
 
+# ---------------------------------------------------------------------------
+# Formatting helpers
+# ---------------------------------------------------------------------------
+
 def _fmt_date(date_str):
-    """Convert 'YYYY-MM-DD' or datetime to 'YYYYMMDD'."""
+    """Convert 'YYYY-MM-DD' or datetime → 'DD.MM.YYYY' (SAP format)."""
     if not date_str:
-        return datetime.now().strftime('%Y%m%d')
+        return datetime.now().strftime('%d.%m.%Y')
     if isinstance(date_str, datetime):
-        return date_str.strftime('%Y%m%d')
-    # Strip time portion if present
+        return date_str.strftime('%d.%m.%Y')
     date_str = str(date_str)[:10]
     try:
-        return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y%m%d')
+        return datetime.strptime(date_str, '%Y-%m-%d').strftime('%d.%m.%Y')
     except ValueError:
-        return date_str.replace('-', '')
+        return date_str  # return as-is if unparseable
 
 
 def _fmt_amount(amount):
-    """Format amount as string with 2 decimal places."""
+    """Format amount as string with 2 decimal places; empty string if zero/None."""
+    if amount is None:
+        return ''
+    val = float(amount)
+    return f'{val:.2f}' if val else ''
+
+
+def _fmt_amount_required(amount):
+    """Format amount — always returns a value (defaults to '0.00')."""
     if amount is None:
         return '0.00'
     return f'{float(amount):.2f}'
 
 
+# ---------------------------------------------------------------------------
+# Lookup helpers
+# ---------------------------------------------------------------------------
+
+
 def _get_customer_company_code(customer_type, customer_id):
-    """Look up the customer's company_code for inter-company override."""
+    """Inter-company override: return customer's company_code if set."""
     table_map = {
-        'Agent': 'vessel_agents',
-        'Customer': 'vessel_customers',
-        'ImporterExporter': 'vessel_importer_exporters',
+        'Agent':             'vessel_agents',
+        'Customer':          'vessel_customers',
+        'ImporterExporter':  'vessel_importer_exporters',
     }
     table = table_map.get(customer_type)
     if not table:
         return None
-
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute(f'SELECT company_code FROM {table} WHERE id = %s', [customer_id])
@@ -81,300 +109,232 @@ def _get_customer_company_code(customer_type, customer_id):
     return row['company_code'] if row and row.get('company_code') else None
 
 
+def _nature_of_transaction(customer_gstin):
+    """B2B if customer has a GSTIN, else B2C."""
+    return 'B2B' if customer_gstin and customer_gstin.strip() else 'B2C'
+
+
 # ---------------------------------------------------------------------------
-# Invoice builder
+# Item builder (shared by all document types)
 # ---------------------------------------------------------------------------
+
+def _build_items(lines, company, amount_field='line_amount'):
+    """
+    Build the Item list from service lines.
+
+    Each line → one Item with CGST_AMT / SGST_AMT / IGST_AMT inline.
+    Plant, Business_Place, Section_Code come from the line (if set) or
+    fall back to company code.
+    """
+    items = []
+    for line in lines:
+        taxable = float(line.get(amount_field) or 0)
+        cgst    = float(line.get('cgst_amount') or 0)
+        sgst    = float(line.get('sgst_amount') or 0)
+        igst    = float(line.get('igst_amount') or 0)
+
+        plant   = line.get('plant')          or company
+        bp      = line.get('business_place') or company
+        sc      = line.get('section_code')   or company
+
+        items.append({
+            'Service_Code':   line.get('service_code') or line.get('gl_code') or '',
+            'CGST_AMT':       _fmt_amount(cgst),
+            'SGST_AMT':       _fmt_amount(sgst),
+            'IGST_AMT':       _fmt_amount(igst),
+            'Amount':         _fmt_amount_required(taxable),
+            'Text':           (line.get('service_name') or '')[:50],
+            'Plant':          plant,
+            'Business_Place': bp,
+            'Section_Code':   sc,
+            'Tax_Code':       line.get('sap_tax_code') or '',
+            'Profit_Center':  line.get('profit_center') or '',
+            'HSN_SAC':        line.get('sac_code') or line.get('hsn_sac') or '',
+            'TDS_Amount':     _fmt_amount(line.get('tds_amount')),
+            'TCS_Amount':     _fmt_amount(line.get('tcs_amount')),
+            'Rounding_off':   _fmt_amount(line.get('rounding_off')),
+        })
+    return items
+
+
+def _total_invoice_amount(header, lines, amount_field='line_amount'):
+    """Return total invoice value (taxable + all taxes)."""
+    total = float(header.get('total_amount') or 0)
+    if total:
+        return total
+    # Sum from lines
+    t = sum(float(l.get(amount_field) or 0) for l in lines)
+    t += sum(float(l.get('cgst_amount') or 0) for l in lines)
+    t += sum(float(l.get('sgst_amount') or 0) for l in lines)
+    t += sum(float(l.get('igst_amount') or 0) for l in lines)
+    return t
+
+
+# ---------------------------------------------------------------------------
+# Invoice builder  (Y1)
+# ---------------------------------------------------------------------------
+
 def build_invoice_payload(invoice_header, invoice_lines):
     """
-    Build DynaportInvoice JSON from an invoice_header dict and list of
-    invoice_lines dicts (as returned by FIN01 model functions).
-
-    Returns the complete payload dict ready for sap_client.post_invoice_to_sap().
+    Build MT_INV_IPORTMANtoECC_Req payload from an invoice_header dict
+    and list of invoice_lines dicts.
     """
     config = get_active_config()
     if not config:
         raise ValueError('No active SAP configuration found')
 
     default_company = config.get('company_code', '5171')
-    payment_term = config.get('default_payment_term') or config.get('payment_term') or '51'
+    payment_term    = config.get('default_payment_term') or config.get('payment_term') or ''
 
-    # Inter-company override
     cust_company = _get_customer_company_code(
         invoice_header.get('customer_type'),
-        invoice_header.get('customer_id')
+        invoice_header.get('customer_id'),
     )
-    company = cust_company or default_company
-
-    # Build line items
-    items = []
-    for line in invoice_lines:
-        # Base taxable amount item
-        items.append({
-            'GL_account': line.get('gl_code') or '',
-            'Tax_code': line.get('sap_tax_code') or '',
-            'Profit_center': line.get('profit_center') or '',
-            'Cost_center': line.get('cost_center') or '',
-            'Amount': _fmt_amount(line.get('line_amount')),
-            'Item_text': (line.get('service_name') or '')[:50],
-        })
-
-        # CGST item (if applicable)
-        cgst = float(line.get('cgst_amount') or 0)
-        if cgst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(cgst),
-                'Item_text': f"CGST @ {line.get('cgst_rate', '')}%",
-            })
-
-        # SGST item (if applicable)
-        sgst = float(line.get('sgst_amount') or 0)
-        if sgst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(sgst),
-                'Item_text': f"SGST @ {line.get('sgst_rate', '')}%",
-            })
-
-        # IGST item (if applicable)
-        igst = float(line.get('igst_amount') or 0)
-        if igst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(igst),
-                'Item_text': f"IGST @ {line.get('igst_rate', '')}%",
-            })
-
+    company  = cust_company or default_company
     inv_date = _fmt_date(invoice_header.get('invoice_date'))
 
-    header = {
-        'Invoice_Credit': 'I',
-        'Document_type': 'INV',
-        'Company_code': company,
-        'Business_place': company,
-        'Section_code': company,
-        'Credit_Control_Area': company,
-        'Plant': company,
-        'Customer_code': invoice_header.get('customer_gl_code') or '',
-        'Payment_term': payment_term,
-        'Document_date': inv_date,
-        'Posting_date': inv_date,
-        'Base_date': inv_date,
-        'Header_text': (invoice_header.get('invoice_number') or '')[:25],
-        'Reference_no': (invoice_header.get('invoice_number') or '')[:16],
-        'ITEM': items,
+    record = {
+        'Company_Code':          company,
+        'Document_Date':         inv_date,
+        'Posting_Date':          inv_date,
+        'Document_Type':         'Y1',
+        'Reference_Text':        (invoice_header.get('invoice_number') or '')[:16],
+        'Doc_Header_Text':       (invoice_header.get('invoice_number') or '')[:25],
+        'Currency':              invoice_header.get('currency_code') or 'INR',
+        'Customer_Code':         invoice_header.get('customer_gl_code') or '',
+        'Payment_Term':          payment_term,
+        'Baseline_Date':         inv_date,
+        'Invoice_Amount':        _fmt_amount_required(
+                                     _total_invoice_amount(invoice_header, invoice_lines)
+                                 ),
+        'IRN_No':                invoice_header.get('irn') or '',
+        'Ack_No':                str(invoice_header.get('ack_number') or ''),
+        'IRN_Date':              _fmt_date(invoice_header.get('irn_date')) if invoice_header.get('irn_date') else '',
+        'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
+        'Cancellation_Flag':     '',
+        'Item':                  _build_items(invoice_lines, company),
     }
 
-    return {'Record_Header': [header]}
+    return {'Record': record}
 
 
 # ---------------------------------------------------------------------------
-# Credit Note builder
+# Credit Note builder  (Y2)
 # ---------------------------------------------------------------------------
+
 def build_credit_note_payload(cn_header, cn_lines):
     """
-    Build DynaportInvoice JSON for a Credit Note.
-
-    Same structure as invoice but with Invoice_Credit='C' and Document_type='CRN'.
+    Build MT_CNDN_IPORTMANtoECC_Req payload for a Credit Note.
+    Document_Type = Y2.
     """
     config = get_active_config()
     if not config:
         raise ValueError('No active SAP configuration found')
 
     default_company = config.get('company_code', '5171')
-    payment_term = config.get('default_payment_term') or config.get('payment_term') or '51'
+    payment_term    = config.get('default_payment_term') or config.get('payment_term') or ''
 
     cust_company = _get_customer_company_code(
         cn_header.get('customer_type'),
-        cn_header.get('customer_id')
+        cn_header.get('customer_id'),
     )
     company = cust_company or default_company
-
-    items = []
-    for line in cn_lines:
-        items.append({
-            'GL_account': line.get('gl_code') or '',
-            'Tax_code': line.get('sap_tax_code') or '',
-            'Profit_center': line.get('profit_center') or '',
-            'Cost_center': line.get('cost_center') or '',
-            'Amount': _fmt_amount(line.get('line_amount')),
-            'Item_text': (line.get('service_name') or '')[:50],
-        })
-
-        cgst = float(line.get('cgst_amount') or 0)
-        if cgst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(cgst),
-                'Item_text': f"CGST @ {line.get('cgst_rate', '')}%",
-            })
-
-        sgst = float(line.get('sgst_amount') or 0)
-        if sgst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(sgst),
-                'Item_text': f"SGST @ {line.get('sgst_rate', '')}%",
-            })
-
-        igst = float(line.get('igst_amount') or 0)
-        if igst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(igst),
-                'Item_text': f"IGST @ {line.get('igst_rate', '')}%",
-            })
-
     cn_date = _fmt_date(cn_header.get('credit_note_date'))
 
-    header = {
-        'Invoice_Credit': 'C',
-        'Document_type': 'CRN',
-        'Company_code': company,
-        'Business_place': company,
-        'Section_code': company,
-        'Credit_Control_Area': company,
-        'Plant': company,
-        'Customer_code': cn_header.get('customer_gl_code') or '',
-        'Payment_term': payment_term,
-        'Document_date': cn_date,
-        'Posting_date': cn_date,
-        'Base_date': cn_date,
-        'Header_text': (cn_header.get('credit_note_number') or '')[:25],
-        'Reference_no': (cn_header.get('credit_note_number') or '')[:16],
-        'ITEM': items,
+    record = {
+        'Company_Code':          company,
+        'Document_Date':         cn_date,
+        'Posting_Date':          cn_date,
+        'Document_Type':         'Y2',
+        'Reference_Text':        (cn_header.get('credit_note_number') or '')[:16],
+        'Doc_Header_Text':       (cn_header.get('credit_note_number') or '')[:25],
+        'Currency':              cn_header.get('currency_code') or 'INR',
+        'Customer_Code':         cn_header.get('customer_gl_code') or '',
+        'Payment_Term':          payment_term,
+        'Baseline_Date':         cn_date,
+        'Invoice_Amount':        _fmt_amount_required(
+                                     _total_invoice_amount(cn_header, cn_lines)
+                                 ),
+        'IRN_No':                cn_header.get('irn') or '',
+        'Ack_No':                str(cn_header.get('ack_number') or ''),
+        'IRN_Date':              _fmt_date(cn_header.get('irn_date')) if cn_header.get('irn_date') else '',
+        'Nature_of_transaction': _nature_of_transaction(cn_header.get('customer_gstin')),
+        'Cancellation_Flag':     '',
+        'Item':                  _build_items(cn_lines, company),
     }
 
-    return {'Record_Header': [header]}
+    return {'Record': record}
 
 
 # ---------------------------------------------------------------------------
-# FDCN01 Debit/Credit Note builder
+# FDCN01 Debit / Credit Note builder  (Y2)
 # ---------------------------------------------------------------------------
+
 def build_fdcn_payload(fdcn_header, fdcn_lines):
     """
-    Build DynaportInvoice JSON for a Debit Note or Credit Note (FDCN01).
-
-    Debit Note: Invoice_Credit='I', Document_type='DBN'
-    Credit Note: Invoice_Credit='C', Document_type='CRN'
+    Build MT_CNDN_IPORTMANtoECC_Req payload for a Debit Note or Credit Note
+    from the FDCN01 module.  Both use Document_Type = Y2.
     """
     config = get_active_config()
     if not config:
         raise ValueError('No active SAP configuration found')
 
     default_company = config.get('company_code', '5171')
-    payment_term = config.get('default_payment_term') or config.get('payment_term') or '51'
+    payment_term    = config.get('default_payment_term') or config.get('payment_term') or ''
 
     cust_company = _get_customer_company_code(
         fdcn_header.get('customer_type'),
-        fdcn_header.get('customer_id')
+        fdcn_header.get('customer_id'),
     )
-    company = cust_company or default_company
-
-    is_debit = fdcn_header.get('doc_type') == 'DN'
-
-    items = []
-    for line in fdcn_lines:
-        items.append({
-            'GL_account': line.get('gl_code') or '',
-            'Tax_code': line.get('sap_tax_code') or '',
-            'Profit_center': line.get('profit_center') or '',
-            'Cost_center': line.get('cost_center') or '',
-            'Amount': _fmt_amount(line.get('line_amount')),
-            'Item_text': (line.get('service_name') or '')[:50],
-        })
-
-        cgst = float(line.get('cgst_amount') or 0)
-        if cgst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(cgst),
-                'Item_text': f"CGST @ {line.get('cgst_rate', '')}%",
-            })
-
-        sgst = float(line.get('sgst_amount') or 0)
-        if sgst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(sgst),
-                'Item_text': f"SGST @ {line.get('sgst_rate', '')}%",
-            })
-
-        igst = float(line.get('igst_amount') or 0)
-        if igst > 0:
-            items.append({
-                'GL_account': line.get('gl_code') or '',
-                'Tax_code': line.get('sap_tax_code') or '',
-                'Profit_center': line.get('profit_center') or '',
-                'Cost_center': line.get('cost_center') or '',
-                'Amount': _fmt_amount(igst),
-                'Item_text': f"IGST @ {line.get('igst_rate', '')}%",
-            })
-
+    company  = cust_company or default_company
     doc_date = _fmt_date(fdcn_header.get('doc_date'))
 
-    header = {
-        'Invoice_Credit': 'I' if is_debit else 'C',
-        'Document_type': 'DBN' if is_debit else 'CRN',
-        'Company_code': company,
-        'Business_place': company,
-        'Section_code': company,
-        'Credit_Control_Area': company,
-        'Plant': company,
-        'Customer_code': fdcn_header.get('customer_gl_code') or '',
-        'Payment_term': payment_term,
-        'Document_date': doc_date,
-        'Posting_date': doc_date,
-        'Base_date': doc_date,
-        'Header_text': (fdcn_header.get('doc_number') or '')[:25],
-        'Reference_no': (fdcn_header.get('doc_number') or '')[:16],
-        'ITEM': items,
+    record = {
+        'Company_Code':          company,
+        'Document_Date':         doc_date,
+        'Posting_Date':          doc_date,
+        'Document_Type':         'Y2',
+        'Reference_Text':        (fdcn_header.get('doc_number') or '')[:16],
+        'Doc_Header_Text':       (fdcn_header.get('doc_number') or '')[:25],
+        'Currency':              'INR',
+        'Customer_Code':         fdcn_header.get('customer_gl_code') or '',
+        'Payment_Term':          payment_term,
+        'Baseline_Date':         doc_date,
+        'Invoice_Amount':        _fmt_amount_required(
+                                     _total_invoice_amount(fdcn_header, fdcn_lines)
+                                 ),
+        'IRN_No':                fdcn_header.get('irn') or '',
+        'Ack_No':                str(fdcn_header.get('ack_number') or ''),
+        'IRN_Date':              _fmt_date(fdcn_header.get('irn_date')) if fdcn_header.get('irn_date') else '',
+        'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
+        'Cancellation_Flag':     '',
+        'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
+        'Item':                  _build_items(fdcn_lines, company),
     }
 
-    return {'Record_Header': [header]}
+    return {'Record': record}
 
+
+# ---------------------------------------------------------------------------
+# Invoice reversal builder  (Y1 with Cancellation_Flag = 'X')
+# ---------------------------------------------------------------------------
 
 def build_invoice_reversal_payload(invoice_header, invoice_lines):
     """
     Build reversal payload for invoice cancellation.
 
-    SAP interface uses reverse posting payload format:
-    Invoice_Credit='C', Document_type='CRN', with original SAP doc in reference.
+    Same staging table as invoice (Y1) but with Cancellation_Flag = 'X'.
+    SAP handles the actual reversal logic on their side.
     """
-    reversal_header = {
-        'credit_note_date': invoice_header.get('invoice_date'),
-        'credit_note_number': f"RV-{invoice_header.get('invoice_number') or ''}",
-        'customer_type': invoice_header.get('customer_type'),
-        'customer_id': invoice_header.get('customer_id'),
-        'customer_gl_code': invoice_header.get('customer_gl_code'),
-    }
-    payload = build_credit_note_payload(reversal_header, invoice_lines)
-    hdr = payload['Record_Header'][0]
-    original_ref = invoice_header.get('sap_document_number') or invoice_header.get('invoice_number') or ''
-    hdr['Header_text'] = f"REV {original_ref}"[:25]
-    hdr['Reference_no'] = original_ref[:16]
+    payload = build_invoice_payload(invoice_header, invoice_lines)
+
+    original_ref = (
+        invoice_header.get('sap_document_number')
+        or invoice_header.get('invoice_number')
+        or ''
+    )
+    payload['Record']['Reference_Text']      = original_ref[:16]
+    payload['Record']['Doc_Header_Text']     = f"REV {original_ref}"[:25]
+    payload['Record']['Cancellation_Flag']   = 'X'
+
     return payload

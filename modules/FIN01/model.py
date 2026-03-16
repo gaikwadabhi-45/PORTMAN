@@ -126,13 +126,35 @@ def save_bill_line(data):
     conn = get_db()
     cur = get_cursor(conn)
 
+    # Look up TDS config from service master (FSTM01)
+    tds_applicable = int(data.get('tds_applicable') or 0)
+    tds_percent = float(data.get('tds_percent') or 0)
+    tds_amount = float(data.get('tds_amount') or 0)
+    service_code = data.get('service_code') or ''
+
+    svc_id = data.get('service_type_id')
+    if svc_id and not data.get('tds_applicable'):
+        cur.execute(
+            'SELECT service_code, is_tds, tds_percent FROM finance_service_types WHERE id = %s',
+            [svc_id]
+        )
+        svc = cur.fetchone()
+        if svc:
+            service_code = service_code or (svc.get('service_code') or '')
+            if svc.get('is_tds'):
+                tds_applicable = 1
+                tds_percent = float(svc.get('tds_percent') or 0)
+                line_amount = float(data.get('line_amount') or 0)
+                tds_amount = round(line_amount * tds_percent / 100, 2)
+
     if data.get('id'):
         cur.execute('''UPDATE bill_lines
             SET eu_line_id=%s, service_record_id=%s, service_type_id=%s, service_name=%s,
                 service_description=%s, quantity=%s, uom=%s, rate=%s, line_amount=%s,
                 gst_rate_id=%s, cgst_rate=%s, sgst_rate=%s, igst_rate=%s,
                 cgst_amount=%s, sgst_amount=%s, igst_amount=%s,
-                line_total=%s, gl_code=%s, sac_code=%s, remarks=%s
+                line_total=%s, gl_code=%s, sac_code=%s, remarks=%s,
+                service_code=%s, tds_applicable=%s, tds_percent=%s, tds_amount=%s
             WHERE id=%s''',
             [data.get('eu_line_id'), data.get('service_record_id'),
              data.get('service_type_id'), data.get('service_name'),
@@ -141,15 +163,17 @@ def save_bill_line(data):
              data.get('cgst_rate'), data.get('sgst_rate'), data.get('igst_rate'),
              data.get('cgst_amount'), data.get('sgst_amount'), data.get('igst_amount'),
              data.get('line_total'), data.get('gl_code'), data.get('sac_code'),
-             data.get('remarks'), data['id']])
+             data.get('remarks'), service_code, tds_applicable, tds_percent, tds_amount,
+             data['id']])
         row_id = data['id']
     else:
         cur.execute('''INSERT INTO bill_lines
             (bill_id, eu_line_id, service_record_id, service_type_id, service_name,
              service_description, quantity, uom, rate, line_amount, gst_rate_id,
              cgst_rate, sgst_rate, igst_rate, cgst_amount, sgst_amount, igst_amount,
-             line_total, gl_code, sac_code, remarks)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             line_total, gl_code, sac_code, remarks,
+             service_code, tds_applicable, tds_percent, tds_amount)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id''',
             [data['bill_id'], data.get('eu_line_id'), data.get('service_record_id'),
              data.get('service_type_id'), data.get('service_name'),
@@ -158,7 +182,8 @@ def save_bill_line(data):
              data.get('gst_rate_id'), data.get('cgst_rate'), data.get('sgst_rate'),
              data.get('igst_rate'), data.get('cgst_amount'), data.get('sgst_amount'),
              data.get('igst_amount'), data.get('line_total'), data.get('gl_code'),
-             data.get('sac_code'), data.get('remarks')])
+             data.get('sac_code'), data.get('remarks'),
+             service_code, tds_applicable, tds_percent, tds_amount])
         row_id = cur.fetchone()['id']
 
     # Mark the EU line as billed if eu_line_id is provided
@@ -310,18 +335,33 @@ def create_invoice_from_bills(bill_ids, invoice_data):
                 (invoice_id, bill_id, bill_number, line_number, service_name, service_description,
                  quantity, uom, rate, line_amount, cgst_rate, sgst_rate, igst_rate,
                  cgst_amount, sgst_amount, igst_amount, line_total, gl_code, sac_code,
-                 profit_center, cost_center)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                 profit_center, cost_center,
+                 service_code, tds_applicable, tds_percent, tds_amount)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                 [invoice_id, bill_id, bill['bill_number'], line_number, bl['service_name'],
                  bl['service_description'], bl['quantity'], bl['uom'], bl['rate'],
                  bl['line_amount'], bl['cgst_rate'], bl['sgst_rate'], bl['igst_rate'],
                  bl['cgst_amount'], bl['sgst_amount'], bl['igst_amount'], bl['line_total'],
                  bl['gl_code'], bl['sac_code'], invoice_data.get('profit_center'),
-                 invoice_data.get('cost_center')])
+                 invoice_data.get('cost_center'),
+                 bl.get('service_code'), bl.get('tds_applicable', 0),
+                 bl.get('tds_percent', 0), bl.get('tds_amount', 0)])
             line_number += 1
 
         # Mark bill as invoiced
         cur.execute("UPDATE bill_header SET bill_status='Invoiced' WHERE id=%s", (bill_id,))
+
+    # Auto-calculate invoice header tds_amount from line totals
+    cur.execute(
+        'SELECT COALESCE(SUM(tds_amount), 0) FROM invoice_lines WHERE invoice_id = %s',
+        [invoice_id]
+    )
+    total_tds = cur.fetchone()[0]
+    if total_tds:
+        cur.execute(
+            'UPDATE invoice_header SET tds_amount = %s WHERE id = %s',
+            [total_tds, invoice_id]
+        )
 
     conn.commit()
     conn.close()

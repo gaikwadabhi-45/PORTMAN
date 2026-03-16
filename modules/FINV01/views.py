@@ -5,8 +5,9 @@ from modules.FIN01 import model  # reuse FIN01 model for invoice functions
 from database import get_user_permissions, get_db, get_cursor, get_module_config
 import sap_builder
 import sap_client
-import einvoice_builder
-import gsp_client
+import logging
+
+log = logging.getLogger(__name__)
 
 MODULE_CODE = 'FINV01'
 
@@ -102,6 +103,55 @@ def generate_invoice():
                          module_code='FINV01')
 
 
+def _auto_post_to_sap(invoice_id, invoice_number):
+    """Auto-post invoice to SAP. Updates status to 'Posted to SAP' or 'SAP Failed'."""
+    try:
+        invoice = model.get_invoice_by_id(invoice_id)
+        invoice_lines = model.get_invoice_lines(invoice_id)
+        payload = sap_builder.build_invoice_payload(invoice, invoice_lines)
+        result = sap_client.post_invoice_to_sap(
+            payload, 'Invoice', invoice_id,
+            invoice_number, session.get('username')
+        )
+        now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        conn = get_db()
+        cur = get_cursor(conn)
+        if result['ok']:
+            cur.execute('''UPDATE invoice_header
+                SET sap_document_number=%s, sap_posting_date=%s,
+                    posted_by=%s, posted_date=%s,
+                    invoice_status='Posted to SAP'
+                WHERE id=%s''',
+                [result['sap_document_number'], now_ts,
+                 session.get('username'), now_ts, invoice_id])
+        else:
+            cur.execute('''UPDATE invoice_header
+                SET invoice_status='SAP Failed',
+                    remarks = CASE
+                        WHEN COALESCE(remarks, '') = '' THEN %s
+                        ELSE %s
+                    END
+                WHERE id=%s''',
+                [result['message'], result['message'], invoice_id])
+        conn.commit()
+        conn.close()
+        return result
+    except Exception as e:
+        log.exception('Auto-post to SAP failed for invoice %s', invoice_number)
+        # Mark as failed
+        try:
+            conn = get_db()
+            cur = get_cursor(conn)
+            cur.execute('''UPDATE invoice_header
+                SET invoice_status='SAP Failed', remarks=%s WHERE id=%s''',
+                [str(e), invoice_id])
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        return {'ok': False, 'message': str(e)}
+
+
 @bp.route('/api/module/FINV01/invoice/create', methods=['POST'])
 def create_invoice():
     """Create invoice from selected bills"""
@@ -185,7 +235,18 @@ def create_invoice():
     }
 
     invoice_id, invoice_number = model.create_invoice_from_bills(bill_ids, invoice_data)
-    return jsonify({'success': True, 'id': invoice_id, 'invoice_number': invoice_number})
+
+    # Auto-post to SAP immediately after creation
+    sap_result = _auto_post_to_sap(invoice_id, invoice_number)
+
+    return jsonify({
+        'success': True,
+        'id': invoice_id,
+        'invoice_number': invoice_number,
+        'sap_status': 'Posted to SAP' if sap_result.get('ok') else 'SAP Failed',
+        'sap_document_number': sap_result.get('sap_document_number', ''),
+        'sap_message': sap_result.get('message', ''),
+    })
 
 
 # ===== Bill lines (for generate invoice page) =====
@@ -358,37 +419,11 @@ def export_gstr1_b2b():
     return jsonify({'gstin': supplier_gstin, 'fp': filing_period, 'b2b': list(b2b.values())})
 
 
-# ===== e-Invoice Export =====
-
-@bp.route('/api/module/FINV01/export/einvoice', methods=['POST'])
-def export_einvoice():
-    """Export invoices as e-Invoice JSON"""
-    if 'user_id' not in session:
-        return jsonify({'error': 'Not logged in'}), 401
-
-    data = request.json
-    invoice_ids = data.get('invoice_ids', [])
-
-    if not invoice_ids:
-        return jsonify({'error': 'No invoices selected'}), 400
-
-    einvoices = []
-    for inv_id in invoice_ids:
-        invoice = model.get_invoice_by_id(inv_id)
-        if not invoice:
-            continue
-        inv_lines = model.get_invoice_lines(inv_id)
-        einvoice_json = einvoice_builder.build_einvoice_from_invoice(invoice, inv_lines)
-        einvoices.append(einvoice_json)
-
-    return jsonify({'einvoices': einvoices})
-
-
 # ===== SAP Integration =====
 
-@bp.route('/api/module/FINV01/invoice/post-sap', methods=['POST'])
-def post_invoice_sap():
-    """Post an invoice to SAP via DynaportInvoice REST API"""
+@bp.route('/api/module/FINV01/invoice/retry-sap', methods=['POST'])
+def retry_sap():
+    """Retry SAP posting for a failed invoice"""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Not logged in'}), 401
 
@@ -404,33 +439,60 @@ def post_invoice_sap():
     if invoice.get('sap_document_number'):
         return jsonify({'success': False, 'error': 'Invoice already posted to SAP'})
 
-    invoice_lines = model.get_invoice_lines(invoice_id)
-    payload = sap_builder.build_invoice_payload(invoice, invoice_lines)
-    result = sap_client.post_invoice_to_sap(
-        payload, 'Invoice', invoice_id,
-        invoice['invoice_number'], session.get('username')
+    if invoice.get('invoice_status') not in ('SAP Failed', 'Generated'):
+        return jsonify({'success': False, 'error': f"Cannot retry — status is '{invoice.get('invoice_status')}'"})
+
+    result = _auto_post_to_sap(invoice_id, invoice['invoice_number'])
+
+    return jsonify({
+        'success': result.get('ok', False),
+        'sap_document_number': result.get('sap_document_number'),
+        'message': result.get('message', ''),
+        'log_id': result.get('log_id')
+    })
+
+
+@bp.route('/api/module/FINV01/invoice/fetch-irn', methods=['POST'])
+def fetch_irn():
+    """Fetch IRN details from SAP (populated by Cygnet after e-invoice generation)"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+    invoice_id = request.json.get('invoice_id')
+    invoice = model.get_invoice_by_id(invoice_id)
+    if not invoice:
+        return jsonify({'success': False, 'error': 'Invoice not found'}), 404
+
+    if not invoice.get('sap_document_number'):
+        return jsonify({'success': False, 'error': 'Invoice not yet posted to SAP'})
+
+    if invoice.get('gst_irn'):
+        return jsonify({'success': False, 'error': 'IRN already present',
+                        'irn': invoice['gst_irn']})
+
+    result = sap_client.fetch_irn_from_sap(
+        invoice['invoice_number'], 'Invoice', invoice_id,
+        session.get('username')
     )
 
     if result['ok']:
-        now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db()
         cur = get_cursor(conn)
         cur.execute('''UPDATE invoice_header
-            SET sap_document_number=%s,
-                sap_posting_date=%s,
-                posted_by=%s,
-                posted_date=%s,
-                invoice_status='Posted to SAP'
+            SET gst_irn=%s, gst_ack_number=%s, gst_ack_date=%s
             WHERE id=%s''',
-            [result['sap_document_number'], now_ts, session.get('username'), now_ts, invoice_id])
+            [result['irn'], result['ack_no'],
+             result.get('ack_date') or result.get('irn_date') or None,
+             invoice_id])
         conn.commit()
         conn.close()
 
     return jsonify({
         'success': result['ok'],
-        'sap_document_number': result.get('sap_document_number'),
+        'irn': result.get('irn', ''),
+        'ack_no': result.get('ack_no', ''),
+        'irn_date': result.get('irn_date', ''),
         'message': result['message'],
-        'log_id': result['log_id']
     })
 
 
@@ -501,92 +563,6 @@ def cancel_invoice_sap():
     })
 
 
-# ===== GST IRN Integration =====
-
-@bp.route('/api/module/FINV01/invoice/generate-irn', methods=['POST'])
-def generate_irn():
-    """Generate IRN for an invoice via IRP e-invoice API"""
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'}), 401
-
-    perms = get_perms()
-    if not perms.get('can_edit'):
-        return jsonify({'success': False, 'error': 'No permission'}), 403
-
-    invoice_id = request.json.get('invoice_id')
-    invoice = model.get_invoice_by_id(invoice_id)
-    if not invoice:
-        return jsonify({'success': False, 'error': 'Invoice not found'}), 404
-
-    if invoice.get('gst_irn'):
-        return jsonify({'success': False, 'error': 'IRN already generated for this invoice'})
-
-    invoice_lines = model.get_invoice_lines(invoice_id)
-    einvoice_json = einvoice_builder.build_einvoice_from_invoice(invoice, invoice_lines)
-    result = gsp_client.generate_irn(
-        einvoice_json, 'Invoice', invoice_id,
-        invoice['invoice_number'], session.get('username')
-    )
-
-    if result['ok']:
-        conn = get_db()
-        cur = get_cursor(conn)
-        cur.execute('''UPDATE invoice_header
-            SET gst_irn=%s, gst_ack_number=%s
-            WHERE id=%s''',
-            [result['irn'], result['ack_number'], invoice_id])
-        conn.commit()
-        conn.close()
-
-    return jsonify({
-        'success': result['ok'],
-        'irn': result.get('irn'),
-        'ack_number': result.get('ack_number'),
-        'message': result['message'],
-        'log_id': result['log_id']
-    })
-
-
-@bp.route('/api/module/FINV01/invoice/cancel-irn', methods=['POST'])
-def cancel_irn():
-    """Cancel an IRN for an invoice"""
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'error': 'Not logged in'}), 401
-
-    perms = get_perms()
-    if not perms.get('can_edit'):
-        return jsonify({'success': False, 'error': 'No permission'}), 403
-
-    data = request.json
-    invoice_id = data.get('invoice_id')
-    invoice = model.get_invoice_by_id(invoice_id)
-    if not invoice:
-        return jsonify({'success': False, 'error': 'Invoice not found'}), 404
-
-    if not invoice.get('gst_irn'):
-        return jsonify({'success': False, 'error': 'No IRN to cancel'})
-
-    result = gsp_client.cancel_irn(
-        invoice['gst_irn'], data.get('reason_code', 1),
-        data.get('remark', 'Cancelled'),
-        'Invoice', invoice_id, invoice['invoice_number'],
-        session.get('username')
-    )
-
-    if result['ok']:
-        conn = get_db()
-        cur = get_cursor(conn)
-        cur.execute('''UPDATE invoice_header
-            SET gst_irn=NULL, gst_ack_number=NULL, gst_ack_date=NULL, gst_qr_code=NULL
-            WHERE id=%s''', [invoice_id])
-        conn.commit()
-        conn.close()
-
-    return jsonify({
-        'success': result['ok'],
-        'message': result['message'],
-        'log_id': result['log_id']
-    })
 
 
 # ===== Customer/Agent lookup for virtual account + full billing details =====
