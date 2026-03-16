@@ -12,7 +12,7 @@
 <div class="toolbar">
     {% if permissions.can_add %}<button class="btn btn-add" onclick="addRow()">+ Add Row</button>{% endif %}
     {% if permissions.can_delete %}<button class="btn btn-delete" onclick="deleteSelected()">Delete Selected</button>{% endif %}
-    {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll()">Save (Ctrl+S)</button>{% endif %}
+    {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll(true)">Save (Ctrl+S)</button>{% endif %}
     <div class="row-info">
         Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span>
     </div>
@@ -30,7 +30,7 @@
     let vesselCategories = [];
     let vesselFlags = [];
     let dirtyRowIds = new Set();  // Track by row ID instead of position
-    let autosaveTimer = null;
+    let autosaveTimer = null;  // kept for saveAll cancel logic
     let moduleConfig = {};
     const currentUser = '{{ session.username }}';
     const permissions = {
@@ -99,15 +99,19 @@
 
     let isSaving = false;
 
-    async function saveAll() {
-        if (isSaving) return;  // prevent concurrent saves
-        // Capture and clear dirty set atomically before async work
-        const toSave = new Set(dirtyRowIds);
-        dirtyRowIds.clear();
+    async function saveAll(manual) {
+        if (isSaving) {
+            if (manual) showStatus('Save already in progress...', 'saving');
+            return;
+        }
+        // Cancel any pending autosave
         if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
 
+        // Capture dirty set
+        const toSave = new Set(dirtyRowIds);
+        dirtyRowIds.clear();
+
         const rows = table.getRows();
-        // Collect rows that need saving: new rows (no id) or dirty rows
         const rowsToSave = [];
         for (const row of rows) {
             const data = row.getData();
@@ -117,7 +121,10 @@
             }
         }
 
-        if (rowsToSave.length === 0) return;  // nothing to save, no message
+        if (rowsToSave.length === 0) {
+            if (manual) showStatus('No changes to save', 'saved');
+            return;
+        }
 
         isSaving = true;
         showStatus('Saving...', 'saving');
@@ -129,14 +136,6 @@
         isSaving = false;
         showStatus(`Saved ${savedCount} row(s)`, 'saved');
         table.setData("/api/module/VC01/data");
-    }
-
-    function scheduleAutosave() {
-        if (autosaveTimer) clearTimeout(autosaveTimer);
-        showStatus('Unsaved changes', 'unsaved');
-        autosaveTimer = setTimeout(() => {
-            if (dirtyRowIds.size > 0) saveAll();
-        }, 2000);
     }
 
     function initTable() {
@@ -211,7 +210,7 @@
                 const rowId = data.id ? String(data.id) : 'new_' + row.getPosition();
                 console.log('Cell edited:', cell.getField(), '=', cell.getValue(), 'rowId:', rowId);
                 dirtyRowIds.add(rowId);
-                scheduleAutosave();
+                showStatus('Unsaved changes', 'unsaved');
             }
         });
 
@@ -259,7 +258,7 @@
     document.addEventListener('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
-            saveAll();
+            saveAll(true);
         }
     });
 
