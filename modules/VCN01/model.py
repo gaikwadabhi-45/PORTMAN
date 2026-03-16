@@ -8,13 +8,21 @@ def _clean_empty(data):
     return data
 
 def get_next_doc_num():
+    import datetime
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute("SELECT MAX(CAST(SUBSTR(vcn_doc_num, 4) AS INTEGER)) FROM vcn_header WHERE vcn_doc_num LIKE 'VCN%%'")
+    now = datetime.datetime.now()
+    fy_start = now.year if now.month >= 4 else now.year - 1
+    fy_suffix = f"{str(fy_start)[2:]}{str(fy_start + 1)[2:]}"  # e.g. "2526"
+    prefix = f"VCN-{fy_suffix}-"
+    cur.execute(
+        "SELECT MAX(CAST(SPLIT_PART(vcn_doc_num, '-', 3) AS INTEGER)) FROM vcn_header WHERE vcn_doc_num LIKE %s",
+        (prefix + '%',)
+    )
     result = cur.fetchone()['max']
     conn.close()
     next_num = (result or 0) + 1
-    return f"VCN{next_num}"
+    return f"{prefix}{next_num:03d}"
 
 def get_vessels():
     """Get vessels from VC01 for dropdown"""
