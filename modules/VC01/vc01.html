@@ -12,7 +12,7 @@
 <div class="toolbar">
     {% if permissions.can_add %}<button class="btn btn-add" onclick="addRow()">+ Add Row</button>{% endif %}
     {% if permissions.can_delete %}<button class="btn btn-delete" onclick="deleteSelected()">Delete Selected</button>{% endif %}
-    {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll(true)">Save (Ctrl+S)</button>{% endif %}
+    {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll()">Save (Ctrl+S)</button>{% endif %}
     <div class="row-info">
         Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span>
     </div>
@@ -99,38 +99,18 @@
 
     let isSaving = false;
 
-    async function saveAll(manual) {
-        if (isSaving) {
-            if (manual) showStatus('Save already in progress...', 'saving');
-            return;
-        }
-        // Cancel any pending autosave
-        if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
-
-        // Capture dirty set
-        const toSave = new Set(dirtyRowIds);
+    async function saveAll() {
+        if (isSaving) return;
+        isSaving = true;
         dirtyRowIds.clear();
+        showStatus('Saving...', 'saving');
 
         const rows = table.getRows();
-        const rowsToSave = [];
+        let savedCount = 0;
         for (const row of rows) {
             const data = row.getData();
-            const rowKey = data.id ? String(data.id) : 'new_' + row.getPosition();
-            if (!data.id || toSave.has(rowKey)) {
-                rowsToSave.push(row);
-            }
-        }
-
-        if (rowsToSave.length === 0) {
-            if (manual) showStatus('No changes to save', 'saved');
-            return;
-        }
-
-        isSaving = true;
-        showStatus('Saving...', 'saving');
-        let savedCount = 0;
-        for (const row of rowsToSave) {
-            const success = await saveRow(row.getData(), row);
+            // Save every row — new rows and all existing rows on current page
+            const success = await saveRow(data, row);
             if (success) savedCount++;
         }
         isSaving = false;
@@ -258,7 +238,7 @@
     document.addEventListener('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
-            saveAll(true);
+            saveAll();
         }
     });
 
