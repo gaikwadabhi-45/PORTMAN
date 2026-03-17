@@ -162,6 +162,16 @@ def delete_header():
         return jsonify({'success': False, 'error': 'No delete permission'})
 
     row_id = request.json.get('id')
+
+    # Check if agreement is used in any bill
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT COUNT(*) as cnt FROM bill_header WHERE agreement_id = %s', [row_id])
+    bill_count = cur.fetchone()['cnt']
+    conn.close()
+    if bill_count > 0:
+        return jsonify({'success': False, 'error': f'Cannot delete — this agreement is used in {bill_count} bill(s)'})
+
     model.delete_agreement_header(row_id)
     return jsonify({'success': True})
 
