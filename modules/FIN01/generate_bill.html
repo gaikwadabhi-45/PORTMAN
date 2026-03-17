@@ -141,9 +141,25 @@
     <!-- Section A: Cargo Handling -->
     <div class="form-section">
         <h3>A. Cargo Handling (from Equipment Utilization)</h3>
-        <div id="cargoCards">
-            <div class="loading">Select customer and click Load Billables</div>
-        </div>
+        <table class="data-table" id="cargoLinesTable">
+            <thead>
+                <tr>
+                    <th style="width:30px;"><input type="checkbox" id="selectAllCargo" onclick="toggleAllCargo(this)"></th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Cargo</th>
+                    <th>Barge</th>
+                    <th>Equipment</th>
+                    <th>Operation</th>
+                    <th>Qty</th>
+                    <th>Rate</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody id="cargoLinesBody">
+                <tr><td colspan="10" class="empty-state">Select customer and click Load Billables</td></tr>
+            </tbody>
+        </table>
     </div>
 
     <!-- Section B: Other Services (collapsed by default) -->
@@ -318,209 +334,100 @@ async function loadBillables() {
 }
 
 function renderCargoCards(cards) {
-    const container = document.getElementById('cargoCards');
-    if (cards.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="icon">📦</div>No cargo handling lines found</div>';
+    const tbody = document.getElementById('cargoLinesBody');
+    // Flatten all lines from all cards into a single list
+    const allLines = [];
+    cards.forEach(card => {
+        (card.lines || []).forEach(line => {
+            allLines.push({...line, _card: card});
+        });
+    });
+
+    if (allLines.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No cargo handling lines found</td></tr>';
         return;
     }
 
-    container.innerHTML = '';
-    cards.forEach((card, idx) => {
-        const billableClass = card.is_billable ? 'billable' : 'unbillable';
-        const statusBadge = card.is_billable
-            ? `<span class="card-badge badge-${card.doc_status === 'Closed' ? 'closed' : 'partial'}">${card.doc_status}</span>`
-            : `<span class="card-badge badge-open">${card.doc_status || 'Not Closed'}</span>`;
+    // Store flat lines for billing
+    billableData._cargoLines = allLines;
 
-        const lockIcon = card.is_billable ? '✅' : '🔒';
-        const lines = card.lines || [];
+    tbody.innerHTML = '';
+    allLines.forEach((line, idx) => {
+        const card = line._card;
+        const isBillable = card.is_billable;
+        const qty = parseFloat(line.quantity || 0);
+        const statusColor = isBillable
+            ? (card.doc_status === 'Closed' ? '#27ae60' : '#f39c12')
+            : '#e74c3c';
+        const statusLabel = card.doc_status || 'Not Closed';
 
-        const fmtTime = v => {
-            if (!v) return '-';
-            const d = new Date(v);
-            if (isNaN(d)) return v;
-            const dd = String(d.getDate()).padStart(2,'0');
-            const mm = String(d.getMonth()+1).padStart(2,'0');
-            const yyyy = d.getFullYear();
-            const hh = String(d.getHours()).padStart(2,'0');
-            const min = String(d.getMinutes()).padStart(2,'0');
-            return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
-        };
-
-        const lineRows = lines.slice(0, 5).map(l => `
-            <tr>
-                <td>${fmtTime(l.start_time || l.from_time)}</td>
-                <td>${fmtTime(l.end_time || l.to_time)}</td>
-                <td>${l.cargo_name || '-'}</td>
-                <td>${l.barge_name || '-'}</td>
-                <td>${l.equipment_name || '-'}</td>
-                <td>${l.operation_type || '-'}</td>
-                <td>${parseFloat(l.quantity || 0).toFixed(2)} ${l.quantity_uom || ''}</td>
-            </tr>
-        `).join('');
-
-        const moreRows = lines.length > 5 ? `<tr><td colspan="7" style="color:#7f8c8d; font-style:italic;">... ${lines.length - 5} more lines</td></tr>` : '';
-
-        const sacDisplay = card.sac_code ? `<span style="font-size:10px; color:#7f8c8d; margin-left:15px;">SAC: ${card.sac_code}</span>` : '';
-
-        // Group lines by cargo_name to build per-cargo rate rows
-        const cargoGroups = {};
-        lines.forEach(l => {
-            const cn = l.cargo_name || '_default';
-            if (!cargoGroups[cn]) cargoGroups[cn] = { cargo_name: l.cargo_name || '', qty: 0 };
-            cargoGroups[cn].qty += parseFloat(l.quantity || 0);
-        });
-        const cargoNames = Object.keys(cargoGroups);
-        const hasMultipleCargo = cargoNames.length > 1 || (cargoNames.length === 1 && cargoNames[0] !== '_default');
-
-        // Store cargo groups on the card for later use
-        card._cargoGroups = cargoGroups;
-        card._hasMultipleCargo = hasMultipleCargo;
-
-        let rateSection = '';
-        if (!card.is_billable) {
-            rateSection = `<div style="padding:8px 0; color:#c0392b; font-size:11px;">🔒 LDUD not yet closed — billing not available for this document</div>`;
-        } else if (hasMultipleCargo) {
-            // Per-cargo rate table
-            let cargoRateRows = '';
-            let ci = 0;
-            for (const cn of cargoNames) {
-                const g = cargoGroups[cn];
-                cargoRateRows += `
-                    <tr>
-                        <td style="font-weight:600; font-size:11px;">${g.cargo_name || 'Other'}</td>
-                        <td style="text-align:right; font-size:11px;">${g.qty.toFixed(2)} ${card.uom || 'MT'}</td>
-                        <td><input type="number" step="0.01" class="cargo-sub-rate" id="cargo_rate_${idx}_${ci}"
-                            data-card-idx="${idx}" data-cargo-name="${g.cargo_name}" data-qty="${g.qty}"
-                            placeholder="0.00" onchange="recalcTotals()" style="width:90px; padding:3px 5px; font-size:11px;"></td>
-                        <td style="text-align:right; font-weight:600; font-size:11px;" id="cargo_sub_amt_${idx}_${ci}">0.00</td>
-                    </tr>
-                `;
-                ci++;
-            }
-            rateSection = `
-                <div style="margin-top:8px; border-top:1px solid #ecf0f1; padding-top:8px;">
-                    <div style="font-size:10px; font-weight:600; color:#7f8c8d; text-transform:uppercase; margin-bottom:5px;">Rates by Cargo ${sacDisplay}</div>
-                    <table style="width:100%; font-size:11px; border-collapse:collapse;">
-                        <thead><tr>
-                            <th style="text-align:left; padding:3px 5px; font-size:10px; color:#7f8c8d;">Cargo</th>
-                            <th style="text-align:right; padding:3px 5px; font-size:10px; color:#7f8c8d;">Qty</th>
-                            <th style="padding:3px 5px; font-size:10px; color:#7f8c8d;">Rate</th>
-                            <th style="text-align:right; padding:3px 5px; font-size:10px; color:#7f8c8d;">Amount</th>
-                        </tr></thead>
-                        <tbody>${cargoRateRows}</tbody>
-                        <tfoot><tr>
-                            <td colspan="3" style="text-align:right; font-weight:700; padding:5px; border-top:1px solid #ddd;">Total</td>
-                            <td style="text-align:right; font-weight:700; padding:5px; border-top:1px solid #ddd;" id="cargo_amount_${idx}">0.00</td>
-                        </tr></tfoot>
-                    </table>
-                </div>
-            `;
-        } else {
-            // Single rate (original behavior)
-            rateSection = `
-                <div class="card-rate-row">
-                    <label>Rate</label>
-                    <input type="number" step="0.01" id="cargo_rate_${idx}" placeholder="0.00"
-                        onchange="recalcTotals()"
-                        data-qty="${card.total_quantity}">
-                    <span style="font-size:11px; color:#555;">per ${card.uom || 'MT'}</span>
-                    ${sacDisplay}
-                    <label style="margin-left:20px;">Amount</label>
-                    <input type="text" id="cargo_amount_${idx}" readonly style="width:120px; background:#ecf0f1; font-weight:700;">
-                </div>
-            `;
-        }
-
-        const checkbox = card.is_billable ? `<input type="checkbox" class="cargo-check" data-idx="${idx}" onchange="recalcTotals()">` : '';
-
-        const div = document.createElement('div');
-        div.className = `cargo-card ${billableClass}`;
-        div.dataset.idx = idx;
-        div.innerHTML = `
-            <div class="card-header">
-                ${checkbox}
-                <span class="lock-icon">${lockIcon}</span>
-                <span class="card-title">${card.service_name} — ${card.doc_label || card.source_type + '-' + card.source_id}</span>
-                <span style="font-size:11px; color:#555;">Total: ${parseFloat(card.total_quantity || 0).toFixed(2)} ${card.uom || 'MT'}</span>
-                ${statusBadge}
-            </div>
-            <div class="card-body">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Start Time</th><th>End Time</th><th>Cargo</th><th>Barge</th><th>Equipment</th><th>Operation</th><th>Quantity</th>
-                        </tr>
-                    </thead>
-                    <tbody>${lineRows}${moreRows}</tbody>
-                </table>
-                ${rateSection}
-            </div>
+        const tr = document.createElement('tr');
+        if (!isBillable) tr.style.opacity = '0.6';
+        tr.innerHTML = `
+            <td>${isBillable ? `<input type="checkbox" class="cargo-line-check" data-idx="${idx}" onchange="recalcTotals()">` : '🔒'}</td>
+            <td style="font-size:10px;">${card.doc_label || card.source_type + '-' + card.source_id}</td>
+            <td><span style="background:${statusColor};color:white;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;">${statusLabel}</span></td>
+            <td>${line.cargo_name || '-'}</td>
+            <td>${line.barge_name || '-'}</td>
+            <td>${line.equipment_name || '-'}</td>
+            <td>${line.operation_type || '-'}</td>
+            <td style="text-align:right;">${qty.toFixed(2)} ${line.quantity_uom || ''}</td>
+            <td>${isBillable ? `<input type="number" step="0.01" id="cargo_line_rate_${idx}" placeholder="0.00" onchange="recalcTotals()" style="width:80px;padding:3px 5px;font-size:11px;">` : '-'}</td>
+            <td style="text-align:right;font-weight:600;" id="cargo_line_amt_${idx}">-</td>
         `;
-        container.appendChild(div);
+        tbody.appendChild(tr);
 
         // Auto-load rate from agreement
-        if (card.is_billable && card.service_type_id) {
-            loadCargoRate(idx, card.service_type_id, card);
+        if (isBillable && card.service_type_id) {
+            loadCargoLineRate(idx, card.service_type_id, line.cargo_name);
         }
     });
 }
 
-async function loadCargoRate(idx, serviceTypeId, card) {
+function toggleAllCargo(masterCb) {
+    document.querySelectorAll('.cargo-line-check').forEach(cb => {
+        cb.checked = masterCb.checked;
+    });
+    recalcTotals();
+}
+
+async function loadCargoLineRate(idx, serviceTypeId, cargoName) {
     const ct = document.getElementById('customerType').value;
     const cid = document.getElementById('customerId').value;
     const agId = document.getElementById('agreementId').value;
 
-    if (card._hasMultipleCargo) {
-        // Fetch all cargo-specific rates
+    // Try cargo-specific rate first
+    if (cargoName) {
         let url = `/api/module/FIN01/cargo-rates/${ct}/${cid}/${serviceTypeId}`;
         if (agId) url += `?agreement_id=${agId}`;
-
         try {
             const resp = await fetch(url);
             const json = await resp.json();
-            if (json.success && json.rates) {
-                // Fill per-cargo rate inputs
-                document.querySelectorAll(`[id^="cargo_rate_${idx}_"]`).forEach(input => {
-                    const cargoName = input.dataset.cargoName;
-                    if (cargoName && json.rates[cargoName] != null) {
-                        input.value = parseFloat(json.rates[cargoName]).toFixed(2);
-                    }
-                });
-                recalcTotals();
-            }
-        } catch(e) {}
-
-        // Also try a generic (non-cargo) rate as fallback for unfilled inputs
-        let genUrl = `/api/module/FIN01/agreement-rate/${ct}/${cid}/${serviceTypeId}`;
-        if (agId) genUrl += `?agreement_id=${agId}`;
-        try {
-            const resp = await fetch(genUrl);
-            const json = await resp.json();
-            if (json.success) {
-                const fallbackRate = parseFloat(json.data.rate || 0).toFixed(2);
-                document.querySelectorAll(`[id^="cargo_rate_${idx}_"]`).forEach(input => {
-                    if (!input.value) input.value = fallbackRate;
-                });
-                recalcTotals();
-            }
-        } catch(e) {}
-    } else {
-        // Single rate (original behavior)
-        let url = `/api/module/FIN01/agreement-rate/${ct}/${cid}/${serviceTypeId}`;
-        if (agId) url += `?agreement_id=${agId}`;
-
-        try {
-            const resp = await fetch(url);
-            const json = await resp.json();
-            if (json.success) {
-                const rateInput = document.getElementById(`cargo_rate_${idx}`);
+            if (json.success && json.rates && json.rates[cargoName] != null) {
+                const rateInput = document.getElementById(`cargo_line_rate_${idx}`);
                 if (rateInput) {
-                    rateInput.value = parseFloat(json.data.rate || 0).toFixed(2);
+                    rateInput.value = parseFloat(json.rates[cargoName]).toFixed(2);
                     recalcTotals();
+                    return;
                 }
             }
         } catch(e) {}
     }
+
+    // Fallback to generic rate
+    let url = `/api/module/FIN01/agreement-rate/${ct}/${cid}/${serviceTypeId}`;
+    if (agId) url += `?agreement_id=${agId}`;
+    try {
+        const resp = await fetch(url);
+        const json = await resp.json();
+        if (json.success) {
+            const rateInput = document.getElementById(`cargo_line_rate_${idx}`);
+            if (rateInput) {
+                rateInput.value = parseFloat(json.data.rate || 0).toFixed(2);
+                recalcTotals();
+            }
+        }
+    } catch(e) {}
 }
 
 function renderOtherServices(records) {
@@ -611,56 +518,29 @@ function renderBilledHistory(items) {
     `).join('');
 }
 
-function calcCargoCardAmount(idx, card) {
-    // Calculate total amount for a cargo card (handles both single and multi-cargo)
-    let cardTotal = 0;
-    if (card._hasMultipleCargo) {
-        // Sum per-cargo sub-amounts
-        let ci = 0;
-        for (const cn of Object.keys(card._cargoGroups)) {
-            const rateInput = document.getElementById(`cargo_rate_${idx}_${ci}`);
-            const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-            const qty = card._cargoGroups[cn].qty;
-            const subAmt = qty * rate;
-            const subAmtEl = document.getElementById(`cargo_sub_amt_${idx}_${ci}`);
-            if (subAmtEl) subAmtEl.textContent = subAmt.toFixed(2);
-            cardTotal += subAmt;
-            ci++;
-        }
-        const totalEl = document.getElementById(`cargo_amount_${idx}`);
-        if (totalEl) totalEl.textContent = '₹' + cardTotal.toFixed(2);
-    } else {
-        const rateInput = document.getElementById(`cargo_rate_${idx}`);
-        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-        const qty = parseFloat(card.total_quantity || 0);
-        cardTotal = qty * rate;
-        const amtEl = document.getElementById(`cargo_amount_${idx}`);
-        if (amtEl) amtEl.value = '₹' + cardTotal.toFixed(2);
-    }
-    return cardTotal;
-}
-
 function recalcTotals() {
     let subtotal = 0;
     let selectedCount = 0;
+    const cargoLines = billableData._cargoLines || [];
 
-    // Cargo items
-    document.querySelectorAll('.cargo-check:checked').forEach(cb => {
-        const idx = cb.dataset.idx;
-        const card = billableData.cargo_handling[parseInt(idx)];
-        subtotal += calcCargoCardAmount(idx, card);
-        selectedCount++;
-    });
-
-    // Also update unchecked cargo amounts (display only)
-    document.querySelectorAll('.cargo-check:not(:checked)').forEach(cb => {
-        const idx = cb.dataset.idx;
-        const card = billableData.cargo_handling[parseInt(idx)];
-        calcCargoCardAmount(idx, card);
+    // Cargo line items — update all amounts
+    document.querySelectorAll('.cargo-line-check').forEach(cb => {
+        const idx = parseInt(cb.dataset.idx);
+        const line = cargoLines[idx];
+        const qty = parseFloat(line.quantity || 0);
+        const rateInput = document.getElementById(`cargo_line_rate_${idx}`);
+        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+        const amount = qty * rate;
+        const amtEl = document.getElementById(`cargo_line_amt_${idx}`);
+        if (amtEl) amtEl.textContent = '₹' + amount.toFixed(2);
+        if (cb.checked) {
+            subtotal += amount;
+            selectedCount++;
+        }
     });
 
     // Service record items
-    document.querySelectorAll('.service-check:checked').forEach(cb => {
+    document.querySelectorAll('.service-check').forEach(cb => {
         const idx = cb.dataset.idx;
         const qty = parseFloat(cb.dataset.qty || 0);
         const rateInput = document.getElementById(`svc_rate_${idx}`);
@@ -668,18 +548,10 @@ function recalcTotals() {
         const amount = qty * rate;
         const amtEl = document.getElementById(`svc_amount_${idx}`);
         if (amtEl) amtEl.textContent = '₹' + amount.toFixed(2);
-        subtotal += amount;
-        selectedCount++;
-    });
-
-    // Update unchecked service amounts
-    document.querySelectorAll('.service-check:not(:checked)').forEach(cb => {
-        const idx = cb.dataset.idx;
-        const qty = parseFloat(cb.dataset.qty || 0);
-        const rateInput = document.getElementById(`svc_rate_${idx}`);
-        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-        const amtEl = document.getElementById(`svc_amount_${idx}`);
-        if (amtEl) amtEl.textContent = '₹' + (qty * rate).toFixed(2);
+        if (cb.checked) {
+            subtotal += amount;
+            selectedCount++;
+        }
     });
 
     // GST (simplified — 18% on subtotal; real impl would use per-line GST rates)
@@ -703,56 +575,28 @@ async function generateBill() {
     }
 
     const lines = [];
+    const cargoLines = billableData._cargoLines || [];
 
-    // Collect cargo lines
-    document.querySelectorAll('.cargo-check:checked').forEach(cb => {
+    // Collect selected cargo lines (each EU line individually)
+    document.querySelectorAll('.cargo-line-check:checked').forEach(cb => {
         const idx = parseInt(cb.dataset.idx);
-        const card = billableData.cargo_handling[idx];
-
-        if (card._hasMultipleCargo) {
-            // Create separate bill lines per cargo group
-            let ci = 0;
-            for (const cn of Object.keys(card._cargoGroups)) {
-                const g = card._cargoGroups[cn];
-                const rateInput = document.getElementById(`cargo_rate_${idx}_${ci}`);
-                const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-                if (rate > 0 && g.qty > 0) {
-                    // Filter EU line IDs for this cargo
-                    const cargoEuLineIds = (card.lines || [])
-                        .filter(l => (l.cargo_name || '') === g.cargo_name)
-                        .map(l => l.id);
-                    lines.push({
-                        line_type: 'cargo_handling',
-                        service_type_id: card.service_type_id,
-                        description: card.service_name + ' — ' + (g.cargo_name || 'Other') + ' — ' + card.doc_label,
-                        quantity: g.qty,
-                        rate: rate,
-                        uom: card.uom || 'MT',
-                        line_amount: g.qty * rate,
-                        source_type: card.source_type,
-                        source_id: card.source_id,
-                        eu_line_ids: cargoEuLineIds
-                    });
-                }
-                ci++;
-            }
-        } else {
-            const rateInput = document.getElementById(`cargo_rate_${idx}`);
-            const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-            const qty = parseFloat(card.total_quantity || 0);
-            lines.push({
-                line_type: 'cargo_handling',
-                service_type_id: card.service_type_id,
-                description: card.service_name + ' — ' + card.doc_label,
-                quantity: qty,
-                rate: rate,
-                uom: card.uom || 'MT',
-                line_amount: qty * rate,
-                source_type: card.source_type,
-                source_id: card.source_id,
-                eu_line_ids: (card.lines || []).map(l => l.id)
-            });
-        }
+        const line = cargoLines[idx];
+        const card = line._card;
+        const rateInput = document.getElementById(`cargo_line_rate_${idx}`);
+        const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
+        const qty = parseFloat(line.quantity || 0);
+        lines.push({
+            line_type: 'cargo_handling',
+            service_type_id: card.service_type_id,
+            description: (card.service_name || '') + ' — ' + (line.cargo_name || '') + ' — ' + (line.barge_name || '') + ' — ' + card.doc_label,
+            quantity: qty,
+            rate: rate,
+            uom: line.quantity_uom || card.uom || 'MT',
+            line_amount: qty * rate,
+            source_type: card.source_type,
+            source_id: card.source_id,
+            eu_line_ids: [line.id]
+        });
     });
 
     // Collect other service lines

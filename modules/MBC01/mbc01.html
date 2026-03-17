@@ -735,7 +735,7 @@
             const field = cell.getColumn().getField();
             if (!field) return;
             const rowData = cell.getRow().getData();
-            if (!rowData.id || isDraftRow(rowData.doc_status)) return;
+            if (!rowData.id) return;
             if (!editMode || !cell.getRow().isSelected()) {
                 cell.cancelEdit();
             }
