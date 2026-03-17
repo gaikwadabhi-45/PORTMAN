@@ -118,14 +118,15 @@ def _nature_of_transaction(customer_gstin):
 # Item builder (shared by all document types)
 # ---------------------------------------------------------------------------
 
-def _build_items(lines, company, amount_field='line_amount'):
+def _build_items(lines, company, amount_field='line_amount', config_defaults=None):
     """
     Build the Item list from service lines.
 
     Each line → one Item with CGST_AMT / SGST_AMT / IGST_AMT inline.
     Plant, Business_Place, Section_Code come from the line (if set) or
-    fall back to company code.
+    fall back to SAP config defaults, then company code.
     """
+    config_defaults = config_defaults or {}
     items = []
     for line in lines:
         taxable = float(line.get(amount_field) or 0)
@@ -133,9 +134,9 @@ def _build_items(lines, company, amount_field='line_amount'):
         sgst    = float(line.get('sgst_amount') or 0)
         igst    = float(line.get('igst_amount') or 0)
 
-        plant   = line.get('plant')          or company
-        bp      = line.get('business_place') or company
-        sc      = line.get('section_code')   or company
+        plant   = line.get('plant')          or config_defaults.get('plant_code')          or company
+        bp      = line.get('business_place') or config_defaults.get('business_place')      or company
+        sc      = line.get('section_code')   or config_defaults.get('section_code')        or company
 
         items.append({
             'Service_Code':   line.get('service_code') or line.get('gl_code') or '',
@@ -147,8 +148,8 @@ def _build_items(lines, company, amount_field='line_amount'):
             'Plant':          plant,
             'Business_Place': bp,
             'Section_Code':   sc,
-            'Tax_Code':       line.get('sap_tax_code') or '',
-            'Profit_Center':  line.get('profit_center') or '',
+            'Tax_Code':       line.get('sap_tax_code') or config_defaults.get('tax_code') or '',
+            'Profit_Center':  line.get('profit_center') or config_defaults.get('profit_center') or '',
             'HSN_SAC':        line.get('sac_code') or line.get('hsn_sac') or '',
             'TDS_Amount':     _fmt_amount(line.get('tds_amount')),
             'TCS_Amount':     _fmt_amount(line.get('tcs_amount')),
@@ -212,7 +213,7 @@ def build_invoice_payload(invoice_header, invoice_lines):
         'IRN_Date':              _fmt_date(invoice_header.get('irn_date')) if invoice_header.get('irn_date') else '',
         'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
-        'Item':                  _build_items(invoice_lines, company),
+        'Item':                  _build_items(invoice_lines, company, config_defaults=config),
     }
 
     return {'Record': record}
@@ -260,7 +261,7 @@ def build_credit_note_payload(cn_header, cn_lines):
         'IRN_Date':              _fmt_date(cn_header.get('irn_date')) if cn_header.get('irn_date') else '',
         'Nature_of_transaction': _nature_of_transaction(cn_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
-        'Item':                  _build_items(cn_lines, company),
+        'Item':                  _build_items(cn_lines, company, config_defaults=config),
     }
 
     return {'Record': record}
@@ -309,7 +310,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
         'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
-        'Item':                  _build_items(fdcn_lines, company),
+        'Item':                  _build_items(fdcn_lines, company, config_defaults=config),
     }
 
     return {'Record': record}

@@ -179,18 +179,25 @@
                 <div class="config-row">
                     <label>Base URL:<br><input type="text" id="sapBaseUrl" placeholder="e.g., https://sappi.jsw.in:443/RESTAdapter" style="width:100%;padding:6px;"></label>
                 </div>
-                <div class="config-row">
-                    <label>Token URL:<br><input type="text" id="sapTokenUrl" placeholder="OAuth token URL (if applicable)" style="width:100%;padding:6px;"></label>
-                </div>
                 <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                     <label>Client ID:<br><input type="text" id="sapClientId" placeholder="API client ID" style="width:100%;padding:6px;"></label>
                     <label>Client Secret:<br><input type="password" id="sapClientSecret" placeholder="API client secret" style="width:100%;padding:6px;"></label>
                 </div>
             </div>
             <div class="config-group">
-                <h4>Defaults</h4>
-                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <h4>FB70 Defaults</h4>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
                     <label>Payment Term:<br><input type="text" id="sapPaymentTerm" placeholder="e.g., Z001" style="width:100%;padding:6px;"></label>
+                    <label>Plant Code:<br><input type="text" id="sapPlantCode" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
+                    <label>Business Place:<br><input type="text" id="sapBusinessPlace" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
+                </div>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                    <label>Section Code:<br><input type="text" id="sapSectionCode" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
+                    <label>Profit Center:<br><input type="text" id="sapProfitCenter" placeholder="e.g., 5130000" style="width:100%;padding:6px;"></label>
+                    <label>Tax Code:<br><input type="text" id="sapTaxCode" placeholder="e.g., V1" style="width:100%;padding:6px;"></label>
+                </div>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <label>Currency:<br><input type="text" id="sapCurrency" placeholder="INR" value="INR" style="width:100%;padding:6px;"></label>
                     <label>Active:<br>
                         <select id="sapIsActive" style="width:100%;padding:6px;">
                             <option value="1">Active</option>
@@ -561,11 +568,16 @@ async function loadSapConfig() {
     const cfg = await res.json();
     document.getElementById('sapEnvironment').value = cfg.environment || 'production';
     document.getElementById('sapBaseUrl').value = cfg.base_url || '';
-    document.getElementById('sapTokenUrl').value = cfg.token_url || '';
     document.getElementById('sapClientId').value = cfg.client_id || '';
     document.getElementById('sapClientSecret').value = cfg.client_secret || '';
     document.getElementById('sapCompanyCode').value = cfg.company_code || '';
-    document.getElementById('sapPaymentTerm').value = cfg.payment_term || '';
+    document.getElementById('sapPaymentTerm').value = cfg.default_payment_term || cfg.payment_term || '';
+    document.getElementById('sapPlantCode').value = cfg.plant_code || '';
+    document.getElementById('sapBusinessPlace').value = cfg.business_place || '';
+    document.getElementById('sapSectionCode').value = cfg.section_code || '';
+    document.getElementById('sapProfitCenter').value = cfg.profit_center || '';
+    document.getElementById('sapTaxCode').value = cfg.tax_code || '';
+    document.getElementById('sapCurrency').value = cfg.currency || 'INR';
     document.getElementById('sapIsActive').value = cfg.is_active ? '1' : '0';
     document.getElementById('sapStatus').textContent = cfg.id ? 'Config loaded' : 'No config found — fill in to create';
     document.getElementById('sapStatus').style.color = cfg.id ? '#38a169' : '#e53e3e';
@@ -575,11 +587,16 @@ async function saveSapConfig() {
     const data = {
         environment: document.getElementById('sapEnvironment').value,
         base_url: document.getElementById('sapBaseUrl').value.trim(),
-        token_url: document.getElementById('sapTokenUrl').value.trim(),
         client_id: document.getElementById('sapClientId').value.trim(),
         client_secret: document.getElementById('sapClientSecret').value.trim(),
         company_code: document.getElementById('sapCompanyCode').value.trim(),
-        payment_term: document.getElementById('sapPaymentTerm').value.trim(),
+        default_payment_term: document.getElementById('sapPaymentTerm').value.trim(),
+        plant_code: document.getElementById('sapPlantCode').value.trim(),
+        business_place: document.getElementById('sapBusinessPlace').value.trim(),
+        section_code: document.getElementById('sapSectionCode').value.trim(),
+        profit_center: document.getElementById('sapProfitCenter').value.trim(),
+        tax_code: document.getElementById('sapTaxCode').value.trim(),
+        currency: document.getElementById('sapCurrency').value.trim() || 'INR',
         is_active: document.getElementById('sapIsActive').value
     };
     if (!data.company_code) { alert('Company Code is required'); return; }

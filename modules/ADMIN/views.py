@@ -174,32 +174,49 @@ def save_sap_config():
 
     if existing:
         cur.execute('''UPDATE sap_api_config SET
-            environment=%s, base_url=%s, token_url=%s, client_id=%s, client_secret=%s,
-            company_code=%s, payment_term=%s, is_active=%s,
-            updated_by=%s, updated_date=%s
+            environment=%s, base_url=%s, client_id=%s, client_secret=%s,
+            company_code=%s, default_payment_term=%s, payment_term=%s,
+            plant_code=%s, business_place=%s, section_code=%s,
+            profit_center=%s, tax_code=%s, currency=%s,
+            is_active=%s, updated_by=%s, updated_date=%s
             WHERE id=%s''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
-            data.get('token_url', ''),
             data.get('client_id', ''),
             data.get('client_secret', ''),
             data.get('company_code', ''),
-            data.get('payment_term', ''),
+            data.get('default_payment_term', ''),
+            data.get('default_payment_term', ''),
+            data.get('plant_code', ''),
+            data.get('business_place', ''),
+            data.get('section_code', ''),
+            data.get('profit_center', ''),
+            data.get('tax_code', ''),
+            data.get('currency', 'INR'),
             data.get('is_active', 1),
             username, now, existing['id']
         ])
     else:
         cur.execute('''INSERT INTO sap_api_config
-            (environment, base_url, token_url, client_id, client_secret,
-             company_code, payment_term, is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
+            (environment, base_url, client_id, client_secret,
+             company_code, default_payment_term, payment_term,
+             plant_code, business_place, section_code,
+             profit_center, tax_code, currency,
+             is_active, created_by, created_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
-            data.get('token_url', ''),
             data.get('client_id', ''),
             data.get('client_secret', ''),
             data.get('company_code', ''),
-            data.get('payment_term', ''),
+            data.get('default_payment_term', ''),
+            data.get('default_payment_term', ''),
+            data.get('plant_code', ''),
+            data.get('business_place', ''),
+            data.get('section_code', ''),
+            data.get('profit_center', ''),
+            data.get('tax_code', ''),
+            data.get('currency', 'INR'),
             data.get('is_active', 1),
             username, now
         ])
