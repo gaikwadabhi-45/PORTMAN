@@ -132,28 +132,63 @@ def save_bill_line(data):
     tds_amount = float(data.get('tds_amount') or 0)
     service_code = data.get('service_code') or ''
 
-    # Compute line_total if not provided
-    if not data.get('line_total'):
-        la = float(data.get('line_amount') or 0)
-        ca = float(data.get('cgst_amount') or 0)
-        sa = float(data.get('sgst_amount') or 0)
-        ia = float(data.get('igst_amount') or 0)
-        data['line_total'] = round(la + ca + sa + ia, 2)
-
     svc_id = data.get('service_type_id')
-    if svc_id and not data.get('tds_applicable'):
+    if svc_id:
         cur.execute(
-            'SELECT service_code, is_tds, tds_percent FROM finance_service_types WHERE id = %s',
+            'SELECT service_code, is_tds, tds_percent, gst_rate_id, sac_code FROM finance_service_types WHERE id = %s',
             [svc_id]
         )
         svc = cur.fetchone()
         if svc:
             service_code = service_code or (svc.get('service_code') or '')
-            if svc.get('is_tds'):
+            if not data.get('sac_code'):
+                data['sac_code'] = svc.get('sac_code') or ''
+            # TDS
+            if not data.get('tds_applicable') and svc.get('is_tds'):
                 tds_applicable = 1
                 tds_percent = float(svc.get('tds_percent') or 0)
                 line_amount = float(data.get('line_amount') or 0)
                 tds_amount = round(line_amount * tds_percent / 100, 2)
+            # GST — auto-compute if not already provided
+            gst_rate_id = svc.get('gst_rate_id')
+            if gst_rate_id and not data.get('cgst_amount') and not data.get('igst_amount'):
+                cur.execute('SELECT cgst_rate, sgst_rate, igst_rate FROM gst_rates WHERE id = %s', [gst_rate_id])
+                gst = cur.fetchone()
+                if gst:
+                    line_amount = float(data.get('line_amount') or 0)
+                    data['gst_rate_id'] = gst_rate_id
+                    # Determine CGST+SGST vs IGST from customer GSTIN
+                    customer_gstin = data.get('customer_gstin') or ''
+                    # Get port GSTIN from gst_api_config
+                    cur.execute("SELECT gstin FROM gst_api_config WHERE is_active = 1 LIMIT 1")
+                    port_cfg = cur.fetchone()
+                    port_gstin = (port_cfg['gstin'] if port_cfg else '') or ''
+                    # Same state if first 2 digits of GSTIN match
+                    same_state = (len(customer_gstin) >= 2 and len(port_gstin) >= 2
+                                  and customer_gstin[:2] == port_gstin[:2])
+                    if same_state or not customer_gstin:
+                        # Intra-state: CGST + SGST
+                        data['cgst_rate'] = float(gst['cgst_rate'] or 0)
+                        data['sgst_rate'] = float(gst['sgst_rate'] or 0)
+                        data['igst_rate'] = 0
+                        data['cgst_amount'] = round(line_amount * data['cgst_rate'] / 100, 2)
+                        data['sgst_amount'] = round(line_amount * data['sgst_rate'] / 100, 2)
+                        data['igst_amount'] = 0
+                    else:
+                        # Inter-state: IGST
+                        data['cgst_rate'] = 0
+                        data['sgst_rate'] = 0
+                        data['igst_rate'] = float(gst['igst_rate'] or 0)
+                        data['cgst_amount'] = 0
+                        data['sgst_amount'] = 0
+                        data['igst_amount'] = round(line_amount * data['igst_rate'] / 100, 2)
+
+    # Compute line_total = line_amount + GST
+    la = float(data.get('line_amount') or 0)
+    ca = float(data.get('cgst_amount') or 0)
+    sa = float(data.get('sgst_amount') or 0)
+    ia = float(data.get('igst_amount') or 0)
+    data['line_total'] = round(la + ca + sa + ia, 2)
 
     if data.get('id'):
         cur.execute('''UPDATE bill_lines

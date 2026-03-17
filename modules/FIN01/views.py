@@ -142,18 +142,21 @@ def save_bill():
     sgst_total = 0
     igst_total = 0
 
+    customer_gstin = data.get('customer_gstin') or ''
+
     for line in lines:
         line['bill_id'] = row_id
+        line['customer_gstin'] = customer_gstin
         # Map frontend field names to model field names
         if not line.get('service_name') and line.get('description'):
             line['service_name'] = line['description']
         if not line.get('service_description'):
             line['service_description'] = line.get('description', '')
         model.save_bill_line(line)
-        subtotal += line.get('line_amount', 0)
-        cgst_total += line.get('cgst_amount', 0)
-        sgst_total += line.get('sgst_amount', 0)
-        igst_total += line.get('igst_amount', 0)
+        subtotal += float(line.get('line_amount') or 0)
+        cgst_total += float(line.get('cgst_amount') or 0)
+        sgst_total += float(line.get('sgst_amount') or 0)
+        igst_total += float(line.get('igst_amount') or 0)
 
     # Update bill header with calculated totals + mark source records as billed
     total_amount = subtotal + cgst_total + sgst_total + igst_total

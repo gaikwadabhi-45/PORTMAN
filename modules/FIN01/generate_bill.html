@@ -636,7 +636,6 @@ async function generateBill() {
     const customerOpt = document.getElementById('customerId').selectedOptions[0];
     const agId = document.getElementById('agreementId').value;
     const subtotal = lines.reduce((s, l) => s + l.line_amount, 0);
-    const gst = subtotal * 0.18;
 
     const payload = {
         customer_type: ct,
@@ -648,10 +647,6 @@ async function generateBill() {
         currency_code: document.getElementById('currency').value || 'INR',
         remarks: document.getElementById('remarks').value,
         subtotal: subtotal,
-        cgst_amount: gst / 2,
-        sgst_amount: gst / 2,
-        igst_amount: 0,
-        total_amount: subtotal + gst,
         lines: lines
     };
 
