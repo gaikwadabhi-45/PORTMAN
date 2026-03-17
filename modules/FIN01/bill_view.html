@@ -103,13 +103,13 @@
         <tr>
             <td class="text-right">{{ loop.index }}</td>
             <td>{{ line.service_name }}</td>
-            <td class="text-right">{{ "%.2f"|format(line.quantity) }}</td>
+            <td class="text-right">{{ "%.2f"|format(line.quantity or 0) }}</td>
             <td>{{ line.uom }}</td>
-            <td class="text-right">{{ "%.2f"|format(line.rate) }}</td>
-            <td class="text-right">{{ "%.2f"|format(line.line_amount) }}</td>
-            <td class="text-right">{{ "%.2f"|format(line.cgst_amount) }}</td>
-            <td class="text-right">{{ "%.2f"|format(line.sgst_amount) }}</td>
-            <td class="text-right">{{ "%.2f"|format(line.line_total) }}</td>
+            <td class="text-right">{{ "%.2f"|format(line.rate or 0) }}</td>
+            <td class="text-right">{{ "%.2f"|format(line.line_amount or 0) }}</td>
+            <td class="text-right">{{ "%.2f"|format(line.cgst_amount or 0) }}</td>
+            <td class="text-right">{{ "%.2f"|format(line.sgst_amount or 0) }}</td>
+            <td class="text-right">{{ "%.2f"|format(line.line_total or 0) }}</td>
         </tr>
         {% endfor %}
     </tbody>
