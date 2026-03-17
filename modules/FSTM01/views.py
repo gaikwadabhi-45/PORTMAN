@@ -34,9 +34,9 @@ def save():
 
     is_admin = session.get('is_admin', False)
 
-    if data.get('id') and not perms['can_edit']:
+    if data.get('id') and not perms['can_edit'] and not is_admin:
         return jsonify({'success': False, 'error': 'No edit permission'})
-    if not data.get('id') and not perms['can_add']:
+    if not data.get('id') and not perms['can_add'] and not is_admin:
         return jsonify({'success': False, 'error': 'No add permission'})
 
     # System rows can only be edited by admins

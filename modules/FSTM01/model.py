@@ -58,6 +58,14 @@ def save_service_type(data):
     tds_pct = data.get('tds_percent')
     tds_pct = float(tds_pct) if tds_pct not in (None, '', 'null') else None
 
+    # Convert empty strings to None for integer fields
+    for int_field in ('gst_rate_id', 'is_billable', 'is_active'):
+        val = data.get(int_field)
+        if val == '' or val is None:
+            data[int_field] = None
+        else:
+            data[int_field] = int(val)
+
     if data.get('id'):
         cur.execute('''
             UPDATE finance_service_types
