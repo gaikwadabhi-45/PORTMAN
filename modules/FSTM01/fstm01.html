@@ -75,7 +75,7 @@
     </thead>
     <tbody id="tableBody">
         {% for row in data %}
-        {% set locked = (row.is_system == 1 and not is_admin) or (not perms.can_edit) %}
+        {% set locked = (row.is_system == 1 and not is_admin) or (not perms.can_edit and not is_admin) %}
         <tr data-id="{{ row.id }}" {% if row.is_system %}class="system-row" data-system="1"{% endif %}>
             <td>{% if not row.is_system %}<input type="checkbox" class="row-select">{% else %}<span title="System-managed — cannot be deleted">🔒</span>{% endif %}</td>
             <td><input type="text" name="service_code[]" value="{{ row.service_code }}" {% if locked %}readonly{% endif %}></td>
