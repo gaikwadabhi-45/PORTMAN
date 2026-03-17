@@ -118,6 +118,26 @@ def save_line():
     return jsonify({'success': True, 'id': row_id})
 
 
+@bp.route('/api/module/FCAM01/save-lines-batch', methods=['POST'])
+def save_lines_batch():
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+
+    perms = get_user_permissions(session['user_id'], 'FCAM01')
+    if not perms['can_add'] and not perms['can_edit']:
+        return jsonify({'success': False, 'error': 'No permission'})
+
+    lines = request.json.get('lines', [])
+    results = []
+    for line in lines:
+        try:
+            row_id = model.save_agreement_line(line)
+            results.append({'success': True, 'id': row_id, 'cargo_id': line.get('cargo_id')})
+        except Exception as e:
+            results.append({'success': False, 'error': str(e), 'cargo_id': line.get('cargo_id')})
+    return jsonify({'success': True, 'results': results})
+
+
 @bp.route('/api/module/FCAM01/delete-line', methods=['POST'])
 def delete_line():
     if 'user_id' not in session:

@@ -376,19 +376,16 @@ async function saveCargoRates() {
 
     const currency = document.getElementById('currency_code').value;
     const rows = document.querySelectorAll('#cargoRatesBody tr');
-    let saved = 0;
-    let errors = 0;
+    const lines = [];
+    const rowMap = {};  // cargo_id -> row element
 
     for (let row of rows) {
         const rate = row.querySelector('.cargo-rate').value.trim();
-        if (!rate) continue; // Skip empty rates
+        if (!rate) continue;
 
-        const lineId = row.getAttribute('data-line-id');
         const cargoId = row.getAttribute('data-cargo-id');
-        const cargoName = row.getAttribute('data-cargo-name');
-
-        const data = {
-            id: lineId || '',
+        const lineData = {
+            id: row.getAttribute('data-line-id') || '',
             agreement_id: currentAgreementId,
             service_type_id: currentCargoServiceId,
             rate: rate,
@@ -397,25 +394,34 @@ async function saveCargoRates() {
             min_charge: row.querySelector('.cargo-min').value.trim() || null,
             max_charge: row.querySelector('.cargo-max').value.trim() || null,
             cargo_id: cargoId,
-            cargo_name: cargoName
+            cargo_name: row.getAttribute('data-cargo-name')
         };
+        lines.push(lineData);
+        rowMap[cargoId] = row;
+    }
 
-        const res = await fetch('/api/module/FCAM01/save-line', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-        const result = await res.json();
-        if (result.success) {
+    if (lines.length === 0) return;
+
+    const res = await fetch('/api/module/FCAM01/save-lines-batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ lines })
+    });
+    const result = await res.json();
+
+    let saved = 0, errors = 0;
+    for (const r of (result.results || [])) {
+        if (r.success) {
             saved++;
-            row.setAttribute('data-line-id', result.id);
-            // Update in-memory cache
+            const row = rowMap[r.cargo_id];
+            if (row) row.setAttribute('data-line-id', r.id);
             if (!existingCargoLines[currentCargoServiceId]) existingCargoLines[currentCargoServiceId] = {};
-            existingCargoLines[currentCargoServiceId][cargoId] = {
-                id: result.id,
-                rate: parseFloat(rate),
-                min_charge: data.min_charge ? parseFloat(data.min_charge) : null,
-                max_charge: data.max_charge ? parseFloat(data.max_charge) : null
+            const lineData = lines.find(l => l.cargo_id == r.cargo_id);
+            existingCargoLines[currentCargoServiceId][r.cargo_id] = {
+                id: r.id,
+                rate: parseFloat(lineData.rate),
+                min_charge: lineData.min_charge ? parseFloat(lineData.min_charge) : null,
+                max_charge: lineData.max_charge ? parseFloat(lineData.max_charge) : null
             };
         } else {
             errors++;
@@ -423,7 +429,6 @@ async function saveCargoRates() {
     }
 
     if (saved > 0) {
-        // Update badge count
         const badge = document.getElementById('cargoBadge_' + currentCargoServiceId);
         if (badge) {
             const count = Object.keys(existingCargoLines[currentCargoServiceId] || {}).length;
@@ -536,12 +541,12 @@ async function saveAllLines() {
     };
 
     const rows = document.querySelectorAll('#linesBody tr');
-    let saved = 0;
+    const lines = [];
+    const rowList = [];
 
     for (let row of rows) {
-        const id = row.getAttribute('data-id') || '';
         const data = {
-            id: id,
+            id: row.getAttribute('data-id') || '',
             agreement_id: currentAgreementId,
             service_type_id: toNullable(row.querySelector('[name="service_type_id[]"]').value),
             rate: toNullable(row.querySelector('[name="rate[]"]').value),
@@ -553,18 +558,26 @@ async function saveAllLines() {
             cargo_id: null,
             cargo_name: null
         };
-
         if (data.rate === null) continue;
+        lines.push(data);
+        rowList.push(row);
+    }
 
-        const res = await fetch('/api/module/FCAM01/save-line', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-        const result = await res.json();
-        if (result.success) {
+    if (lines.length === 0) return;
+
+    const res = await fetch('/api/module/FCAM01/save-lines-batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ lines })
+    });
+    const result = await res.json();
+
+    let saved = 0;
+    for (let i = 0; i < (result.results || []).length; i++) {
+        const r = result.results[i];
+        if (r.success) {
             saved++;
-            if (!id) row.setAttribute('data-id', result.id);
+            if (!rowList[i].getAttribute('data-id')) rowList[i].setAttribute('data-id', r.id);
         }
     }
 
