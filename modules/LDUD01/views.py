@@ -123,7 +123,7 @@ def close():
     if not eligibility['eligible']:
         return jsonify({'error': 'Record not eligible for closure', 'missing': eligibility['missing']}), 400
     if close_type == 'Closed' and not eligibility['can_full_close']:
-        return jsonify({'error': f"Barge total ({eligibility['barge_total']}) does not match BL total ({eligibility['bl_total']}) — use Partial Close instead"}), 400
+        return jsonify({'error': f"LUEU total ({eligibility['lueu_total']}) does not match BL total ({eligibility['bl_total']}) — use Partial Close instead"}), 400
 
     model.close_record(record_id, close_type, session.get('username'))
     return jsonify({'doc_status': close_type})
@@ -295,7 +295,17 @@ def save_hold_completion():
     perms = get_perms()
     if not perms.get('can_add') and not perms.get('can_edit'):
         return jsonify({'error': 'No permission'}), 403
-    row_id = model.save_hold_completion(request.json)
+    data = request.json
+    if data.get('commenced') and data.get('completed'):
+        from datetime import datetime
+        try:
+            start = datetime.fromisoformat(data['commenced'].replace(' ', 'T'))
+            end = datetime.fromisoformat(data['completed'].replace(' ', 'T'))
+            if end <= start:
+                return jsonify({'error': 'Completed must be after Commenced'}), 400
+        except ValueError:
+            pass
+    row_id = model.save_hold_completion(data)
     return jsonify({'id': row_id, 'success': True})
 
 @bp.route('/api/module/LDUD01/hold_completion/delete', methods=['POST'])

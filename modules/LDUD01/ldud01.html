@@ -1018,9 +1018,9 @@
             const field = cell.getColumn().getField();
             if (!field) return;
             const rowData = cell.getRow().getData();
-            // New (unsaved) rows are always editable
-            if (!rowData.id) return;
-            // All saved rows require edit mode + checkbox selection
+            // New rows and Draft/Pending rows are always editable
+            if (!rowData.id || isDraftRow(rowData.doc_status)) return;
+            // Approved/Closed rows require edit mode + checkbox selection
             if (!editMode || !cell.getRow().isSelected()) {
                 cell.cancelEdit();
             }
@@ -1076,7 +1076,7 @@
         }
         const headerRow = table.getRows().find(r => r.getData().id === ldudId);
         const headerStatus = headerRow ? (headerRow.getData().doc_status || '') : '';
-        const isUnlocked = editMode && (headerRow?.isSelected() ?? false);
+        const isUnlocked = isDraftRow(headerStatus) || (editMode && (headerRow?.isSelected() ?? false));
         if (!isUnlocked) {
             lockBanner.textContent = '🔒 Read Only — select this row in Edit mode to make changes';
             lockBanner.style.display = 'block';
@@ -1311,7 +1311,7 @@
     async function initSubTables(ldudId, operationType = 'Import') {
         const _hRow = table.getRows().find(r => r.getData().id === ldudId);
         const _hStatus = _hRow ? (_hRow.getData().doc_status || '') : '';
-        const canEdit = (permissions.can_edit || permissions.can_add) && (editMode && (_hRow?.isSelected() ?? false));
+        const canEdit = (permissions.can_edit || permissions.can_add) && (isDraftRow(_hStatus) || (editMode && (_hRow?.isSelected() ?? false)));
         const isDark = localStorage.getItem('theme') === 'dark';
 
         // Track operation type for this LDUD
@@ -2143,6 +2143,22 @@
         if (!subTables[ldudId] || !subTables[ldudId][type]) return;
 
         const rows = subTables[ldudId][type].getRows();
+
+        // Validate hold_completion: completed must be after commenced
+        if (type === 'hold_completion') {
+            for (const row of rows) {
+                const d = row.getData();
+                if (d.commenced && d.completed) {
+                    const start = new Date(d.commenced.replace(' ', 'T'));
+                    const end = new Date(d.completed.replace(' ', 'T'));
+                    if (end <= start) {
+                        if (!silent) showSubStatus(type, ldudId, `Error: Completed must be after Commenced for hold ${d.hold_name || ''}`, true);
+                        return;
+                    }
+                }
+            }
+        }
+
         const savePromises = rows.filter(r => r.getData().id).map(async (row) => {
             const data = row.getData();
             const res = await fetch(`/api/module/LDUD01/${type}/save`, {
@@ -2161,6 +2177,9 @@
                 savedCount++;
                 if (type === 'delays' && result.total_time_mins !== undefined) {
                     row.update({total_time_mins: result.total_time_mins, total_time_hrs: result.total_time_hrs});
+                }
+                if (type === 'hold_completion') {
+                    row.reformat();
                 }
                 if (type === 'barge_lines' && result.trip_number !== undefined) {
                     row.update({trip_number: result.trip_number});
@@ -2301,13 +2320,13 @@
             list.innerHTML = check.missing.map(m => `<li>${m}</li>`).join('');
             document.getElementById('closureMissingSection').style.display = 'block';
         } else {
-            const diff = (check.barge_total - check.bl_total).toFixed(2);
+            const diff = (check.lueu_total - check.bl_total).toFixed(2);
             const qty = document.getElementById('closureQtyInfo');
             qty.innerHTML = check.can_full_close
-                ? `<strong>✓ Quantities match</strong> — Barge total: <strong>${check.barge_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong><br><small>Full Close Vessel available.</small>`
-                : `<strong>⚡ Partial quantities</strong> — Barge total: <strong>${check.barge_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong> | Remaining: <strong>${Math.abs(diff)}</strong><br><small>Only Partial Close available for billing cut-off.</small>`;
+                ? `<strong>✓ Quantities match</strong> — LUEU total: <strong>${check.lueu_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong><br><small>Full Close Vessel available.</small>`
+                : `<strong>⚡ Partial quantities</strong> — LUEU total: <strong>${check.lueu_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong> | Remaining: <strong>${Math.abs(diff)}</strong><br><small>Only Partial Close available for billing cut-off.</small>`;
             document.getElementById('btnCloseVessel').style.display = check.can_full_close ? 'block' : 'none';
-            document.getElementById('btnPartialClose').style.display = 'block';
+            document.getElementById('btnPartialClose').style.display = check.can_full_close ? 'none' : 'block';
             document.getElementById('closureEligibleSection').style.display = 'block';
         }
     }
@@ -2316,7 +2335,7 @@
         const res = await fetch(`/api/module/LDUD01/closure_check/${id}`);
         const check = await res.json();
         if (check.eligible) {
-            const msg = `✓ All requirements met.\nBarge total: ${check.barge_total.toFixed(2)} | BL total: ${check.bl_total.toFixed(2)}\n${check.can_full_close ? 'Full close available.' : 'Partial close available (quantities differ).'}`;
+            const msg = `✓ All requirements met.\nLUEU total: ${check.lueu_total.toFixed(2)} | BL total: ${check.bl_total.toFixed(2)}\n${check.can_full_close ? 'Full close available.' : 'Partial close available (quantities differ).'}`;
             alert(msg);
         } else {
             alert('Requirements not yet met:\n\n• ' + check.missing.join('\n• '));
