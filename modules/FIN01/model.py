@@ -132,6 +132,14 @@ def save_bill_line(data):
     tds_amount = float(data.get('tds_amount') or 0)
     service_code = data.get('service_code') or ''
 
+    # Compute line_total if not provided
+    if not data.get('line_total'):
+        la = float(data.get('line_amount') or 0)
+        ca = float(data.get('cgst_amount') or 0)
+        sa = float(data.get('sgst_amount') or 0)
+        ia = float(data.get('igst_amount') or 0)
+        data['line_total'] = round(la + ca + sa + ia, 2)
+
     svc_id = data.get('service_type_id')
     if svc_id and not data.get('tds_applicable'):
         cur.execute(

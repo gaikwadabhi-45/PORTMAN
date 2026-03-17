@@ -501,7 +501,15 @@
                     return '<span style="font-weight:500">' + val + '</span>';
                 }},
             {title: "VCN / MBC", field: "source_display", width: 280, editor: canEdit ? "list" : false,
-                editorParams: {values: getVcnMbcOptions(), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
+                editorParams: {values: getVcnMbcOptions(), autocomplete: true, allowEmpty: true, listOnEmpty: true},
+                formatter: function(cell) {
+                    const data = cell.getRow().getData();
+                    const val = cell.getValue() || '';
+                    if (data._multi_customer && data.customer_name) {
+                        return val + ' <span style="background:#805ad5;color:white;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:600;margin-left:4px;">' + data.customer_name + '</span>';
+                    }
+                    return val;
+                }},
             {title: "Barge / MBC Name", field: "barge_name", width: 150, editor: canEdit ? bargeEditor : false},
             {title: "Cargo", field: "cargo_name", width: 140, editor: canEdit ? cargoEditor : false},
             {title: "Delay", field: "delay_name", width: 140, editor: canEdit ? "list" : false,

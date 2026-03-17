@@ -40,11 +40,57 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     total = cur.fetchone()['cnt']
     cur.execute(f'SELECT * FROM lueu_lines {where_sql} ORDER BY id DESC LIMIT %s OFFSET %s',
                 params + [size, offset])
-    rows = cur.fetchall()
+    rows = [dict(r) for r in cur.fetchall()]
+
+    # Look up customer names from cargo declarations for VCN/MBC sources
+    # and flag multi-customer sources
+    source_keys = set()
+    for r in rows:
+        if r.get('source_type') and r.get('source_id'):
+            source_keys.add((r['source_type'], r['source_id']))
+
+    # Build map of (source_type, source_id) -> {cargo_name: customer_name}
+    source_customer_map = {}  # key -> {cargo_name: customer_name}
+    source_multi_customer = {}  # key -> bool (has multiple customers)
+
+    for src_type, src_id in source_keys:
+        cargo_customers = {}
+        if src_type == 'VCN':
+            cur.execute("""
+                SELECT cargo_name, customer_name FROM vcn_cargo_declaration WHERE vcn_id = %s AND customer_name IS NOT NULL
+                UNION ALL
+                SELECT cargo_name, customer_name FROM vcn_export_cargo_declaration WHERE vcn_id = %s AND customer_name IS NOT NULL
+            """, [src_id, src_id])
+            for cr in cur.fetchall():
+                if cr['cargo_name'] and cr['customer_name']:
+                    cargo_customers[cr['cargo_name']] = cr['customer_name']
+        elif src_type == 'MBC':
+            cur.execute("""
+                SELECT cargo_name, customer_name FROM mbc_customer_details WHERE mbc_id = %s AND customer_name IS NOT NULL
+            """, [src_id])
+            for cr in cur.fetchall():
+                if cr['customer_name']:
+                    cargo_customers[cr.get('cargo_name') or '_all'] = cr['customer_name']
+
+        source_customer_map[(src_type, src_id)] = cargo_customers
+        unique_customers = set(cargo_customers.values())
+        source_multi_customer[(src_type, src_id)] = len(unique_customers) > 1
+
+    # Enrich rows with customer_name (only when multi-customer)
+    for r in rows:
+        key = (r.get('source_type'), r.get('source_id'))
+        is_multi = source_multi_customer.get(key, False)
+        r['_multi_customer'] = is_multi
+        if is_multi:
+            cargo_customers = source_customer_map.get(key, {})
+            r['customer_name'] = cargo_customers.get(r.get('cargo_name'), '')
+        else:
+            r['customer_name'] = ''
+
     conn.close()
 
     return {
-        'data': [dict(r) for r in rows],
+        'data': rows,
         'last_page': (total + size - 1) // size,
         'total': total
     }
