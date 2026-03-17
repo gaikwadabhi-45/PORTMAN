@@ -506,7 +506,15 @@ def get_customer_billables(customer_type, customer_id):
     conn = get_db()
     cur = get_cursor(conn)
 
-    # --- A. Cargo Handling: all unbilled lueu_lines grouped by source doc ---
+    # Look up the selected customer/agent name for cargo filtering
+    if customer_type == 'Customer':
+        cur.execute("SELECT name FROM vessel_customers WHERE id = %s", [customer_id])
+    else:
+        cur.execute("SELECT name FROM vessel_agents WHERE id = %s", [customer_id])
+    cust_row = cur.fetchone()
+    customer_name = cust_row['name'] if cust_row else ''
+
+    # --- A. Cargo Handling: unbilled lueu_lines for this customer's VCNs/MBCs ---
     # Get CARGO_LOAD and CARGO_UNLOAD service type IDs
     cur.execute("""
         SELECT id, service_code, service_name, sac_code, uom
@@ -514,6 +522,36 @@ def get_customer_billables(customer_type, customer_id):
         WHERE service_code IN ('CHGL01', 'CHGU01')
     """)
     cargo_st_map = {r['service_code']: dict(r) for r in cur.fetchall()}
+
+    # Find VCN IDs where this customer appears in cargo declarations
+    cur.execute("""
+        SELECT DISTINCT vcn_id, cargo_name FROM vcn_cargo_declaration
+        WHERE customer_name = %s
+        UNION
+        SELECT DISTINCT vcn_id, cargo_name FROM vcn_export_cargo_declaration
+        WHERE customer_name = %s
+    """, [customer_name, customer_name])
+    vcn_cargo_map = {}
+    for r in cur.fetchall():
+        vcn_cargo_map.setdefault(r['vcn_id'], set()).add(r['cargo_name'])
+
+    # Find MBC IDs where this customer appears in customer details
+    cur.execute("""
+        SELECT DISTINCT mbc_id, cargo_name FROM mbc_customer_details
+        WHERE customer_name = %s
+    """, [customer_name])
+    mbc_cargo_map = {}
+    for r in cur.fetchall():
+        mbc_cargo_map.setdefault(r['mbc_id'], set())
+        if r['cargo_name']:
+            mbc_cargo_map[r['mbc_id']].add(r['cargo_name'])
+
+    # Build list of allowed (source_type, source_id) pairs
+    allowed_sources = set()
+    for vid in vcn_cargo_map:
+        allowed_sources.add(('VCN', vid))
+    for mid in mbc_cargo_map:
+        allowed_sources.add(('MBC', mid))
 
     cur.execute("""
         SELECT el.*
@@ -523,11 +561,22 @@ def get_customer_billables(customer_type, customer_id):
     """)
     eu_rows = [dict(r) for r in cur.fetchall()]
 
-    # Group by (source_type, source_id)
+    # Group by (source_type, source_id), filtering to allowed sources only
     from collections import defaultdict
     eu_groups = defaultdict(list)
     for r in eu_rows:
         key = (r['source_type'], r['source_id'])
+        if key not in allowed_sources:
+            continue
+        # For VCN sources, filter by customer's cargo names
+        if r['source_type'] == 'VCN' and r['source_id'] in vcn_cargo_map:
+            if r.get('cargo_name') not in vcn_cargo_map[r['source_id']]:
+                continue
+        # For MBC sources with cargo-level filtering
+        if r['source_type'] == 'MBC' and r['source_id'] in mbc_cargo_map:
+            mbc_cargos = mbc_cargo_map[r['source_id']]
+            if mbc_cargos and r.get('cargo_name') not in mbc_cargos:
+                continue
         eu_groups[key].append(r)
 
     cargo_handling = []
@@ -551,7 +600,6 @@ def get_customer_billables(customer_type, customer_id):
                 is_billable = doc_status in ('Closed', 'Partial Close')
                 doc_label = f"{row['vcn_doc_num']} / {row['vessel_name']}"
             else:
-                # VCN exists but no LDUD — not billable yet
                 cur.execute("SELECT vcn_doc_num, vessel_name FROM vcn_header WHERE id=%s", [src_id])
                 vcn = cur.fetchone()
                 doc_label = f"{vcn['vcn_doc_num']} / {vcn['vessel_name']}" if vcn else f"VCN-{src_id}"

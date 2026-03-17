@@ -38,7 +38,11 @@
       "WebFetch(domain:sap.erpref.com)",
       "WebFetch(domain:www.se80.co.uk)",
       "WebFetch(domain:www.sapdatasheet.org)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(find /d/PORTMAN -name *.html -type f)",
+      "Bash(find /d/PORTMAN -name *.sql -o -name schema* -o -name *init*)",
+      "Bash(find /d/PORTMAN -name *.py -type f -exec grep -l mbc_customer_details {})",
+      "Bash(2)"
     ]
   }
 }

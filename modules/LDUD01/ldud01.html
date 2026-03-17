@@ -1018,9 +1018,9 @@
             const field = cell.getColumn().getField();
             if (!field) return;
             const rowData = cell.getRow().getData();
-            // New rows and Draft/Pending rows are always editable
-            if (!rowData.id || isDraftRow(rowData.doc_status)) return;
-            // Approved/Closed rows require edit mode + checkbox selection
+            // New (unsaved) rows are always editable
+            if (!rowData.id) return;
+            // All saved rows require edit mode + checkbox selection
             if (!editMode || !cell.getRow().isSelected()) {
                 cell.cancelEdit();
             }
@@ -1076,7 +1076,7 @@
         }
         const headerRow = table.getRows().find(r => r.getData().id === ldudId);
         const headerStatus = headerRow ? (headerRow.getData().doc_status || '') : '';
-        const isUnlocked = isDraftRow(headerStatus) || (editMode && (headerRow?.isSelected() ?? false));
+        const isUnlocked = editMode && (headerRow?.isSelected() ?? false);
         if (!isUnlocked) {
             lockBanner.textContent = '🔒 Read Only — select this row in Edit mode to make changes';
             lockBanner.style.display = 'block';
@@ -1311,7 +1311,7 @@
     async function initSubTables(ldudId, operationType = 'Import') {
         const _hRow = table.getRows().find(r => r.getData().id === ldudId);
         const _hStatus = _hRow ? (_hRow.getData().doc_status || '') : '';
-        const canEdit = (permissions.can_edit || permissions.can_add) && (isDraftRow(_hStatus) || (editMode && (_hRow?.isSelected() ?? false)));
+        const canEdit = (permissions.can_edit || permissions.can_add) && (editMode && (_hRow?.isSelected() ?? false));
         const isDark = localStorage.getItem('theme') === 'dark';
 
         // Track operation type for this LDUD
