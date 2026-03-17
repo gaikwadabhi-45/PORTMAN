@@ -134,6 +134,9 @@ def save_bill():
             data['source_display'] = row['doc_num'] if row else ''
         conn.close()
 
+    # Extract fields not in bill_header table before saving
+    customer_state_code = data.pop('customer_state_code', '') or ''
+
     row_id, bill_number = model.save_bill_header(data)
 
     # Save bill lines and calculate totals
@@ -143,7 +146,6 @@ def save_bill():
     igst_total = 0
 
     customer_gstin = data.get('customer_gstin') or ''
-    customer_state_code = data.get('customer_state_code') or ''
 
     for line in lines:
         line['bill_id'] = row_id
