@@ -586,9 +586,12 @@ def get_customer_billables(customer_type, customer_id):
         doc_label = ''
         doc_status = ''
 
+        material_po = ''
+        material_po_options = []
+
         if src_type == 'VCN' and src_id:
             cur.execute("""
-                SELECT lh.doc_status, h.vcn_doc_num, h.vessel_name
+                SELECT lh.doc_status, lh.material_po_number, h.vcn_doc_num, h.vessel_name
                 FROM ldud_header lh
                 JOIN vcn_header h ON lh.vcn_id = h.id
                 WHERE lh.vcn_id = %s
@@ -599,6 +602,7 @@ def get_customer_billables(customer_type, customer_id):
                 doc_status = row['doc_status'] or ''
                 is_billable = doc_status in ('Closed', 'Partial Close')
                 doc_label = f"{row['vcn_doc_num']} / {row['vessel_name']}"
+                material_po = row.get('material_po_number') or ''
             else:
                 cur.execute("SELECT vcn_doc_num, vessel_name FROM vcn_header WHERE id=%s", [src_id])
                 vcn = cur.fetchone()
@@ -611,6 +615,17 @@ def get_customer_billables(customer_type, customer_id):
                 doc_status = row['doc_status'] or ''
                 is_billable = doc_status in ('Closed', 'Partial Close')
                 doc_label = f"{row['doc_num']} / {row['mbc_name']}"
+            # Get material PO from customer details
+            cur.execute("""
+                SELECT customer_name, material_po FROM mbc_customer_details
+                WHERE mbc_id = %s AND customer_name = %s AND material_po IS NOT NULL AND material_po != ''
+            """, [src_id, customer_name])
+            mbc_pos = cur.fetchall()
+            if len(mbc_pos) == 1:
+                material_po = mbc_pos[0]['material_po'] or ''
+            elif len(mbc_pos) > 1:
+                material_po_options = [{'value': p['material_po'], 'label': p['material_po']} for p in mbc_pos]
+                material_po = mbc_pos[0]['material_po'] or ''
 
         # Split lines by operation_type → service type
         load_lines = [l for l in lines if l.get('operation_type') in ('Loading', 'Export', 'Load')]
@@ -633,7 +648,9 @@ def get_customer_billables(customer_type, customer_id):
                 'sac_code': st.get('sac_code', ''),
                 'total_quantity': total_qty,
                 'uom': grp_lines[0].get('quantity_uom', 'MT'),
-                'lines': grp_lines
+                'lines': grp_lines,
+                'material_po': material_po,
+                'material_po_options': material_po_options
             })
 
     # --- B. Other Services: approved unbilled service records for this customer ---
