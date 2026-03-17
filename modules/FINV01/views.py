@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, session, jsonify
+from flask import render_template, request, redirect, url_for, session, jsonify, make_response as flask_make_response
 from datetime import datetime, timedelta
 from . import bp
 from modules.FIN01 import model  # reuse FIN01 model for invoice functions
@@ -563,6 +563,45 @@ def cancel_invoice_sap():
     })
 
 
+
+
+# ===== SAP JSON Export (temporary — for SAP team review) =====
+
+@bp.route('/api/module/FINV01/invoice/export-sap-json/<int:invoice_id>')
+def export_sap_json(invoice_id):
+    """Export SAP payload JSON for an invoice (posting + cancellation samples)"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    invoice = model.get_invoice_by_id(invoice_id)
+    if not invoice:
+        return jsonify({'error': 'Invoice not found'}), 404
+
+    invoice_lines = model.get_invoice_lines(invoice_id)
+
+    # Build posting payload (Y1)
+    posting_payload = sap_builder.build_invoice_payload(invoice, invoice_lines)
+
+    # Build cancellation payload (Y1 with Cancellation_Flag = X)
+    cancellation_payload = sap_builder.build_invoice_reversal_payload(invoice, invoice_lines)
+
+    # Enrich with customer & service master details for SAP team reference
+    enriched = {
+        '_info': 'Sample SAP payloads generated from PORTMAN for SAP team review',
+        '_invoice_number': invoice.get('invoice_number'),
+        '_customer_name': invoice.get('customer_name'),
+        '_customer_gstin': invoice.get('customer_gstin'),
+        '_invoice_date': invoice.get('invoice_date'),
+        '_total_amount': float(invoice.get('total_amount') or 0),
+        'posting_payload': posting_payload,
+        'cancellation_payload': cancellation_payload,
+    }
+
+    import json
+    response = flask_make_response(json.dumps(enriched, indent=2, ensure_ascii=False))
+    response.headers['Content-Type'] = 'application/json'
+    response.headers['Content-Disposition'] = f'attachment; filename=SAP_Payload_{invoice.get("invoice_number", invoice_id)}.json'
+    return response
 
 
 # ===== Customer/Agent lookup for virtual account + full billing details =====
