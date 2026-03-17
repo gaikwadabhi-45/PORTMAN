@@ -143,10 +143,12 @@ def save_bill():
     igst_total = 0
 
     customer_gstin = data.get('customer_gstin') or ''
+    customer_state_code = data.get('customer_state_code') or ''
 
     for line in lines:
         line['bill_id'] = row_id
         line['customer_gstin'] = customer_gstin
+        line['customer_state_code'] = customer_state_code
         # Map frontend field names to model field names
         if not line.get('service_name') and line.get('description'):
             line['service_name'] = line['description']

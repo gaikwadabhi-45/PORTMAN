@@ -7,10 +7,10 @@ def get_all_gst_rates():
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute('''
-        SELECT id, rate_name, cgst_rate, sgst_rate, igst_rate
+        SELECT id, rate_name, cgst_rate, sgst_rate, igst_rate, is_default
         FROM gst_rates
         WHERE is_active = 1
-        ORDER BY igst_rate
+        ORDER BY is_default DESC, igst_rate
     ''')
     rows = cur.fetchall()
     conn.close()
@@ -38,11 +38,18 @@ def save_gst_rate(data):
     conn = get_db()
     cur = get_cursor(conn)
 
+    is_default = data.get('is_default', False)
+    if is_default and str(is_default) in ('1', 'true', 'True', True):
+        cur.execute("UPDATE gst_rates SET is_default = FALSE WHERE is_default = TRUE")
+        is_default = True
+    else:
+        is_default = False
+
     if data.get('id'):
         cur.execute('''
             UPDATE gst_rates
             SET rate_name=%s, cgst_rate=%s, sgst_rate=%s, igst_rate=%s,
-                effective_from=%s, effective_to=%s, is_active=%s
+                effective_from=%s, effective_to=%s, is_active=%s, is_default=%s
             WHERE id=%s
         ''', [
             data.get('rate_name'),
@@ -52,14 +59,15 @@ def save_gst_rate(data):
             data.get('effective_from'),
             data.get('effective_to'),
             data.get('is_active', 1),
+            is_default,
             data['id']
         ])
         row_id = data['id']
     else:
         cur.execute('''
             INSERT INTO gst_rates
-            (rate_name, cgst_rate, sgst_rate, igst_rate, effective_from, effective_to, is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (rate_name, cgst_rate, sgst_rate, igst_rate, effective_from, effective_to, is_active, is_default, created_by, created_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', [
             data.get('rate_name'),
@@ -69,6 +77,7 @@ def save_gst_rate(data):
             data.get('effective_from'),
             data.get('effective_to'),
             data.get('is_active', 1),
+            is_default,
             data.get('created_by'),
             datetime.now().strftime('%Y-%m-%d')
         ])

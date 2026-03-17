@@ -157,16 +157,22 @@ def save_bill_line(data):
                 if gst:
                     line_amount = float(data.get('line_amount') or 0)
                     data['gst_rate_id'] = gst_rate_id
-                    # Determine CGST+SGST vs IGST from customer GSTIN
+                    # Determine CGST+SGST vs IGST
                     customer_gstin = data.get('customer_gstin') or ''
-                    # Get port GSTIN from gst_api_config
-                    cur.execute("SELECT gstin FROM gst_api_config WHERE is_active = 1 LIMIT 1")
+                    customer_state = data.get('customer_state_code') or ''
+                    # Get company state from gst_api_config or GSTIN
+                    cur.execute("SELECT gstin FROM gst_api_config LIMIT 1")
                     port_cfg = cur.fetchone()
                     port_gstin = (port_cfg['gstin'] if port_cfg else '') or ''
-                    # Same state if first 2 digits of GSTIN match
-                    same_state = (len(customer_gstin) >= 2 and len(port_gstin) >= 2
-                                  and customer_gstin[:2] == port_gstin[:2])
-                    if same_state or not customer_gstin:
+                    # Compare state codes: use explicit state code first, then GSTIN prefix
+                    if customer_state and port_gstin:
+                        same_state = customer_state == port_gstin[:2]
+                    elif customer_gstin and port_gstin:
+                        same_state = customer_gstin[:2] == port_gstin[:2]
+                    else:
+                        # Default to same state (intra-state) if can't determine
+                        same_state = True
+                    if same_state:
                         # Intra-state: CGST + SGST
                         data['cgst_rate'] = float(gst['cgst_rate'] or 0)
                         data['sgst_rate'] = float(gst['sgst_rate'] or 0)

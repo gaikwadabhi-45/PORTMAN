@@ -45,6 +45,7 @@
             <th>IGST %</th>
             <th>Effective From</th>
             <th>Effective To</th>
+            <th>Default</th>
             <th>Status</th>
         </tr>
     </thead>
@@ -58,6 +59,7 @@
             <td><input type="number" step="0.01" name="igst_rate[]" value="{{ row.igst_rate }}" {% if not perms.can_edit %}readonly{% endif %}></td>
             <td><input type="date" name="effective_from[]" value="{{ row.effective_from }}" {% if not perms.can_edit %}readonly{% endif %}></td>
             <td><input type="date" name="effective_to[]" value="{{ row.effective_to }}" {% if not perms.can_edit %}readonly{% endif %}></td>
+            <td style="text-align:center"><input type="radio" name="is_default" value="{{ row.id }}" {% if row.is_default %}checked{% endif %} {% if not perms.can_edit %}disabled{% endif %}></td>
             <td><select name="is_active[]" {% if not perms.can_edit %}disabled{% endif %}>
                 <option value="1" {% if row.is_active %}selected{% endif %}>Active</option>
                 <option value="0" {% if not row.is_active %}selected{% endif %}>Inactive</option>
@@ -98,6 +100,7 @@ function addRow() {
         <td><input type="number" step="0.01" name="igst_rate[]" required></td>
         <td><input type="date" name="effective_from[]"></td>
         <td><input type="date" name="effective_to[]"></td>
+        <td style="text-align:center"><input type="radio" name="is_default" value="new"></td>
         <td><select name="is_active[]">
             <option value="1" selected>Active</option>
             <option value="0">Inactive</option>
@@ -113,6 +116,8 @@ async function saveAll() {
     for (let row of rows) {
         const id = row.getAttribute('data-id') || '';
         const inputs = row.querySelectorAll('input, select');
+        const defaultRadio = row.querySelector('[name="is_default"]');
+        const isDefault = defaultRadio ? defaultRadio.checked : false;
         const data = {
             id: id,
             rate_name: row.querySelector('[name="rate_name[]"]').value,
@@ -121,7 +126,8 @@ async function saveAll() {
             igst_rate: row.querySelector('[name="igst_rate[]"]').value,
             effective_from: row.querySelector('[name="effective_from[]"]').value,
             effective_to: row.querySelector('[name="effective_to[]"]').value,
-            is_active: row.querySelector('[name="is_active[]"]').value
+            is_active: row.querySelector('[name="is_active[]"]').value,
+            is_default: isDefault
         };
 
         if (!data.rate_name) continue;

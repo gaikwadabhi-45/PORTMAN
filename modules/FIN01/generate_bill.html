@@ -278,7 +278,7 @@ async function loadCustomers() {
     const json = await resp.json();
     sel.innerHTML = '<option value="">-- Select --</option>';
     (json.data || []).forEach(c => {
-        sel.innerHTML += `<option value="${c.id}" data-name="${c.name}" data-gstin="${c.gstin || ''}">${c.name}</option>`;
+        sel.innerHTML += `<option value="${c.id}" data-name="${c.name}" data-gstin="${c.gstin || ''}" data-state-code="${c.gst_state_code || ''}">${c.name}</option>`;
     });
 }
 
@@ -642,6 +642,7 @@ async function generateBill() {
         customer_id: parseInt(cid),
         customer_name: customerOpt ? customerOpt.dataset.name : '',
         customer_gstin: customerOpt ? customerOpt.dataset.gstin : '',
+        customer_state_code: customerOpt ? customerOpt.dataset.stateCode : '',
         agreement_id: agId ? parseInt(agId) : null,
         bill_date: billDate,
         currency_code: document.getElementById('currency').value || 'INR',
