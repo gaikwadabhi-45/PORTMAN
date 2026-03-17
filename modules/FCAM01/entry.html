@@ -218,7 +218,7 @@
             <span id="cargoModalInfo" style="font-size:11px; color:#7f8c8d;"></span>
             <div>
                 <button class="btn btn-secondary" onclick="closeCargoModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveCargoRates()">Save Cargo Rates</button>
+                <button id="btnSaveCargoRates" class="btn btn-primary" onclick="saveCargoRates()">Save Cargo Rates</button>
             </div>
         </div>
     </div>
@@ -400,43 +400,57 @@ async function saveCargoRates() {
         rowMap[cargoId] = row;
     }
 
-    if (lines.length === 0) return;
+    if (lines.length === 0) { alert('No rates to save'); return; }
 
-    const res = await fetch('/api/module/FCAM01/save-lines-batch', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ lines })
-    });
-    const result = await res.json();
+    const btn = document.getElementById('btnSaveCargoRates');
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving ' + lines.length + ' rates...';
 
-    let saved = 0, errors = 0;
-    for (const r of (result.results || [])) {
-        if (r.success) {
-            saved++;
-            const row = rowMap[r.cargo_id];
-            if (row) row.setAttribute('data-line-id', r.id);
-            if (!existingCargoLines[currentCargoServiceId]) existingCargoLines[currentCargoServiceId] = {};
-            const lineData = lines.find(l => l.cargo_id == r.cargo_id);
-            existingCargoLines[currentCargoServiceId][r.cargo_id] = {
-                id: r.id,
-                rate: parseFloat(lineData.rate),
-                min_charge: lineData.min_charge ? parseFloat(lineData.min_charge) : null,
-                max_charge: lineData.max_charge ? parseFloat(lineData.max_charge) : null
-            };
-        } else {
-            errors++;
+    try {
+        const res = await fetch('/api/module/FCAM01/save-lines-batch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ lines })
+        });
+        if (!res.ok) { alert('Server error: ' + res.status); return; }
+        const result = await res.json();
+        if (!result.success) { alert('Save failed: ' + (result.error || 'Unknown error')); return; }
+
+        let saved = 0, errors = 0;
+        for (const r of (result.results || [])) {
+            if (r.success) {
+                saved++;
+                const row = rowMap[r.cargo_id];
+                if (row) row.setAttribute('data-line-id', r.id);
+                if (!existingCargoLines[currentCargoServiceId]) existingCargoLines[currentCargoServiceId] = {};
+                const lineData = lines.find(l => l.cargo_id == r.cargo_id);
+                existingCargoLines[currentCargoServiceId][r.cargo_id] = {
+                    id: r.id,
+                    rate: parseFloat(lineData.rate),
+                    min_charge: lineData.min_charge ? parseFloat(lineData.min_charge) : null,
+                    max_charge: lineData.max_charge ? parseFloat(lineData.max_charge) : null
+                };
+            } else {
+                errors++;
+            }
         }
-    }
 
-    if (saved > 0) {
-        const badge = document.getElementById('cargoBadge_' + currentCargoServiceId);
-        if (badge) {
-            const count = Object.keys(existingCargoLines[currentCargoServiceId] || {}).length;
-            badge.textContent = count + ' rates';
+        if (saved > 0) {
+            const badge = document.getElementById('cargoBadge_' + currentCargoServiceId);
+            if (badge) {
+                const count = Object.keys(existingCargoLines[currentCargoServiceId] || {}).length;
+                badge.textContent = count + ' rates';
+            }
+            alert(`Saved ${saved} cargo rate(s)` + (errors ? ` (${errors} errors)` : ''));
         }
-        alert(`Saved ${saved} cargo rate(s)` + (errors ? ` (${errors} errors)` : ''));
+        if (!errors) closeCargoModal();
+    } catch(e) {
+        alert('Error saving: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = origText;
     }
-    if (!errors) closeCargoModal();
 }
 
 // --- Standard Lines ---
