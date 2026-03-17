@@ -183,11 +183,7 @@ if __name__ == '__main__':
     is_production = FLASK_ENV == 'production'
 
     ssl_context = None
-    if is_production:
-        if not SSL_CERT or not SSL_KEY:
-            raise RuntimeError(
-                "SSL_CERT and SSL_KEY must be set in the environment for production mode."
-            )
+    if is_production and SSL_CERT and SSL_KEY:
         ssl_context = (SSL_CERT, SSL_KEY)
 
     app.run(
