@@ -147,6 +147,66 @@ def save_config(module_code):
 
 # ── LDUD Vessel Closure Admin ─────────────────────────────────────────────────
 
+# ── SAP Config ────────────────────────────────────────────────────────────────
+
+@bp.route('/api/sap-config')
+@admin_required
+def get_sap_config():
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT * FROM sap_api_config ORDER BY is_active DESC, id LIMIT 1')
+    row = cur.fetchone()
+    conn.close()
+    return jsonify(dict(row) if row else {})
+
+@bp.route('/api/sap-config/save', methods=['POST'])
+@admin_required
+def save_sap_config():
+    data = request.json
+    conn = get_db()
+    cur = get_cursor(conn)
+    now = __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    username = session.get('username')
+
+    # Check if config already exists
+    cur.execute('SELECT id FROM sap_api_config ORDER BY id LIMIT 1')
+    existing = cur.fetchone()
+
+    if existing:
+        cur.execute('''UPDATE sap_api_config SET
+            environment=%s, base_url=%s, token_url=%s, client_id=%s, client_secret=%s,
+            company_code=%s, payment_term=%s, is_active=%s,
+            updated_by=%s, updated_date=%s
+            WHERE id=%s''', [
+            data.get('environment', 'production'),
+            data.get('base_url', ''),
+            data.get('token_url', ''),
+            data.get('client_id', ''),
+            data.get('client_secret', ''),
+            data.get('company_code', ''),
+            data.get('payment_term', ''),
+            data.get('is_active', 1),
+            username, now, existing['id']
+        ])
+    else:
+        cur.execute('''INSERT INTO sap_api_config
+            (environment, base_url, token_url, client_id, client_secret,
+             company_code, payment_term, is_active, created_by, created_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
+            data.get('environment', 'production'),
+            data.get('base_url', ''),
+            data.get('token_url', ''),
+            data.get('client_id', ''),
+            data.get('client_secret', ''),
+            data.get('company_code', ''),
+            data.get('payment_term', ''),
+            data.get('is_active', 1),
+            username, now
+        ])
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
 # ── Port Bank Accounts ────────────────────────────────────────────────────────
 
 PORT_BANKS_TABLE = 'port_bank_accounts'

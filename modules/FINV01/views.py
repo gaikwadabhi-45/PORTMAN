@@ -565,6 +565,62 @@ def cancel_invoice_sap():
 
 
 
+def _build_sample_payload(invoice, lines, cancel=False):
+    """Fallback sample payload when SAP config is not yet configured."""
+    inv_date = invoice.get('invoice_date') or ''
+    if inv_date:
+        try:
+            inv_date = datetime.strptime(str(inv_date)[:10], '%Y-%m-%d').strftime('%d.%m.%Y')
+        except ValueError:
+            pass
+
+    total = float(invoice.get('total_amount') or 0)
+    items = []
+    for l in lines:
+        cgst = float(l.get('cgst_amount') or 0)
+        sgst = float(l.get('sgst_amount') or 0)
+        igst = float(l.get('igst_amount') or 0)
+        items.append({
+            'Service_Code': l.get('service_code') or l.get('gl_code') or '',
+            'CGST_AMT': f'{cgst:.2f}' if cgst else '',
+            'SGST_AMT': f'{sgst:.2f}' if sgst else '',
+            'IGST_AMT': f'{igst:.2f}' if igst else '',
+            'Amount': f'{float(l.get("line_amount") or 0):.2f}',
+            'Text': (l.get('service_name') or '')[:50],
+            'Plant': '5130',
+            'Business_Place': '5130',
+            'Section_Code': '5130',
+            'Tax_Code': l.get('sap_tax_code') or '',
+            'Profit_Center': '',
+            'HSN_SAC': l.get('sac_code') or l.get('hsn_sac') or '',
+            'TDS_Amount': f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
+            'TCS_Amount': '',
+            'Rounding_off': '',
+        })
+
+    gstin = invoice.get('customer_gstin') or ''
+    record = {
+        'Company_Code': '5130',
+        'Document_Date': inv_date,
+        'Posting_Date': inv_date,
+        'Document_Type': 'Y1',
+        'Reference_Text': (invoice.get('invoice_number') or '')[:16],
+        'Doc_Header_Text': (f"REV {invoice.get('invoice_number', '')}" if cancel else invoice.get('invoice_number', ''))[:25],
+        'Currency': invoice.get('currency_code') or 'INR',
+        'Customer_Code': invoice.get('customer_gl_code') or '',
+        'Payment_Term': '',
+        'Baseline_Date': inv_date,
+        'Invoice_Amount': f'{total:.2f}',
+        'IRN_No': invoice.get('gst_irn') or '',
+        'Ack_No': str(invoice.get('gst_ack_number') or ''),
+        'IRN_Date': '',
+        'Nature_of_transaction': 'B2B' if gstin else 'B2C',
+        'Cancellation_Flag': 'X' if cancel else '',
+        'Item': items,
+    }
+    return {'Record': record}
+
+
 # ===== SAP JSON Export (temporary — for SAP team review) =====
 
 @bp.route('/api/module/FINV01/invoice/export-sap-json/<int:invoice_id>')
@@ -579,11 +635,14 @@ def export_sap_json(invoice_id):
 
     invoice_lines = model.get_invoice_lines(invoice_id)
 
-    # Build posting payload (Y1)
-    posting_payload = sap_builder.build_invoice_payload(invoice, invoice_lines)
-
-    # Build cancellation payload (Y1 with Cancellation_Flag = X)
-    cancellation_payload = sap_builder.build_invoice_reversal_payload(invoice, invoice_lines)
+    # Build posting payload (Y1) — use defaults if SAP config not yet set up
+    try:
+        posting_payload = sap_builder.build_invoice_payload(invoice, invoice_lines)
+        cancellation_payload = sap_builder.build_invoice_reversal_payload(invoice, invoice_lines)
+    except ValueError:
+        # No SAP config — build with hardcoded defaults for sample review
+        posting_payload = _build_sample_payload(invoice, invoice_lines, cancel=False)
+        cancellation_payload = _build_sample_payload(invoice, invoice_lines, cancel=True)
 
     # Enrich with customer & service master details for SAP team reference
     enriched = {

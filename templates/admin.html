@@ -14,6 +14,7 @@
     <button class="tab-btn" onclick="showTab('config')">Module Config</button>
     <button class="tab-btn" onclick="showTab('vessels')">Vessel Closure</button>
     <button class="tab-btn" onclick="showTab('gst')">GST Config</button>
+    <button class="tab-btn" onclick="showTab('sap')">SAP Config</button>
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
 </div>
 
@@ -154,6 +155,54 @@
     </div>
 </div>
 
+<!-- SAP Config Tab -->
+<div id="sap-tab" class="tab-content">
+    <div class="admin-section">
+        <h3>SAP Integration Config</h3>
+        <div class="toolbar">
+            <button class="btn btn-save" onclick="saveSapConfig()">Save SAP Config</button>
+            <span id="sapStatus" style="font-size:11px;margin-left:10px;"></span>
+        </div>
+        <div class="config-panel" style="display:block;">
+            <div class="config-group">
+                <h4>Connection</h4>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <label>Environment:<br>
+                        <select id="sapEnvironment" style="width:100%;padding:6px;">
+                            <option value="production">Production</option>
+                            <option value="testing">Testing</option>
+                            <option value="development">Development</option>
+                        </select>
+                    </label>
+                    <label>Company Code:<br><input type="text" id="sapCompanyCode" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
+                </div>
+                <div class="config-row">
+                    <label>Base URL:<br><input type="text" id="sapBaseUrl" placeholder="e.g., https://sappi.jsw.in:443/RESTAdapter" style="width:100%;padding:6px;"></label>
+                </div>
+                <div class="config-row">
+                    <label>Token URL:<br><input type="text" id="sapTokenUrl" placeholder="OAuth token URL (if applicable)" style="width:100%;padding:6px;"></label>
+                </div>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <label>Client ID:<br><input type="text" id="sapClientId" placeholder="API client ID" style="width:100%;padding:6px;"></label>
+                    <label>Client Secret:<br><input type="password" id="sapClientSecret" placeholder="API client secret" style="width:100%;padding:6px;"></label>
+                </div>
+            </div>
+            <div class="config-group">
+                <h4>Defaults</h4>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <label>Payment Term:<br><input type="text" id="sapPaymentTerm" placeholder="e.g., Z001" style="width:100%;padding:6px;"></label>
+                    <label>Active:<br>
+                        <select id="sapIsActive" style="width:100%;padding:6px;">
+                            <option value="1">Active</option>
+                            <option value="0">Inactive</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Bank Accounts Tab -->
 <div id="banks-tab" class="tab-content">
     <div class="admin-section">
@@ -282,6 +331,7 @@ function showTab(tab) {
     document.getElementById(`${tab}-tab`).classList.add('active');
     if (tab === 'vessels') loadLdudVessels();
     if (tab === 'gst') loadGstConfig();
+    if (tab === 'sap') loadSapConfig();
     if (tab === 'banks') loadBankAccounts();
 }
 
@@ -503,6 +553,47 @@ async function deleteSelectedBanks() {
         row.remove();
     }
     document.getElementById('bankSelectAll').checked = false;
+}
+
+// ── SAP Config ───────────────────────────────────────────────────────────────
+async function loadSapConfig() {
+    const res = await fetch('/admin/api/sap-config');
+    const cfg = await res.json();
+    document.getElementById('sapEnvironment').value = cfg.environment || 'production';
+    document.getElementById('sapBaseUrl').value = cfg.base_url || '';
+    document.getElementById('sapTokenUrl').value = cfg.token_url || '';
+    document.getElementById('sapClientId').value = cfg.client_id || '';
+    document.getElementById('sapClientSecret').value = cfg.client_secret || '';
+    document.getElementById('sapCompanyCode').value = cfg.company_code || '';
+    document.getElementById('sapPaymentTerm').value = cfg.payment_term || '';
+    document.getElementById('sapIsActive').value = cfg.is_active ? '1' : '0';
+    document.getElementById('sapStatus').textContent = cfg.id ? 'Config loaded' : 'No config found — fill in to create';
+    document.getElementById('sapStatus').style.color = cfg.id ? '#38a169' : '#e53e3e';
+}
+
+async function saveSapConfig() {
+    const data = {
+        environment: document.getElementById('sapEnvironment').value,
+        base_url: document.getElementById('sapBaseUrl').value.trim(),
+        token_url: document.getElementById('sapTokenUrl').value.trim(),
+        client_id: document.getElementById('sapClientId').value.trim(),
+        client_secret: document.getElementById('sapClientSecret').value.trim(),
+        company_code: document.getElementById('sapCompanyCode').value.trim(),
+        payment_term: document.getElementById('sapPaymentTerm').value.trim(),
+        is_active: document.getElementById('sapIsActive').value
+    };
+    if (!data.company_code) { alert('Company Code is required'); return; }
+    const res = await fetch('/admin/api/sap-config/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    if (res.ok) {
+        alert('SAP config saved!');
+        loadSapConfig();
+    } else {
+        alert('Failed to save SAP config');
+    }
 }
 
 // ── Vessel Closure ───────────────────────────────────────────────────────────
