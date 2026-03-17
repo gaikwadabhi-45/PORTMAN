@@ -396,10 +396,10 @@ def create_invoice_from_bills(bill_ids, invoice_data):
 
     # Auto-calculate invoice header tds_amount from line totals
     cur.execute(
-        'SELECT COALESCE(SUM(tds_amount), 0) FROM invoice_lines WHERE invoice_id = %s',
+        'SELECT COALESCE(SUM(tds_amount), 0) AS total_tds FROM invoice_lines WHERE invoice_id = %s',
         [invoice_id]
     )
-    total_tds = cur.fetchone()[0]
+    total_tds = cur.fetchone()['total_tds']
     if total_tds:
         cur.execute(
             'UPDATE invoice_header SET tds_amount = %s WHERE id = %s',
