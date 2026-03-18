@@ -525,7 +525,9 @@ def cancel_invoice_sap():
     if posted_dt and datetime.now() - posted_dt > timedelta(hours=24):
         return jsonify({
             'success': False,
-            'error': 'Cancellation beyond 24 hours is not allowed. Create a new Debit/Credit Note instead.'
+            'error': 'FB08 reversal window (24 hours) has expired.',
+            'offer_cn': True,
+            'invoice_id': invoice_id
         }), 400
 
     invoice_lines = model.get_invoice_lines(invoice_id)
@@ -563,6 +565,60 @@ def cancel_invoice_sap():
     })
 
 
+
+
+@bp.route('/api/module/FINV01/invoice/create-cancellation-cn', methods=['POST'])
+def create_cancellation_cn():
+    """Create a full cancellation Credit Note when FB08 24hr window has passed"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'}), 401
+
+    perms = get_perms()
+    if not perms.get('can_edit'):
+        return jsonify({'success': False, 'error': 'No permission'}), 403
+
+    invoice_id = request.json.get('invoice_id')
+    invoice = model.get_invoice_by_id(invoice_id)
+    if not invoice:
+        return jsonify({'success': False, 'error': 'Invoice not found'}), 404
+
+    if invoice.get('invoice_status') == 'Cancelled':
+        return jsonify({'success': False, 'error': 'Invoice is already cancelled'})
+
+    if not invoice.get('sap_document_number'):
+        return jsonify({'success': False, 'error': 'Invoice not posted to SAP — use direct cancellation instead'})
+
+    # Check if a cancellation CN already exists
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute("""SELECT doc_number FROM fdcn_header
+        WHERE original_invoice_id = %s AND doc_type = 'CN'
+        AND remarks LIKE 'Full cancellation%%'
+        AND doc_status NOT IN ('Rejected', 'Cancelled')
+        LIMIT 1""", [invoice_id])
+    existing = cur.fetchone()
+    conn.close()
+
+    if existing:
+        return jsonify({
+            'success': False,
+            'error': f'Cancellation CN already exists: {existing["doc_number"]}'
+        })
+
+    from modules.FDCN01 import model as fdcn_model
+    try:
+        fdcn_id, doc_number = fdcn_model.create_cancellation_cn(
+            invoice_id, session.get('username')
+        )
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+    return jsonify({
+        'success': True,
+        'fdcn_id': fdcn_id,
+        'doc_number': doc_number,
+        'message': f'Cancellation Credit Note {doc_number} created (Approved). Post to SAP from FDCN01.'
+    })
 
 
 def _build_sample_payload(invoice, lines, cancel=False):

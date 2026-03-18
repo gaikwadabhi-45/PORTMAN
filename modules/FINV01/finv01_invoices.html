@@ -341,8 +341,32 @@ async function cancelInSAP(id) {
         if (result.success) {
             alert('SAP reversal posted (FB08). Reversal Doc: ' + (result.sap_document_number || 'Success'));
             location.reload();
+        } else if (result.offer_cn) {
+            if (confirm('FB08 reversal window (24 hours) has expired.\n\nCreate a full Cancellation Credit Note instead?')) {
+                createCancellationCN(id);
+            }
         } else {
             alert('SAP Cancellation Error: ' + (result.error || result.message || 'Failed'));
+        }
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function createCancellationCN(id) {
+    try {
+        const res = await fetch('/api/module/FINV01/invoice/create-cancellation-cn', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({invoice_id: id})
+        });
+        const result = await res.json();
+        if (result.success) {
+            alert(result.message);
+            if (confirm('Open the Credit Note in FDCN01?')) {
+                window.open('/module/FDCN01/entry/' + result.fdcn_id, '_blank');
+            }
+            location.reload();
+        } else {
+            alert('Error: ' + (result.error || 'Failed to create CN'));
         }
     } catch(e) { alert('Error: ' + e.message); }
 }

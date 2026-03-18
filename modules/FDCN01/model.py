@@ -486,6 +486,125 @@ def update_sap_details(fdcn_id, sap_doc_number, username):
     conn.close()
 
 
+def create_cancellation_cn(invoice_id, username=None):
+    """
+    Create a full cancellation Credit Note for an invoice.
+    Used when FB08 24hr reversal window has passed.
+    Copies all invoice lines with original_rate = invoice rate, revised_rate = 0,
+    so rate_difference = -rate and line_amount = -(qty * rate).
+    """
+    from modules.FIN01 import model as fin_model
+
+    invoice = fin_model.get_invoice_by_id(invoice_id)
+    if not invoice:
+        raise ValueError('Invoice not found')
+
+    invoice_lines = fin_model.get_invoice_lines(invoice_id)
+    if not invoice_lines:
+        raise ValueError('Invoice has no lines')
+
+    now = datetime.now().strftime('%Y-%m-%d')
+    doc_number, prefix, seq, fy = get_next_doc_number('CN', now)
+
+    # Calculate totals (negate the invoice amounts)
+    subtotal = 0
+    cgst_total = 0
+    sgst_total = 0
+    igst_total = 0
+
+    cn_lines = []
+    for line in invoice_lines:
+        qty = float(line.get('quantity') or 0)
+        rate = float(line.get('rate') or 0)
+        line_amount = round(qty * rate, 2)  # positive — CN module handles sign
+
+        cgst_amt = float(line.get('cgst_amount') or 0)
+        sgst_amt = float(line.get('sgst_amount') or 0)
+        igst_amt = float(line.get('igst_amount') or 0)
+        line_total = round(line_amount + cgst_amt + sgst_amt + igst_amt, 2)
+
+        subtotal += line_amount
+        cgst_total += cgst_amt
+        sgst_total += sgst_amt
+        igst_total += igst_amt
+
+        cn_lines.append({
+            'invoice_line_id': line.get('id'),
+            'service_type_id': line.get('service_type_id'),
+            'service_name': line.get('service_name'),
+            'service_description': line.get('service_description') or line.get('service_name'),
+            'quantity': qty,
+            'uom': line.get('uom'),
+            'original_rate': rate,
+            'revised_rate': 0,
+            'rate_difference': -rate,
+            'line_amount': line_amount,
+            'gst_rate_id': line.get('gst_rate_id'),
+            'cgst_rate': float(line.get('cgst_rate') or 0),
+            'sgst_rate': float(line.get('sgst_rate') or 0),
+            'igst_rate': float(line.get('igst_rate') or 0),
+            'cgst_amount': cgst_amt,
+            'sgst_amount': sgst_amt,
+            'igst_amount': igst_amt,
+            'line_total': line_total,
+            'gl_code': line.get('gl_code'),
+            'sac_code': line.get('sac_code'),
+            'remarks': f'Full cancellation of {invoice.get("invoice_number", "")}'
+        })
+
+    total_amount = round(subtotal + cgst_total + sgst_total + igst_total, 2)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute('''INSERT INTO fdcn_header
+        (doc_number, doc_type, doc_date, doc_series, doc_series_seq, financial_year,
+         original_invoice_id, original_invoice_number,
+         customer_id, customer_type, customer_name,
+         customer_gstin, customer_gst_state_code, customer_gl_code,
+         subtotal, cgst_amount, sgst_amount, igst_amount, total_amount,
+         doc_status, remarks, created_by, created_date)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        RETURNING id''', [
+        doc_number, 'CN', now, prefix, seq, fy,
+        invoice_id, invoice.get('invoice_number'),
+        invoice.get('customer_id'), invoice.get('customer_type'),
+        invoice.get('customer_name'),
+        invoice.get('customer_gstin'), invoice.get('customer_gst_state_code'),
+        invoice.get('customer_gl_code'),
+        subtotal, cgst_total, sgst_total, igst_total, total_amount,
+        'Approved', f'Full cancellation CN for invoice {invoice.get("invoice_number", "")}',
+        username, now
+    ])
+    fdcn_id = cur.fetchone()['id']
+
+    # Insert lines
+    for line in cn_lines:
+        cur.execute('''INSERT INTO fdcn_lines
+            (fdcn_id, invoice_line_id, service_type_id, service_name, service_description,
+             quantity, uom, original_rate, revised_rate, rate_difference, line_amount,
+             gst_rate_id, cgst_rate, sgst_rate, igst_rate,
+             cgst_amount, sgst_amount, igst_amount, line_total,
+             gl_code, sac_code, remarks)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''', [
+            fdcn_id,
+            line['invoice_line_id'], line['service_type_id'],
+            line['service_name'], line['service_description'],
+            line['quantity'], line['uom'],
+            line['original_rate'], line['revised_rate'],
+            line['rate_difference'], line['line_amount'],
+            line['gst_rate_id'], line['cgst_rate'],
+            line['sgst_rate'], line['igst_rate'],
+            line['cgst_amount'], line['sgst_amount'],
+            line['igst_amount'], line['line_total'],
+            line['gl_code'], line['sac_code'], line['remarks']
+        ])
+
+    conn.commit()
+    conn.close()
+    return fdcn_id, doc_number
+
+
 def update_gst_details(fdcn_id, irn, ack_number, ack_date, qr_code):
     conn = get_db()
     cur = get_cursor(conn)
