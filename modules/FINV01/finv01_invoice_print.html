@@ -322,7 +322,7 @@
             flex-direction: column;
             justify-content: space-between;
         }
-        .sig-company { font-size: 8px; font-weight: 700; }
+        .sig-company { font-size: 8px; font-weight: 700; white-space: nowrap; }
         .sig-line {
             border-top: 1px solid #000;
             padding-top: 3px;
@@ -429,14 +429,7 @@
     <!-- ══ 1. Header: Logo | Copy type + Rule text + QR ══ -->
     <div class="inv-header">
         <div class="header-logo">
-            <img src="/static/img/logo31.png" alt="JSW Dharamtar Port Pvt. Ltd.">
-            <div class="company-address">
-                At:Dharamtar, Post:Dolvi, Tal: Pen, Dist:Raigad,<br>
-                Mumbai, Maharashtra, India - 402107<br>
-                Phone: 02143-277620 &nbsp;&nbsp; Fax: 02143-277800<br>
-                Email: jetty.accounts@jsw.in &nbsp;&nbsp; Website: www.jsw.in<br>
-                GSTIN: 27AACCJ9361Q1ZS
-            </div>
+            <img src="/static/img/invoice_header.png" alt="JSW Dharamtar Port Pvt. Ltd." style="max-height:none; max-width:100%; height:auto;">
         </div>
         <div class="header-right">
             <div class="copy-type">{{ copy_label }}</div>
@@ -680,7 +673,7 @@
         {% if payment_bank and payment_bank.corporate_office_address %}
         Corporate Off: {{ payment_bank.corporate_office_address }}
         {% else %}
-        Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), MUMBAI, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
+        Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), Mumbai, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
         {% endif %}
     </div>
     </div><!-- /.inv-footer-block -->
