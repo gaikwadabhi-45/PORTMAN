@@ -497,8 +497,10 @@ function amountInWords(amount) {
         if (n < 10000000) return toWords(Math.floor(n/100000)) + 'Lakh ' + toWords(n%100000);
         return toWords(Math.floor(n/10000000)) + 'Crore ' + toWords(n%10000000);
     }
-    const r = Math.floor(amount);
-    const p = Math.round((amount - r) * 100);
+    // Round to 2 decimal places first to avoid floating point drift
+    const rounded = Math.round(amount * 100);
+    const r = Math.floor(rounded / 100);
+    const p = rounded % 100;
     let w = 'Rupees ' + toWords(r).trim();
     if (p > 0) w += ' and ' + toWords(p).trim() + ' Paise';
     return w + ' Only';

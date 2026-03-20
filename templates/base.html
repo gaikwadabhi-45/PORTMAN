@@ -196,6 +196,17 @@
                         <span class="code">LUEU01</span>
                         <span class="name">Load Unload Equipment Utilization</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Services Accordion -->
+            <div class="accordion-section services">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <img src="{{ url_for('static', filename='img/services.png') }}" alt="Services" class="icon">
+                    <span>Services</span>
+                    <span class="arrow">&#9654;</span>
+                </div>
+                <div class="accordion-content">
                     <div class="module-item" onclick="goToModule('SRV01', 'Service Recording')">
                         <span class="code">SRV01</span>
                         <span class="name">Service Recording</span>

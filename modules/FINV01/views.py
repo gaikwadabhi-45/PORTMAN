@@ -260,6 +260,162 @@ def get_bill_lines_api(bill_id):
     return jsonify({'lines': lines})
 
 
+def _fmt_date_dmy(val):
+    """Convert YYYY-MM-DD... to DD-MM-YYYY HH:MM"""
+    if not val:
+        return ''
+    s = str(val).replace('T', ' ')
+    parts = s.split(' ')
+    d = parts[0].split('-')
+    if len(d) != 3:
+        return str(val)
+    out = f'{d[2]}-{d[1]}-{d[0]}'
+    if len(parts) > 1:
+        t = parts[1].split(':')
+        if len(t) >= 2:
+            out += f' {t[0]}:{t[1]}'
+    return out
+
+
+def _get_cargo_handling_details(invoice_id):
+    """Build cargo handling details appendix from invoice → bills → EU lines → VCN/MBC sources.
+    Returns list of dicts with: vessel_name, material_po, consignee, cargo, bl_qty, load_port,
+    source_type_label (MV/MBC), discharge_commence, discharge_completed."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    rows = []
+    try:
+        # Get all distinct EU source docs linked to this invoice
+        cur.execute('''
+            SELECT DISTINCT ll.source_type, ll.source_id
+            FROM invoice_bill_mapping ibm
+            JOIN bill_lines bl ON bl.bill_id = ibm.bill_id
+            JOIN lueu_lines ll ON ll.id = bl.eu_line_id
+            WHERE ibm.invoice_id = %s AND bl.eu_line_id IS NOT NULL
+        ''', [invoice_id])
+        sources = cur.fetchall()
+
+        for src in sources:
+            stype = (src['source_type'] or '').upper()
+            sid = src['source_id']
+
+            if stype == 'VCN' and sid:
+                # Get vessel info from VCN → LDUD chain
+                cur.execute('''
+                    SELECT v.vessel_name, v.importer_exporter_name,
+                           v.discharge_port
+                    FROM vcn_header v
+                    WHERE v.id = %s
+                ''', [sid])
+                vcn = cur.fetchone()
+                if not vcn:
+                    continue
+
+                # Get LDUD for discharge dates and material PO
+                cur.execute('''
+                    SELECT lh.material_po_number, lh.discharge_commenced, lh.discharge_completed
+                    FROM ldud_header lh
+                    WHERE lh.vcn_id = %s
+                    ORDER BY lh.id DESC LIMIT 1
+                ''', [sid])
+                ldud = cur.fetchone()
+
+                # Get anchorage discharge times as fallback
+                discharge_commence = ''
+                discharge_completed = ''
+                if ldud:
+                    discharge_commence = ldud.get('discharge_commenced') or ''
+                    discharge_completed = ldud.get('discharge_completed') or ''
+                if not discharge_commence and ldud:
+                    cur.execute('''
+                        SELECT MIN(discharge_started) as dc_start, MAX(discharge_commenced) as dc_end
+                        FROM ldud_anchorage WHERE ldud_id = %s
+                    ''', [ldud['material_po_number'] if False else None])
+
+                # Get cargo declarations (each cargo = one row)
+                cur.execute('''
+                    SELECT cargo_name, customer_name, bl_quantity, quantity_uom
+                    FROM vcn_cargo_declaration
+                    WHERE vcn_id = %s
+                    UNION ALL
+                    SELECT cargo_name, customer_name, bl_quantity, quantity_uom
+                    FROM vcn_export_cargo_declaration
+                    WHERE vcn_id = %s
+                ''', [sid, sid])
+                cargos = cur.fetchall()
+
+                for cargo in cargos:
+                    rows.append({
+                        'vessel_name': vcn['vessel_name'] or '',
+                        'material_po': (ldud.get('material_po_number') or '') if ldud else '',
+                        'consignee': cargo['customer_name'] or '',
+                        'cargo': cargo['cargo_name'] or '',
+                        'bl_qty': float(cargo['bl_quantity'] or 0),
+                        'load_port': vcn.get('discharge_port') or '',
+                        'source_type_label': 'MV',
+                        'discharge_commence': _fmt_date_dmy(discharge_commence),
+                        'discharge_completed': _fmt_date_dmy(discharge_completed),
+                    })
+
+            elif stype == 'MBC' and sid:
+                cur.execute('''
+                    SELECT m.mbc_name, m.cargo_name, m.bl_quantity, m.doc_status
+                    FROM mbc_header m WHERE m.id = %s
+                ''', [sid])
+                mbc = cur.fetchone()
+                if not mbc:
+                    continue
+
+                # Get customer details for consignee and material PO
+                cur.execute('''
+                    SELECT customer_name, cargo_name, quantity, material_po
+                    FROM mbc_customer_details WHERE mbc_id = %s
+                ''', [sid])
+                customers = cur.fetchall()
+
+                # Get discharge port lines for dates
+                cur.execute('''
+                    SELECT unloading_commenced, unloading_completed
+                    FROM mbc_discharge_port_lines WHERE mbc_id = %s
+                    ORDER BY id LIMIT 1
+                ''', [sid])
+                dpl = cur.fetchone()
+                dc_start = _fmt_date_dmy(dpl['unloading_commenced']) if dpl else ''
+                dc_end = _fmt_date_dmy(dpl['unloading_completed']) if dpl else ''
+
+                if customers:
+                    for cust in customers:
+                        rows.append({
+                            'vessel_name': mbc['mbc_name'] or '',
+                            'material_po': cust.get('material_po') or '',
+                            'consignee': cust['customer_name'] or '',
+                            'cargo': cust.get('cargo_name') or mbc.get('cargo_name') or '',
+                            'bl_qty': float(cust.get('quantity') or mbc.get('bl_quantity') or 0),
+                            'load_port': 'Jaigad',
+                            'source_type_label': 'MBC',
+                            'discharge_commence': dc_start,
+                            'discharge_completed': dc_end,
+                        })
+                else:
+                    rows.append({
+                        'vessel_name': mbc['mbc_name'] or '',
+                        'material_po': '',
+                        'consignee': '',
+                        'cargo': mbc.get('cargo_name') or '',
+                        'bl_qty': float(mbc.get('bl_quantity') or 0),
+                        'load_port': 'Jaigad',
+                        'source_type_label': 'MBC',
+                        'discharge_commence': dc_start,
+                        'discharge_completed': dc_end,
+                    })
+    except Exception as e:
+        log.error(f'Error fetching cargo details for invoice {invoice_id}: {e}')
+    finally:
+        conn.close()
+
+    return rows
+
+
 # ===== Print Invoice =====
 
 @bp.route('/module/FINV01/invoice/print/<int:invoice_id>')
@@ -337,8 +493,10 @@ def print_invoice(invoice_id):
         payment_bank = None
     conn_b.close()
 
-    from datetime import datetime
     current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # Fetch cargo handling details for the appendix table
+    cargo_details = _get_cargo_handling_details(invoice_id)
 
     return render_template('finv01_invoice_print.html',
                          invoice=invoice,
@@ -346,7 +504,8 @@ def print_invoice(invoice_id):
                          sac_summary=sac_summary,
                          port_config=port_config,
                          payment_bank=payment_bank,
-                         current_datetime=current_datetime)
+                         current_datetime=current_datetime,
+                         cargo_details=cargo_details)
 
 
 # ===== GSTR-1 B2B Export =====
