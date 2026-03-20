@@ -682,7 +682,6 @@
 
 </div><!-- /.invoice-copy -->
 
-{% if cargo_details and cargo_details|length > 0 %}
 <div class="cargo-appendix">
     <div class="cargo-appendix-header">
         Cargo Handling Details- {{ port_config.seller_legal_name or 'JSW Dharamtar Port Private Limited' }}
@@ -695,11 +694,9 @@
             <tr>
                 <th>Sr</th>
                 <th>M.Vessel Name</th>
-                <th>Material PO</th>
                 <th>Consignee</th>
                 <th>Cargo</th>
                 <th>B/L Qty. (MT)</th>
-                <th>Load Port</th>
                 <th>MV/MBC</th>
                 <th>Discharge<br>Commence</th>
                 <th>Discharge<br>Completed</th>
@@ -710,11 +707,9 @@
             <tr>
                 <td style="text-align:center;">{{ loop.index }}</td>
                 <td>{{ cd.vessel_name }}</td>
-                <td>{{ cd.material_po }}</td>
                 <td>{{ cd.consignee }}</td>
                 <td>{{ cd.cargo }}</td>
                 <td class="num">{{ "%.2f"|format(cd.bl_qty) }}</td>
-                <td>{{ cd.load_port }}</td>
                 <td style="text-align:center;">{{ cd.source_type_label }}</td>
                 <td>{{ cd.discharge_commence }}</td>
                 <td>{{ cd.discharge_completed }}</td>
@@ -723,14 +718,13 @@
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="5" style="text-align:right;">Total</td>
+                <td colspan="4" style="text-align:right;">Total</td>
                 <td class="num">{{ "%.2f"|format(cargo_details|sum(attribute='bl_qty')) }}</td>
-                <td colspan="4"></td>
+                <td colspan="3"></td>
             </tr>
         </tfoot>
     </table>
 </div>
-{% endif %}
 </div><!-- /.invoice-set -->
 
 {% endmacro %}
