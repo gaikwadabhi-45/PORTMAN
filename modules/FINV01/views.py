@@ -277,27 +277,203 @@ def _fmt_date_dmy(val):
     return out
 
 
-def _build_cargo_details(invoice):
-    """Build cargo handling details from the invoice's already-fetched vessel/cargo data.
-    Returns a list with one row per vessel/cargo combination."""
+def _get_cargo_handling_details(invoice_id):
+    """Trace invoice → bills → EU lines → LDUD/VCN/MBC to build cargo handling appendix rows."""
+    conn = get_db()
+    cur = get_cursor(conn)
     rows = []
-    vessel = (invoice.get('vessel_name') or '').strip()
-    cargo  = (invoice.get('commodity') or '').strip()
-    qty    = float(invoice.get('cargo_quantity') or 0)
-    consignee = (invoice.get('customer_name') or '').strip()
-    berthing  = _fmt_date_dmy(invoice.get('date_of_berthing') or '')
-    sailing   = _fmt_date_dmy(invoice.get('date_of_sailing') or '')
+    try:
+        # Get all distinct EU source docs linked to this invoice
+        cur.execute('''
+            SELECT DISTINCT ll.source_type, ll.source_id
+            FROM invoice_bill_mapping ibm
+            JOIN bill_lines bl ON bl.bill_id = ibm.bill_id
+            JOIN lueu_lines ll ON ll.id = bl.eu_line_id
+            WHERE ibm.invoice_id = %s AND bl.eu_line_id IS NOT NULL
+        ''', [invoice_id])
+        sources = cur.fetchall()
+        log.info(f'[CARGO] Invoice {invoice_id}: found {len(sources)} distinct sources: '
+                 f'{[(s["source_type"], s["source_id"]) for s in sources]}')
 
-    if vessel or cargo:
-        rows.append({
-            'vessel_name': vessel,
-            'consignee': consignee,
-            'cargo': cargo,
-            'bl_qty': qty,
-            'source_type_label': 'MBC' if 'mbc' in vessel.lower() or 'jsw' in vessel.lower() else 'MV',
-            'discharge_commence': berthing,
-            'discharge_completed': sailing,
-        })
+        for src in sources:
+            stype = (src['source_type'] or '').upper()
+            sid = src['source_id']
+            log.info(f'[CARGO] Processing source_type={stype}, source_id={sid}')
+
+            # --- LDUD source: ldud_header → vcn_header ---
+            if stype == 'LDUD' and sid:
+                cur.execute('''
+                    SELECT lh.vcn_id, lh.material_po_number,
+                           lh.discharge_commenced, lh.discharge_completed
+                    FROM ldud_header lh WHERE lh.id = %s
+                ''', [sid])
+                ldud = cur.fetchone()
+                log.info(f'[CARGO] LDUD {sid}: {dict(ldud) if ldud else "NOT FOUND"}')
+                if not ldud:
+                    continue
+
+                vcn_id = ldud.get('vcn_id')
+                cur.execute('''
+                    SELECT v.vessel_name, v.importer_exporter_name, v.discharge_port
+                    FROM vcn_header v WHERE v.id = %s
+                ''', [vcn_id])
+                vcn = cur.fetchone()
+                log.info(f'[CARGO] VCN {vcn_id}: {dict(vcn) if vcn else "NOT FOUND"}')
+                if not vcn:
+                    continue
+
+                dc_start = ldud.get('discharge_commenced') or ''
+                dc_end = ldud.get('discharge_completed') or ''
+
+                # Fallback to anchorage times if header dates empty
+                if not dc_start:
+                    cur.execute('''
+                        SELECT MIN(discharge_started) as dc_start,
+                               MAX(discharge_commenced) as dc_end
+                        FROM ldud_anchorage WHERE ldud_id = %s
+                    ''', [sid])
+                    anch = cur.fetchone()
+                    log.info(f'[CARGO] LDUD {sid} anchorage fallback: {dict(anch) if anch else "NONE"}')
+                    if anch:
+                        dc_start = anch.get('dc_start') or dc_start
+                        dc_end = anch.get('dc_end') or dc_end
+
+                # Get cargo declarations from VCN
+                cur.execute('''
+                    SELECT cargo_name, customer_name, bl_quantity
+                    FROM vcn_cargo_declaration WHERE vcn_id = %s
+                    UNION ALL
+                    SELECT cargo_name, customer_name, bl_quantity
+                    FROM vcn_export_cargo_declaration WHERE vcn_id = %s
+                ''', [vcn_id, vcn_id])
+                cargos = cur.fetchall()
+                log.info(f'[CARGO] VCN {vcn_id} cargo declarations: {len(cargos)} rows')
+
+                if cargos:
+                    for cargo in cargos:
+                        rows.append({
+                            'vessel_name': vcn['vessel_name'] or '',
+                            'consignee': cargo['customer_name'] or '',
+                            'cargo': cargo['cargo_name'] or '',
+                            'bl_qty': float(cargo['bl_quantity'] or 0),
+                            'source_type_label': 'MV',
+                            'discharge_commence': _fmt_date_dmy(dc_start),
+                            'discharge_completed': _fmt_date_dmy(dc_end),
+                        })
+                else:
+                    # No cargo declarations — use VCN-level info
+                    rows.append({
+                        'vessel_name': vcn['vessel_name'] or '',
+                        'consignee': vcn.get('importer_exporter_name') or '',
+                        'cargo': '',
+                        'bl_qty': 0,
+                        'source_type_label': 'MV',
+                        'discharge_commence': _fmt_date_dmy(dc_start),
+                        'discharge_completed': _fmt_date_dmy(dc_end),
+                    })
+
+            # --- VCN source (direct): vcn_header ---
+            elif stype == 'VCN' and sid:
+                cur.execute('''
+                    SELECT v.vessel_name, v.importer_exporter_name, v.discharge_port
+                    FROM vcn_header v WHERE v.id = %s
+                ''', [sid])
+                vcn = cur.fetchone()
+                log.info(f'[CARGO] VCN(direct) {sid}: {dict(vcn) if vcn else "NOT FOUND"}')
+                if not vcn:
+                    continue
+
+                # Try to get discharge dates from any linked LDUD
+                cur.execute('''
+                    SELECT discharge_commenced, discharge_completed
+                    FROM ldud_header WHERE vcn_id = %s ORDER BY id LIMIT 1
+                ''', [sid])
+                ldud = cur.fetchone()
+                dc_start = (ldud.get('discharge_commenced') or '') if ldud else ''
+                dc_end = (ldud.get('discharge_completed') or '') if ldud else ''
+
+                cur.execute('''
+                    SELECT cargo_name, customer_name, bl_quantity
+                    FROM vcn_cargo_declaration WHERE vcn_id = %s
+                    UNION ALL
+                    SELECT cargo_name, customer_name, bl_quantity
+                    FROM vcn_export_cargo_declaration WHERE vcn_id = %s
+                ''', [sid, sid])
+                cargos = cur.fetchall()
+                log.info(f'[CARGO] VCN(direct) {sid} cargo declarations: {len(cargos)} rows')
+
+                if cargos:
+                    for cargo in cargos:
+                        rows.append({
+                            'vessel_name': vcn['vessel_name'] or '',
+                            'consignee': cargo['customer_name'] or '',
+                            'cargo': cargo['cargo_name'] or '',
+                            'bl_qty': float(cargo['bl_quantity'] or 0),
+                            'source_type_label': 'MV',
+                            'discharge_commence': _fmt_date_dmy(dc_start),
+                            'discharge_completed': _fmt_date_dmy(dc_end),
+                        })
+                else:
+                    rows.append({
+                        'vessel_name': vcn['vessel_name'] or '',
+                        'consignee': vcn.get('importer_exporter_name') or '',
+                        'cargo': '',
+                        'bl_qty': 0,
+                        'source_type_label': 'MV',
+                        'discharge_commence': _fmt_date_dmy(dc_start),
+                        'discharge_completed': _fmt_date_dmy(dc_end),
+                    })
+
+            # --- MBC source ---
+            elif stype == 'MBC' and sid:
+                cur.execute('SELECT mbc_name, cargo_name, bl_quantity FROM mbc_header WHERE id = %s', [sid])
+                mbc = cur.fetchone()
+                log.info(f'[CARGO] MBC {sid}: {dict(mbc) if mbc else "NOT FOUND"}')
+                if not mbc:
+                    continue
+
+                cur.execute('SELECT customer_name, cargo_name, quantity, material_po FROM mbc_customer_details WHERE mbc_id = %s', [sid])
+                customers = cur.fetchall()
+
+                cur.execute('''
+                    SELECT unloading_commenced, unloading_completed
+                    FROM mbc_discharge_port_lines WHERE mbc_id = %s ORDER BY id LIMIT 1
+                ''', [sid])
+                dpl = cur.fetchone()
+                dc_start = _fmt_date_dmy(dpl['unloading_commenced']) if dpl else ''
+                dc_end = _fmt_date_dmy(dpl['unloading_completed']) if dpl else ''
+                log.info(f'[CARGO] MBC {sid}: {len(customers)} customers, discharge={dc_start} to {dc_end}')
+
+                if customers:
+                    for cust in customers:
+                        rows.append({
+                            'vessel_name': mbc['mbc_name'] or '',
+                            'consignee': cust['customer_name'] or '',
+                            'cargo': cust.get('cargo_name') or mbc.get('cargo_name') or '',
+                            'bl_qty': float(cust.get('quantity') or mbc.get('bl_quantity') or 0),
+                            'source_type_label': 'MBC',
+                            'discharge_commence': dc_start,
+                            'discharge_completed': dc_end,
+                        })
+                else:
+                    rows.append({
+                        'vessel_name': mbc['mbc_name'] or '',
+                        'consignee': '',
+                        'cargo': mbc.get('cargo_name') or '',
+                        'bl_qty': float(mbc.get('bl_quantity') or 0),
+                        'source_type_label': 'MBC',
+                        'discharge_commence': dc_start,
+                        'discharge_completed': dc_end,
+                    })
+            else:
+                log.warning(f'[CARGO] Unknown source_type={stype} for source_id={sid}')
+
+    except Exception as e:
+        log.error(f'[CARGO] Error fetching cargo details for invoice {invoice_id}: {e}', exc_info=True)
+    finally:
+        conn.close()
+
+    log.info(f'[CARGO] Invoice {invoice_id}: returning {len(rows)} cargo detail rows')
     return rows
 
 
@@ -388,12 +564,9 @@ def print_invoice(invoice_id):
 
     current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Build cargo handling details from the invoice's vessel/cargo data
-    cargo_details = _build_cargo_details(invoice)
-    log.info(f'[PRINT] Invoice {invoice_id} cargo_details: {cargo_details}')
-    log.info(f'[PRINT] Invoice {invoice_id} vessel_name={invoice.get("vessel_name")}, '
-             f'commodity={invoice.get("commodity")}, cargo_qty={invoice.get("cargo_quantity")}, '
-             f'berthing={invoice.get("date_of_berthing")}, sailing={invoice.get("date_of_sailing")}')
+    # Fetch cargo handling details by tracing bill chain
+    cargo_details = _get_cargo_handling_details(invoice_id)
+    log.info(f'[PRINT] Invoice {invoice_id}: {len(cargo_details)} cargo detail rows')
 
     return render_template('finv01_invoice_print.html',
                          invoice=invoice,
