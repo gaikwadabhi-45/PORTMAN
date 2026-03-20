@@ -235,10 +235,18 @@ def save_bill_line(data):
              service_code, tds_applicable, tds_percent, tds_amount])
         row_id = cur.fetchone()['id']
 
-    # Mark the EU line as billed if eu_line_id is provided
+    # Mark the EU line as billed (partial billing support)
     if data.get('eu_line_id'):
-        cur.execute('UPDATE lueu_lines SET is_billed = 1, bill_id = %s WHERE id = %s',
-                     [data.get('bill_id'), data.get('eu_line_id')])
+        bill_qty = float(data.get('quantity') or 0)
+        cur.execute('''UPDATE lueu_lines
+            SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
+                bill_id = %s,
+                is_billed = CASE
+                    WHEN COALESCE(billed_quantity, 0) + %s >= quantity THEN 1
+                    ELSE is_billed
+                END
+            WHERE id = %s''',
+            [bill_qty, data.get('bill_id'), bill_qty, data.get('eu_line_id')])
 
     # Mark the service record as billed if service_record_id is provided
     if data.get('service_record_id'):
@@ -263,9 +271,19 @@ def delete_bill(bill_id):
     """Delete bill header and all lines"""
     conn = get_db()
     cur = get_cursor(conn)
-    # Unmark EU lines as billed
-    cur.execute('''UPDATE lueu_lines SET is_billed=0, bill_id=NULL
-        WHERE bill_id IN (SELECT id FROM bill_header WHERE id=%s)''', (bill_id,))
+    # Reverse partial billing: decrement billed_quantity by the bill_line quantity
+    cur.execute('''UPDATE lueu_lines el
+        SET billed_quantity = GREATEST(COALESCE(el.billed_quantity, 0) - COALESCE(bl.quantity, 0), 0),
+            is_billed = CASE
+                WHEN COALESCE(el.billed_quantity, 0) - COALESCE(bl.quantity, 0) <= 0 THEN 0
+                ELSE el.is_billed
+            END,
+            bill_id = CASE
+                WHEN COALESCE(el.billed_quantity, 0) - COALESCE(bl.quantity, 0) <= 0 THEN NULL
+                ELSE el.bill_id
+            END
+        FROM bill_lines bl
+        WHERE bl.bill_id = %s AND bl.eu_line_id = el.id''', (bill_id,))
     # Unmark service records as billed
     cur.execute('''UPDATE service_records SET is_billed=0, bill_id=NULL
         WHERE bill_id IN (SELECT id FROM bill_header WHERE id=%s)''', (bill_id,))

@@ -94,8 +94,7 @@
         <div class="form-field">
             <label>Customer Type *</label>
             <select id="customerType" onchange="loadCustomers()">
-                <option value="">-- Select --</option>
-                <option value="Customer">Customer</option>
+                <option value="Customer" selected>Customer</option>
                 <option value="Agent">Agent</option>
             </select>
         </div>
@@ -151,13 +150,16 @@
                     <th>Cargo</th>
                     <th>Barge</th>
                     <th>Equipment</th>
-                    <th>Qty</th>
+                    <th>Total Qty</th>
+                    <th>Billed</th>
+                    <th>Balance</th>
+                    <th>Bill Qty</th>
                     <th>Rate</th>
                     <th>Amount</th>
                 </tr>
             </thead>
             <tbody id="cargoLinesBody">
-                <tr><td colspan="10" class="empty-state">Select customer and click Load Billables</td></tr>
+                <tr><td colspan="13" class="empty-state">Select customer and click Load Billables</td></tr>
             </tbody>
         </table>
     </div>
@@ -296,11 +298,16 @@ async function onCustomerSelected() {
     const resp = await fetch(`/api/module/FIN01/customer-agreements/${cid}`);
     const json = await resp.json();
     agreementSel.innerHTML = '<option value="">-- Auto-detect from agreement --</option>';
-    (json.data || []).forEach(ag => {
+    const agreements = json.data || [];
+    agreements.forEach(ag => {
         const fromDate = formatDateDMY(ag.valid_from);
         const toDate = ag.valid_to ? formatDateDMY(ag.valid_to) : 'Open';
         agreementSel.innerHTML += `<option value="${ag.id}">${ag.agreement_code} - ${ag.agreement_name} (${fromDate} to ${toDate})</option>`;
     });
+    // Auto-select if only one agreement exists
+    if (agreements.length === 1) {
+        agreementSel.value = agreements[0].id;
+    }
 }
 
 async function loadBillables() {
@@ -335,11 +342,13 @@ async function loadBillables() {
 
 function renderCargoCards(cards) {
     const tbody = document.getElementById('cargoLinesBody');
-    // Flatten all lines from all cards into a single list
+    // Flatten all lines from all cards into a single list, skip zero-quantity lines
     const allLines = [];
     cards.forEach(card => {
         (card.lines || []).forEach(line => {
-            allLines.push({...line, _card: card});
+            if (parseFloat(line.quantity || 0) > 0) {
+                allLines.push({...line, _card: card});
+            }
         });
     });
 
@@ -373,6 +382,9 @@ function renderCargoCards(cards) {
             poCell += `</select>`;
         }
 
+        const billedQty = parseFloat(line.billed_quantity || 0);
+        const balance = Math.max(qty - billedQty, 0);
+
         tr.innerHTML = `
             <td>${isBillable ? `<input type="checkbox" class="cargo-line-check" data-idx="${idx}" onchange="recalcTotals()">` : '🔒'}</td>
             <td style="font-size:10px;">${card.doc_label || card.source_type + '-' + card.source_id}</td>
@@ -381,7 +393,10 @@ function renderCargoCards(cards) {
             <td>${line.cargo_name || '-'}</td>
             <td>${line.barge_name || '-'}</td>
             <td>${line.equipment_name || '-'}</td>
-            <td style="text-align:right;">${qty.toFixed(2)} ${line.quantity_uom || ''}</td>
+            <td style="text-align:right;">${qty.toFixed(2)}</td>
+            <td style="text-align:right; color:${billedQty > 0 ? '#e67e22' : '#95a5a6'}; font-size:10px;">${billedQty > 0 ? billedQty.toFixed(2) : '-'}</td>
+            <td style="text-align:right; font-weight:600; color:${billedQty > 0 ? '#2980b9' : 'inherit'};">${balance.toFixed(2)} ${line.quantity_uom || ''}</td>
+            <td>${isBillable ? `<input type="number" step="0.01" min="0.01" max="${balance.toFixed(2)}" id="cargo_line_billqty_${idx}" value="${balance.toFixed(2)}" data-balance="${balance.toFixed(2)}" onchange="validateBillQty(this); recalcTotals()" style="width:80px;padding:3px 5px;font-size:11px;">` : '-'}</td>
             <td>${isBillable ? `<input type="number" step="0.01" id="cargo_line_rate_${idx}" placeholder="0.00" onchange="recalcTotals()" style="width:80px;padding:3px 5px;font-size:11px;">` : '-'}</td>
             <td style="text-align:right;font-weight:600;" id="cargo_line_amt_${idx}">-</td>
         `;
@@ -528,16 +543,23 @@ function renderBilledHistory(items) {
     `).join('');
 }
 
+function validateBillQty(input) {
+    const max = parseFloat(input.dataset.balance || 0);
+    let val = parseFloat(input.value || 0);
+    if (val > max) { input.value = max.toFixed(2); val = max; }
+    if (val < 0) { input.value = '0.00'; }
+}
+
 function recalcTotals() {
     let subtotal = 0;
     let selectedCount = 0;
     const cargoLines = billableData._cargoLines || [];
 
-    // Cargo line items — update all amounts
+    // Cargo line items — use bill qty (not total line qty)
     document.querySelectorAll('.cargo-line-check').forEach(cb => {
         const idx = parseInt(cb.dataset.idx);
-        const line = cargoLines[idx];
-        const qty = parseFloat(line.quantity || 0);
+        const billQtyInput = document.getElementById(`cargo_line_billqty_${idx}`);
+        const qty = parseFloat(billQtyInput ? billQtyInput.value : 0) || 0;
         const rateInput = document.getElementById(`cargo_line_rate_${idx}`);
         const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
         const amount = qty * rate;
@@ -587,14 +609,16 @@ async function generateBill() {
     const lines = [];
     const cargoLines = billableData._cargoLines || [];
 
-    // Collect selected cargo lines (each EU line individually)
+    // Collect selected cargo lines (each EU line individually, with user-specified bill qty)
     document.querySelectorAll('.cargo-line-check:checked').forEach(cb => {
         const idx = parseInt(cb.dataset.idx);
         const line = cargoLines[idx];
         const card = line._card;
+        const billQtyInput = document.getElementById(`cargo_line_billqty_${idx}`);
+        const qty = parseFloat(billQtyInput ? billQtyInput.value : 0) || 0;
+        if (qty <= 0) return; // skip zero-qty selections
         const rateInput = document.getElementById(`cargo_line_rate_${idx}`);
         const rate = parseFloat(rateInput ? rateInput.value : 0) || 0;
-        const qty = parseFloat(line.quantity || 0);
         lines.push({
             line_type: 'cargo_handling',
             service_type_id: card.service_type_id,
@@ -675,6 +699,7 @@ function toggleSection(id) {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadServiceTypes();
+    loadCustomers();
 });
 
 try { addToRecent('FIN01', 'Finance Billing'); } catch(e) {}

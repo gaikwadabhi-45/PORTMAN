@@ -42,7 +42,12 @@
       "Bash(find /d/PORTMAN -name *.html -type f)",
       "Bash(find /d/PORTMAN -name *.sql -o -name schema* -o -name *init*)",
       "Bash(find /d/PORTMAN -name *.py -type f -exec grep -l mbc_customer_details {})",
-      "Bash(2)"
+      "Bash(2)",
+      "Bash(find /d/PORTMAN -type f \\\\\\(-name *migration* -o -name *schema* -o -name *.sql \\\\\\))",
+      "Bash(find /d/PORTMAN -path *migrations* -o -path *database* -type d)",
+      "Bash(find /d/PORTMAN -name *.sql -type f)",
+      "Bash(find /d/PORTMAN/alembic/versions -name \"*.py\" -exec grep -l \"vcn_\" {})",
+      "Bash(find /d/PORTMAN -type d -name *schema* -o -name *migration*)"
     ]
   }
 }

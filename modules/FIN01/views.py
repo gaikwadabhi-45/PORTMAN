@@ -171,13 +171,21 @@ def save_bill():
         WHERE id=%s''',
         [subtotal, cgst_total, sgst_total, igst_total, total_amount, row_id])
 
-    # Mark EU lines as billed
+    # Mark EU lines as billed (partial billing support)
     for line in lines:
         if line.get('line_type') == 'cargo_handling':
             eu_ids = line.get('eu_line_ids') or []
+            bill_qty = float(line.get('quantity') or 0)
             for eu_id in eu_ids:
-                cur.execute('UPDATE lueu_lines SET is_billed=1, bill_id=%s WHERE id=%s',
-                            [row_id, eu_id])
+                cur.execute('''UPDATE lueu_lines
+                    SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
+                        bill_id = %s,
+                        is_billed = CASE
+                            WHEN COALESCE(billed_quantity, 0) + %s >= quantity THEN 1
+                            ELSE is_billed
+                        END
+                    WHERE id = %s''',
+                    [bill_qty, row_id, bill_qty, eu_id])
 
     # Mark service records as billed
     for line in lines:
@@ -563,7 +571,8 @@ def get_customer_billables(customer_type, customer_id):
     cur.execute("""
         SELECT el.*
         FROM lueu_lines el
-        WHERE el.is_billed = 0 OR el.is_billed IS NULL
+        WHERE (el.is_billed = 0 OR el.is_billed IS NULL)
+           OR (COALESCE(el.billed_quantity, 0) < el.quantity)
         ORDER BY el.source_type, el.source_id, el.operation_type, el.id
     """)
     eu_rows = [dict(r) for r in cur.fetchall()]
