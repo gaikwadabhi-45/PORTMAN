@@ -9,9 +9,10 @@
         @media print {
             .no-print { display: none !important; }
             body { background: #fff; }
+            .invoice-set { page-break-after: always; }
+            .invoice-set:last-child { page-break-after: avoid; }
             .invoice-copy { page-break-after: auto; }
-            .cargo-appendix { page-break-inside: avoid; page-break-after: always; }
-            .cargo-appendix:last-child { page-break-after: avoid; }
+            .cargo-appendix { page-break-inside: avoid; }
         }
 
         body {
@@ -419,6 +420,7 @@
 {% set sgst_pct = ((sgst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 {% set igst_pct = ((igst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 
+<div class="invoice-set">
 <div class="invoice-copy">
 
     {% if invoice.invoice_status == 'Cancelled' %}
@@ -729,6 +731,7 @@
     </table>
 </div>
 {% endif %}
+</div><!-- /.invoice-set -->
 
 {% endmacro %}
 
