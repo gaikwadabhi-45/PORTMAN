@@ -278,7 +278,7 @@ def _fmt_date_dmy(val):
 
 
 def _get_cargo_handling_details(invoice_id):
-    """Build cargo handling details appendix from invoice → bills → EU lines → VCN/MBC sources.
+    """Build cargo handling details appendix from invoice → bills → EU lines → LDUD/MBC sources.
     Returns list of dicts with: vessel_name, material_po, consignee, cargo, bl_qty, load_port,
     source_type_label (MV/MBC), discharge_commence, discharge_completed."""
     conn = get_db()
@@ -299,38 +299,36 @@ def _get_cargo_handling_details(invoice_id):
             stype = (src['source_type'] or '').upper()
             sid = src['source_id']
 
-            if stype == 'VCN' and sid:
-                # Get vessel info from VCN → LDUD chain
+            if stype == 'LDUD' and sid:
+                # LDUD → VCN chain: get vessel info
+                cur.execute('''
+                    SELECT lh.vcn_id, lh.material_po_number
+                    FROM ldud_header lh
+                    WHERE lh.id = %s
+                ''', [sid])
+                ldud = cur.fetchone()
+                if not ldud:
+                    continue
+
+                vcn_id = ldud.get('vcn_id')
                 cur.execute('''
                     SELECT v.vessel_name, v.importer_exporter_name,
                            v.discharge_port
                     FROM vcn_header v
                     WHERE v.id = %s
-                ''', [sid])
+                ''', [vcn_id])
                 vcn = cur.fetchone()
                 if not vcn:
                     continue
 
-                # Get LDUD for discharge dates and material PO
+                # Discharge times from anchorage recording
                 cur.execute('''
-                    SELECT lh.material_po_number, lh.discharge_commenced, lh.discharge_completed
-                    FROM ldud_header lh
-                    WHERE lh.vcn_id = %s
-                    ORDER BY lh.id DESC LIMIT 1
+                    SELECT MIN(discharge_started) as dc_start, MAX(discharge_commenced) as dc_end
+                    FROM ldud_anchorage WHERE ldud_id = %s
                 ''', [sid])
-                ldud = cur.fetchone()
-
-                # Get anchorage discharge times as fallback
-                discharge_commence = ''
-                discharge_completed = ''
-                if ldud:
-                    discharge_commence = ldud.get('discharge_commenced') or ''
-                    discharge_completed = ldud.get('discharge_completed') or ''
-                if not discharge_commence and ldud:
-                    cur.execute('''
-                        SELECT MIN(discharge_started) as dc_start, MAX(discharge_commenced) as dc_end
-                        FROM ldud_anchorage WHERE ldud_id = %s
-                    ''', [ldud['material_po_number'] if False else None])
+                anch = cur.fetchone()
+                discharge_commence = (anch.get('dc_start') or '') if anch else ''
+                discharge_completed = (anch.get('dc_end') or '') if anch else ''
 
                 # Get cargo declarations (each cargo = one row)
                 cur.execute('''
@@ -341,13 +339,13 @@ def _get_cargo_handling_details(invoice_id):
                     SELECT cargo_name, customer_name, bl_quantity, quantity_uom
                     FROM vcn_export_cargo_declaration
                     WHERE vcn_id = %s
-                ''', [sid, sid])
+                ''', [vcn_id, vcn_id])
                 cargos = cur.fetchall()
 
                 for cargo in cargos:
                     rows.append({
                         'vessel_name': vcn['vessel_name'] or '',
-                        'material_po': (ldud.get('material_po_number') or '') if ldud else '',
+                        'material_po': ldud.get('material_po_number') or '',
                         'consignee': cargo['customer_name'] or '',
                         'cargo': cargo['cargo_name'] or '',
                         'bl_qty': float(cargo['bl_quantity'] or 0),
