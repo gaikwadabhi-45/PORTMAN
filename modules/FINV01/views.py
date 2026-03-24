@@ -278,60 +278,59 @@ def _fmt_date_dmy(val):
 
 
 def _get_cargo_handling_details(invoice_id):
-    """Trace invoice → bill_header (source_type/source_id) → VCN/MBC for cargo details."""
+    """Trace invoice -> bill_lines -> lueu_lines -> LDUD/MBC source docs for cargo appendix."""
     conn = get_db()
     cur = get_cursor(conn)
     rows = []
+    seen = set()  # avoid duplicate source docs
     try:
-        # Get distinct source docs from bill_header via invoice mapping
+        # Get all EU lines linked to this invoice's bills
         cur.execute('''
-            SELECT DISTINCT bh.source_type, bh.source_id, bh.customer_name
+            SELECT DISTINCT ll.source_type, ll.source_id
             FROM invoice_bill_mapping ibm
-            JOIN bill_header bh ON bh.id = ibm.bill_id
-            WHERE ibm.invoice_id = %s AND bh.source_type IS NOT NULL AND bh.source_id IS NOT NULL
+            JOIN bill_lines bl ON bl.bill_id = ibm.bill_id
+            JOIN lueu_lines ll ON ll.id = bl.eu_line_id
+            WHERE ibm.invoice_id = %s AND bl.eu_line_id IS NOT NULL
         ''', [invoice_id])
         sources = cur.fetchall()
-        log.info(f'[CARGO] Invoice {invoice_id}: sources={[(s["source_type"], s["source_id"]) for s in sources]}')
+        log.info(f'[CARGO] Invoice {invoice_id}: EU sources={[(s["source_type"], s["source_id"]) for s in sources]}')
 
         for src in sources:
             stype = (src['source_type'] or '').upper()
             sid = src['source_id']
+            if not sid or (stype, sid) in seen:
+                continue
+            seen.add((stype, sid))
 
-            if stype == 'VCN' and sid:
-                # VCN → vessel name, cargo declarations, discharge dates from LDUD
-                cur.execute('SELECT vessel_name, importer_exporter_name, discharge_port FROM vcn_header WHERE id = %s', [sid])
-                vcn = cur.fetchone()
-                log.info(f'[CARGO] VCN {sid}: {dict(vcn) if vcn else "NOT FOUND"}')
-                if not vcn:
+            if stype == 'LDUD':
+                # LDUD -> ldud_header (vessel_name, discharge dates) -> vcn_cargo_declaration (cargo, customer, BL qty)
+                cur.execute('''
+                    SELECT vcn_id, vessel_name, discharge_commenced, discharge_completed
+                    FROM ldud_header WHERE id = %s
+                ''', [sid])
+                ldud = cur.fetchone()
+                log.info(f'[CARGO] LDUD {sid}: {dict(ldud) if ldud else "NOT FOUND"}')
+                if not ldud:
                     continue
 
-                # Discharge dates from linked LDUD, fallback to anchorage
-                cur.execute('SELECT id, discharge_commenced, discharge_completed FROM ldud_header WHERE vcn_id = %s ORDER BY id LIMIT 1', [sid])
-                ldud = cur.fetchone()
-                dc_start = (ldud['discharge_commenced'] or '') if ldud else ''
-                dc_end = (ldud['discharge_completed'] or '') if ldud else ''
-                if ldud and not dc_start:
-                    cur.execute('SELECT MIN(discharge_started) as s, MAX(discharge_commenced) as e FROM ldud_anchorage WHERE ldud_id=%s', [ldud['id']])
-                    anch = cur.fetchone()
-                    if anch:
-                        dc_start = anch['s'] or ''
-                        dc_end = anch['e'] or dc_end
-                log.info(f'[CARGO] VCN {sid}: discharge {dc_start} → {dc_end}')
+                dc_start = ldud['discharge_commenced'] or ''
+                dc_end = ldud['discharge_completed'] or ''
+                vessel = ldud['vessel_name'] or ''
+                vcn_id = ldud['vcn_id']
 
-                # Cargo declarations
+                # Cargo declarations from VCN (consignee = customer_name, BL qty)
                 cur.execute('''
-                    SELECT cargo_name, customer_name, bl_quantity FROM vcn_cargo_declaration WHERE vcn_id = %s
-                    UNION ALL
-                    SELECT cargo_name, customer_name, bl_quantity FROM vcn_export_cargo_declaration WHERE vcn_id = %s
-                ''', [sid, sid])
+                    SELECT cargo_name, customer_name, bl_quantity
+                    FROM vcn_cargo_declaration WHERE vcn_id = %s
+                ''', [vcn_id])
                 cargos = cur.fetchall()
-                log.info(f'[CARGO] VCN {sid}: {len(cargos)} cargo declarations')
+                log.info(f'[CARGO] VCN {vcn_id}: {len(cargos)} cargo declarations')
 
                 if cargos:
                     for c in cargos:
                         rows.append({
-                            'vessel_name': vcn['vessel_name'] or '',
-                            'consignee': c['customer_name'] or src['customer_name'] or '',
+                            'vessel_name': vessel,
+                            'consignee': c['customer_name'] or '',
                             'cargo': c['cargo_name'] or '',
                             'bl_qty': float(c['bl_quantity'] or 0),
                             'source_type_label': 'MV',
@@ -339,28 +338,38 @@ def _get_cargo_handling_details(invoice_id):
                             'discharge_completed': _fmt_date_dmy(dc_end),
                         })
                 else:
+                    # Fallback: use VCN header for consignee
+                    cur.execute('SELECT importer_exporter_name FROM vcn_header WHERE id = %s', [vcn_id])
+                    vcn = cur.fetchone()
                     rows.append({
-                        'vessel_name': vcn['vessel_name'] or '',
-                        'consignee': vcn.get('importer_exporter_name') or src['customer_name'] or '',
+                        'vessel_name': vessel,
+                        'consignee': (vcn['importer_exporter_name'] if vcn else '') or '',
                         'cargo': '', 'bl_qty': 0, 'source_type_label': 'MV',
                         'discharge_commence': _fmt_date_dmy(dc_start),
                         'discharge_completed': _fmt_date_dmy(dc_end),
                     })
 
-            elif stype == 'MBC' and sid:
+            elif stype == 'MBC':
+                # MBC -> mbc_header (mbc_name, cargo, bl_qty), mbc_customer_details, mbc_discharge_port_lines
                 cur.execute('SELECT mbc_name, cargo_name, bl_quantity FROM mbc_header WHERE id = %s', [sid])
                 mbc = cur.fetchone()
                 log.info(f'[CARGO] MBC {sid}: {dict(mbc) if mbc else "NOT FOUND"}')
                 if not mbc:
                     continue
 
-                cur.execute('SELECT customer_name, cargo_name, quantity FROM mbc_customer_details WHERE mbc_id = %s', [sid])
-                customers = cur.fetchall()
-                cur.execute('SELECT unloading_commenced, unloading_completed FROM mbc_discharge_port_lines WHERE mbc_id = %s ORDER BY id LIMIT 1', [sid])
+                # Discharge dates
+                cur.execute('''
+                    SELECT unloading_commenced, unloading_completed
+                    FROM mbc_discharge_port_lines WHERE mbc_id = %s ORDER BY id LIMIT 1
+                ''', [sid])
                 dpl = cur.fetchone()
                 dc_start = _fmt_date_dmy(dpl['unloading_commenced']) if dpl else ''
                 dc_end = _fmt_date_dmy(dpl['unloading_completed']) if dpl else ''
-                log.info(f'[CARGO] MBC {sid}: {len(customers)} customers, discharge {dc_start} → {dc_end}')
+
+                # Consignee from customer details
+                cur.execute('SELECT customer_name, cargo_name, quantity FROM mbc_customer_details WHERE mbc_id = %s', [sid])
+                customers = cur.fetchall()
+                log.info(f'[CARGO] MBC {sid}: {len(customers)} customers, discharge {dc_start} to {dc_end}')
 
                 if customers:
                     for cust in customers:
@@ -370,19 +379,21 @@ def _get_cargo_handling_details(invoice_id):
                             'cargo': cust.get('cargo_name') or mbc.get('cargo_name') or '',
                             'bl_qty': float(cust.get('quantity') or mbc.get('bl_quantity') or 0),
                             'source_type_label': 'MBC',
-                            'discharge_commence': dc_start, 'discharge_completed': dc_end,
+                            'discharge_commence': dc_start,
+                            'discharge_completed': dc_end,
                         })
                 else:
                     rows.append({
                         'vessel_name': mbc['mbc_name'] or '',
-                        'consignee': src['customer_name'] or '',
+                        'consignee': '',
                         'cargo': mbc.get('cargo_name') or '',
                         'bl_qty': float(mbc.get('bl_quantity') or 0),
                         'source_type_label': 'MBC',
-                        'discharge_commence': dc_start, 'discharge_completed': dc_end,
+                        'discharge_commence': dc_start,
+                        'discharge_completed': dc_end,
                     })
             else:
-                log.warning(f'[CARGO] Unhandled source_type={stype} id={sid}')
+                log.warning(f'[CARGO] Unknown source_type={stype} for source_id={sid}')
 
     except Exception as e:
         log.error(f'[CARGO] Error for invoice {invoice_id}: {e}', exc_info=True)
