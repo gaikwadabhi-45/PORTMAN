@@ -156,6 +156,10 @@ def save_bill():
             line['service_name'] = line['description']
         if not line.get('service_description'):
             line['service_description'] = line.get('description', '')
+        # Extract eu_line_id from eu_line_ids array sent by frontend
+        eu_ids = line.get('eu_line_ids') or []
+        if eu_ids and not line.get('eu_line_id'):
+            line['eu_line_id'] = eu_ids[0]
         model.save_bill_line(line)
         subtotal += float(line.get('line_amount') or 0)
         cgst_total += float(line.get('cgst_amount') or 0)

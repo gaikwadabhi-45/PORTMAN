@@ -278,13 +278,14 @@ def _fmt_date_dmy(val):
 
 
 def _get_cargo_handling_details(invoice_id):
-    """Trace invoice -> bill_lines -> lueu_lines -> LDUD/MBC source docs for cargo appendix."""
+    """Trace invoice -> bill_lines -> lueu_lines -> LDUD/MBC source docs for cargo appendix.
+    Fallback: bill_header.source_type/source_id for old bills without eu_line_id."""
     conn = get_db()
     cur = get_cursor(conn)
     rows = []
     seen = set()  # avoid duplicate source docs
     try:
-        # Get all EU lines linked to this invoice's bills
+        # Primary path: bill_lines -> lueu_lines -> LDUD/MBC
         cur.execute('''
             SELECT DISTINCT ll.source_type, ll.source_id
             FROM invoice_bill_mapping ibm
@@ -292,8 +293,35 @@ def _get_cargo_handling_details(invoice_id):
             JOIN lueu_lines ll ON ll.id = bl.eu_line_id
             WHERE ibm.invoice_id = %s AND bl.eu_line_id IS NOT NULL
         ''', [invoice_id])
-        sources = cur.fetchall()
-        log.info(f'[CARGO] Invoice {invoice_id}: EU sources={[(s["source_type"], s["source_id"]) for s in sources]}')
+        sources = list(cur.fetchall())
+
+        # Fallback: bill_header.source_type/source_id for bills without eu_line_id
+        if not sources:
+            cur.execute('''
+                SELECT DISTINCT bh.source_type, bh.source_id
+                FROM invoice_bill_mapping ibm
+                JOIN bill_header bh ON bh.id = ibm.bill_id
+                WHERE ibm.invoice_id = %s AND bh.source_type IS NOT NULL AND bh.source_id IS NOT NULL
+            ''', [invoice_id])
+            bh_sources = cur.fetchall()
+            # bill_header stores VCN/MBC directly; remap VCN -> find LDUD for consistency
+            for bhs in bh_sources:
+                btype = (bhs['source_type'] or '').upper()
+                bsid = bhs['source_id']
+                if btype == 'VCN':
+                    # Find LDUD linked to this VCN
+                    cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s ORDER BY id LIMIT 1', [bsid])
+                    ldud_row = cur.fetchone()
+                    if ldud_row:
+                        sources.append({'source_type': 'LDUD', 'source_id': ldud_row['id']})
+                    else:
+                        # No LDUD, use VCN directly
+                        sources.append({'source_type': 'VCN', 'source_id': bsid})
+                elif btype == 'MBC':
+                    sources.append({'source_type': 'MBC', 'source_id': bsid})
+            log.info(f'[CARGO] Invoice {invoice_id}: fallback to bill_header sources={[(s["source_type"], s["source_id"]) for s in sources]}')
+
+        log.info(f'[CARGO] Invoice {invoice_id}: sources={[(s["source_type"], s["source_id"]) for s in sources]}')
 
         for src in sources:
             stype = (src['source_type'] or '').upper()
@@ -391,6 +419,32 @@ def _get_cargo_handling_details(invoice_id):
                         'source_type_label': 'MBC',
                         'discharge_commence': dc_start,
                         'discharge_completed': dc_end,
+                    })
+            elif stype == 'VCN':
+                # Direct VCN fallback (no LDUD found)
+                cur.execute('SELECT vessel_name, importer_exporter_name FROM vcn_header WHERE id = %s', [sid])
+                vcn = cur.fetchone()
+                log.info(f'[CARGO] VCN(direct) {sid}: {dict(vcn) if vcn else "NOT FOUND"}')
+                if not vcn:
+                    continue
+                cur.execute('SELECT cargo_name, customer_name, bl_quantity FROM vcn_cargo_declaration WHERE vcn_id = %s', [sid])
+                cargos = cur.fetchall()
+                if cargos:
+                    for c in cargos:
+                        rows.append({
+                            'vessel_name': vcn['vessel_name'] or '',
+                            'consignee': c['customer_name'] or vcn.get('importer_exporter_name') or '',
+                            'cargo': c['cargo_name'] or '',
+                            'bl_qty': float(c['bl_quantity'] or 0),
+                            'source_type_label': 'MV',
+                            'discharge_commence': '', 'discharge_completed': '',
+                        })
+                else:
+                    rows.append({
+                        'vessel_name': vcn['vessel_name'] or '',
+                        'consignee': vcn.get('importer_exporter_name') or '',
+                        'cargo': '', 'bl_qty': 0, 'source_type_label': 'MV',
+                        'discharge_commence': '', 'discharge_completed': '',
                     })
             else:
                 log.warning(f'[CARGO] Unknown source_type={stype} for source_id={sid}')
