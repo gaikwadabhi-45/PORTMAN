@@ -228,6 +228,9 @@
                     <th>IFSC Code</th>
                     <th>Account Holder Name</th>
                     <th>Branch</th>
+                    <th>PAN</th>
+                    <th>CIN</th>
+                    <th>Corporate Office Address</th>
                 </tr>
             </thead>
             <tbody id="banksTableBody"></tbody>
@@ -520,7 +523,10 @@ function addBankRowWithData(r) {
         <td><input type="text" class="bank-acct" value="${esc(r.account_number)}" placeholder="Account number" style="${bankInputStyle}"></td>
         <td><input type="text" class="bank-ifsc" value="${esc(r.ifsc_code)}" placeholder="IFSC code" style="${bankInputStyle}"></td>
         <td><input type="text" class="bank-holder" value="${esc(r.account_holder_name)}" placeholder="Account holder name" style="${bankInputStyle}"></td>
-        <td><input type="text" class="bank-branch" value="${esc(r.branch_name)}" placeholder="Branch (optional)" style="${bankInputStyle}"></td>
+        <td><input type="text" class="bank-branch" value="${esc(r.branch_name)}" placeholder="Branch" style="${bankInputStyle}"></td>
+        <td><input type="text" class="bank-pan" value="${esc(r.pan)}" placeholder="PAN" style="${bankInputStyle}"></td>
+        <td><input type="text" class="bank-cin" value="${esc(r.cin)}" placeholder="CIN" style="${bankInputStyle}"></td>
+        <td><input type="text" class="bank-corp-addr" value="${esc(r.corporate_office_address)}" placeholder="Corporate office address" style="${bankInputStyle}"></td>
     `;
     tbody.appendChild(tr);
 }
@@ -535,7 +541,10 @@ async function saveBankAccounts() {
             account_number: row.querySelector('.bank-acct').value,
             ifsc_code: row.querySelector('.bank-ifsc').value,
             account_holder_name: row.querySelector('.bank-holder').value,
-            branch_name: row.querySelector('.bank-branch').value
+            branch_name: row.querySelector('.bank-branch').value,
+            pan: row.querySelector('.bank-pan').value,
+            cin: row.querySelector('.bank-cin').value,
+            corporate_office_address: row.querySelector('.bank-corp-addr').value
         };
         if (!data.bank_name && !data.account_number) continue;
         const res = await fetch('/admin/api/port-banks/save', {

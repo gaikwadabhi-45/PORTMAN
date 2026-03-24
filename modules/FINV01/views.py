@@ -127,12 +127,9 @@ def _auto_post_to_sap(invoice_id, invoice_number):
         else:
             cur.execute('''UPDATE invoice_header
                 SET invoice_status='SAP Failed',
-                    remarks = CASE
-                        WHEN COALESCE(remarks, '') = '' THEN %s
-                        ELSE %s
-                    END
+                    sap_error = %s
                 WHERE id=%s''',
-                [result['message'], result['message'], invoice_id])
+                [result['message'], invoice_id])
         conn.commit()
         conn.close()
         return result
@@ -143,7 +140,7 @@ def _auto_post_to_sap(invoice_id, invoice_number):
             conn = get_db()
             cur = get_cursor(conn)
             cur.execute('''UPDATE invoice_header
-                SET invoice_status='SAP Failed', remarks=%s WHERE id=%s''',
+                SET invoice_status='SAP Failed', sap_error=%s WHERE id=%s''',
                 [str(e), invoice_id])
             conn.commit()
             conn.close()
@@ -231,6 +228,7 @@ def create_invoice():
         'created_by': session.get('username'),
         'created_date': __import__('datetime').datetime.now().strftime('%Y-%m-%d'),
         'remarks': data.get('remarks'),
+        'virtual_account_id': data.get('virtual_account_id'),
         '_invoice_number_override': invoice_number_override,
     }
 
@@ -321,7 +319,35 @@ def _get_cargo_handling_details(invoice_id):
                     sources.append({'source_type': 'MBC', 'source_id': bsid})
             log.info(f'[CARGO] Invoice {invoice_id}: fallback to bill_header sources={[(s["source_type"], s["source_id"]) for s in sources]}')
 
-        log.info(f'[CARGO] Invoice {invoice_id}: sources={[(s["source_type"], s["source_id"]) for s in sources]}')
+        # Get discharge dates from lueu_lines (start_time/end_time) per source doc
+        cur.execute('''
+            SELECT ll.source_type, ll.source_id,
+                   MIN(ll.start_time) as dc_start, MAX(ll.end_time) as dc_end
+            FROM invoice_bill_mapping ibm
+            JOIN bill_lines bl ON bl.bill_id = ibm.bill_id
+            JOIN lueu_lines ll ON ll.id = bl.eu_line_id
+            WHERE ibm.invoice_id = %s AND bl.eu_line_id IS NOT NULL
+            GROUP BY ll.source_type, ll.source_id
+        ''', [invoice_id])
+        eu_dates = {}
+        for r in cur.fetchall():
+            eu_dates[(r['source_type'], r['source_id'])] = (r['dc_start'] or '', r['dc_end'] or '')
+
+        # Fallback: get dates from lueu_lines via bill_header source for old bills
+        if not eu_dates:
+            for src in sources:
+                stype = (src['source_type'] or '').upper()
+                sid = src['source_id']
+                cur.execute('''
+                    SELECT MIN(ll.start_time) as dc_start, MAX(ll.end_time) as dc_end
+                    FROM lueu_lines ll
+                    WHERE ll.source_type = %s AND ll.source_id = %s
+                ''', [stype, sid])
+                r = cur.fetchone()
+                if r and (r['dc_start'] or r['dc_end']):
+                    eu_dates[(stype, sid)] = (r['dc_start'] or '', r['dc_end'] or '')
+
+        log.info(f'[CARGO] Invoice {invoice_id}: sources={[(s["source_type"], s["source_id"]) for s in sources]}, eu_dates={eu_dates}')
 
         for src in sources:
             stype = (src['source_type'] or '').upper()
@@ -330,27 +356,22 @@ def _get_cargo_handling_details(invoice_id):
                 continue
             seen.add((stype, sid))
 
+            # Discharge dates from EU lines for this source
+            dc_start, dc_end = eu_dates.get((stype, sid), ('', ''))
+
             if stype == 'LDUD':
-                # LDUD -> ldud_header (vessel_name, discharge dates) -> vcn_cargo_declaration (cargo, customer, BL qty)
-                cur.execute('''
-                    SELECT vcn_id, vessel_name, discharge_commenced, discharge_completed
-                    FROM ldud_header WHERE id = %s
-                ''', [sid])
+                # LDUD -> ldud_header (vessel_name) -> vcn_cargo_declaration (cargo, customer, BL qty)
+                cur.execute('SELECT vcn_id, vessel_name FROM ldud_header WHERE id = %s', [sid])
                 ldud = cur.fetchone()
                 log.info(f'[CARGO] LDUD {sid}: {dict(ldud) if ldud else "NOT FOUND"}')
                 if not ldud:
                     continue
 
-                dc_start = ldud['discharge_commenced'] or ''
-                dc_end = ldud['discharge_completed'] or ''
                 vessel = ldud['vessel_name'] or ''
                 vcn_id = ldud['vcn_id']
 
                 # Cargo declarations from VCN (consignee = customer_name, BL qty)
-                cur.execute('''
-                    SELECT cargo_name, customer_name, bl_quantity
-                    FROM vcn_cargo_declaration WHERE vcn_id = %s
-                ''', [vcn_id])
+                cur.execute('SELECT cargo_name, customer_name, bl_quantity FROM vcn_cargo_declaration WHERE vcn_id = %s', [vcn_id])
                 cargos = cur.fetchall()
                 log.info(f'[CARGO] VCN {vcn_id}: {len(cargos)} cargo declarations')
 
@@ -366,7 +387,6 @@ def _get_cargo_handling_details(invoice_id):
                             'discharge_completed': _fmt_date_dmy(dc_end),
                         })
                 else:
-                    # Fallback: use VCN header for consignee
                     cur.execute('SELECT importer_exporter_name FROM vcn_header WHERE id = %s', [vcn_id])
                     vcn = cur.fetchone()
                     rows.append({
@@ -378,23 +398,13 @@ def _get_cargo_handling_details(invoice_id):
                     })
 
             elif stype == 'MBC':
-                # MBC -> mbc_header (mbc_name, cargo, bl_qty), mbc_customer_details, mbc_discharge_port_lines
+                # MBC -> mbc_header (mbc_name, cargo, bl_qty), mbc_customer_details
                 cur.execute('SELECT mbc_name, cargo_name, bl_quantity FROM mbc_header WHERE id = %s', [sid])
                 mbc = cur.fetchone()
                 log.info(f'[CARGO] MBC {sid}: {dict(mbc) if mbc else "NOT FOUND"}')
                 if not mbc:
                     continue
 
-                # Discharge dates
-                cur.execute('''
-                    SELECT unloading_commenced, unloading_completed
-                    FROM mbc_discharge_port_lines WHERE mbc_id = %s ORDER BY id LIMIT 1
-                ''', [sid])
-                dpl = cur.fetchone()
-                dc_start = _fmt_date_dmy(dpl['unloading_commenced']) if dpl else ''
-                dc_end = _fmt_date_dmy(dpl['unloading_completed']) if dpl else ''
-
-                # Consignee from customer details
                 cur.execute('SELECT customer_name, cargo_name, quantity FROM mbc_customer_details WHERE mbc_id = %s', [sid])
                 customers = cur.fetchall()
                 log.info(f'[CARGO] MBC {sid}: {len(customers)} customers, discharge {dc_start} to {dc_end}')
@@ -407,8 +417,8 @@ def _get_cargo_handling_details(invoice_id):
                             'cargo': cust.get('cargo_name') or mbc.get('cargo_name') or '',
                             'bl_qty': float(cust.get('quantity') or mbc.get('bl_quantity') or 0),
                             'source_type_label': 'MBC',
-                            'discharge_commence': dc_start,
-                            'discharge_completed': dc_end,
+                            'discharge_commence': _fmt_date_dmy(dc_start),
+                            'discharge_completed': _fmt_date_dmy(dc_end),
                         })
                 else:
                     rows.append({
@@ -417,8 +427,8 @@ def _get_cargo_handling_details(invoice_id):
                         'cargo': mbc.get('cargo_name') or '',
                         'bl_qty': float(mbc.get('bl_quantity') or 0),
                         'source_type_label': 'MBC',
-                        'discharge_commence': dc_start,
-                        'discharge_completed': dc_end,
+                        'discharge_commence': _fmt_date_dmy(dc_start),
+                        'discharge_completed': _fmt_date_dmy(dc_end),
                     })
             elif stype == 'VCN':
                 # Direct VCN fallback (no LDUD found)
@@ -437,14 +447,14 @@ def _get_cargo_handling_details(invoice_id):
                             'cargo': c['cargo_name'] or '',
                             'bl_qty': float(c['bl_quantity'] or 0),
                             'source_type_label': 'MV',
-                            'discharge_commence': '', 'discharge_completed': '',
+                            'discharge_commence': _fmt_date_dmy(dc_start), 'discharge_completed': _fmt_date_dmy(dc_end),
                         })
                 else:
                     rows.append({
                         'vessel_name': vcn['vessel_name'] or '',
                         'consignee': vcn.get('importer_exporter_name') or '',
                         'cargo': '', 'bl_qty': 0, 'source_type_label': 'MV',
-                        'discharge_commence': '', 'discharge_completed': '',
+                        'discharge_commence': _fmt_date_dmy(dc_start), 'discharge_completed': _fmt_date_dmy(dc_end),
                     })
             else:
                 log.warning(f'[CARGO] Unknown source_type={stype} for source_id={sid}')
@@ -514,28 +524,27 @@ def print_invoice(invoice_id):
         'seller_legal_name': config.get('seller_legal_name', 'JSW Dharamtar Port Pvt. Ltd.'),
     }
 
-    # Payment bank: use customer virtual account if available, else port bank account
+    # Payment bank: use selected virtual account if set, else admin port bank account
     payment_bank = None
     conn_b = get_db()
     cur_b = get_cursor(conn_b)
     try:
-        ctype = (invoice.get('customer_type') or '').lower()
-        cid   = invoice.get('customer_id')
-        va = None
-        if cid:
-            tbl = 'vessel_agents' if ctype == 'agent' else 'vessel_customers'
-            cur_b.execute(f'SELECT virtual_account_number FROM {tbl} WHERE id=%s', [cid])
-            row = cur_b.fetchone()
-            if row:
-                va = (row['virtual_account_number'] or '').strip()
-
-        if va:
-            # Build a synthetic bank dict from the virtual account number
-            cur_b.execute('SELECT * FROM port_bank_accounts ORDER BY id LIMIT 1')
-            base = cur_b.fetchone()
-            payment_bank = dict(base) if base else {}
-            payment_bank['account_number'] = va
-        else:
+        va_id = invoice.get('virtual_account_id')
+        if va_id:
+            # Use the selected virtual bank account from customer_virtual_accounts
+            cur_b.execute('SELECT * FROM customer_virtual_accounts WHERE id=%s', [va_id])
+            va_row = cur_b.fetchone()
+            if va_row:
+                payment_bank = {
+                    'account_holder_name': va_row['account_holder_name'] or '',
+                    'account_number': va_row['account_number'] or '',
+                    'ifsc_code': va_row['ifsc_code'] or '',
+                    'bank_name': va_row['bank_name'] or '',
+                    'branch_name': va_row['branch_name'] or '',
+                    'pan': '', 'cin': '',
+                }
+        if not payment_bank:
+            # Fallback to admin port bank account
             cur_b.execute('SELECT * FROM port_bank_accounts ORDER BY id LIMIT 1')
             row = cur_b.fetchone()
             payment_bank = dict(row) if row else None
@@ -933,7 +942,7 @@ def export_sap_json(invoice_id):
 
 @bp.route('/api/module/FINV01/customer-bank/<customer_type>/<int:customer_id>')
 def get_customer_bank(customer_type, customer_id):
-    """Return full billing details + virtual_account_number from VAM01/VCUM01 master"""
+    """Return full billing details + virtual bank accounts from customer_virtual_accounts"""
     if 'user_id' not in session:
         return jsonify({'error': 'Not logged in'}), 401
     conn = get_db()
@@ -942,18 +951,30 @@ def get_customer_bank(customer_type, customer_id):
         if customer_type.lower() == 'agent':
             cur.execute('''
                 SELECT name, gstin, gst_state_code, gst_state_name, pan,
-                       billing_address, city, pincode, virtual_account_number
+                       billing_address, city, pincode
                 FROM vessel_agents WHERE id=%s
             ''', [customer_id])
         else:
             cur.execute('''
                 SELECT name, gstin, gst_state_code, gst_state_name, pan,
-                       billing_address, city, pincode, virtual_account_number
+                       billing_address, city, pincode
                 FROM vessel_customers WHERE id=%s
             ''', [customer_id])
         row = cur.fetchone()
         result = dict(row) if row else {}
-    except Exception:
+
+        # Get virtual bank accounts from customer_virtual_accounts table
+        party_type = 'Agent' if customer_type.lower() == 'agent' else 'Customer'
+        cur.execute('''
+            SELECT id, account_number, ifsc_code, bank_name, branch_name, account_holder_name
+            FROM customer_virtual_accounts
+            WHERE party_type=%s AND party_id=%s AND is_active=1
+            ORDER BY id
+        ''', [party_type, customer_id])
+        va_rows = cur.fetchall()
+        result['virtual_accounts'] = [dict(r) for r in va_rows]
+    except Exception as e:
+        log.error(f'[CUSTOMER-BANK] Error: {e}')
         result = {}
     conn.close()
     return jsonify(result)

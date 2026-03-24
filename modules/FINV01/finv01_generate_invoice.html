@@ -221,9 +221,11 @@
                 <input type="text" id="shipToStateCode">
             </div>
         </div>
-        <div style="margin-top:8px;font-size:10px;color:var(--text-secondary);">
-            Virtual account: <strong id="virtualAccountDisplay">—</strong>
-            <span style="margin-left:6px;">(used as payment account on the invoice if configured)</span>
+        <div style="margin-top:8px;font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;">
+            <label style="font-weight:600;">Payment Account:</label>
+            <select id="virtualAccountSelect" style="padding:3px 6px;font-size:10px;border:1px solid var(--border-color);border-radius:3px;min-width:280px;">
+                <option value="">Default (Admin Bank Account)</option>
+            </select>
         </div>
     </div>
 
@@ -266,12 +268,27 @@
     <!-- Actions -->
     <div style="display:flex;gap:8px;">
         {% if perms.can_add %}
-        <button type="button" class="btn btn-primary" onclick="generateInvoice()">Generate Invoice</button>
+        <button type="button" class="btn btn-primary" onclick="showRemarksPopup()">Generate Invoice</button>
         {% endif %}
         <button type="button" class="btn btn-secondary" onclick="location.href='/module/FINV01/invoices'">Cancel</button>
     </div>
 
 </form>
+
+<!-- Remarks Popup -->
+<div id="remarksModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-primary,#fff); border-radius:8px; padding:20px; width:440px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+        <h3 style="margin:0 0 12px 0; font-size:13px; font-weight:700;">Generate Invoice</h3>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:10px; font-weight:600; color:var(--text-secondary);">Invoice Remarks (optional)</label>
+            <textarea id="remarksPopupInput" rows="3" style="width:100%; margin-top:4px; padding:6px 8px; font-size:11px; border:1px solid var(--border-color); border-radius:4px; resize:vertical; background:var(--bg-primary); color:var(--text-primary);"></textarea>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="closeRemarksPopup()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="confirmGenerateInvoice()">Confirm & Generate</button>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
@@ -414,8 +431,18 @@ async function validateSelection() {
     try {
         const res = await fetch(`/api/module/FINV01/customer-bank/${ctype}/${cid}`);
         const info = await res.json();
-        const va = (info.virtual_account_number || '').trim();
-        document.getElementById('virtualAccountDisplay').textContent = va || 'None';
+        // Populate virtual account dropdown
+        const vaSelect = document.getElementById('virtualAccountSelect');
+        vaSelect.innerHTML = '<option value="">Default (Admin Bank Account)</option>';
+        const vas = info.virtual_accounts || [];
+        vas.forEach(va => {
+            const opt = document.createElement('option');
+            opt.value = va.id;
+            opt.textContent = `${va.account_number} — ${va.bank_name || ''} (${va.account_holder_name || ''})`;
+            vaSelect.appendChild(opt);
+        });
+        // Auto-select if only one virtual account
+        if (vas.length === 1) vaSelect.value = vas[0].id;
         // Pre-fill billing details from customer master (only if currently empty)
         if (info.billing_address && !document.getElementById('billingAddress').value)
             document.getElementById('billingAddress').value = info.billing_address;
@@ -428,7 +455,7 @@ async function validateSelection() {
         if (info.gst_state_code && !document.getElementById('gstStateCode').value)
             document.getElementById('gstStateCode').value = info.gst_state_code;
     } catch(e) {
-        document.getElementById('virtualAccountDisplay').textContent = '—';
+        console.error('Failed to fetch customer bank details', e);
     }
 
     // Auto-fill vessel details from the first selected bill's source (LDUD/VCN)
@@ -506,15 +533,31 @@ function amountInWords(amount) {
     return w + ' Only';
 }
 
-async function generateInvoice() {
+function showRemarksPopup() {
     const selected = document.querySelectorAll('.bill-select:checked');
     if (selected.length === 0) { alert('Please select at least one bill'); return; }
-
     const prefix = document.getElementById('docSeriesSelect').value;
     if (!prefix) { alert('Please select an invoice doc series. Configure one under Admin if none exist.'); return; }
-
     const invoiceDate = document.getElementById('invoiceDate').value;
     if (!invoiceDate) { alert('Invoice date is required'); return; }
+    // Pre-fill popup with existing remarks
+    document.getElementById('remarksPopupInput').value = document.getElementById('remarks').value || '';
+    document.getElementById('remarksModal').style.display = 'flex';
+    document.getElementById('remarksPopupInput').focus();
+}
+
+function closeRemarksPopup() {
+    document.getElementById('remarksModal').style.display = 'none';
+}
+
+async function confirmGenerateInvoice() {
+    closeRemarksPopup();
+    // Sync popup remarks back to form field
+    document.getElementById('remarks').value = document.getElementById('remarksPopupInput').value;
+
+    const selected = document.querySelectorAll('.bill-select:checked');
+    const prefix = document.getElementById('docSeriesSelect').value;
+    const invoiceDate = document.getElementById('invoiceDate').value;
 
     const billIds = [];
     selected.forEach(cb => billIds.push(parseInt(cb.closest('tr').dataset.id)));
@@ -532,6 +575,7 @@ async function generateInvoice() {
         payment_terms: document.getElementById('paymentTerms').value,
         due_date: document.getElementById('dueDate').value,
         remarks: document.getElementById('remarks').value,
+        virtual_account_id: parseInt(document.getElementById('virtualAccountSelect').value) || null,
 
         customer_type: ctype,
         customer_id: parseInt(firstRow.dataset.customerId),
