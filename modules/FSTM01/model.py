@@ -57,6 +57,8 @@ def save_service_type(data):
 
     tds_pct = data.get('tds_percent')
     tds_pct = float(tds_pct) if tds_pct not in (None, '', 'null') else None
+    tcs_pct = data.get('tcs_percent')
+    tcs_pct = float(tcs_pct) if tcs_pct not in (None, '', 'null') else None
 
     # Convert empty strings to None for integer fields
     for int_field in ('gst_rate_id', 'is_billable', 'is_active'):
@@ -72,7 +74,7 @@ def save_service_type(data):
             SET service_name=%s, service_category=%s, gl_code=%s, sac_code=%s,
                 gst_rate_id=%s, uom=%s, is_billable=%s, is_active=%s,
                 sap_gl_account=%s, sap_tax_code=%s, sap_profit_center=%s, sap_cost_center=%s,
-                is_tds=%s, tds_percent=%s
+                is_tds=%s, tds_percent=%s, is_tcs=%s, tcs_percent=%s, is_triplicate=%s
             WHERE id=%s
         ''', [
             data.get('service_name'),
@@ -89,6 +91,9 @@ def save_service_type(data):
             data.get('sap_cost_center'),
             1 if data.get('is_tds') in (1, '1', 'Yes', True) else 0,
             tds_pct,
+            1 if data.get('is_tcs') in (1, '1', 'Yes', True) else 0,
+            tcs_pct,
+            1 if data.get('is_triplicate') in (1, '1', 'Yes', True) else 0,
             data['id']
         ])
         row_id = data['id']
@@ -98,8 +103,8 @@ def save_service_type(data):
             (service_code, service_name, service_category, gl_code, sac_code,
              gst_rate_id, uom, is_billable, is_active,
              sap_gl_account, sap_tax_code, sap_profit_center, sap_cost_center,
-             is_tds, tds_percent, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             is_tds, tds_percent, is_tcs, tcs_percent, is_triplicate, created_by, created_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', [
             data.get('service_code'),
@@ -117,6 +122,9 @@ def save_service_type(data):
             data.get('sap_cost_center'),
             1 if data.get('is_tds') in (1, '1', 'Yes', True) else 0,
             tds_pct,
+            1 if data.get('is_tcs') in (1, '1', 'Yes', True) else 0,
+            tcs_pct,
+            1 if data.get('is_triplicate') in (1, '1', 'Yes', True) else 0,
             data.get('created_by'),
             datetime.now().strftime('%Y-%m-%d')
         ])

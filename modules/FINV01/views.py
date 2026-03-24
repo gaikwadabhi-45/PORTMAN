@@ -211,6 +211,7 @@ def create_invoice():
         'sgst_amount': data.get('sgst_amount'),
         'igst_amount': data.get('igst_amount'),
         'tds_amount': data.get('tds_amount', 0),
+        'tcs_amount': data.get('tcs_amount', 0),
         'round_off': data.get('round_off', 0),
         'total_amount': data.get('total_amount'),
         'amount_in_words': data.get('amount_in_words'),
@@ -558,6 +559,22 @@ def print_invoice(invoice_id):
     cargo_details = _get_cargo_handling_details(invoice_id)
     log.info(f'[PRINT] Invoice {invoice_id}: {len(cargo_details)} cargo detail rows')
 
+    # Check if any service type used in this invoice has triplicate enabled
+    show_triplicate = False
+    try:
+        conn_t = get_db()
+        cur_t = get_cursor(conn_t)
+        cur_t.execute('''
+            SELECT COUNT(*) as cnt FROM invoice_lines il
+            JOIN finance_service_types fst ON fst.service_code = il.service_code
+            WHERE il.invoice_id = %s AND fst.is_triplicate = 1
+        ''', [invoice_id])
+        row_t = cur_t.fetchone()
+        show_triplicate = (row_t['cnt'] > 0) if row_t else False
+        conn_t.close()
+    except Exception:
+        pass
+
     return render_template('finv01_invoice_print.html',
                          invoice=invoice,
                          invoice_lines=invoice_lines,
@@ -565,7 +582,8 @@ def print_invoice(invoice_id):
                          port_config=port_config,
                          payment_bank=payment_bank,
                          current_datetime=current_datetime,
-                         cargo_details=cargo_details)
+                         cargo_details=cargo_details,
+                         show_triplicate=show_triplicate)
 
 
 # ===== GSTR-1 B2B Export =====
@@ -869,7 +887,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
             'Profit_Center': '',
             'HSN_SAC': l.get('sac_code') or l.get('hsn_sac') or '',
             'TDS_Amount': f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
-            'TCS_Amount': '',
+            'TCS_Amount': f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
             'Rounding_off': '',
         })
 

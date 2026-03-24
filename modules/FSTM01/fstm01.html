@@ -69,6 +69,9 @@
             <th>Billable</th>
             <th>TDS</th>
             <th>TDS %</th>
+            <th>TCS</th>
+            <th>TCS %</th>
+            <th>Triplicate</th>
             <th>Status</th>
             <th>Fields</th>
         </tr>
@@ -109,6 +112,18 @@
                 value="{{ row.tds_percent or '' }}" placeholder="e.g. 2"
                 style="{% if not row.is_tds %}display:none;{% endif %} width:70px;"
                 {% if locked %}readonly{% endif %}></td>
+            <td><select name="is_tcs[]" {% if locked %}disabled{% endif %} onchange="toggleTcsPct(this)">
+                <option value="0" {% if not row.is_tcs %}selected{% endif %}>No</option>
+                <option value="1" {% if row.is_tcs %}selected{% endif %}>Yes</option>
+            </select></td>
+            <td><input type="number" step="0.01" min="0" max="100" name="tcs_percent[]"
+                value="{{ row.tcs_percent or '' }}" placeholder="e.g. 1"
+                style="{% if not row.is_tcs %}display:none;{% endif %} width:70px;"
+                {% if locked %}readonly{% endif %}></td>
+            <td><select name="is_triplicate[]" {% if locked %}disabled{% endif %}>
+                <option value="0" {% if not row.is_triplicate %}selected{% endif %}>No</option>
+                <option value="1" {% if row.is_triplicate %}selected{% endif %}>Yes</option>
+            </select></td>
             <td><select name="is_active[]" {% if locked %}disabled{% endif %}>
                 <option value="1" {% if row.is_active %}selected{% endif %}>Active</option>
                 <option value="0" {% if not row.is_active %}selected{% endif %}>Inactive</option>
@@ -212,6 +227,15 @@ function toggleTdsPct(sel) {
     }
 }
 
+function toggleTcsPct(sel) {
+    const row = sel.closest('tr');
+    const pctInput = row.querySelector('[name="tcs_percent[]"]');
+    if (pctInput) {
+        pctInput.style.display = sel.value === '1' ? '' : 'none';
+        if (sel.value !== '1') pctInput.value = '';
+    }
+}
+
 function addRow() {
     const tbody = document.getElementById('tableBody');
     const tr = document.createElement('tr');
@@ -242,6 +266,15 @@ function addRow() {
             <option value="1">Yes</option>
         </select></td>
         <td><input type="number" step="0.01" min="0" max="100" name="tds_percent[]" placeholder="e.g. 2" style="display:none; width:70px;"></td>
+        <td><select name="is_tcs[]" onchange="toggleTcsPct(this)">
+            <option value="0" selected>No</option>
+            <option value="1">Yes</option>
+        </select></td>
+        <td><input type="number" step="0.01" min="0" max="100" name="tcs_percent[]" placeholder="e.g. 1" style="display:none; width:70px;"></td>
+        <td><select name="is_triplicate[]">
+            <option value="0" selected>No</option>
+            <option value="1">Yes</option>
+        </select></td>
         <td><select name="is_active[]">
             <option value="1" selected>Active</option>
             <option value="0">Inactive</option>
@@ -262,6 +295,8 @@ async function saveAll() {
         const id = row.getAttribute('data-id') || '';
         const isTds = row.querySelector('[name="is_tds[]"]').value;
         const tdsPct = row.querySelector('[name="tds_percent[]"]').value;
+        const isTcs = row.querySelector('[name="is_tcs[]"]').value;
+        const tcsPct = row.querySelector('[name="tcs_percent[]"]').value;
         const data = {
             id: id,
             service_code: row.querySelector('[name="service_code[]"]').value,
@@ -278,6 +313,9 @@ async function saveAll() {
             is_billable: row.querySelector('[name="is_billable[]"]').value,
             is_tds: isTds,
             tds_percent: (isTds === '1' && tdsPct) ? tdsPct : null,
+            is_tcs: isTcs,
+            tcs_percent: (isTcs === '1' && tcsPct) ? tcsPct : null,
+            is_triplicate: row.querySelector('[name="is_triplicate[]"]').value,
             is_active: row.querySelector('[name="is_active[]"]').value,
             is_system: row.dataset.system === '1' ? 1 : 0
         };

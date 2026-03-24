@@ -536,7 +536,7 @@ def get_customer_billables(customer_type, customer_id):
     # --- A. Cargo Handling: unbilled lueu_lines for this customer's VCNs/MBCs ---
     # Get CARGO_LOAD and CARGO_UNLOAD service type IDs
     cur.execute("""
-        SELECT id, service_code, service_name, sac_code, uom
+        SELECT id, service_code, service_name, sac_code, uom, is_tds, tds_percent, is_tcs, tcs_percent
         FROM finance_service_types
         WHERE service_code IN ('CHGL01', 'CHGU01')
     """)
@@ -666,6 +666,10 @@ def get_customer_billables(customer_type, customer_id):
                 'service_type_id': st.get('id'),
                 'service_name': st.get('service_name', svc_code),
                 'sac_code': st.get('sac_code', ''),
+                'is_tds': st.get('is_tds', 0),
+                'tds_percent': float(st.get('tds_percent') or 0),
+                'is_tcs': st.get('is_tcs', 0),
+                'tcs_percent': float(st.get('tcs_percent') or 0),
                 'total_quantity': total_qty,
                 'uom': grp_lines[0].get('quantity_uom', 'MT'),
                 'lines': grp_lines,
@@ -675,7 +679,8 @@ def get_customer_billables(customer_type, customer_id):
 
     # --- B. Other Services: approved unbilled service records for this customer ---
     cur.execute("""
-        SELECT sr.*, st.service_name, st.service_code, st.sac_code, st.gst_rate_id
+        SELECT sr.*, st.service_name, st.service_code, st.sac_code, st.gst_rate_id,
+               st.is_tds, st.tds_percent, st.is_tcs, st.tcs_percent
         FROM service_records sr
         JOIN finance_service_types st ON sr.service_type_id = st.id
         WHERE sr.source_type = %s AND sr.source_id = %s

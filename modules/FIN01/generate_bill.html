@@ -236,6 +236,14 @@
         <span class="total-label">GST</span>
         <span class="total-value" id="totalGst">₹0.00</span>
     </div>
+    <div class="total-item" id="tdsItem" style="display:none;">
+        <span class="total-label">TDS</span>
+        <span class="total-value" id="totalTds" style="color:#e74c3c;">-₹0.00</span>
+    </div>
+    <div class="total-item" id="tcsItem" style="display:none;">
+        <span class="total-label">TCS</span>
+        <span class="total-value" id="totalTcs" style="color:#e67e22;">+₹0.00</span>
+    </div>
     <div class="total-item">
         <span class="total-label">Total</span>
         <span class="total-value highlight" id="totalAmount">₹0.00</span>
@@ -552,8 +560,11 @@ function validateBillQty(input) {
 
 function recalcTotals() {
     let subtotal = 0;
+    let tdsTotal = 0;
+    let tcsTotal = 0;
     let selectedCount = 0;
     const cargoLines = billableData._cargoLines || [];
+    const cargoHandling = billableData.cargo_handling || [];
 
     // Cargo line items — use bill qty (not total line qty)
     document.querySelectorAll('.cargo-line-check').forEach(cb => {
@@ -568,6 +579,18 @@ function recalcTotals() {
         if (cb.checked) {
             subtotal += amount;
             selectedCount++;
+            const card = cargoHandling.find(c => c.service_type_id == cb.closest('.cargo-card')?.dataset?.stid);
+            if (card) {
+                // TDS on basic amount only
+                if (card.is_tds && card.tds_percent > 0) {
+                    tdsTotal += amount * card.tds_percent / 100;
+                }
+                // TCS on basic + GST (calculated below after GST is known)
+                if (card.is_tcs && card.tcs_percent > 0) {
+                    const lineGst = amount * 0.18;
+                    tcsTotal += (amount + lineGst) * card.tcs_percent / 100;
+                }
+            }
         }
     });
 
@@ -583,6 +606,18 @@ function recalcTotals() {
         if (cb.checked) {
             subtotal += amount;
             selectedCount++;
+            const rec = billableData.other_services?.[idx];
+            if (rec) {
+                // TDS on basic amount only
+                if (rec.is_tds && rec.tds_percent > 0) {
+                    tdsTotal += amount * rec.tds_percent / 100;
+                }
+                // TCS on basic + GST
+                if (rec.is_tcs && rec.tcs_percent > 0) {
+                    const lineGst = amount * 0.18;
+                    tcsTotal += (amount + lineGst) * rec.tcs_percent / 100;
+                }
+            }
         }
     });
 
@@ -594,6 +629,24 @@ function recalcTotals() {
     document.getElementById('totalSubtotal').textContent = '₹' + subtotal.toFixed(2);
     document.getElementById('totalGst').textContent = '₹' + gst.toFixed(2);
     document.getElementById('totalAmount').textContent = '₹' + total.toFixed(2);
+
+    // Show TDS if applicable
+    const tdsItem = document.getElementById('tdsItem');
+    if (tdsTotal > 0) {
+        tdsItem.style.display = '';
+        document.getElementById('totalTds').textContent = '-₹' + tdsTotal.toFixed(2);
+    } else {
+        tdsItem.style.display = 'none';
+    }
+
+    // Show TCS if applicable
+    const tcsItem = document.getElementById('tcsItem');
+    if (tcsTotal > 0) {
+        tcsItem.style.display = '';
+        document.getElementById('totalTcs').textContent = '+₹' + tcsTotal.toFixed(2);
+    } else {
+        tcsItem.style.display = 'none';
+    }
 }
 
 async function generateBill() {

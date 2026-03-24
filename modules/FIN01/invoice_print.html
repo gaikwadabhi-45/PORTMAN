@@ -401,6 +401,12 @@
                     <td class="text-right">(-) {{ "%.2f"|format(invoice.tds_amount) }}</td>
                 </tr>
                 {% endif %}
+                {% if invoice.tcs_amount and invoice.tcs_amount > 0 %}
+                <tr>
+                    <td>TCS Collected</td>
+                    <td class="text-right">(+) {{ "%.2f"|format(invoice.tcs_amount) }}</td>
+                </tr>
+                {% endif %}
                 {% if invoice.round_off != 0 %}
                 <tr>
                     <td>Round Off</td>
