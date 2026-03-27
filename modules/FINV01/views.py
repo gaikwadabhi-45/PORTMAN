@@ -259,21 +259,30 @@ def get_bill_lines_api(bill_id):
     return jsonify({'lines': lines})
 
 
-def _fmt_date_dmy(val):
-    """Convert YYYY-MM-DD... to DD-MM-YYYY HH:MM"""
-    if not val:
-        return ''
-    s = str(val).replace('T', ' ')
-    parts = s.split(' ')
-    d = parts[0].split('-')
-    if len(d) != 3:
-        return str(val)
-    out = f'{d[2]}-{d[1]}-{d[0]}'
-    if len(parts) > 1:
-        t = parts[1].split(':')
-        if len(t) >= 2:
-            out += f' {t[0]}:{t[1]}'
-    return out
+def _fmt_lueu_timestamp(date_val, time_val):
+    """Format LUEU date + time fields as DD-MM-YYYY HH:MM."""
+    date_txt = ''
+    if date_val:
+        s = str(date_val).replace('T', ' ').strip()
+        parts = s.split(' ')
+        d = parts[0].split('-')
+        if len(d) == 3:
+            date_txt = f'{d[2]}-{d[1]}-{d[0]}'
+        else:
+            date_txt = str(date_val)
+
+    time_txt = ''
+    if time_val:
+        t = str(time_val).replace('T', ' ').strip().split(' ')[-1]
+        chunks = t.split(':')
+        if len(chunks) >= 2:
+            time_txt = f'{chunks[0]}:{chunks[1]}'
+        else:
+            time_txt = t
+
+    if date_txt and time_txt:
+        return f'{date_txt} {time_txt}'
+    return date_txt or time_txt
 
 
 def _get_cargo_handling_details(invoice_id):
@@ -339,8 +348,7 @@ def _get_cargo_handling_details(invoice_id):
                     sources.append({'source_type': 'MBC', 'source_id': bsid})
             log.info(f'[CARGO] Invoice {invoice_id}: fallback to bill_header sources={[(s["source_type"], s["source_id"]) for s in sources]}')
 
-        # Get billed EU qty and EU line timestamps from invoice-linked bill lines.
-        # Use start_time/end_time first; fall back to entry_date if those are NULL.
+        # Get billed qty and LUEU date/time fields from invoice-linked bill lines.
         cur.execute('''
             SELECT ll.source_type, ll.source_id,
                    COALESCE(NULLIF(TRIM(ll.cargo_name), ''), '') AS cargo_name,
@@ -361,11 +369,11 @@ def _get_cargo_handling_details(invoice_id):
             stype = r['source_type']
             sid = r['source_id']
             cargo_name = (r['cargo_name'] or '').strip()
-            dc_start = r['dc_start'] or r['first_date'] or ''
-            dc_end = r['dc_end'] or r['last_date'] or ''
             detail = {
-                'dc_start': dc_start,
-                'dc_end': dc_end,
+                'start_date': r['first_date'] or '',
+                'start_time': r['dc_start'] or '',
+                'end_date': r['last_date'] or r['first_date'] or '',
+                'end_time': r['dc_end'] or '',
                 'billed_qty': float(r['billed_qty'] or 0),
                 'uom': r['uom'] or 'MT',
                 'cargo_name': cargo_name,
@@ -374,11 +382,15 @@ def _get_cargo_handling_details(invoice_id):
             source_groups.setdefault((stype, sid), []).append(detail)
 
         for source_key, details in source_groups.items():
-            starts = [d['dc_start'] for d in details if d.get('dc_start')]
-            ends = [d['dc_end'] for d in details if d.get('dc_end')]
+            start_dates = [d['start_date'] for d in details if d.get('start_date')]
+            end_dates = [d['end_date'] for d in details if d.get('end_date')]
+            start_times = [d['start_time'] for d in details if d.get('start_time')]
+            end_times = [d['end_time'] for d in details if d.get('end_time')]
             eu_data_by_source[source_key] = {
-                'dc_start': min(starts) if starts else '',
-                'dc_end': max(ends) if ends else '',
+                'start_date': min(start_dates) if start_dates else '',
+                'start_time': min(start_times) if start_times else '',
+                'end_date': max(end_dates) if end_dates else (max(start_dates) if start_dates else ''),
+                'end_time': max(end_times) if end_times else '',
                 'billed_qty': sum(float(d.get('billed_qty') or 0) for d in details),
                 'uom': next((d.get('uom') for d in details if d.get('uom')), 'MT'),
                 'cargo_name': next((d.get('cargo_name') for d in details if d.get('cargo_name')), ''),
@@ -400,11 +412,11 @@ def _get_cargo_handling_details(invoice_id):
                 ''', [stype, sid])
                 r = cur.fetchone()
                 if r and (r['dc_start'] or r['dc_end'] or r['first_date']):
-                    dc_start = r['dc_start'] or r['first_date'] or ''
-                    dc_end = r['dc_end'] or r['last_date'] or ''
                     eu_data_by_source[(stype, sid)] = {
-                        'dc_start': dc_start,
-                        'dc_end': dc_end,
+                        'start_date': r['first_date'] or '',
+                        'start_time': r['dc_start'] or '',
+                        'end_date': r['last_date'] or r['first_date'] or '',
+                        'end_time': r['dc_end'] or '',
                         'billed_qty': float(r['total_qty'] or 0),
                         'uom': r['uom'] or 'MT',
                         'cargo_name': r['eu_cargo'] or '',
@@ -419,12 +431,13 @@ def _get_cargo_handling_details(invoice_id):
                 continue
             seen.add((stype, sid))
 
-            # EU line data (dates, qty, uom, cargo) for this source
+            # LUEU data (date, start/end time, qty, cargo) for this source
             ed = _source_detail(stype, sid)
-            dc_start = ed.get('dc_start', '')
-            dc_end = ed.get('dc_end', '')
+            start_date = ed.get('start_date', '')
+            start_time = ed.get('start_time', '')
+            end_date = ed.get('end_date', '')
+            end_time = ed.get('end_time', '')
             eu_qty = ed.get('billed_qty', 0)
-            eu_uom = ed.get('uom', 'MT')
             eu_cargo = ed.get('cargo_name', '')
 
             def _build_cargo_label(cargo_name):
@@ -466,10 +479,10 @@ def _get_cargo_handling_details(invoice_id):
                             'vessel_name': vessel,
                             'consignee': c['customer_name'] or '',
                             'cargo': _build_cargo_label(cargo_name),
-                            'eu_billed_qty': float(cargo_ed.get('billed_qty') or 0),
+                            'quantity': float(cargo_ed.get('billed_qty') or 0),
                             'source_type_label': 'MV',
-                            'eu_line_start': _fmt_date_dmy(cargo_ed.get('dc_start')),
-                            'eu_line_end': _fmt_date_dmy(cargo_ed.get('dc_end')),
+                            'start': _fmt_lueu_timestamp(cargo_ed.get('start_date'), cargo_ed.get('start_time')),
+                            'end': _fmt_lueu_timestamp(cargo_ed.get('end_date'), cargo_ed.get('end_time')),
                         })
                         source_rows += 1
                 if source_rows == 0:
@@ -479,10 +492,10 @@ def _get_cargo_handling_details(invoice_id):
                         'vessel_name': vessel,
                         'consignee': invoice_customer_name or ((vcn['importer_exporter_name'] if vcn else '') or ''),
                         'cargo': _build_cargo_label(eu_cargo),
-                        'eu_billed_qty': float(eu_qty or 0),
+                        'quantity': float(eu_qty or 0),
                         'source_type_label': 'MV',
-                        'eu_line_start': _fmt_date_dmy(dc_start),
-                        'eu_line_end': _fmt_date_dmy(dc_end),
+                        'start': _fmt_lueu_timestamp(start_date, start_time),
+                        'end': _fmt_lueu_timestamp(end_date, end_time),
                     })
 
             elif stype == 'MBC':
@@ -517,10 +530,10 @@ def _get_cargo_handling_details(invoice_id):
                             'vessel_name': mbc['mbc_name'] or '',
                             'consignee': cust['customer_name'] or '',
                             'cargo': _build_cargo_label(cargo_name),
-                            'eu_billed_qty': float(cargo_ed.get('billed_qty') or 0),
+                            'quantity': float(cargo_ed.get('billed_qty') or 0),
                             'source_type_label': 'MBC',
-                            'eu_line_start': _fmt_date_dmy(cargo_ed.get('dc_start')),
-                            'eu_line_end': _fmt_date_dmy(cargo_ed.get('dc_end')),
+                            'start': _fmt_lueu_timestamp(cargo_ed.get('start_date'), cargo_ed.get('start_time')),
+                            'end': _fmt_lueu_timestamp(cargo_ed.get('end_date'), cargo_ed.get('end_time')),
                         })
                         source_rows += 1
                 if source_rows == 0:
@@ -529,10 +542,10 @@ def _get_cargo_handling_details(invoice_id):
                         'vessel_name': mbc['mbc_name'] or '',
                         'consignee': invoice_customer_name or '',
                         'cargo': _build_cargo_label(cargo_name),
-                        'eu_billed_qty': float(eu_qty or 0),
+                        'quantity': float(eu_qty or 0),
                         'source_type_label': 'MBC',
-                        'eu_line_start': _fmt_date_dmy(dc_start),
-                        'eu_line_end': _fmt_date_dmy(dc_end),
+                        'start': _fmt_lueu_timestamp(start_date, start_time),
+                        'end': _fmt_lueu_timestamp(end_date, end_time),
                     })
             elif stype == 'VCN':
                 # Direct VCN fallback (no LDUD found)
@@ -563,10 +576,10 @@ def _get_cargo_handling_details(invoice_id):
                             'vessel_name': vcn['vessel_name'] or '',
                             'consignee': c['customer_name'] or vcn.get('importer_exporter_name') or '',
                             'cargo': _build_cargo_label(cargo_name),
-                            'eu_billed_qty': float(cargo_ed.get('billed_qty') or 0),
+                            'quantity': float(cargo_ed.get('billed_qty') or 0),
                             'source_type_label': 'MV',
-                            'eu_line_start': _fmt_date_dmy(cargo_ed.get('dc_start')),
-                            'eu_line_end': _fmt_date_dmy(cargo_ed.get('dc_end')),
+                            'start': _fmt_lueu_timestamp(cargo_ed.get('start_date'), cargo_ed.get('start_time')),
+                            'end': _fmt_lueu_timestamp(cargo_ed.get('end_date'), cargo_ed.get('end_time')),
                         })
                         source_rows += 1
                 if source_rows == 0:
@@ -574,10 +587,10 @@ def _get_cargo_handling_details(invoice_id):
                         'vessel_name': vcn['vessel_name'] or '',
                         'consignee': invoice_customer_name or vcn.get('importer_exporter_name') or '',
                         'cargo': _build_cargo_label(eu_cargo),
-                        'eu_billed_qty': float(eu_qty or 0),
+                        'quantity': float(eu_qty or 0),
                         'source_type_label': 'MV',
-                        'eu_line_start': _fmt_date_dmy(dc_start),
-                        'eu_line_end': _fmt_date_dmy(dc_end),
+                        'start': _fmt_lueu_timestamp(start_date, start_time),
+                        'end': _fmt_lueu_timestamp(end_date, end_time),
                     })
             else:
                 log.warning(f'[CARGO] Unknown source_type={stype} for source_id={sid}')

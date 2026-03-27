@@ -710,10 +710,10 @@
                 <th>M.Vessel Name</th>
                 <th>Consignee</th>
                 <th>Cargo</th>
-                <th>EU Qty. (MT)</th>
+                <th>Quantity (MT)</th>
                 <th>MV/MBC</th>
-                <th>EU Line<br>Start</th>
-                <th>EU Line<br>End</th>
+                <th>Start</th>
+                <th>End</th>
             </tr>
         </thead>
         <tbody>
@@ -723,17 +723,17 @@
                 <td>{{ cd.vessel_name }}</td>
                 <td>{{ cd.consignee }}</td>
                 <td>{{ cd.cargo }}</td>
-                <td class="num">{{ "%.2f"|format(cd.eu_billed_qty) }}</td>
+                <td class="num">{{ "%.2f"|format(cd.quantity) }}</td>
                 <td style="text-align:center;">{{ cd.source_type_label }}</td>
-                <td>{{ cd.eu_line_start }}</td>
-                <td>{{ cd.eu_line_end }}</td>
+                <td>{{ cd.start }}</td>
+                <td>{{ cd.end }}</td>
             </tr>
             {% endfor %}
         </tbody>
         <tfoot>
             <tr class="total-row">
                 <td colspan="4" style="text-align:right;">Total</td>
-                <td class="num">{{ "%.2f"|format(cargo_details|sum(attribute='eu_billed_qty')) }}</td>
+                <td class="num">{{ "%.2f"|format(cargo_details|sum(attribute='quantity')) }}</td>
                 <td colspan="3"></td>
             </tr>
         </tfoot>
