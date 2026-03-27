@@ -22,6 +22,8 @@ JSON structure (mirrors XML field-for-field):
     "IRN_Date":              "",
     "Nature_of_transaction": "B2B" or "B2C",
     "Cancellation_Flag":     "",               ← "X" for reversals
+    "TDS_Amount":            "500.00",         ← header-level total TDS
+    "TCS_Amount":            "",               ← header-level total TCS
     "Item": [
       {
         "Service_Code":   "OT0051",
@@ -159,16 +161,24 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
 
 
 def _total_invoice_amount(header, lines, amount_field='line_amount'):
-    """Return total invoice value (taxable + all taxes)."""
+    """Return net invoice value (taxable + GST - TDS + TCS)."""
     total = float(header.get('total_amount') or 0)
-    if total:
-        return total
-    # Sum from lines
-    t = sum(float(l.get(amount_field) or 0) for l in lines)
-    t += sum(float(l.get('cgst_amount') or 0) for l in lines)
-    t += sum(float(l.get('sgst_amount') or 0) for l in lines)
-    t += sum(float(l.get('igst_amount') or 0) for l in lines)
-    return t
+    if not total:
+        # Sum from lines
+        total = sum(float(l.get(amount_field) or 0) for l in lines)
+        total += sum(float(l.get('cgst_amount') or 0) for l in lines)
+        total += sum(float(l.get('sgst_amount') or 0) for l in lines)
+        total += sum(float(l.get('igst_amount') or 0) for l in lines)
+
+    # Adjust for TDS (deducted) and TCS (collected)
+    tds = float(header.get('tds_amount') or 0)
+    if not tds:
+        tds = sum(float(l.get('tds_amount') or 0) for l in lines)
+    tcs = float(header.get('tcs_amount') or 0)
+    if not tcs:
+        tcs = sum(float(l.get('tcs_amount') or 0) for l in lines)
+
+    return total - tds + tcs
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +223,8 @@ def build_invoice_payload(invoice_header, invoice_lines):
         'IRN_Date':              _fmt_date(invoice_header.get('irn_date')) if invoice_header.get('irn_date') else '',
         'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
+        'TDS_Amount':            _fmt_amount(invoice_header.get('tds_amount')),
+        'TCS_Amount':            _fmt_amount(invoice_header.get('tcs_amount')),
         'Item':                  _build_items(invoice_lines, company, config_defaults=config),
     }
 
@@ -261,6 +273,8 @@ def build_credit_note_payload(cn_header, cn_lines):
         'IRN_Date':              _fmt_date(cn_header.get('irn_date')) if cn_header.get('irn_date') else '',
         'Nature_of_transaction': _nature_of_transaction(cn_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
+        'TDS_Amount':            _fmt_amount(cn_header.get('tds_amount')),
+        'TCS_Amount':            _fmt_amount(cn_header.get('tcs_amount')),
         'Item':                  _build_items(cn_lines, company, config_defaults=config),
     }
 
@@ -310,6 +324,8 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
         'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
+        'TDS_Amount':            _fmt_amount(fdcn_header.get('tds_amount')),
+        'TCS_Amount':            _fmt_amount(fdcn_header.get('tcs_amount')),
         'Item':                  _build_items(fdcn_lines, company, config_defaults=config),
     }
 

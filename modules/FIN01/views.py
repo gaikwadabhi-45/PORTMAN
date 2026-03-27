@@ -633,7 +633,7 @@ def get_customer_billables(customer_type, customer_id):
             row = cur.fetchone()
             if row:
                 doc_status = row['doc_status'] or ''
-                is_billable = doc_status in ('Closed', 'Partial Close')
+                is_billable = doc_status in ('Approved', 'Closed', 'Partial Close')
                 doc_label = f"{row['doc_num']} / {row['mbc_name']}"
             # Get material PO from customer details
             cur.execute("""
