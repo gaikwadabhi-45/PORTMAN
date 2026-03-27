@@ -352,7 +352,8 @@ def _get_cargo_handling_details(invoice_id):
         cur.execute('''
             SELECT ll.source_type, ll.source_id,
                    COALESCE(NULLIF(TRIM(ll.cargo_name), ''), '') AS cargo_name,
-                   MIN(ll.start_time) as dc_start, MAX(ll.end_time) as dc_end,
+                   MIN(COALESCE(NULLIF(ll.from_time, ''), ll.start_time)) as dc_start,
+                   MAX(COALESCE(NULLIF(ll.to_time, ''), ll.end_time)) as dc_end,
                    MIN(ll.entry_date) as first_date, MAX(ll.entry_date) as last_date,
                    SUM(bl.quantity) as billed_qty,
                    MAX(ll.quantity_uom) as uom
@@ -402,7 +403,8 @@ def _get_cargo_handling_details(invoice_id):
                 stype = (src['source_type'] or '').upper()
                 sid = src['source_id']
                 cur.execute('''
-                    SELECT MIN(ll.start_time) as dc_start, MAX(ll.end_time) as dc_end,
+                    SELECT MIN(COALESCE(NULLIF(ll.from_time, ''), ll.start_time)) as dc_start,
+                           MAX(COALESCE(NULLIF(ll.to_time, ''), ll.end_time)) as dc_end,
                            MIN(ll.entry_date) as first_date, MAX(ll.entry_date) as last_date,
                            SUM(ll.quantity) as total_qty,
                            MAX(ll.quantity_uom) as uom,
