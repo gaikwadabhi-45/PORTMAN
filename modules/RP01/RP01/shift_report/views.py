@@ -1,7 +1,8 @@
 from flask import render_template, request, session, redirect, url_for, Response, jsonify
 from functools import wraps
-from datetime import datetime, timedelta
-import io, json
+from datetime import datetime
+import io
+import re
 
 from .. import bp
 from database import get_db, get_cursor
@@ -10,19 +11,27 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-# ── Style constants ──────────────────────────────────────────────────────────
-_thin = Side(style='thin', color='000000')
-_bdr  = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
-_ctr  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+_thin = Side(style='thin', color='C7CDD4')
+_bdr = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+_ctr = Alignment(horizontal='center', vertical='center', wrap_text=True)
 _left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+_TITLE_FILL = '6F5050'
+_HEADER_FILL = '0E6AA8'
+_BODY_FILL = '2E2E2E'
+_GROUP_FILL = '4E5A66'
+_SUBTOTAL_FILL = '434343'
+_TOTAL_FILL = '5B6774'
+_TYPE_TOTAL_FILL = '355F7D'
+_WHITE = 'FFFFFF'
 
 
 def _fill(hex_color):
     return PatternFill('solid', fgColor=hex_color)
 
 
-def _font(bold=False, size=11):
-    return Font(name='Calibri', bold=bold, size=size)
+def _font(bold=False, size=11, color='000000'):
+    return Font(name='Calibri', bold=bold, size=size, color=color)
 
 
 def login_required(f):
@@ -31,10 +40,9 @@ def login_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+
     return decorated
 
-
-# ── Page ─────────────────────────────────────────────────────────────────────
 
 @bp.route('/module/RP01/shift-report/')
 @login_required
@@ -42,8 +50,6 @@ def shift_report_index():
     return render_template('shift_report/shift_report.html',
                            username=session.get('username'))
 
-
-# ── Preview API ──────────────────────────────────────────────────────────────
 
 @bp.route('/api/module/RP01/shift-report/preview')
 @login_required
@@ -55,10 +61,13 @@ def shift_report_preview():
 
     cargo_pivot = _fetch_cargo_pivot(entry_date, shift)
     delays = _fetch_delays(entry_date, shift)
-    return jsonify({'cargo_pivot': cargo_pivot, 'delays': delays})
+    cargo_tables = _build_cargo_tables(entry_date, shift, cargo_pivot)
+    delay_view = _build_delay_view(entry_date, shift, delays)
+    return jsonify({
+        'cargo_tables': cargo_tables,
+        'delay_view': delay_view,
+    })
 
-
-# ── Download API ─────────────────────────────────────────────────────────────
 
 @bp.route('/api/module/RP01/shift-report/download')
 @login_required
@@ -70,7 +79,9 @@ def shift_report_download():
 
     cargo_pivot = _fetch_cargo_pivot(entry_date, shift)
     delays = _fetch_delays(entry_date, shift)
-    buf = _build_excel(entry_date, shift, cargo_pivot, delays)
+    cargo_tables = _build_cargo_tables(entry_date, shift, cargo_pivot)
+    delay_view = _build_delay_view(entry_date, shift, delays)
+    buf = _build_excel(cargo_tables, delay_view)
     fname = f'ShiftReport_{entry_date}_Shift{shift}.xlsx'
     return Response(
         buf.getvalue(),
@@ -79,13 +90,7 @@ def shift_report_download():
     )
 
 
-# ── Data fetchers ────────────────────────────────────────────────────────────
-
 def _fetch_cargo_pivot(entry_date, shift):
-    """Return cargo pivot data:
-    { cargo_name: { equipment_name: { route_name: qty, ... }, ... }, ... }
-    Also returns the list of unique equipment names and route names found.
-    """
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute("""
@@ -102,40 +107,29 @@ def _fetch_cargo_pivot(entry_date, shift):
     rows = cur.fetchall()
     conn.close()
 
-    # Collect unique equipment and route names
     equipment_set = set()
     route_set = set()
     pivot = {}
 
-    for r in rows:
-        cargo = r['cargo_name'] or 'Unknown'
-        equip = r['equipment_name'] or 'Unknown'
-        route = r['route_name'] or 'Unknown'
-        qty = float(r['qty'])
+    for row in rows:
+        cargo = row['cargo_name'] or 'Unknown'
+        equip = row['equipment_name'] or 'Unknown'
+        route = row['route_name'] or 'Unknown'
+        qty = float(row['qty'] or 0)
 
         equipment_set.add(equip)
         route_set.add(route)
-
-        if cargo not in pivot:
-            pivot[cargo] = {}
-        if equip not in pivot[cargo]:
-            pivot[cargo][equip] = {}
+        pivot.setdefault(cargo, {}).setdefault(equip, {})
         pivot[cargo][equip][route] = pivot[cargo][equip].get(route, 0) + qty
-
-    equipments = sorted(equipment_set)
-    routes = sorted(route_set)
 
     return {
         'data': pivot,
-        'equipments': equipments,
-        'routes': routes,
+        'equipments': sorted(equipment_set, key=_equipment_sort_key),
+        'routes': sorted(route_set, key=_route_sort_key),
     }
 
 
 def _fetch_delays(entry_date, shift):
-    """Return delay data grouped by delay_type > delay_name > equipment > system > route.
-    Each leaf has from_time, to_time, total_minutes.
-    """
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute("""
@@ -147,60 +141,353 @@ def _fetch_delays(entry_date, shift):
         WHERE l.entry_date = %s
           AND l.shift = %s
           AND l.delay_name IS NOT NULL AND l.delay_name != ''
-        ORDER BY d.type, l.delay_name, l.equipment_name, l.system_name, l.route_name
+        ORDER BY d.type, l.delay_name, l.equipment_name, l.system_name, l.route_name, l.from_time
     """, (entry_date, shift))
     rows = cur.fetchall()
     conn.close()
 
     delays = []
-    for r in rows:
-        from_t = r['from_time'] or ''
-        to_t = r['to_time'] or ''
-        total_min = _calc_minutes(from_t, to_t)
+    for row in rows:
+        from_t = (row['from_time'] or '').strip()
+        to_t = (row['to_time'] or '').strip()
         delays.append({
-            'delay_type': r['delay_type'],
-            'delay_name': r['delay_name'] or '',
-            'equipment_name': r['equipment_name'] or '',
-            'system_name': r['system_name'] or '',
-            'route_name': r['route_name'] or '',
+            'delay_type': row['delay_type'] or 'Other',
+            'delay_name': row['delay_name'] or '',
+            'equipment_name': row['equipment_name'] or '',
+            'system_name': row['system_name'] or '',
+            'route_name': row['route_name'] or '',
             'from_time': from_t,
             'to_time': to_t,
-            'total_minutes': total_min,
+            'total_minutes': _calc_minutes(from_t, to_t),
         })
 
     return delays
 
 
 def _calc_minutes(from_t, to_t):
-    """Calculate difference in minutes between two HH:MM time strings."""
     try:
         fmt = '%H:%M'
-        f = datetime.strptime(from_t.strip(), fmt)
-        t = datetime.strptime(to_t.strip(), fmt)
-        diff = (t - f).total_seconds() / 60
+        start = datetime.strptime(from_t.strip(), fmt)
+        end = datetime.strptime(to_t.strip(), fmt)
+        diff = int((end - start).total_seconds() / 60)
         if diff < 0:
-            diff += 24 * 60  # handle overnight
-        return round(diff)
+            diff += 24 * 60
+        return diff
     except Exception:
         return 0
 
 
-def _fmt_minutes(minutes):
-    """Format minutes as HH:MM string."""
-    if not minutes:
+def _fmt_minutes(minutes, blank_zero=False):
+    if minutes in (None, ''):
         return ''
-    h = int(minutes) // 60
-    m = int(minutes) % 60
-    return f'{h:02d}:{m:02d}'
+    minutes = int(minutes)
+    if blank_zero and minutes == 0:
+        return ''
+    return f'{minutes // 60}:{minutes % 60:02d}'
 
 
-# ── Excel builder ────────────────────────────────────────────────────────────
+def _fmt_qty(value):
+    if not value:
+        return ''
+    return int(round(value))
 
-def _build_excel(entry_date, shift, cargo_pivot, delays):
+
+def _report_date(entry_date):
+    try:
+        return datetime.strptime(entry_date, '%Y-%m-%d').strftime('%d.%m.%Y')
+    except Exception:
+        return entry_date
+
+
+def _blank_label(value):
+    value = (value or '').strip()
+    return value or '(blank)'
+
+
+def _natural_sort_key(value):
+    text = str(value or '').strip()
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', text)]
+
+
+def _equipment_sort_key(value):
+    upper = str(value or '').upper()
+    if 'SENNEBOGEN' in upper:
+        group = 0
+    elif upper.startswith('BUL'):
+        group = 1
+    else:
+        group = 2
+    return (group, _natural_sort_key(value))
+
+
+def _route_sort_key(value):
+    upper = str(value or '').upper().strip()
+    if upper == 'BY ROAD':
+        group = 0
+    elif upper.startswith('C-'):
+        group = 1
+    elif 'JETTY YARD' in upper:
+        group = 2
+    elif 'LS-' in upper:
+        group = 3
+    elif 'STACKER' in upper:
+        group = 4
+    else:
+        group = 5
+    return (group, _natural_sort_key(value))
+
+
+def _location_group(route_name):
+    upper = str(route_name or '').upper().strip()
+    if not upper:
+        return '(blank)'
+    if upper == 'BY ROAD' or 'ROAD' in upper:
+        return 'By Road'
+    if 'CEMENT SILO' in upper or upper == 'SILO' or upper.endswith(' SILO'):
+        return 'Cement Silo'
+    if 'STACKER' in upper or 'JETTY YARD' in upper or 'LS-' in upper or 'SHED' in upper or 'STOCKYARD' in upper:
+        return 'Stacker/Shed'
+    if 'DIRECT PLANT' in upper or 'C-131' in upper or 'PLANT' in upper:
+        return 'Direct Plant'
+    return route_name
+
+
+def _location_sort_key(value):
+    order = {
+        'Direct Plant': 0,
+        'Stacker/Shed': 1,
+        'By Road': 2,
+        'Cement Silo': 3,
+    }
+    return (order.get(value, 99), _natural_sort_key(value))
+
+
+def _delay_type_sort_key(value):
+    order = {
+        'RMHS Delays': 0,
+        'Jetty Delays': 1,
+        'Process Delays': 2,
+        'ProcessDelays': 2,
+        'Process Requirement': 3,
+        'ProcessRequirement': 3,
+        'Maintenance Delays': 3,
+        'MaintenanceDelays': 4,
+        'Other': 5,
+    }
+    return (order.get(value, 99), _natural_sort_key(value))
+
+
+def _make_matrix_table(title, row_header, column_headers, row_names, values):
+    rows = []
+    column_totals = [0] * len(column_headers)
+    grand_total = 0
+
+    for row_name in row_names:
+        row_total = 0
+        row_values = []
+        for idx, column_name in enumerate(column_headers):
+            value = float(values.get(row_name, {}).get(column_name, 0) or 0)
+            row_total += value
+            column_totals[idx] += value
+            row_values.append(_fmt_qty(value))
+        grand_total += row_total
+        rows.append({
+            'label': row_name,
+            'values': row_values,
+            'total': _fmt_qty(row_total),
+        })
+
+    return {
+        'title': title,
+        'row_header': row_header,
+        'columns': column_headers,
+        'rows': rows,
+        'totals': {
+            'label': 'Grand Total',
+            'values': [_fmt_qty(value) for value in column_totals],
+            'total': _fmt_qty(grand_total),
+        },
+    }
+
+
+def _build_cargo_tables(entry_date, shift, cargo_pivot):
+    data = cargo_pivot['data']
+    equipments = cargo_pivot['equipments']
+    routes = cargo_pivot['routes']
+    cargo_names = sorted(data.keys(), key=_natural_sort_key)
+
+    if not cargo_names:
+        return []
+
+    equipment_values = {}
+    route_values = {}
+    location_values = {}
+
+    location_columns = sorted({_location_group(route) for route in routes}, key=_location_sort_key)
+
+    for cargo in cargo_names:
+        equipment_values[cargo] = {}
+        route_values[cargo] = {}
+        location_values[cargo] = {location: 0 for location in location_columns}
+
+        for equipment in equipments:
+            total = sum(data.get(cargo, {}).get(equipment, {}).get(route, 0) for route in routes)
+            equipment_values[cargo][equipment] = total
+
+        for route in routes:
+            route_total = sum(data.get(cargo, {}).get(equipment, {}).get(route, 0) for equipment in equipments)
+            route_values[cargo][route] = route_total
+            location = _location_group(route)
+            location_values[cargo][location] = location_values[cargo].get(location, 0) + route_total
+
+    route_rows = sorted(routes, key=_route_sort_key)
+    route_wise_values = {
+        route: {cargo: route_values[cargo].get(route, 0) for cargo in cargo_names}
+        for route in route_rows
+    }
+
+    date_label = _report_date(entry_date)
+    return [
+        _make_matrix_table(
+            f'{shift} Shift Jetty Discharge: {date_label}',
+            'Cargo Name',
+            equipments,
+            cargo_names,
+            equipment_values,
+        ),
+        _make_matrix_table(
+            f'{shift} Shift Location Wise Discharge: {date_label}',
+            '',
+            location_columns,
+            cargo_names,
+            location_values,
+        ),
+        _make_matrix_table(
+            f'{shift} Shift Receiving Route Wise Discharge: {date_label}',
+            'Row Labels',
+            cargo_names,
+            route_rows,
+            route_wise_values,
+        ),
+    ]
+
+
+def _build_delay_view(entry_date, shift, delays):
+    view = {
+        'title': f'{shift} Shift Jetty & RMHS Delays: {_report_date(entry_date)}',
+        'rows': [],
+        'grand_total': '',
+    }
+    if not delays:
+        return view
+
+    grouped = {}
+    for delay in delays:
+        delay_type = _blank_label(delay['delay_type'])
+        activity = _blank_label(delay['delay_name'])
+        equipment = _blank_label(delay['equipment_name'])
+        system = _blank_label(delay['system_name'])
+        grouped.setdefault(delay_type, {}).setdefault(activity, {}).setdefault(equipment, {}).setdefault(system, []).append(delay)
+
+    grand_total = 0
+
+    for delay_type in sorted(grouped, key=_delay_type_sort_key):
+        type_rows = []
+        type_total = 0
+
+        for activity in sorted(grouped[delay_type], key=_natural_sort_key):
+            activity_rows = []
+            activity_total = 0
+
+            for equipment in sorted(grouped[delay_type][activity], key=_equipment_sort_key):
+                equipment_rows = []
+                systems = grouped[delay_type][activity][equipment]
+
+                for system in sorted(systems, key=_natural_sort_key):
+                    system_items = sorted(
+                        systems[system],
+                        key=lambda item: (_blank_label(item['route_name']).lower(), item['from_time'], item['to_time']),
+                    )
+                    system_rows = []
+                    system_total = 0
+
+                    for item in system_items:
+                        system_total += int(item['total_minutes'] or 0)
+                        system_rows.append({
+                            'kind': 'detail',
+                            'route': _blank_label(item['route_name']),
+                            'from_time': item['from_time'],
+                            'to_time': item['to_time'],
+                            'total': _fmt_minutes(item['total_minutes']),
+                            'system_name': system,
+                        })
+
+                    if system_rows:
+                        system_rows[0]['show_system'] = True
+                        system_rows[0]['system_rowspan'] = len(system_rows)
+                        for row in system_rows[1:]:
+                            row['show_system'] = False
+
+                    equipment_rows.extend(system_rows)
+                    equipment_rows.append({
+                        'kind': 'system_total',
+                        'label': f'{system} Total',
+                        'total': _fmt_minutes(system_total),
+                    })
+                    activity_total += system_total
+
+                if equipment_rows:
+                    equipment_rows[0]['show_equipment'] = True
+                    equipment_rows[0]['equipment_name'] = equipment
+                    equipment_rows[0]['equipment_rowspan'] = len(equipment_rows)
+                    for row in equipment_rows[1:]:
+                        row['show_equipment'] = False
+
+                activity_rows.extend(equipment_rows)
+
+            if activity_rows:
+                activity_rows[0]['show_activity'] = True
+                activity_rows[0]['activity_name'] = activity
+                activity_rows[0]['activity_rowspan'] = len(activity_rows)
+                for row in activity_rows[1:]:
+                    row['show_activity'] = False
+
+            activity_rows.append({
+                'kind': 'activity_total',
+                'label': f'{activity} Total',
+                'total': _fmt_minutes(activity_total),
+            })
+            type_rows.extend(activity_rows)
+            type_total += activity_total
+
+        if type_rows:
+            type_rows[0]['show_type'] = True
+            type_rows[0]['type_name'] = delay_type
+            type_rows[0]['type_rowspan'] = len(type_rows)
+            for row in type_rows[1:]:
+                row['show_type'] = False
+
+        view['rows'].extend(type_rows)
+        view['rows'].append({
+            'kind': 'type_total',
+            'label': f'{delay_type} Total',
+            'total': _fmt_minutes(type_total),
+        })
+        grand_total += type_total
+
+    view['rows'].append({
+        'kind': 'grand_total',
+        'label': 'Grand Total',
+        'total': _fmt_minutes(grand_total),
+    })
+    view['grand_total'] = _fmt_minutes(grand_total)
+    return view
+
+
+def _build_excel(cargo_tables, delay_view):
     wb = Workbook()
-
-    _build_cargo_sheet(wb, entry_date, shift, cargo_pivot)
-    _build_delay_sheet(wb, entry_date, shift, delays)
+    _build_cargo_sheet(wb, cargo_tables)
+    _build_delay_sheet(wb, delay_view)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -208,317 +495,141 @@ def _build_excel(entry_date, shift, cargo_pivot, delays):
     return buf
 
 
-def _cell(ws, r, c, val='', bold=False, fill_color='FFFFFF', align=_ctr):
-    cell = ws.cell(r, c, val)
-    cell.font = _font(bold=bold)
+def _cell(ws, row, col, value='', bold=False, fill_color='FFFFFF', align=_ctr, font_color='000000'):
+    cell = ws.cell(row, col, value)
+    cell.font = _font(bold=bold, color=font_color)
     cell.fill = _fill(fill_color)
     cell.alignment = align
     cell.border = _bdr
     return cell
 
 
-def _build_cargo_sheet(wb, entry_date, shift, cargo_pivot):
+def _merge_title(ws, row, total_cols, title):
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_cols)
+    _cell(ws, row, 1, title, bold=True, fill_color=_TITLE_FILL, font_color=_WHITE)
+    ws.cell(row, 1).font = _font(bold=True, size=12, color=_WHITE)
+    for col in range(2, total_cols + 1):
+        ws.cell(row, col).fill = _fill(_TITLE_FILL)
+        ws.cell(row, col).border = _bdr
+
+
+def _build_cargo_sheet(wb, cargo_tables):
     ws = wb.active
     ws.title = 'Cargo Handled'
 
-    data = cargo_pivot['data']
-    equipments = cargo_pivot['equipments']
-    routes = cargo_pivot['routes']
-    cargo_names = sorted(data.keys())
-
-    if not equipments or not routes:
+    if not cargo_tables:
         _cell(ws, 1, 1, 'No cargo data found for this shift.', align=_left)
         return
 
-    # Pre-compute aggregates for the simpler tables
-    # cargo -> equipment -> total across routes
-    equip_totals = {}
-    # cargo -> route -> total across equipments
-    route_totals = {}
-    for cargo in cargo_names:
-        equip_totals[cargo] = {}
-        route_totals[cargo] = {}
-        for equip in equipments:
-            et = sum(data.get(cargo, {}).get(equip, {}).get(rt, 0) for rt in routes)
-            equip_totals[cargo][equip] = et
-        for route in routes:
-            rt_val = sum(data.get(cargo, {}).get(eq, {}).get(route, 0) for eq in equipments)
-            route_totals[cargo][route] = rt_val
-
     row = 1
+    max_cols = 0
 
-    # ── Helper: write a title bar ────────────────────────────────────────
-    def _title_bar(start_row, ncols, title):
-        ws.merge_cells(start_row=start_row, start_column=1,
-                       end_row=start_row, end_column=ncols)
-        _cell(ws, start_row, 1, title, bold=True, fill_color='4472C4', align=_ctr)
-        ws.cell(start_row, 1).font = Font(name='Calibri', bold=True, size=12, color='FFFFFF')
-        for ci in range(2, ncols + 1):
-            c = ws.cell(start_row, ci)
-            c.fill = _fill('4472C4')
-            c.border = _bdr
+    for table in cargo_tables:
+        total_cols = 1 + len(table['columns']) + 1
+        max_cols = max(max_cols, total_cols)
 
-    def _ival(v):
-        return int(round(v)) if v else ''
-
-    # ══════════════════════════════════════════════════════════════════════
-    # TABLE 1 — Cargo × Equipment (no route breakdown)
-    # ══════════════════════════════════════════════════════════════════════
-    t1_cols = 1 + len(equipments) + 1  # cargo + equipments + grand total
-    _title_bar(row, t1_cols,
-               f'Cargo by Equipment | Date: {entry_date} | Shift: {shift}')
-    row += 1
-
-    _cell(ws, row, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
-    for i, eq in enumerate(equipments):
-        _cell(ws, row, 2 + i, eq, bold=True, fill_color='D9E2F3', align=_ctr)
-    _cell(ws, row, t1_cols, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
-    row += 1
-
-    col_sums_t1 = {}
-    for cargo in cargo_names:
-        _cell(ws, row, 1, cargo, align=_left)
-        grand = 0
-        for i, eq in enumerate(equipments):
-            v = equip_totals[cargo].get(eq, 0)
-            ci = 2 + i
-            _cell(ws, row, ci, _ival(v), align=_ctr)
-            col_sums_t1[ci] = col_sums_t1.get(ci, 0) + v
-            grand += v
-        _cell(ws, row, t1_cols, _ival(grand), bold=True, align=_ctr)
-        col_sums_t1[t1_cols] = col_sums_t1.get(t1_cols, 0) + grand
+        _merge_title(ws, row, total_cols, table['title'])
         row += 1
 
-    _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
-    for ci in range(2, t1_cols + 1):
-        _cell(ws, row, ci, _ival(col_sums_t1.get(ci, 0)),
-              bold=True, fill_color='D9E2F3', align=_ctr)
-    row += 2  # blank row gap
-
-    # ══════════════════════════════════════════════════════════════════════
-    # TABLE 2 — Cargo × Route (no equipment breakdown)
-    # ══════════════════════════════════════════════════════════════════════
-    t2_cols = 1 + len(routes) + 1
-    _title_bar(row, t2_cols,
-               f'Cargo by Route | Date: {entry_date} | Shift: {shift}')
-    row += 1
-
-    _cell(ws, row, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
-    for i, rt in enumerate(routes):
-        _cell(ws, row, 2 + i, rt, bold=True, fill_color='D9E2F3', align=_ctr)
-    _cell(ws, row, t2_cols, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
-    row += 1
-
-    col_sums_t2 = {}
-    for cargo in cargo_names:
-        _cell(ws, row, 1, cargo, align=_left)
-        grand = 0
-        for i, rt in enumerate(routes):
-            v = route_totals[cargo].get(rt, 0)
-            ci = 2 + i
-            _cell(ws, row, ci, _ival(v), align=_ctr)
-            col_sums_t2[ci] = col_sums_t2.get(ci, 0) + v
-            grand += v
-        _cell(ws, row, t2_cols, _ival(grand), bold=True, align=_ctr)
-        col_sums_t2[t2_cols] = col_sums_t2.get(t2_cols, 0) + grand
+        _cell(ws, row, 1, table['row_header'], bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
+        for idx, column in enumerate(table['columns'], start=2):
+            _cell(ws, row, idx, column, bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
+        _cell(ws, row, total_cols, 'Grand Total', bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
         row += 1
 
-    _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
-    for ci in range(2, t2_cols + 1):
-        _cell(ws, row, ci, _ival(col_sums_t2.get(ci, 0)),
-              bold=True, fill_color='D9E2F3', align=_ctr)
-    row += 2  # blank row gap
+        for data_row in table['rows']:
+            _cell(ws, row, 1, data_row['label'], fill_color=_BODY_FILL, align=_left, font_color=_WHITE)
+            for idx, value in enumerate(data_row['values'], start=2):
+                _cell(ws, row, idx, value, fill_color=_BODY_FILL, font_color=_WHITE)
+            _cell(ws, row, total_cols, data_row['total'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
+            row += 1
 
-    # ══════════════════════════════════════════════════════════════════════
-    # TABLE 3 — Full Cargo × Equipment × Route pivot (merged headers)
-    # ══════════════════════════════════════════════════════════════════════
-    n_routes = len(routes)
-    cols_per_equip = n_routes + 1  # routes + equipment total
-    t3_cols = 1 + len(equipments) * cols_per_equip + 1  # cargo col + data + grand total
+        _cell(ws, row, 1, table['totals']['label'], bold=True, fill_color=_TOTAL_FILL, align=_left, font_color=_WHITE)
+        for idx, value in enumerate(table['totals']['values'], start=2):
+            _cell(ws, row, idx, value, bold=True, fill_color=_TOTAL_FILL, font_color=_WHITE)
+        _cell(ws, row, total_cols, table['totals']['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_WHITE)
+        row += 2
 
-    _title_bar(row, t3_cols,
-               f'Cargo by Equipment & Route | Date: {entry_date} | Shift: {shift}')
-    row += 1
-
-    # Equipment group header row (merged across route sub-columns)
-    _cell(ws, row, 1, 'Cargo Name', bold=True, fill_color='D9E2F3', align=_ctr)
-    ws.merge_cells(start_row=row, start_column=1, end_row=row + 1, end_column=1)
-    col = 2
-    for equip in equipments:
-        ws.merge_cells(start_row=row, start_column=col,
-                       end_row=row, end_column=col + n_routes)
-        _cell(ws, row, col, equip, bold=True, fill_color='D9E2F3', align=_ctr)
-        for ci in range(col + 1, col + n_routes + 1):
-            c = ws.cell(row, ci)
-            c.fill = _fill('D9E2F3')
-            c.border = _bdr
-        col += cols_per_equip
-    ws.merge_cells(start_row=row, start_column=col, end_row=row + 1, end_column=col)
-    _cell(ws, row, col, 'Grand Total', bold=True, fill_color='D9E2F3', align=_ctr)
-    row += 1
-
-    # Route sub-header row
-    col = 2
-    for _eq in equipments:
-        for rt in routes:
-            _cell(ws, row, col, rt, bold=True, fill_color='E2EFDA', align=_ctr)
-            col += 1
-        _cell(ws, row, col, 'Total', bold=True, fill_color='E2EFDA', align=_ctr)
-        col += 1
-    row += 1
-
-    # Data rows
-    grand_totals_by_col = {}
-    for cargo in cargo_names:
-        _cell(ws, row, 1, cargo, align=_left)
-        col = 2
-        cargo_grand = 0
-        for equip in equipments:
-            equip_total = 0
-            for rt in routes:
-                qty = data.get(cargo, {}).get(equip, {}).get(rt, 0)
-                _cell(ws, row, col, _ival(qty), align=_ctr)
-                grand_totals_by_col[col] = grand_totals_by_col.get(col, 0) + qty
-                equip_total += qty
-                col += 1
-            _cell(ws, row, col, _ival(equip_total), bold=True, align=_ctr)
-            grand_totals_by_col[col] = grand_totals_by_col.get(col, 0) + equip_total
-            cargo_grand += equip_total
-            col += 1
-        _cell(ws, row, col, _ival(cargo_grand), bold=True, align=_ctr)
-        grand_totals_by_col[col] = grand_totals_by_col.get(col, 0) + cargo_grand
-        row += 1
-
-    # Grand Total row
-    _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
-    col = 2
-    for _eq in equipments:
-        for _rt in routes:
-            _cell(ws, row, col, _ival(grand_totals_by_col.get(col, 0)),
-                  bold=True, fill_color='D9E2F3', align=_ctr)
-            col += 1
-        _cell(ws, row, col, _ival(grand_totals_by_col.get(col, 0)),
-              bold=True, fill_color='D9E2F3', align=_ctr)
-        col += 1
-    _cell(ws, row, col, _ival(grand_totals_by_col.get(col, 0)),
-          bold=True, fill_color='D9E2F3', align=_ctr)
-
-    # Column widths
-    ws.column_dimensions['A'].width = 25
-    max_col = max(t1_cols, t2_cols, t3_cols)
-    for ci in range(2, max_col + 1):
-        ws.column_dimensions[get_column_letter(ci)].width = 14
+    ws.column_dimensions['A'].width = 28
+    for col in range(2, max_cols + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 16
 
 
-def _build_delay_sheet(wb, entry_date, shift, delays):
+def _set_merged_value(ws, row, start_col, end_col, value, fill_color, bold=True, font_color=_WHITE, align=_ctr):
+    ws.merge_cells(start_row=row, start_column=start_col, end_row=row, end_column=end_col)
+    _cell(ws, row, start_col, value, bold=bold, fill_color=fill_color, align=align, font_color=font_color)
+    for col in range(start_col + 1, end_col + 1):
+        ws.cell(row, col).fill = _fill(fill_color)
+        ws.cell(row, col).border = _bdr
+
+
+def _build_delay_sheet(wb, delay_view):
     ws = wb.create_sheet('Delay Report')
 
-    if not delays:
+    headers = ['Delays Type', 'Activity', 'Equipment', 'System', 'Route', 'From', 'To', 'Total']
+    total_cols = len(headers)
+
+    if not delay_view['rows']:
         _cell(ws, 1, 1, 'No delay data found for this shift.', align=_left)
         return
 
-    # Title row
-    headers = ['Delay Type', 'Activity', 'Equipment', 'System', 'Receiving Route',
-               'From', 'To', 'Total']
-    total_cols = len(headers)
-
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
-    _cell(ws, 1, 1, f'Shift Report - Delay Breakdown | Date: {entry_date} | Shift: {shift}',
-          bold=True, fill_color='4472C4', align=_ctr)
-    ws.cell(1, 1).font = Font(name='Calibri', bold=True, size=12, color='FFFFFF')
-    for ci in range(2, total_cols + 1):
-        c = ws.cell(1, ci)
-        c.fill = _fill('4472C4')
-        c.border = _bdr
-
-    # Header row
-    for ci, h in enumerate(headers, 1):
-        _cell(ws, 2, ci, h, bold=True, fill_color='D9E2F3', align=_ctr)
-
-    # Group delays by type
-    grouped = {}
-    for d in delays:
-        dt = d['delay_type']
-        if dt not in grouped:
-            grouped[dt] = []
-        grouped[dt].append(d)
+    _merge_title(ws, 1, total_cols, delay_view['title'])
+    for idx, header in enumerate(headers, start=1):
+        _cell(ws, 2, idx, header, bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
 
     row = 3
-    type_colors = {
-        'RMHS Delays': 'FFF2CC',
-        'MaintenanceDelays': 'FCE4D6',
-        'ProcessRequirement': 'D6E4F0',
-        'ProcessDelays': 'E2EFDA',
-    }
+    for item in delay_view['rows']:
+        kind = item['kind']
 
-    for delay_type in sorted(grouped.keys()):
-        items = grouped[delay_type]
-        fill_color = type_colors.get(delay_type, 'F2F2F2')
-        type_start = row
-        type_total_min = 0
+        if kind == 'detail':
+            if item.get('show_type'):
+                ws.merge_cells(start_row=row, start_column=1, end_row=row + item['type_rowspan'] - 1, end_column=1)
+                _cell(ws, row, 1, item['type_name'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_WHITE)
 
-        # Group within type by delay_name (activity)
-        by_activity = {}
-        for d in items:
-            dn = d['delay_name']
-            if dn not in by_activity:
-                by_activity[dn] = []
-            by_activity[dn].append(d)
+            if item.get('show_activity'):
+                ws.merge_cells(start_row=row, start_column=2, end_row=row + item['activity_rowspan'] - 1, end_column=2)
+                _cell(ws, row, 2, item['activity_name'], bold=True, fill_color=_GROUP_FILL, font_color=_WHITE)
 
-        for activity in sorted(by_activity.keys()):
-            act_items = by_activity[activity]
-            act_start = row
+            if item.get('show_equipment'):
+                ws.merge_cells(start_row=row, start_column=3, end_row=row + item['equipment_rowspan'] - 1, end_column=3)
+                _cell(ws, row, 3, item['equipment_name'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
 
-            for d in act_items:
-                _cell(ws, row, 1, '', fill_color=fill_color, align=_left)
-                _cell(ws, row, 2, '', fill_color='FFFFFF', align=_left)
-                _cell(ws, row, 3, d['equipment_name'], align=_left)
-                _cell(ws, row, 4, d['system_name'], align=_left)
-                _cell(ws, row, 5, d['route_name'], align=_left)
-                _cell(ws, row, 6, d['from_time'], align=_ctr)
-                _cell(ws, row, 7, d['to_time'], align=_ctr)
-                total_min = d['total_minutes']
-                type_total_min += total_min
-                _cell(ws, row, 8, _fmt_minutes(total_min), align=_ctr)
-                row += 1
+            if item.get('show_system'):
+                ws.merge_cells(start_row=row, start_column=4, end_row=row + item['system_rowspan'] - 1, end_column=4)
+                _cell(ws, row, 4, item['system_name'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
 
-            # Merge activity name cells
-            if len(act_items) > 1:
-                ws.merge_cells(start_row=act_start, start_column=2,
-                               end_row=row - 1, end_column=2)
-            ws.cell(act_start, 2).value = activity
-            ws.cell(act_start, 2).font = _font(bold=False)
-            ws.cell(act_start, 2).alignment = _left
-            ws.cell(act_start, 2).border = _bdr
+            _cell(ws, row, 5, item['route'], fill_color=_BODY_FILL, font_color=_WHITE)
+            _cell(ws, row, 6, item['from_time'], fill_color=_BODY_FILL, font_color=_WHITE)
+            _cell(ws, row, 7, item['to_time'], fill_color=_BODY_FILL, font_color=_WHITE)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
 
-        # Merge delay_type cells
-        if row > type_start:
-            if row - type_start > 1:
-                ws.merge_cells(start_row=type_start, start_column=1,
-                               end_row=row - 1, end_column=1)
-            ws.cell(type_start, 1).value = delay_type
-            ws.cell(type_start, 1).font = _font(bold=True)
-            ws.cell(type_start, 1).alignment = _left
-            ws.cell(type_start, 1).fill = _fill(fill_color)
-            ws.cell(type_start, 1).border = _bdr
+        elif kind == 'system_total':
+            _set_merged_value(ws, row, 4, 7, item['label'], _SUBTOTAL_FILL)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_WHITE)
 
-        # Type subtotal row
-        _cell(ws, row, 1, f'{delay_type} Total', bold=True, fill_color=fill_color, align=_left)
-        for ci in range(2, 8):
-            _cell(ws, row, ci, '', fill_color=fill_color)
-        _cell(ws, row, 8, _fmt_minutes(type_total_min), bold=True,
-              fill_color=fill_color, align=_ctr)
+        elif kind == 'activity_total':
+            _set_merged_value(ws, row, 2, 7, item['label'], _SUBTOTAL_FILL)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_WHITE)
+
+        elif kind == 'type_total':
+            _set_merged_value(ws, row, 1, 7, item['label'], _TYPE_TOTAL_FILL)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_WHITE)
+
+        elif kind == 'grand_total':
+            _set_merged_value(ws, row, 1, 7, item['label'], _TOTAL_FILL)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_WHITE)
+
         row += 1
 
-    # Grand total
-    grand_total = sum(d['total_minutes'] for d in delays)
-    _cell(ws, row, 1, 'Grand Total', bold=True, fill_color='D9E2F3', align=_left)
-    for ci in range(2, 8):
-        _cell(ws, row, ci, '', fill_color='D9E2F3')
-    _cell(ws, row, 8, _fmt_minutes(grand_total), bold=True,
-          fill_color='D9E2F3', align=_ctr)
-
-    # Column widths
-    col_widths = {'A': 22, 'B': 28, 'C': 20, 'D': 18, 'E': 20, 'F': 10, 'G': 10, 'H': 10}
-    for letter, w in col_widths.items():
-        ws.column_dimensions[letter].width = w
+    widths = {
+        'A': 18,
+        'B': 24,
+        'C': 16,
+        'D': 16,
+        'E': 20,
+        'F': 10,
+        'G': 10,
+        'H': 10,
+    }
+    for letter, width in widths.items():
+        ws.column_dimensions[letter].width = width

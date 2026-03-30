@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Shift Report — RP01{% endblock %}
+{% block title %}Shift Report - RP01{% endblock %}
 
 {% block head %}
 <style>
@@ -23,7 +23,9 @@
         letter-spacing: 0.5px;
     }
     .breadcrumb {
-        font-size: 11px; color: var(--text-secondary); margin-bottom: 14px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 14px;
     }
     .breadcrumb a { color: #4a90d9; text-decoration: none; }
     .breadcrumb a:hover { text-decoration: underline; }
@@ -55,7 +57,10 @@
         color: var(--text-primary);
         height: 30px;
     }
-    .filter-group input:focus, .filter-group select:focus { outline: none; border-color: #4a90d9; }
+    .filter-group input:focus, .filter-group select:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
     .filter-btn {
         padding: 0 18px;
         height: 30px;
@@ -69,55 +74,78 @@
     .filter-btn.primary { background: #4a90d9; color: #fff; }
     .filter-btn.primary:hover { background: #357abd; }
     .filter-btn.primary:disabled { background: #aaa; cursor: not-allowed; }
-    .filter-btn.secondary { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); }
-    .filter-btn.secondary:hover { background: var(--bg-secondary); border-color: #4a90d9; }
 
-    /* Preview tables */
-    .preview-section {
+    .preview-stack {
+        display: grid;
+        gap: 18px;
         margin-top: 20px;
     }
-    .preview-section h3 {
-        font-size: 14px;
-        color: var(--text-primary);
-        margin: 0 0 10px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid var(--border-color);
+    .cargo-stack {
+        display: grid;
+        gap: 18px;
     }
-    .preview-table {
+    .report-block {
+        overflow-x: auto;
+        background: #1f2023;
+        border: 1px solid #555b63;
+        border-radius: 8px;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+    }
+    .report-table {
         width: 100%;
+        min-width: 760px;
         border-collapse: collapse;
+        color: #fff;
         font-size: 11px;
-        margin-bottom: 20px;
+        background: #2f2f2f;
     }
-    .preview-table th, .preview-table td {
-        border: 1px solid var(--border-color);
-        padding: 5px 8px;
+    .report-table th, .report-table td {
+        border: 1px solid #9199a3;
+        padding: 4px 8px;
         text-align: center;
+        white-space: nowrap;
     }
-    .preview-table th {
-        background: var(--bg-secondary);
-        font-weight: 600;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
+    .report-table .title-row th {
+        background: #775253;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        padding: 6px 8px;
     }
-    .preview-table td:first-child {
+    .report-table .head-row th {
+        background: #0e6aa8;
+        color: #fff;
+        font-weight: 700;
+    }
+    .report-table td {
+        background: #2f2f2f;
+    }
+    .report-table .row-label {
         text-align: left;
         font-weight: 600;
     }
-    .preview-table .total-row td {
+    .report-table .group-cell {
+        background: #52606d;
         font-weight: 700;
-        background: var(--bg-secondary);
     }
-    .preview-table .type-header td {
+    .report-table .type-cell {
+        background: #355f7d;
         font-weight: 700;
-        background: #f0f4fa;
-        text-align: left;
     }
-    .preview-table .type-total td {
-        font-weight: 600;
-        background: #f8f9fa;
-        font-style: italic;
+    .report-table .subtotal-row td {
+        background: #474747;
+        font-weight: 700;
+    }
+    .report-table .type-total-row td {
+        background: #355f7d;
+        font-weight: 700;
+    }
+    .report-table .grand-total-row td {
+        background: #5b6774;
+        font-weight: 700;
+    }
+    .report-table .subtotal-label {
+        text-align: center;
     }
     .no-data {
         font-size: 12px;
@@ -131,9 +159,6 @@
         font-size: 12px;
         color: var(--text-secondary);
         padding: 12px;
-    }
-    .preview-table .overflow-wrapper {
-        overflow-x: auto;
     }
 </style>
 {% endblock %}
@@ -176,6 +201,15 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('entry-date').value = `${y}-${m}-${d}`;
 });
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function _getParams() {
     const entryDate = document.getElementById('entry-date').value;
     const shift = document.getElementById('shift-select').value;
@@ -193,18 +227,21 @@ function loadPreview() {
     const btn = document.getElementById('preview-btn');
     const area = document.getElementById('preview-area');
     btn.disabled = true;
-    btn.textContent = 'Loading\u2026';
-    area.innerHTML = '<div class="loading">Loading preview\u2026</div>';
+    btn.textContent = 'Loading...';
+    area.innerHTML = '<div class="loading">Loading preview...</div>';
 
     fetch(`/api/module/RP01/shift-report/preview?entry_date=${p.entryDate}&shift=${p.shift}`)
         .then(r => { if (!r.ok) throw new Error('Server error'); return r.json(); })
         .then(data => {
+            const stack = document.createElement('div');
+            stack.className = 'preview-stack';
+            stack.appendChild(buildCargoTables(data.cargo_tables || []));
+            stack.appendChild(buildDelayTable(data.delay_view || { rows: [] }));
             area.innerHTML = '';
-            area.appendChild(buildCargoTable(data.cargo_pivot));
-            area.appendChild(buildDelayTable(data.delays));
+            area.appendChild(stack);
         })
         .catch(err => {
-            area.innerHTML = `<div class="no-data">${err.message || 'Failed to load preview.'}</div>`;
+            area.innerHTML = `<div class="no-data">${escapeHtml(err.message || 'Failed to load preview.')}</div>`;
         })
         .finally(() => {
             btn.disabled = false;
@@ -218,7 +255,7 @@ function downloadReport() {
 
     const btn = document.getElementById('dl-btn');
     btn.disabled = true;
-    btn.textContent = 'Preparing\u2026';
+    btn.textContent = 'Preparing...';
 
     fetch(`/api/module/RP01/shift-report/download?entry_date=${p.entryDate}&shift=${p.shift}`)
         .then(res => {
@@ -246,186 +283,130 @@ function downloadReport() {
         });
 }
 
-/* ── Build Cargo Pivot Table ───────────────────────────────────────────────── */
+function buildCargoTables(tables) {
+    const container = document.createElement('div');
+    container.className = 'cargo-stack';
 
-function buildCargoTable(pivot) {
-    const section = document.createElement('div');
-    section.className = 'preview-section';
-    section.innerHTML = '<h3>Cargo Handled</h3>';
-
-    const data = pivot.data;
-    const equipments = pivot.equipments;
-    const routes = pivot.routes;
-    const cargos = Object.keys(data).sort();
-
-    if (!cargos.length) {
-        section.innerHTML += '<div class="no-data">No cargo data for this shift.</div>';
-        return section;
+    if (!tables.length) {
+        container.innerHTML = '<div class="no-data">No cargo data for this shift.</div>';
+        return container;
     }
 
-    const wrapper = document.createElement('div');
-    wrapper.style.overflowX = 'auto';
-
-    const table = document.createElement('table');
-    table.className = 'preview-table';
-
-    // Header row 1: equipment groups
-    let row1 = '<tr><th rowspan="2">Cargo Name</th>';
-    equipments.forEach(eq => {
-        row1 += `<th colspan="${routes.length + 1}">${eq}</th>`;
+    tables.forEach(table => {
+        container.appendChild(buildMatrixTable(table));
     });
-    row1 += '<th rowspan="2">Grand Total</th></tr>';
-
-    // Header row 2: routes + total per equipment
-    let row2 = '<tr>';
-    equipments.forEach(() => {
-        routes.forEach(rt => { row2 += `<th>${rt}</th>`; });
-        row2 += '<th>Total</th>';
-    });
-    row2 += '</tr>';
-
-    let thead = `<thead>${row1}${row2}</thead>`;
-
-    // Data rows
-    let tbody = '<tbody>';
-    const grandByCol = {};
-
-    cargos.forEach(cargo => {
-        let tr = `<tr><td>${cargo}</td>`;
-        let cargoGrand = 0;
-        let colIdx = 0;
-
-        equipments.forEach(eq => {
-            let eqTotal = 0;
-            routes.forEach(rt => {
-                const qty = (data[cargo] && data[cargo][eq] && data[cargo][eq][rt]) || 0;
-                grandByCol[colIdx] = (grandByCol[colIdx] || 0) + qty;
-                tr += `<td>${qty ? Math.round(qty) : ''}</td>`;
-                eqTotal += qty;
-                colIdx++;
-            });
-            grandByCol[colIdx] = (grandByCol[colIdx] || 0) + eqTotal;
-            tr += `<td><b>${eqTotal ? Math.round(eqTotal) : ''}</b></td>`;
-            cargoGrand += eqTotal;
-            colIdx++;
-        });
-
-        grandByCol['grand'] = (grandByCol['grand'] || 0) + cargoGrand;
-        tr += `<td><b>${cargoGrand ? Math.round(cargoGrand) : ''}</b></td></tr>`;
-        tbody += tr;
-    });
-
-    // Total row
-    let totalRow = '<tr class="total-row"><td>Grand Total</td>';
-    let colIdx = 0;
-    equipments.forEach(() => {
-        routes.forEach(() => {
-            const v = grandByCol[colIdx] || 0;
-            totalRow += `<td>${v ? Math.round(v) : ''}</td>`;
-            colIdx++;
-        });
-        const v = grandByCol[colIdx] || 0;
-        totalRow += `<td>${v ? Math.round(v) : ''}</td>`;
-        colIdx++;
-    });
-    totalRow += `<td>${grandByCol['grand'] ? Math.round(grandByCol['grand']) : ''}</td></tr>`;
-    tbody += totalRow + '</tbody>';
-
-    table.innerHTML = thead + tbody;
-    wrapper.appendChild(table);
-    section.appendChild(wrapper);
-    return section;
+    return container;
 }
 
-/* ── Build Delay Table ─────────────────────────────────────────────────────── */
+function buildMatrixTable(table) {
+    const block = document.createElement('div');
+    block.className = 'report-block';
 
-function buildDelayTable(delays) {
-    const section = document.createElement('div');
-    section.className = 'preview-section';
-    section.innerHTML = '<h3>Delay Breakdown</h3>';
+    const headLabel = escapeHtml(table.row_header || '');
+    const columns = (table.columns || []).map(escapeHtml);
+    const rows = table.rows || [];
+    const totals = table.totals || { label: 'Grand Total', values: [], total: '' };
 
-    if (!delays.length) {
-        section.innerHTML += '<div class="no-data">No delay data for this shift.</div>';
-        return section;
-    }
+    let html = '<table class="report-table">';
+    html += `<thead>
+        <tr class="title-row"><th colspan="${columns.length + 2}">${escapeHtml(table.title || '')}</th></tr>
+        <tr class="head-row">
+            <th>${headLabel}</th>
+            ${columns.map(column => `<th>${column}</th>`).join('')}
+            <th>Grand Total</th>
+        </tr>
+    </thead><tbody>`;
 
-    const table = document.createElement('table');
-    table.className = 'preview-table';
-
-    let thead = `<thead><tr>
-        <th>Delay Type</th><th>Activity</th><th>Equipment</th>
-        <th>System</th><th>Receiving Route</th>
-        <th>From</th><th>To</th><th>Total</th>
-    </tr></thead>`;
-
-    // Group by delay_type, then by activity within each type
-    const grouped = {};
-    delays.forEach(d => {
-        if (!grouped[d.delay_type]) grouped[d.delay_type] = {};
-        if (!grouped[d.delay_type][d.delay_name]) grouped[d.delay_type][d.delay_name] = [];
-        grouped[d.delay_type][d.delay_name].push(d);
-    });
-
-    let tbody = '<tbody>';
-    let grandTotal = 0;
-
-    Object.keys(grouped).sort().forEach(dtype => {
-        const activities = grouped[dtype];
-        const actNames = Object.keys(activities).sort();
-        // Count total rows for this delay type (for rowspan)
-        let typeRowCount = 0;
-        actNames.forEach(an => { typeRowCount += activities[an].length; });
-        let typeTotal = 0;
-        let typeRowIdx = 0;
-
-        actNames.forEach(actName => {
-            const actItems = activities[actName];
-            actItems.forEach((d, i) => {
-                const mins = d.total_minutes || 0;
-                typeTotal += mins;
-                const h = Math.floor(mins / 60);
-                const m = mins % 60;
-                const totalStr = mins ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}` : '';
-                tbody += '<tr>';
-                // Delay Type column — merged across all rows of this type
-                if (typeRowIdx === 0) {
-                    tbody += `<td rowspan="${typeRowCount}" style="font-weight:700;background:#f0f4fa">${dtype}</td>`;
-                }
-                // Activity column — merged across rows of same activity
-                if (i === 0) {
-                    tbody += `<td rowspan="${actItems.length}">${actName}</td>`;
-                }
-                tbody += `<td>${d.equipment_name}</td>
-                    <td>${d.system_name}</td>
-                    <td>${d.route_name}</td>
-                    <td>${d.from_time}</td>
-                    <td>${d.to_time}</td>
-                    <td>${totalStr}</td>
-                </tr>`;
-                typeRowIdx++;
-            });
-        });
-
-        grandTotal += typeTotal;
-        const th = Math.floor(typeTotal / 60);
-        const tm = typeTotal % 60;
-        tbody += `<tr class="type-total">
-            <td colspan="7" style="text-align:right">${dtype} Total</td>
-            <td>${typeTotal ? `${String(th).padStart(2,'0')}:${String(tm).padStart(2,'0')}` : ''}</td>
+    rows.forEach(row => {
+        html += `<tr>
+            <td class="row-label">${escapeHtml(row.label || '')}</td>
+            ${(row.values || []).map(value => `<td>${escapeHtml(value)}</td>`).join('')}
+            <td><strong>${escapeHtml(row.total)}</strong></td>
         </tr>`;
     });
 
-    const gh = Math.floor(grandTotal / 60);
-    const gm = grandTotal % 60;
-    tbody += `<tr class="total-row">
-        <td colspan="7" style="text-align:right">Grand Total</td>
-        <td>${grandTotal ? `${String(gh).padStart(2,'0')}:${String(gm).padStart(2,'0')}` : ''}</td>
+    html += `<tr class="grand-total-row">
+        <td class="row-label">${escapeHtml(totals.label || 'Grand Total')}</td>
+        ${(totals.values || []).map(value => `<td>${escapeHtml(value)}</td>`).join('')}
+        <td>${escapeHtml(totals.total)}</td>
     </tr>`;
-    tbody += '</tbody>';
+    html += '</tbody></table>';
 
-    table.innerHTML = thead + tbody;
-    section.appendChild(table);
-    return section;
+    block.innerHTML = html;
+    return block;
+}
+
+function buildDelayTable(view) {
+    const block = document.createElement('div');
+    block.className = 'report-block';
+
+    if (!view.rows || !view.rows.length) {
+        block.innerHTML = '<div class="no-data">No delay data for this shift.</div>';
+        return block;
+    }
+
+    let html = '<table class="report-table">';
+    html += `<thead>
+        <tr class="title-row"><th colspan="8">${escapeHtml(view.title || 'Shift Delays')}</th></tr>
+        <tr class="head-row">
+            <th>Delays Type</th>
+            <th>Activity</th>
+            <th>Equipment</th>
+            <th>System</th>
+            <th>Route</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Total</th>
+        </tr>
+    </thead><tbody>`;
+
+    view.rows.forEach(row => {
+        if (row.kind === 'detail') {
+            html += '<tr>';
+            if (row.show_type) {
+                html += `<td class="type-cell" rowspan="${row.type_rowspan}">${escapeHtml(row.type_name)}</td>`;
+            }
+            if (row.show_activity) {
+                html += `<td class="group-cell" rowspan="${row.activity_rowspan}">${escapeHtml(row.activity_name)}</td>`;
+            }
+            if (row.show_equipment) {
+                html += `<td class="group-cell" rowspan="${row.equipment_rowspan}">${escapeHtml(row.equipment_name)}</td>`;
+            }
+            if (row.show_system) {
+                html += `<td class="group-cell" rowspan="${row.system_rowspan}">${escapeHtml(row.system_name)}</td>`;
+            }
+            html += `
+                <td>${escapeHtml(row.route)}</td>
+                <td>${escapeHtml(row.from_time)}</td>
+                <td>${escapeHtml(row.to_time)}</td>
+                <td><strong>${escapeHtml(row.total)}</strong></td>
+            </tr>`;
+        } else if (row.kind === 'system_total') {
+            html += `<tr class="subtotal-row">
+                <td colspan="4" class="subtotal-label">${escapeHtml(row.label)}</td>
+                <td>${escapeHtml(row.total)}</td>
+            </tr>`;
+        } else if (row.kind === 'activity_total') {
+            html += `<tr class="subtotal-row">
+                <td colspan="6" class="subtotal-label">${escapeHtml(row.label)}</td>
+                <td>${escapeHtml(row.total)}</td>
+            </tr>`;
+        } else if (row.kind === 'type_total') {
+            html += `<tr class="type-total-row">
+                <td colspan="7" class="subtotal-label">${escapeHtml(row.label)}</td>
+                <td>${escapeHtml(row.total)}</td>
+            </tr>`;
+        } else if (row.kind === 'grand_total') {
+            html += `<tr class="grand-total-row">
+                <td colspan="7" class="subtotal-label">${escapeHtml(row.label)}</td>
+                <td>${escapeHtml(row.total)}</td>
+            </tr>`;
+        }
+    });
+
+    html += '</tbody></table>';
+    block.innerHTML = html;
+    return block;
 }
 </script>
 {% endblock %}
