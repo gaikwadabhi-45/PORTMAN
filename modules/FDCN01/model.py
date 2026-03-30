@@ -627,7 +627,6 @@ def create_eu_deletion_cn(invoiced_line_refs, username=None):
     CN goes to Draft status (requires approver to approve).
     Returns list of (fdcn_id, doc_number) tuples.
     """
-    from datetime import datetime
     from collections import defaultdict
 
     if not invoiced_line_refs:
@@ -657,60 +656,62 @@ def create_eu_deletion_cn(invoiced_line_refs, username=None):
             bill_id = ref['bill_id']
             eu_line = ref['eu_line']
 
-            # Find the corresponding invoice_line by invoice_id + bill_id
+            # Find all invoice_lines for this invoice_id + bill_id
+            # NOTE: (invoice_id, bill_id) is NOT guaranteed unique in invoice_lines,
+            # so we fetch ALL matching rows and build a CN line for each.
             cur.execute('''
                 SELECT il.*
                 FROM invoice_lines il
                 WHERE il.invoice_id = %s AND il.bill_id = %s
-                LIMIT 1
             ''', [invoice_id, bill_id])
-            inv_line = cur.fetchone()
-            if not inv_line:
+            inv_lines = cur.fetchall()
+            if not inv_lines:
                 continue
 
-            qty   = float(inv_line.get('quantity') or 0)
-            rate  = float(inv_line.get('rate') or 0)
-            la    = round(qty * rate, 2)
-            cgst  = float(inv_line.get('cgst_amount') or 0)
-            sgst  = float(inv_line.get('sgst_amount') or 0)
-            igst  = float(inv_line.get('igst_amount') or 0)
-            lt    = round(la + cgst + sgst + igst, 2)
+            for inv_line in inv_lines:
+                qty   = float(inv_line.get('quantity') or 0)
+                rate  = float(inv_line.get('rate') or 0)
+                la    = round(qty * rate, 2)
+                cgst  = float(inv_line.get('cgst_amount') or 0)
+                sgst  = float(inv_line.get('sgst_amount') or 0)
+                igst  = float(inv_line.get('igst_amount') or 0)
+                lt    = round(la + cgst + sgst + igst, 2)
 
-            subtotal   += la
-            cgst_total += cgst
-            sgst_total += sgst
-            igst_total += igst
+                subtotal   += la
+                cgst_total += cgst
+                sgst_total += sgst
+                igst_total += igst
 
-            eu_desc = (
-                f"EU Line #{eu_line.get('id')} deleted — "
-                f"{eu_line.get('cargo_name', '')} / "
-                f"{eu_line.get('source_display', '')} / "
-                f"Ref: {ref.get('invoice_number', '')}"
-            )
+                eu_desc = (
+                    f"EU Line #{eu_line.get('id')} deleted — "
+                    f"{eu_line.get('cargo_name', '')} / "
+                    f"{eu_line.get('source_display', '')} / "
+                    f"Ref: {ref.get('invoice_number', '')}"
+                )
 
-            cn_lines.append({
-                'invoice_line_id': inv_line['id'],
-                'service_type_id': inv_line.get('service_type_id'),
-                'service_name':    inv_line.get('service_name'),
-                'service_description': eu_desc,
-                'quantity':        qty,
-                'uom':             inv_line.get('uom'),
-                'original_rate':   rate,
-                'revised_rate':    0,
-                'rate_difference': -rate,
-                'line_amount':     la,
-                'gst_rate_id':     inv_line.get('gst_rate_id'),
-                'cgst_rate':       float(inv_line.get('cgst_rate') or 0),
-                'sgst_rate':       float(inv_line.get('sgst_rate') or 0),
-                'igst_rate':       float(inv_line.get('igst_rate') or 0),
-                'cgst_amount':     cgst,
-                'sgst_amount':     sgst,
-                'igst_amount':     igst,
-                'line_total':      lt,
-                'gl_code':         inv_line.get('gl_code'),
-                'sac_code':        inv_line.get('sac_code'),
-                'remarks':         eu_desc,
-            })
+                cn_lines.append({
+                    'invoice_line_id': inv_line['id'],
+                    'service_type_id': inv_line.get('service_type_id'),
+                    'service_name':    inv_line.get('service_name'),
+                    'service_description': eu_desc,
+                    'quantity':        qty,
+                    'uom':             inv_line.get('uom'),
+                    'original_rate':   rate,
+                    'revised_rate':    0,
+                    'rate_difference': -rate,
+                    'line_amount':     la,
+                    'gst_rate_id':     inv_line.get('gst_rate_id'),
+                    'cgst_rate':       float(inv_line.get('cgst_rate') or 0),
+                    'sgst_rate':       float(inv_line.get('sgst_rate') or 0),
+                    'igst_rate':       float(inv_line.get('igst_rate') or 0),
+                    'cgst_amount':     cgst,
+                    'sgst_amount':     sgst,
+                    'igst_amount':     igst,
+                    'line_total':      lt,
+                    'gl_code':         inv_line.get('gl_code'),
+                    'sac_code':        inv_line.get('sac_code'),
+                    'remarks':         eu_desc,
+                })
 
         if not cn_lines:
             continue
