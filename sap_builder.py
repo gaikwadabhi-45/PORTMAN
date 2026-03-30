@@ -287,8 +287,13 @@ def build_credit_note_payload(cn_header, cn_lines):
 
 def build_fdcn_payload(fdcn_header, fdcn_lines):
     """
-    Build MT_CNDN_IPORTMANtoECC_Req payload for a Debit Note or Credit Note
-    from the FDCN01 module.  Both use Document_Type = Y2.
+    Build SAP payload for a Debit Note or Credit Note from FDCN01.
+
+    DN  → Document_Type = Y1  (same interface as invoice, MT_INV_IPORTMANtoECC_Req)
+    CN  → Document_Type = Y2  (MT_CNDN_IPORTMANtoECC_Req)
+
+    Both carry Original_Invoice_No so SAP can link back to the source invoice.
+    IRN fields read from fdcn_header columns: gst_irn, gst_ack_number, gst_ack_date.
     """
     config = get_active_config()
     if not config:
@@ -303,12 +308,18 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     )
     company  = cust_company or default_company
     doc_date = _fmt_date(fdcn_header.get('doc_date'))
+    doc_type = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
+
+    # DN uses Y1 (same document type as invoice); CN uses Y2
+    sap_doc_type = 'Y1' if doc_type == 'DN' else 'Y2'
+
+    irn_date_raw = fdcn_header.get('gst_ack_date') or fdcn_header.get('irn_date')
 
     record = {
         'Company_Code':          company,
         'Document_Date':         doc_date,
         'Posting_Date':          doc_date,
-        'Document_Type':         'Y2',
+        'Document_Type':         sap_doc_type,
         'Reference_Text':        (fdcn_header.get('doc_number') or '')[:16],
         'Doc_Header_Text':       (fdcn_header.get('doc_number') or '')[:25],
         'Currency':              'INR',
@@ -318,9 +329,9 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Invoice_Amount':        _fmt_amount_required(
                                      _total_invoice_amount(fdcn_header, fdcn_lines)
                                  ),
-        'IRN_No':                fdcn_header.get('irn') or '',
-        'Ack_No':                str(fdcn_header.get('ack_number') or ''),
-        'IRN_Date':              _fmt_date(fdcn_header.get('irn_date')) if fdcn_header.get('irn_date') else '',
+        'IRN_No':                fdcn_header.get('gst_irn') or '',
+        'Ack_No':                str(fdcn_header.get('gst_ack_number') or ''),
+        'IRN_Date':              _fmt_date(irn_date_raw) if irn_date_raw else '',
         'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
         'Cancellation_Flag':     '',
         'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
