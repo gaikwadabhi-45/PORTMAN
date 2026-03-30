@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_db, get_cursor
+from modules.FDCN01 import model as fdcn_model
 
 bp = Blueprint('LUEU01', __name__, template_folder='.')
 MODULE_CODE = 'LUEU01'
@@ -88,7 +89,6 @@ def delete_data():
     # Auto-create CNs for invoiced lines
     cn_results = []
     if invoiced_refs:
-        from modules.FDCN01 import model as fdcn_model
         created = fdcn_model.create_eu_deletion_cn(invoiced_refs, username)
         cn_results = [{'fdcn_id': fid, 'doc_number': dnum} for fid, dnum in created]
 
