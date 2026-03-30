@@ -82,6 +82,15 @@
         return `<span class="type-badge type-${v}">${v === 'DN' ? 'Debit Note' : 'Credit Note'}</span>`;
     }
 
+    function originFormatter(cell) {
+        const originBadges = {
+            'rate_revision': '<span style="background:#ebf5fb;color:#2e86c1;padding:1px 7px;border-radius:8px;font-size:9px;font-weight:700;white-space:nowrap;">RATE REV</span>',
+            'manual':        '<span style="background:#e8f8e8;color:#1a7a1a;padding:1px 7px;border-radius:8px;font-size:9px;font-weight:700;white-space:nowrap;">MANUAL</span>',
+            'eu_deletion':   '<span style="background:#fff3e0;color:#e65100;padding:1px 7px;border-radius:8px;font-size:9px;font-weight:700;white-space:nowrap;">EU DEL</span>',
+        };
+        return originBadges[cell.getValue()] || '<span style="color:#aaa;font-size:11px;">—</span>';
+    }
+
     function actionFormatter(cell) {
         const row = cell.getRow().getData();
         let btns = `<button class="btn" style="background:#3498db;color:white;padding:2px 8px;font-size:10px;margin-right:3px" onclick="event.stopPropagation();location.href='/module/FDCN01/entry?id=${row.id}'">Open</button>`;
@@ -111,6 +120,7 @@
             columns: [
                 {title: "Doc #", field: "doc_number", width: 150},
                 {title: "Type", field: "doc_type", width: 110, formatter: typeFormatter, hozAlign: "center"},
+                {title: "Origin", field: "creation_type", width: 100, formatter: originFormatter, hozAlign: "center"},
                 {title: "Date", field: "doc_date", width: 105, formatter: function(cell) { return formatDateDMY(cell.getValue()); }},
                 {title: "Customer", field: "customer_name", width: 200},
                 {title: "Orig. Invoice", field: "original_invoice_number", width: 150},
