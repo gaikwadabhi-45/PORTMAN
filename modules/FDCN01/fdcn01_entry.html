@@ -64,6 +64,20 @@
     <input type="hidden" id="fdcnId" value="{{ fdcn_id }}">
     <div class="form-grid">
         <div class="form-field">
+            <label>Entry Type</label>
+            <select id="entryType" onchange="onEntryTypeChange()">
+                <option value="rate_revision">Rate Revision</option>
+                <option value="manual">Manual Entry</option>
+            </select>
+        </div>
+        <div class="form-field" id="docTypeField" style="display:none">
+            <label>Document Type</label>
+            <select id="docTypeSel">
+                <option value="DN">Debit Note (DN)</option>
+                <option value="CN">Credit Note (CN)</option>
+            </select>
+        </div>
+        <div class="form-field">
             <label>Doc Number</label>
             <input type="text" id="docNumber" readonly placeholder="Auto-generated on save">
         </div>
@@ -103,6 +117,7 @@
         <div class="form-field">
             <label>GSTIN</label>
             <input type="text" id="customerGstin" readonly>
+            <input type="hidden" id="customerGstStateCode">
         </div>
         <div class="form-field">
             <label>GL Code</label>
@@ -148,12 +163,12 @@
 
 <!-- Lines Section -->
 <div class="form-section">
-    <h3>Rate Revision Lines</h3>
-    <p style="font-size:11px;color:var(--text-muted,#7f8c8d);margin:0 0 8px 0;">
+    <h3 id="linesSectionTitle">Rate Revision Lines</h3>
+    <p id="linesSectionSubtitle" style="font-size:11px;color:var(--text-muted,#7f8c8d);margin:0 0 8px 0;">
         Revised rates are auto-filled from the selected agreement. Check lines to include.
     </p>
     <table class="lines-table">
-        <thead>
+        <thead id="linesTableHead">
             <tr>
                 <th class="cb-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
                 <th>Invoice</th>
@@ -173,6 +188,10 @@
         </thead>
         <tbody id="linesBody"></tbody>
     </table>
+
+    <div id="manualAddRow" style="display:none;margin-top:8px;">
+        <button class="btn" style="background:#27ae60;color:white;padding:4px 12px;font-size:11px;" onclick="addManualLine()">+ Add Line</button>
+    </div>
 
     <div id="directionNote" class="direction-note"></div>
 
@@ -333,6 +352,7 @@
         if (selected && selected.dataset) {
             document.getElementById('customerGstin').value = selected.dataset.gstin || '';
             document.getElementById('customerGlCode').value = selected.dataset.glCode || '';
+            document.getElementById('customerGstStateCode').value = selected.dataset.stateCode || '';
         }
 
         if (!ct || !cid) return;
@@ -357,7 +377,7 @@
             const billRef = esc(inv.bill_numbers || '-');
             const agreementRef = esc(inv.agreement_refs || '-');
             div.innerHTML = `
-                <input type="checkbox" class="inv-cb" value="${inv.id}" id="inv_${inv.id}">
+                <input type="checkbox" class="inv-cb" value="${inv.id}" id="inv_${inv.id}" data-inv-num="${inv.invoice_number || ''}">
                 <label for="inv_${inv.id}">
                     ${esc(inv.invoice_number)} - ${formatDateDMY(inv.invoice_date || "")}
                     <br><small style="color:#7f8c8d">Bill: ${billRef} | Agreement: ${agreementRef}</small>
@@ -643,6 +663,100 @@
 
     // --- Save ---
     async function saveDocument() {
+        const entryType = document.getElementById('entryType').value;
+
+        if (entryType === 'manual') {
+            // Collect manual line rows
+            const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
+            const lines = [];
+            rows.forEach(tr => {
+                const sel = tr.querySelector('.ml-service');
+                const opt = sel ? sel.options[sel.selectedIndex] : null;
+                if (!opt || !opt.value) return;
+
+                const qty  = parseFloat(tr.querySelector('.ml-qty').value)||0;
+                const rate = parseFloat(tr.querySelector('.ml-rate').value)||0;
+                const la   = round2(qty * rate);
+                const gst  = getManualLineGst(tr);
+                const cgst = round2(la * gst.cgst / 100);
+                const sgst = round2(la * gst.sgst / 100);
+                const igst = round2(la * gst.igst / 100);
+                const lt   = round2(la + cgst + sgst + igst);
+
+                lines.push({
+                    invoice_line_id:     null,
+                    service_type_id:     parseInt(opt.value),
+                    service_name:        opt.text,
+                    service_description: tr.querySelector('.ml-desc').value.trim(),
+                    quantity:            qty,
+                    uom:                 tr.querySelector('.ml-uom').value.trim(),
+                    original_rate:       0,
+                    revised_rate:        rate,
+                    rate_difference:     rate,
+                    line_amount:         la,
+                    gst_rate_id:         gst.gstRateId || null,
+                    cgst_rate:           gst.cgst,
+                    sgst_rate:           gst.sgst,
+                    igst_rate:           gst.igst,
+                    cgst_amount:         cgst,
+                    sgst_amount:         sgst,
+                    igst_amount:         igst,
+                    line_total:          lt,
+                    gl_code:             gst.glCode,
+                    sac_code:            gst.sacCode,
+                    remarks:             '',
+                });
+            });
+
+            if (!lines.length) { alert('Add at least one line item.'); return; }
+
+            const docType = document.getElementById('docTypeSel').value;
+            let subtotal=0, cgstAmt=0, sgstAmt=0, igstAmt=0;
+            lines.forEach(l => { subtotal+=l.line_amount; cgstAmt+=l.cgst_amount; sgstAmt+=l.sgst_amount; igstAmt+=l.igst_amount; });
+
+            const customerSel = document.getElementById('customerId');
+            const customerName = customerSel.options[customerSel.selectedIndex]?.text || '';
+
+            const payload = {
+                header: {
+                    id:                      document.getElementById('fdcnId').value || null,
+                    doc_type:                docType,
+                    doc_date:                document.getElementById('docDate').value,
+                    original_invoice_id:     getSelectedInvoiceId(),
+                    original_invoice_number: getSelectedInvoiceNumber(),
+                    customer_id:             document.getElementById('customerId').value,
+                    customer_type:           document.getElementById('customerType').value,
+                    customer_name:           customerName,
+                    customer_gstin:          document.getElementById('customerGstin').value,
+                    customer_gst_state_code: document.getElementById('customerGstStateCode')?.value || '',
+                    customer_gl_code:        document.getElementById('customerGlCode').value,
+                    subtotal:                round2(subtotal),
+                    cgst_amount:             round2(cgstAmt),
+                    sgst_amount:             round2(sgstAmt),
+                    igst_amount:             round2(igstAmt),
+                    total_amount:            round2(subtotal + cgstAmt + sgstAmt + igstAmt),
+                    creation_type:           'manual',
+                    remarks:                 document.getElementById('remarks').value.trim(),
+                },
+                lines
+            };
+
+            const res = await fetch('/api/module/FDCN01/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            if (result.success) {
+                alert('Saved: ' + result.doc_number);
+                location.href = '/module/FDCN01/entry?id=' + result.id;
+            } else {
+                alert('Error: ' + (result.error || 'Unknown'));
+            }
+            return;  // don't fall through to rate_revision save logic
+        }
+
+        // --- Rate Revision save logic ---
         const docType = getDocType();
         if (!docType) {
             alert('No lines with rate differences selected, or mixed directions detected.');
@@ -746,6 +860,184 @@
         } else {
             alert('Error: ' + (result.error || 'Unknown error'));
         }
+    }
+
+    // --- Manual Entry helpers ---
+    function onEntryTypeChange() {
+        const type = document.getElementById('entryType').value;
+        const manualAdd = document.getElementById('manualAddRow');
+        const docTypeField = document.getElementById('docTypeField');
+        const sectionTitle = document.getElementById('linesSectionTitle');
+        const sectionSubtitle = document.getElementById('linesSectionSubtitle');
+        const thead = document.getElementById('linesTableHead');
+
+        document.getElementById('linesBody').innerHTML = '';
+        updateTotals();
+
+        if (type === 'manual') {
+            manualAdd.style.display = '';
+            docTypeField.style.display = '';
+            sectionTitle.textContent = 'Manual Line Items';
+            if (sectionSubtitle) sectionSubtitle.textContent = 'Add line items manually. Doc type (DN/CN) is set above.';
+            thead.innerHTML = `<tr>
+                <th></th>
+                <th>Service Type</th>
+                <th>Description</th>
+                <th style="width:70px">Qty</th>
+                <th style="width:50px">UOM</th>
+                <th style="width:90px">Rate</th>
+                <th style="width:100px">Amount</th>
+                <th style="width:60px">GST %</th>
+                <th style="width:80px">CGST</th>
+                <th style="width:80px">SGST</th>
+                <th style="width:80px">IGST</th>
+                <th style="width:100px">Line Total</th>
+                <th style="width:40px"></th>
+            </tr>`;
+        } else {
+            manualAdd.style.display = 'none';
+            docTypeField.style.display = 'none';
+            sectionTitle.textContent = 'Rate Revision Lines';
+            if (sectionSubtitle) sectionSubtitle.textContent = 'Revised rates are auto-filled from the selected agreement. Check lines to include.';
+            thead.innerHTML = `<tr>
+                <th class="cb-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                <th>Invoice</th>
+                <th>Service</th>
+                <th style="width:70px">Qty</th>
+                <th style="width:50px">UOM</th>
+                <th style="width:90px">Orig. Rate</th>
+                <th style="width:90px">Revised Rate</th>
+                <th style="width:90px">Difference</th>
+                <th style="width:100px">Amount</th>
+                <th style="width:60px">GST %</th>
+                <th style="width:80px">CGST</th>
+                <th style="width:80px">SGST</th>
+                <th style="width:80px">IGST</th>
+                <th style="width:100px">Line Total</th>
+            </tr>`;
+        }
+    }
+
+    let serviceTypesList = [];
+    async function getServiceTypes() {
+        if (serviceTypesList.length) return serviceTypesList;
+        const res = await fetch('/api/module/FIN01/service-types');
+        const data = await res.json();
+        serviceTypesList = data;
+        return serviceTypesList;
+    }
+
+    async function addManualLine() {
+        const services = await getServiceTypes();
+        const tbody = document.getElementById('linesBody');
+        const rowId = 'ml_' + Date.now();
+
+        const opts = services.map(s =>
+            `<option value="${s.id}"
+                data-cgst="${s.cgst_rate||0}"
+                data-sgst="${s.sgst_rate||0}"
+                data-igst="${s.igst_rate||0}"
+                data-gst-rate-id="${s.gst_rate_id||''}"
+                data-gl="${s.gl_code||''}"
+                data-sac="${s.sac_code||''}"
+                data-uom="${s.uom||''}">${esc(s.service_name)}</option>`
+        ).join('');
+
+        const tr = document.createElement('tr');
+        tr.id = rowId;
+        tr.innerHTML = `
+            <td></td>
+            <td><select class="ml-service" style="width:100%;font-size:11px;" onchange="onManualServiceChange(this,'${rowId}')">
+                <option value="">-- Select --</option>${opts}</select></td>
+            <td><input class="ml-desc" type="text" style="width:100%;font-size:11px;" placeholder="Description"></td>
+            <td><input class="ml-qty" type="number" step="0.01" min="0" style="width:100%;font-size:11px;text-align:right;" oninput="recalcManualLine('${rowId}')" value="0"></td>
+            <td><input class="ml-uom" type="text" style="width:100%;font-size:11px;" placeholder="UOM"></td>
+            <td><input class="ml-rate" type="number" step="0.01" min="0" style="width:100%;font-size:11px;text-align:right;" oninput="recalcManualLine('${rowId}')" value="0"></td>
+            <td class="ml-amount" style="text-align:right;font-weight:600">0.00</td>
+            <td class="ml-gstpct" style="text-align:right">0%</td>
+            <td class="ml-cgst" style="text-align:right">0.00</td>
+            <td class="ml-sgst" style="text-align:right">0.00</td>
+            <td class="ml-igst" style="text-align:right">0.00</td>
+            <td class="ml-linetotal" style="text-align:right;font-weight:700">0.00</td>
+            <td style="text-align:center"><button onclick="document.getElementById('${rowId}').remove();updateTotals();" style="background:#e74c3c;color:white;border:none;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:10px;">&#x2715;</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    function onManualServiceChange(sel, rowId) {
+        const opt = sel.options[sel.selectedIndex];
+        const tr = document.getElementById(rowId);
+        if (tr) tr.querySelector('.ml-uom').value = opt.getAttribute('data-uom') || '';
+        recalcManualLine(rowId);
+    }
+
+    function getManualLineGst(tr) {
+        const sel = tr.querySelector('.ml-service');
+        if (!sel) return {cgst:0,sgst:0,igst:0,gstRateId:'',glCode:'',sacCode:''};
+        const opt = sel.options[sel.selectedIndex];
+        return {
+            cgst:      parseFloat(opt.getAttribute('data-cgst')||0),
+            sgst:      parseFloat(opt.getAttribute('data-sgst')||0),
+            igst:      parseFloat(opt.getAttribute('data-igst')||0),
+            gstRateId: opt.getAttribute('data-gst-rate-id')||'',
+            glCode:    opt.getAttribute('data-gl')||'',
+            sacCode:   opt.getAttribute('data-sac')||'',
+        };
+    }
+
+    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+    function recalcManualLine(rowId) {
+        const tr = document.getElementById(rowId);
+        if (!tr) return;
+        const qty  = parseFloat(tr.querySelector('.ml-qty').value)||0;
+        const rate = parseFloat(tr.querySelector('.ml-rate').value)||0;
+        const la   = round2(qty * rate);
+        const gst  = getManualLineGst(tr);
+        const cgst = round2(la * gst.cgst / 100);
+        const sgst = round2(la * gst.sgst / 100);
+        const igst = round2(la * gst.igst / 100);
+        const lt   = round2(la + cgst + sgst + igst);
+        const pct  = gst.cgst + gst.sgst + gst.igst;
+
+        tr.querySelector('.ml-amount').textContent    = la.toFixed(2);
+        tr.querySelector('.ml-gstpct').textContent    = pct + '%';
+        tr.querySelector('.ml-cgst').textContent      = cgst.toFixed(2);
+        tr.querySelector('.ml-sgst').textContent      = sgst.toFixed(2);
+        tr.querySelector('.ml-igst').textContent      = igst.toFixed(2);
+        tr.querySelector('.ml-linetotal').textContent = lt.toFixed(2);
+        updateTotals();
+    }
+
+    function updateTotals() {
+        const entryType = document.getElementById('entryType').value;
+        if (entryType === 'manual') {
+            let subtotal=0, cgst=0, sgst=0, igst=0;
+            document.querySelectorAll('#linesBody tr[id^="ml_"]').forEach(tr => {
+                subtotal += parseFloat(tr.querySelector('.ml-amount')?.textContent)||0;
+                cgst     += parseFloat(tr.querySelector('.ml-cgst')?.textContent)||0;
+                sgst     += parseFloat(tr.querySelector('.ml-sgst')?.textContent)||0;
+                igst     += parseFloat(tr.querySelector('.ml-igst')?.textContent)||0;
+            });
+            document.getElementById('totalSubtotal').textContent = subtotal.toFixed(2);
+            document.getElementById('totalCGST').textContent = cgst.toFixed(2);
+            document.getElementById('totalSGST').textContent = sgst.toFixed(2);
+            document.getElementById('totalIGST').textContent = igst.toFixed(2);
+            document.getElementById('totalGrand').textContent = (subtotal + cgst + sgst + igst).toFixed(2);
+            document.getElementById('directionNote').style.display = 'none';
+            updateDocTypeIndicator();
+        } else {
+            recalcTotals();
+        }
+    }
+
+    function getSelectedInvoiceId() {
+        const checked = document.querySelector('#invoiceList input[type=checkbox]:checked');
+        return checked ? checked.value : null;
+    }
+    function getSelectedInvoiceNumber() {
+        const checked = document.querySelector('#invoiceList input[type=checkbox]:checked');
+        return checked ? (checked.getAttribute('data-inv-num') || '') : '';
     }
 </script>
 {% endblock %}
