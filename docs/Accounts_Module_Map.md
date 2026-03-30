@@ -1,7 +1,7 @@
 # PORTMAN — Accounts / Finance Module Map
 
 > **Generated:** 2026-02-28
-> **Source:** Code audit of `d:\PORTMAN\modules\FIN01`, `FINV01`, `FCN01`, `FCAM01`, `FGRM01`, `FCRM01`, `FSTM01`, `FSAP01`, `FLOG01`, `SAPCFG`, `GSTCFG`, `SRV01`, and related master modules.
+> **Source:** Code audit of `d:\PORTMAN\modules\FIN01`, `FINV01`, `FCN01`, `FDCN01`, `FCAM01`, `FGRM01`, `FCRM01`, `FSTM01`, `FSAP01`, `FLOG01`, `SAPCFG`, `GSTCFG`, `SRV01`, and related master modules.
 
 ---
 
@@ -30,7 +30,8 @@ The section is implemented as a set of Flask Blueprints registered in `d:\PORTMA
 |--------|------|------|---------|-----------|--------|
 | Billing (Bills) | FIN01 | Transaction | Generate bills from EU lines or service records; approval workflow; roll up into invoices | `bill_header`, `bill_lines` | Active |
 | Invoice List & Generation | FINV01 | Transaction | Consolidate approved bills into tax invoices; print; GSTR-1 B2B export; post to SAP; generate IRN | `invoice_header`, `invoice_lines`, `invoice_bill_mapping` | Active |
-| Credit Note Management | FCN01 | Transaction | Issue credit memos against existing invoices; post to SAP; generate IRN for credit notes | `credit_note_header`, `credit_note_lines` | Active |
+| Credit Note Management | FCN01 | Transaction | Issue credit memos against existing invoices; generate IRN for credit notes | `credit_note_header`, `credit_note_lines` | Active |
+| Debit / Credit Note Workflow | FDCN01 | Transaction | Manage approved debit notes and SAP-postable credit notes linked to original invoices; post to SAP; fetch IRN from SAP | `fdcn_header`, `fdcn_lines`, `fdcn_doc_series` | Active |
 | Customer Agreement Master | FCAM01 | Master | Rate cards per customer / agent with validity periods and per-service-type rates; approval workflow | `customer_agreements`, `customer_agreement_lines` | Active |
 | Service Type Master | FSTM01 | Master | Define billable service types with SAC codes, GST rates, GL codes, SAP GL accounts; configure custom EAV fields | `finance_service_types`, `service_field_definitions` | Active |
 | GST Rate Master | FGRM01 | Master | Maintain GST rate slabs (CGST/SGST/IGST); linked to service types | `gst_rates` | Active |
@@ -255,7 +256,7 @@ FIN01's `get_service_records` API endpoint calls `SRV01.model.get_unbilled_recor
 
 ### FINV01 / FCN01 → SAPCFG + GSTCFG
 
-Both FINV01 and FCN01 use `sap_builder.py` + `sap_client.py` (SAP posting) and `einvoice_builder.py` + `gsp_client.py` (IRN generation). These utility modules read credentials from `sap_api_config` and `gst_api_config` tables, which are administered via SAPCFG and GSTCFG modules respectively.
+FINV01 and FDCN01 use `sap_builder.py` + `sap_client.py` for SAP posting and SAP IRN fetch. FINV01 and FCN01 use `einvoice_builder.py` + `gsp_client.py` for direct GST IRN generation. These utilities read from `sap_api_config` and `gst_api_config`, administered through SAPCFG and GSTCFG.
 
 ### All integrations → FLOG01
 
@@ -303,9 +304,9 @@ FINV01 exports GSTR-1 B2B JSON via the API endpoint (`/api/module/FINV01/export/
 
 FIN01's `get_port_config` endpoint reads `port_gstin`, `seller_gstin`, `seller_legal_name`, etc. from the module config table (not from `sap_api_config` or `gst_api_config`). This means the port's GST identity is stored in three places. Consolidation into GSTCFG would reduce the chance of inconsistencies.
 
-### 7.10 No debit note module
+### 7.10 Legacy FCN01 SAP posting removed
 
-The system has credit notes (FCN01) but no corresponding debit note module. FINV01 cancellation beyond 24 hours explicitly tells the user to "create a Debit/Credit Note instead", implying a Debit Note module is expected but not yet built.
+Debit note and SAP-postable credit note handling now lives in FDCN01. FCN01 remains a legacy credit note workflow and no longer owns SAP posting.
 
 ### 7.11 `sap_document_number` field missing from `advance_receipts` but included in model SQL
 
@@ -335,7 +336,8 @@ Invoices (FINV01) do not have a separate approval step — they are created from
 | Document Type | Trigger | API Endpoint | SAP Document Type | Reversal |
 |--------------|---------|-------------|------------------|---------|
 | Invoice | FINV01 "Post to SAP" button | `POST /api/module/FINV01/invoice/post-sap` | `Invoice_Credit: "I"`, `Document_type: "INV"` | FINV01 cancel-SAP (FB08, within 24h) |
-| Credit Note | FCN01 "Post to SAP" button | `POST /api/module/FCN01/post-sap` | `Invoice_Credit: "C"`, `Document_type: "CRN"` | Not implemented |
+| Debit Note | FDCN01 "Post SAP" button | `POST /api/module/FDCN01/post-sap` | `Document_Type: "Y1"` | Post correcting DN/CN document as needed |
+| Credit Note | FDCN01 "Post SAP" button | `POST /api/module/FDCN01/post-sap` | `Document_Type: "Y2"` | Post correcting DN/CN document as needed |
 
 **SAP field source summary:**
 

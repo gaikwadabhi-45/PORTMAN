@@ -2,8 +2,8 @@
 SAP DynaportInvoice JSON Payload Builder.
 
 Builds the payload that mirrors the SAP PI/PO XML interface:
-  - MT_INV_IPORTMANtoECC_Req   → Invoices     (Document_Type = Y1)
-  - MT_CNDN_IPORTMANtoECC_Req  → CN / DN      (Document_Type = Y2)
+  - MT_INV_IPORTMANtoECC_Req   → Invoices / Invoice Reversals / Debit Notes
+  - MT_CNDN_IPORTMANtoECC_Req  → Credit Notes
 
 JSON structure (mirrors XML field-for-field):
 {
@@ -232,57 +232,7 @@ def build_invoice_payload(invoice_header, invoice_lines):
 
 
 # ---------------------------------------------------------------------------
-# Credit Note builder  (Y2)
-# ---------------------------------------------------------------------------
-
-def build_credit_note_payload(cn_header, cn_lines):
-    """
-    Build MT_CNDN_IPORTMANtoECC_Req payload for a Credit Note.
-    Document_Type = Y2.
-    """
-    config = get_active_config()
-    if not config:
-        raise ValueError('No active SAP configuration found')
-
-    default_company = config.get('company_code', '5171')
-    payment_term    = config.get('default_payment_term') or config.get('payment_term') or ''
-
-    cust_company = _get_customer_company_code(
-        cn_header.get('customer_type'),
-        cn_header.get('customer_id'),
-    )
-    company = cust_company or default_company
-    cn_date = _fmt_date(cn_header.get('credit_note_date'))
-
-    record = {
-        'Company_Code':          company,
-        'Document_Date':         cn_date,
-        'Posting_Date':          cn_date,
-        'Document_Type':         'Y2',
-        'Reference_Text':        (cn_header.get('credit_note_number') or '')[:16],
-        'Doc_Header_Text':       (cn_header.get('credit_note_number') or '')[:25],
-        'Currency':              cn_header.get('currency_code') or 'INR',
-        'Customer_Code':         cn_header.get('customer_gl_code') or '',
-        'Payment_Term':          payment_term,
-        'Baseline_Date':         cn_date,
-        'Invoice_Amount':        _fmt_amount_required(
-                                     _total_invoice_amount(cn_header, cn_lines)
-                                 ),
-        'IRN_No':                cn_header.get('irn') or '',
-        'Ack_No':                str(cn_header.get('ack_number') or ''),
-        'IRN_Date':              _fmt_date(cn_header.get('irn_date')) if cn_header.get('irn_date') else '',
-        'Nature_of_transaction': _nature_of_transaction(cn_header.get('customer_gstin')),
-        'Cancellation_Flag':     '',
-        'TDS_Amount':            _fmt_amount(cn_header.get('tds_amount')),
-        'TCS_Amount':            _fmt_amount(cn_header.get('tcs_amount')),
-        'Item':                  _build_items(cn_lines, company, config_defaults=config),
-    }
-
-    return {'Record': record}
-
-
-# ---------------------------------------------------------------------------
-# FDCN01 Debit / Credit Note builder  (Y2)
+# FDCN01 Debit / Credit Note builder  (Y1/Y2)
 # ---------------------------------------------------------------------------
 
 def build_fdcn_payload(fdcn_header, fdcn_lines):

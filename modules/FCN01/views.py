@@ -2,8 +2,6 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_db, get_cursor
-import sap_builder
-import sap_client
 import einvoice_builder
 import gsp_client
 
@@ -102,49 +100,6 @@ def delete_line():
 @login_required
 def get_invoices():
     return jsonify(model.get_invoices_for_dropdown())
-
-
-# ===== SAP Integration =====
-
-@bp.route('/api/module/FCN01/post-sap', methods=['POST'])
-@login_required
-def post_credit_note_sap():
-    """Post a credit note to SAP via DynaportInvoice REST API"""
-    perms = get_perms()
-    if not perms.get('can_edit'):
-        return jsonify({'success': False, 'error': 'No permission'}), 403
-
-    cn_id = request.json.get('id')
-    header, lines = model.get_credit_note(cn_id)
-    if not header:
-        return jsonify({'success': False, 'error': 'Credit note not found'}), 404
-
-    if header.get('sap_document_number'):
-        return jsonify({'success': False, 'error': 'Already posted to SAP'})
-
-    payload = sap_builder.build_credit_note_payload(header, lines)
-    result = sap_client.post_invoice_to_sap(
-        payload, 'CreditNote', cn_id,
-        header.get('credit_note_number') or header.get('cn_number', ''),
-        session.get('username')
-    )
-
-    if result['ok']:
-        conn = get_db()
-        cur = get_cursor(conn)
-        cur.execute('''UPDATE credit_note_header
-            SET sap_document_number=%s, credit_note_status='Posted'
-            WHERE id=%s''',
-            [result['sap_document_number'], cn_id])
-        conn.commit()
-        conn.close()
-
-    return jsonify({
-        'success': result['ok'],
-        'sap_document_number': result.get('sap_document_number'),
-        'message': result['message'],
-        'log_id': result['log_id']
-    })
 
 
 # ===== GST IRN Integration =====

@@ -1,6 +1,6 @@
 # PORTMAN <-> SAP Data Flow and Payload Guide
 
-Last updated: 2026-02-26
+Last updated: 2026-03-30
 
 ## 1. Scope
 
@@ -18,8 +18,8 @@ This document explains how finance/accounting data flows between PORTMAN (PMS) a
 | --- | --- | --- | --- | --- |
 | Customer Invoice Posting | FB70 | PMS -> SAP | FINV01 | Implemented (API + payload + logging) |
 | Customer Invoice Cancellation/Reversal (within 24h) | FB08 | PMS -> SAP | FINV01 | Implemented (24h rule enforced) |
-| Customer Credit Memo Posting | FB75 | PMS -> SAP | FCN01 | Implemented (API + payload + logging) |
-| Customer Credit Memo Cancellation/Reversal (within 24h) | FB08 | PMS -> SAP | FCN01 | Not yet implemented as separate API |
+| Customer Debit Note Posting | FB70 | PMS -> SAP | FDCN01 | Implemented (API + payload + logging) |
+| Customer Credit Memo Posting | FB75 | PMS -> SAP | FDCN01 | Implemented (API + payload + logging) |
 | Advance from Customer | F-29 | SAP -> PMS | FSAP01 | Manual capture in PMS (no SAP webhook/pull yet) |
 | Customer Incoming Payment | F-28 | SAP -> PMS | FSAP01 | Manual capture in PMS (no SAP webhook/pull yet) |
 | GL to GL JV | FB50 | SAP -> PMS | FSAP01 | Manual capture in PMS (no SAP webhook/pull yet) |
@@ -214,12 +214,12 @@ PORTMAN builds reversal as a reverse posting payload:
 - reversal info appended in `remarks`
 - integration log row saved
 
-## 4.3 Credit Memo Posting (FCN01, FB75)
+## 4.3 Debit / Credit Note Posting (FDCN01, FB70 / FB75)
 
 ### Trigger
 
 ```http
-POST /api/module/FCN01/post-sap
+POST /api/module/FDCN01/post-sap
 Content-Type: application/json
 ```
 
@@ -231,10 +231,13 @@ Content-Type: application/json
 
 ### Behavior
 
-- Builds payload using `sap_builder.build_credit_note_payload()`
-- Uses `Invoice_Credit="C"` and `Document_type="CRN"`
+- Reads `fdcn_header` + `fdcn_lines`
+- Builds payload using `sap_builder.build_fdcn_payload()`
+- Uses `Document_Type="Y1"` for `doc_type='DN'`
+- Uses `Document_Type="Y2"` for `doc_type='CN'`
 - Posts through same SAP REST endpoint (`DynaportInvoice`)
-- On success updates `credit_note_header.sap_document_number`, `credit_note_status='Posted'`
+- On success updates `fdcn_header.sap_document_number` and marks `doc_status='Posted to SAP'`
+- On failure updates `doc_status='SAP Failed'`
 - Logs request/response to `integration_logs`
 
 ## 5. SAP -> PMS Flow (Inbound)
@@ -352,7 +355,7 @@ Company code resolution:
 Outbound SAP calls are logged in `integration_logs` with:
 
 - `integration_type` (`SAP`)
-- `source_type` (`Invoice`, `InvoiceReversal`, `CreditNote`)
+- `source_type` (`Invoice`, `InvoiceReversal`, `CreditNote`, `DebitNote`)
 - `source_id`, `source_reference`
 - `request_body`, `response_body`
 - `status` (`Success` or `Error`)
@@ -368,5 +371,5 @@ View logs in module `FLOG01`:
 ## 8. Current Gaps / Next Step
 
 1. SAP -> PMS is currently manual entry in FSAP01. No webhook/poll integration yet.
-2. Credit memo reversal (FB08) endpoint is not yet implemented in FCN01.
+2. There is no separate SAP reversal endpoint for FDCN01 documents; corrections are handled by posting the appropriate DN/CN document.
 3. Optional enhancement: add a dedicated SAP inbound endpoint to auto-ingest F-29/F-28/FB50/FB08 extracts and mark records as `Synced` automatically.
