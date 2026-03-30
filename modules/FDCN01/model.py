@@ -202,7 +202,7 @@ def save_fdcn_header(data, username=None):
             customer_id=%s, customer_type=%s, customer_name=%s,
             customer_gstin=%s, customer_gst_state_code=%s, customer_gl_code=%s,
             subtotal=%s, cgst_amount=%s, sgst_amount=%s, igst_amount=%s, total_amount=%s,
-            doc_status=%s, remarks=%s
+            doc_status=%s, creation_type=%s, remarks=%s
             WHERE id=%s''', [
             data.get('doc_type'), data.get('doc_date'),
             data.get('original_invoice_id'), data.get('original_invoice_number'),
@@ -212,7 +212,9 @@ def save_fdcn_header(data, username=None):
             data.get('subtotal', 0), data.get('cgst_amount', 0),
             data.get('sgst_amount', 0), data.get('igst_amount', 0),
             data.get('total_amount', 0),
-            data.get('doc_status', 'Draft'), data.get('remarks'),
+            data.get('doc_status', 'Draft'),
+            data.get('creation_type', 'rate_revision'),
+            data.get('remarks'),
             fdcn_id
         ])
     else:
@@ -226,8 +228,8 @@ def save_fdcn_header(data, username=None):
              customer_id, customer_type, customer_name,
              customer_gstin, customer_gst_state_code, customer_gl_code,
              subtotal, cgst_amount, sgst_amount, igst_amount, total_amount,
-             doc_status, remarks, created_by, created_date)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             doc_status, creation_type, remarks, created_by, created_date)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id''', [
             doc_number, doc_type, doc_date, prefix, seq, fy,
             data.get('original_invoice_id'), data.get('original_invoice_number'),
@@ -237,7 +239,9 @@ def save_fdcn_header(data, username=None):
             data.get('subtotal', 0), data.get('cgst_amount', 0),
             data.get('sgst_amount', 0), data.get('igst_amount', 0),
             data.get('total_amount', 0),
-            data.get('doc_status', 'Draft'), data.get('remarks'),
+            data.get('doc_status', 'Draft'),
+            data.get('creation_type', 'rate_revision'),
+            data.get('remarks'),
             username, now
         ])
         fdcn_id = cur.fetchone()['id']
