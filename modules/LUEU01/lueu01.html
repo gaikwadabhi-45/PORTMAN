@@ -617,6 +617,13 @@
             cancelAutoSave();
             await saveAll();
         }
+
+        // Always navigate to page 1 first so the new row appears at the top.
+        // Server returns ORDER BY id DESC, so newest entries are on page 1.
+        if (table.getPage() !== 1) {
+            await table.setPage(1);
+        }
+
         var rows = table.getRows();
         var newData = {
             _is_new: true,
