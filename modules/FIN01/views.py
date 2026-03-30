@@ -297,6 +297,7 @@ def get_lueu_lines(source_type, source_id):
         FROM lueu_lines el
         LEFT JOIN finance_service_types st ON el.service_type_id = st.id
         WHERE el.source_type = %s AND el.source_id = %s
+          AND (el.is_deleted IS NOT TRUE)
         ORDER BY el.is_billed ASC, el.id
     ''', [source_type, source_id])
     rows = cur.fetchall()
@@ -575,8 +576,9 @@ def get_customer_billables(customer_type, customer_id):
     cur.execute("""
         SELECT el.*
         FROM lueu_lines el
-        WHERE (el.is_billed = 0 OR el.is_billed IS NULL)
-           OR (COALESCE(el.billed_quantity, 0) < el.quantity)
+        WHERE ((el.is_billed = 0 OR el.is_billed IS NULL)
+            OR (COALESCE(el.billed_quantity, 0) < el.quantity))
+          AND (el.is_deleted IS NOT TRUE)
         ORDER BY el.source_type, el.source_id, el.operation_type, el.id
     """)
     eu_rows = [dict(r) for r in cur.fetchall()]
