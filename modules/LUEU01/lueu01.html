@@ -538,10 +538,11 @@
                     const data = cell.getRow().getData();
                     if (!data.id) return '';
                     if (data.is_deleted) {
-                        return '<span style="color:#e74c3c;font-size:10px;font-weight:700;" title="Deleted">DEL</span>';
+                        return '<span style="color:#e74c3c;font-size:10px;font-weight:700;" title="Deleted by ' + (data.deleted_by||'?') + ' on ' + (data.deleted_date||'?') + '">DEL</span>';
                     }
                     return '<input type="checkbox" class="eu-del-cb" data-id="' + data.id + '" title="Mark for deletion" onclick="event.stopPropagation()">';
-                }
+                },
+                cellClick: function(e, cell) { /* prevent row selection on Del column */ }
             }] : [])
         ];
 
