@@ -76,10 +76,13 @@ def delete_data():
     if not perms.get('can_delete'):
         return jsonify({'error': 'No permission to delete'}), 403
 
-    data = request.json
-    ids = data.get('ids', [])
-    model.delete_lines(ids)
-    return jsonify({'success': True})
+    ids = request.json.get('ids', [])
+    if not ids:
+        return jsonify({'error': 'No IDs provided'}), 400
+
+    username = session.get('username')
+    model.soft_delete_lines(ids, username=username)
+    return jsonify({'success': True, 'deleted_count': len(ids)})
 
 # Dropdown data endpoints
 @bp.route('/api/module/LUEU01/vcn-options')

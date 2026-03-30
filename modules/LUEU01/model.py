@@ -1,4 +1,5 @@
 from database import get_db, get_cursor
+from datetime import datetime
 
 
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
@@ -123,7 +124,6 @@ def save_line(data):
             data.get('berth_name'), data.get('shift_incharge'), data.get('remarks'), line_id
         ])
     else:
-        from datetime import datetime
         cur.execute('''
             INSERT INTO lueu_lines
             (source_type, source_id, source_display, barge_name, equipment_name, operator_name,
@@ -154,7 +154,6 @@ def soft_delete_lines(ids, username=None):
     so the caller can trigger auto-CN creation.
     Each dict: {eu_line_id, eu_line (full row), bill_line_id, bill_id, invoice_id, invoice_number}
     """
-    from datetime import datetime
     conn = get_db()
     cur = get_cursor(conn)
     today = datetime.now().strftime('%Y-%m-%d')
@@ -163,7 +162,7 @@ def soft_delete_lines(ids, username=None):
 
     for line_id in ids:
         # Fetch the line first to check billing status
-        cur.execute('SELECT * FROM lueu_lines WHERE id = %s', [line_id])
+        cur.execute('SELECT * FROM lueu_lines WHERE id = %s AND (is_deleted IS NOT TRUE)', [line_id])
         line = cur.fetchone()
         if not line:
             continue
@@ -218,7 +217,6 @@ def split_line(line_id, split_qty, split_remark, created_by=None):
                 [remaining_qty, line_id])
 
     # Create child line with split quantity
-    from datetime import datetime
     cur.execute('''
         INSERT INTO lueu_lines
         (source_type, source_id, source_display, barge_name, equipment_name, operator_name,
