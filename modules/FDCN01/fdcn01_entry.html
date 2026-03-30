@@ -956,7 +956,7 @@
         if (serviceTypesList.length) return serviceTypesList;
         const res = await fetch('/api/module/FIN01/service-types');
         const data = await res.json();
-        serviceTypesList = data;
+        serviceTypesList = data.data || data;
         return serviceTypesList;
     }
 
