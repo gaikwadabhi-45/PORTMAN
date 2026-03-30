@@ -81,8 +81,22 @@ def delete_data():
         return jsonify({'error': 'No IDs provided'}), 400
 
     username = session.get('username')
-    model.soft_delete_lines(ids, username=username)
-    return jsonify({'success': True, 'deleted_count': len(ids)})
+
+    # Soft-delete; returns refs for any lines that are billed+invoiced
+    invoiced_refs = model.soft_delete_lines(ids, username=username)
+
+    # Auto-create CNs for invoiced lines
+    cn_results = []
+    if invoiced_refs:
+        from modules.FDCN01 import model as fdcn_model
+        created = fdcn_model.create_eu_deletion_cn(invoiced_refs, username)
+        cn_results = [{'fdcn_id': fid, 'doc_number': dnum} for fid, dnum in created]
+
+    return jsonify({
+        'success': True,
+        'deleted_count': len(ids),
+        'auto_cn_created': cn_results
+    })
 
 # Dropdown data endpoints
 @bp.route('/api/module/LUEU01/vcn-options')
