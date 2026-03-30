@@ -16,14 +16,14 @@ _bdr = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 _ctr = Alignment(horizontal='center', vertical='center', wrap_text=True)
 _left = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
-_TITLE_FILL = '6F5050'
-_HEADER_FILL = '0E6AA8'
-_BODY_FILL = '2E2E2E'
-_GROUP_FILL = '4E5A66'
-_SUBTOTAL_FILL = '434343'
-_TOTAL_FILL = '5B6774'
-_TYPE_TOTAL_FILL = '355F7D'
-_WHITE = 'FFFFFF'
+_TITLE_FILL = 'F6F8FB'
+_HEADER_FILL = 'EEF4FB'
+_BODY_FILL = 'FFFFFF'
+_GROUP_FILL = 'F8FAFC'
+_SUBTOTAL_FILL = 'F6F7F9'
+_TOTAL_FILL = 'E9EEF5'
+_TYPE_TOTAL_FILL = 'F1F6FB'
+_TEXT = '2C3E50'
 
 
 def _fill(hex_color):
@@ -202,6 +202,13 @@ def _report_date(entry_date):
 def _blank_label(value):
     value = (value or '').strip()
     return value or '(blank)'
+
+
+def _total_label(value):
+    label = (value or '').strip()
+    if not label or label == '(blank)':
+        return 'Total'
+    return f'{label} Total'
 
 
 def _natural_sort_key(value):
@@ -431,7 +438,7 @@ def _build_delay_view(entry_date, shift, delays):
                     equipment_rows.extend(system_rows)
                     equipment_rows.append({
                         'kind': 'system_total',
-                        'label': f'{system} Total',
+                        'label': _total_label(system),
                         'total': _fmt_minutes(system_total),
                     })
                     activity_total += system_total
@@ -454,7 +461,7 @@ def _build_delay_view(entry_date, shift, delays):
 
             activity_rows.append({
                 'kind': 'activity_total',
-                'label': f'{activity} Total',
+                'label': _total_label(activity),
                 'total': _fmt_minutes(activity_total),
             })
             type_rows.extend(activity_rows)
@@ -470,7 +477,7 @@ def _build_delay_view(entry_date, shift, delays):
         view['rows'].extend(type_rows)
         view['rows'].append({
             'kind': 'type_total',
-            'label': f'{delay_type} Total',
+            'label': _total_label(delay_type),
             'total': _fmt_minutes(type_total),
         })
         grand_total += type_total
@@ -506,8 +513,8 @@ def _cell(ws, row, col, value='', bold=False, fill_color='FFFFFF', align=_ctr, f
 
 def _merge_title(ws, row, total_cols, title):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=total_cols)
-    _cell(ws, row, 1, title, bold=True, fill_color=_TITLE_FILL, font_color=_WHITE)
-    ws.cell(row, 1).font = _font(bold=True, size=12, color=_WHITE)
+    _cell(ws, row, 1, title, bold=True, fill_color=_TITLE_FILL, font_color=_TEXT)
+    ws.cell(row, 1).font = _font(bold=True, size=12, color=_TEXT)
     for col in range(2, total_cols + 1):
         ws.cell(row, col).fill = _fill(_TITLE_FILL)
         ws.cell(row, col).border = _bdr
@@ -531,23 +538,23 @@ def _build_cargo_sheet(wb, cargo_tables):
         _merge_title(ws, row, total_cols, table['title'])
         row += 1
 
-        _cell(ws, row, 1, table['row_header'], bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
+        _cell(ws, row, 1, table['row_header'], bold=True, fill_color=_HEADER_FILL, font_color=_TEXT)
         for idx, column in enumerate(table['columns'], start=2):
-            _cell(ws, row, idx, column, bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
-        _cell(ws, row, total_cols, 'Grand Total', bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
+            _cell(ws, row, idx, column, bold=True, fill_color=_HEADER_FILL, font_color=_TEXT)
+        _cell(ws, row, total_cols, 'Grand Total', bold=True, fill_color=_HEADER_FILL, font_color=_TEXT)
         row += 1
 
         for data_row in table['rows']:
-            _cell(ws, row, 1, data_row['label'], fill_color=_BODY_FILL, align=_left, font_color=_WHITE)
+            _cell(ws, row, 1, data_row['label'], fill_color=_BODY_FILL, align=_left, font_color=_TEXT)
             for idx, value in enumerate(data_row['values'], start=2):
-                _cell(ws, row, idx, value, fill_color=_BODY_FILL, font_color=_WHITE)
-            _cell(ws, row, total_cols, data_row['total'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
+                _cell(ws, row, idx, value, fill_color=_BODY_FILL, font_color=_TEXT)
+            _cell(ws, row, total_cols, data_row['total'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
             row += 1
 
-        _cell(ws, row, 1, table['totals']['label'], bold=True, fill_color=_TOTAL_FILL, align=_left, font_color=_WHITE)
+        _cell(ws, row, 1, table['totals']['label'], bold=True, fill_color=_TOTAL_FILL, align=_left, font_color=_TEXT)
         for idx, value in enumerate(table['totals']['values'], start=2):
-            _cell(ws, row, idx, value, bold=True, fill_color=_TOTAL_FILL, font_color=_WHITE)
-        _cell(ws, row, total_cols, table['totals']['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_WHITE)
+            _cell(ws, row, idx, value, bold=True, fill_color=_TOTAL_FILL, font_color=_TEXT)
+        _cell(ws, row, total_cols, table['totals']['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_TEXT)
         row += 2
 
     ws.column_dimensions['A'].width = 28
@@ -555,7 +562,7 @@ def _build_cargo_sheet(wb, cargo_tables):
         ws.column_dimensions[get_column_letter(col)].width = 16
 
 
-def _set_merged_value(ws, row, start_col, end_col, value, fill_color, bold=True, font_color=_WHITE, align=_ctr):
+def _set_merged_value(ws, row, start_col, end_col, value, fill_color, bold=True, font_color=_TEXT, align=_ctr):
     ws.merge_cells(start_row=row, start_column=start_col, end_row=row, end_column=end_col)
     _cell(ws, row, start_col, value, bold=bold, fill_color=fill_color, align=align, font_color=font_color)
     for col in range(start_col + 1, end_col + 1):
@@ -575,7 +582,7 @@ def _build_delay_sheet(wb, delay_view):
 
     _merge_title(ws, 1, total_cols, delay_view['title'])
     for idx, header in enumerate(headers, start=1):
-        _cell(ws, 2, idx, header, bold=True, fill_color=_HEADER_FILL, font_color=_WHITE)
+        _cell(ws, 2, idx, header, bold=True, fill_color=_HEADER_FILL, font_color=_TEXT)
 
     row = 3
     for item in delay_view['rows']:
@@ -584,40 +591,40 @@ def _build_delay_sheet(wb, delay_view):
         if kind == 'detail':
             if item.get('show_type'):
                 ws.merge_cells(start_row=row, start_column=1, end_row=row + item['type_rowspan'] - 1, end_column=1)
-                _cell(ws, row, 1, item['type_name'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_WHITE)
+                _cell(ws, row, 1, item['type_name'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_TEXT)
 
             if item.get('show_activity'):
                 ws.merge_cells(start_row=row, start_column=2, end_row=row + item['activity_rowspan'] - 1, end_column=2)
-                _cell(ws, row, 2, item['activity_name'], bold=True, fill_color=_GROUP_FILL, font_color=_WHITE)
+                _cell(ws, row, 2, item['activity_name'], bold=True, fill_color=_GROUP_FILL, font_color=_TEXT)
 
             if item.get('show_equipment'):
                 ws.merge_cells(start_row=row, start_column=3, end_row=row + item['equipment_rowspan'] - 1, end_column=3)
-                _cell(ws, row, 3, item['equipment_name'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
+                _cell(ws, row, 3, item['equipment_name'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
 
             if item.get('show_system'):
                 ws.merge_cells(start_row=row, start_column=4, end_row=row + item['system_rowspan'] - 1, end_column=4)
-                _cell(ws, row, 4, item['system_name'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
+                _cell(ws, row, 4, item['system_name'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
 
-            _cell(ws, row, 5, item['route'], fill_color=_BODY_FILL, font_color=_WHITE)
-            _cell(ws, row, 6, item['from_time'], fill_color=_BODY_FILL, font_color=_WHITE)
-            _cell(ws, row, 7, item['to_time'], fill_color=_BODY_FILL, font_color=_WHITE)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_BODY_FILL, font_color=_WHITE)
+            _cell(ws, row, 5, item['route'], fill_color=_BODY_FILL, font_color=_TEXT)
+            _cell(ws, row, 6, item['from_time'], fill_color=_BODY_FILL, font_color=_TEXT)
+            _cell(ws, row, 7, item['to_time'], fill_color=_BODY_FILL, font_color=_TEXT)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
 
         elif kind == 'system_total':
             _set_merged_value(ws, row, 4, 7, item['label'], _SUBTOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_WHITE)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_TEXT)
 
         elif kind == 'activity_total':
             _set_merged_value(ws, row, 2, 7, item['label'], _SUBTOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_WHITE)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_TEXT)
 
         elif kind == 'type_total':
             _set_merged_value(ws, row, 1, 7, item['label'], _TYPE_TOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_WHITE)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_TEXT)
 
         elif kind == 'grand_total':
             _set_merged_value(ws, row, 1, 7, item['label'], _TOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_WHITE)
+            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_TEXT)
 
         row += 1
 
