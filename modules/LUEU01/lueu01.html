@@ -143,7 +143,6 @@
         <button class="btn" onclick="goBack()" style="background:#6c757d;color:#fff;">Back</button>
         <span id="currentEquipLabel" style="font-weight:bold;font-size:1.1rem;margin:0 12px;"></span>
         {% if permissions.can_add %}<button class="btn btn-add" onclick="addRow()">+ Add Row</button>{% endif %}
-        {% if permissions.can_delete %}<button class="btn btn-delete" onclick="deleteSelected()">Delete Selected</button>{% endif %}
         {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll()">Save (Ctrl+S)</button>{% endif %}
         <button class="btn" style="font-size:12px;padding:4px 12px;" onclick="toggleFilterPanel()">&#9881; Filters <span id="filterBadge" style="display:none;background:#3182ce;color:white;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span></button>
         <div class="row-info">Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span></div>
@@ -528,7 +527,22 @@
                 editor: canEdit ? "number" : false, editorParams: {min: 0, step: 0.01}},
             {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false,
                 editorParams: {values: toOptions(uomList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Remarks", field: "remarks", width: 200, editor: canEdit ? "input" : false}
+            {title: "Remarks", field: "remarks", width: 200, editor: canEdit ? "input" : false},
+            ...(permissions.can_delete ? [{
+                title: "Del",
+                field: "is_deleted",
+                width: 50,
+                hozAlign: "center",
+                headerSort: false,
+                formatter: function(cell) {
+                    const data = cell.getRow().getData();
+                    if (!data.id) return '';
+                    if (data.is_deleted) {
+                        return '<span style="color:#e74c3c;font-size:10px;font-weight:700;" title="Deleted">DEL</span>';
+                    }
+                    return '<input type="checkbox" class="eu-del-cb" data-id="' + data.id + '" title="Mark for deletion" onclick="event.stopPropagation()">';
+                }
+            }] : [])
         ];
 
         table = new Tabulator("#table", {
@@ -606,6 +620,12 @@
             }
         });
 
+        document.getElementById('table').addEventListener('change', function(e) {
+            if (e.target && e.target.classList.contains('eu-del-cb') && e.target.checked) {
+                handleSoftDelete(e.target);
+            }
+        });
+
         if (localStorage.getItem('theme') === 'dark') {
             document.getElementById('table').classList.add('tabulator-dark');
         }
@@ -648,20 +668,35 @@
         table.addRow(newData, true);
     }
 
-    function deleteSelected() {
-        const selected = table.getSelectedRows();
-        if (selected.length === 0) { alert('Select rows to delete'); return; }
-        if (!confirm(`Delete ${selected.length} row(s)?`)) return;
-
-        const ids = selected.map(row => row.getData().id).filter(id => id);
-        if (ids.length > 0) {
-            fetch("/api/module/LUEU01/delete", {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ids: ids})
-            });
+    function handleSoftDelete(checkbox) {
+        const euLineId = checkbox.getAttribute('data-id');
+        if (!confirm('Mark this EU line for deletion?\n\nIf it has been invoiced, a Credit Note will be automatically created in FDCN01 pending approval.')) {
+            checkbox.checked = false;
+            return;
         }
-        selected.forEach(row => row.delete());
+
+        fetch('/api/module/LUEU01/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ids: [parseInt(euLineId)]})
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (!result.success) {
+                alert('Error: ' + (result.error || 'Unknown error'));
+                checkbox.checked = false;
+                return;
+            }
+            table.replaceData();
+            if (result.auto_cn_created && result.auto_cn_created.length > 0) {
+                const cnNums = result.auto_cn_created.map(cn => cn.doc_number).join(', ');
+                alert('EU line deleted.\n\nCredit Note(s) automatically created in FDCN01:\n' + cnNums + '\n\nThese require approver sign-off before posting to SAP.');
+            }
+        })
+        .catch(() => {
+            alert('Network error during delete.');
+            checkbox.checked = false;
+        });
     }
 
     async function saveAll() {
