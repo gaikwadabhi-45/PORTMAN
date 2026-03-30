@@ -127,7 +127,7 @@
 </div>
 
 <!-- Agreement Section -->
-<div class="form-section">
+<div class="form-section" id="agreementSection">
     <h3>Revised Agreement (New Rates)</h3>
     <div class="form-grid">
         <div class="form-field span2">
@@ -148,7 +148,7 @@
 </div>
 
 <!-- Invoice Selection (Multi-select) -->
-<div class="form-section">
+<div class="form-section" id="invoiceSection">
     <h3>Select Invoices</h3>
     <p style="font-size:11px;color:var(--text-muted,#7f8c8d);margin:0 0 8px 0;">
         Select one or more invoices to include in this DN/CN. Lines will be loaded below.
@@ -264,8 +264,29 @@
             await loadAgreements(h.customer_type, h.customer_id);
         }
 
-        // Render existing lines directly
-        renderExistingLines(data.lines);
+        // Render existing lines
+        if (h.creation_type === 'manual') {
+            document.getElementById('entryType').value = 'manual';
+            onEntryTypeChange();
+            document.getElementById('docTypeSel').value = h.doc_type || 'CN';
+            for (const line of data.lines) {
+                await addManualLine();
+                const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
+                const lastRow = rows[rows.length - 1];
+                const serviceSel = lastRow.querySelector('.ml-service');
+                if (serviceSel && line.service_type_id) {
+                    serviceSel.value = line.service_type_id;
+                    onManualServiceChange(serviceSel, lastRow.id);
+                }
+                if (line.service_description) lastRow.querySelector('.ml-desc').value = line.service_description;
+                if (line.quantity != null) lastRow.querySelector('.ml-qty').value = line.quantity;
+                if (line.uom) lastRow.querySelector('.ml-uom').value = line.uom;
+                if (line.revised_rate != null) lastRow.querySelector('.ml-rate').value = line.revised_rate;
+                recalcManualLine(lastRow.id);
+            }
+        } else {
+            renderExistingLines(data.lines);
+        }
         updateDocTypeIndicator();
     }
 
@@ -623,7 +644,13 @@
 
     function updateDocTypeIndicator() {
         const indicator = document.getElementById('docTypeIndicator');
-        const docType = getDocType();
+        const entryType = document.getElementById('entryType').value;
+        let docType;
+        if (entryType === 'manual') {
+            docType = document.getElementById('docTypeSel').value || null;
+        } else {
+            docType = getDocType();
+        }
         if (docType === 'DN') {
             indicator.className = 'type-indicator type-DN';
             indicator.textContent = 'Debit Note';
@@ -666,6 +693,8 @@
         const entryType = document.getElementById('entryType').value;
 
         if (entryType === 'manual') {
+            if (!document.getElementById('customerId').value) { alert('Please select a customer.'); return; }
+            if (!document.getElementById('docDate').value) { alert('Please enter a document date.'); return; }
             // Collect manual line rows
             const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
             const lines = [];
@@ -877,6 +906,8 @@
         if (type === 'manual') {
             manualAdd.style.display = '';
             docTypeField.style.display = '';
+            document.getElementById('agreementSection').style.display = 'none';
+            document.getElementById('invoiceSection').style.display = 'none';
             sectionTitle.textContent = 'Manual Line Items';
             if (sectionSubtitle) sectionSubtitle.textContent = 'Add line items manually. Doc type (DN/CN) is set above.';
             thead.innerHTML = `<tr>
@@ -897,6 +928,8 @@
         } else {
             manualAdd.style.display = 'none';
             docTypeField.style.display = 'none';
+            document.getElementById('agreementSection').style.display = '';
+            document.getElementById('invoiceSection').style.display = '';
             sectionTitle.textContent = 'Rate Revision Lines';
             if (sectionSubtitle) sectionSubtitle.textContent = 'Revised rates are auto-filled from the selected agreement. Check lines to include.';
             thead.innerHTML = `<tr>
