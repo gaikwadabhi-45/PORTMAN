@@ -88,6 +88,9 @@
     /* ── New-row highlight ─────────────────────────────────── */
     .tabulator-row.new-row-highlight { background: #fffde7 !important; border-left: 3px solid #f59e0b !important; }
     .tabulator-row.new-row-highlight .tabulator-cell { background: #fffde7 !important; }
+    .tabulator-row.deleted-row { opacity: 0.45; text-decoration: line-through; }
+    .tabulator-row.deleted-row .tabulator-cell { background: #fff5f5 !important; }
+    .dark-theme .tabulator-row.deleted-row .tabulator-cell { background: #2d1a1a !important; }
 
     /* ── Filter panel ──────────────────────────────────────── */
     .filter-panel {
@@ -249,6 +252,29 @@
     <div id="table"></div>
 </div>
 
+<!-- Delete Password Modal -->
+<div id="delPasswordModal" style="display:none;position:fixed;inset:0;z-index:9100;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.25);width:340px;overflow:hidden;">
+        <div style="background:#c53030;color:#fff;padding:12px 16px;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;">
+            <span>&#9888;</span> Confirm Deletion
+        </div>
+        <div style="padding:16px;">
+            <p style="font-size:12px;color:#4a5568;margin-bottom:12px;">This will soft-delete the EU line. Enter your login password to confirm.</p>
+            <input type="password" id="delPasswordInput" placeholder="Enter your password" autocomplete="current-password"
+                onkeydown="if(event.key==='Enter') document.getElementById('delPasswordConfirm').focus()"
+                style="width:100%;padding:8px 10px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;box-sizing:border-box;margin-bottom:8px;">
+            <input type="password" id="delPasswordConfirm" placeholder="Re-enter your password" autocomplete="current-password"
+                onkeydown="if(event.key==='Enter') confirmDelModal()"
+                style="width:100%;padding:8px 10px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;box-sizing:border-box;">
+            <p id="delPasswordError" style="color:#c53030;font-size:11px;margin-top:6px;display:none;"></p>
+        </div>
+        <div style="padding:0 16px 14px;display:flex;gap:8px;justify-content:flex-end;">
+            <button onclick="cancelDelModal()" style="padding:5px 14px;border:1px solid #cbd5e0;background:#e2e8f0;border-radius:4px;font-size:12px;cursor:pointer;">Cancel</button>
+            <button onclick="confirmDelModal()" style="padding:5px 14px;background:#c53030;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Delete</button>
+        </div>
+    </div>
+</div>
+
 <!-- BL Progress Popup -->
 <div class="blp-overlay" id="blpOverlay" onclick="closeBlPopup()"></div>
 <div class="blp-popup" id="blpPopup" style="display:none;">
@@ -287,6 +313,7 @@
     let shiftInchargeList = [];
     let shiftOperatorList = [];
     let blProgressCache = {};  // key: "SOURCE_TYPE:source_id" -> array of cargo progress
+    let _blIconClicked = false; // flag to suppress editor when info icon is clicked
 
     const currentUser = '{{ session.username }}';
     const permissions = {
@@ -672,14 +699,16 @@
         if (table) { table.destroy(); table = null; }
 
         const canEdit = permissions.can_edit || permissions.can_add;
+        // Returns false for deleted rows so they can't be edited
+        const editableCheck = canEdit ? function(cell) { return !cell.getRow().getData().is_deleted; } : false;
 
         const columns = [
             {formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", headerSort: false, width: 40},
-            {title: "Date", field: "entry_date", width: 120, editor: canEdit ? "date" : false, formatter: dateCellFormatter},
-            {title: "Shift", field: "shift", width: 80, editor: canEdit ? "list" : false,
+            {title: "Date", field: "entry_date", width: 120, editor: canEdit ? "date" : false, editable: editableCheck, formatter: dateCellFormatter},
+            {title: "Shift", field: "shift", width: 80, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: {'': '', 'A': 'A', 'B': 'B', 'C': 'C'}}},
-            {title: "From", field: "from_time", width: 90, editor: canEdit ? timeEditor : false},
-            {title: "To", field: "to_time", width: 90, editor: canEdit ? timeEditor : false},
+            {title: "From", field: "from_time", width: 90, editor: canEdit ? timeEditor : false, editable: editableCheck},
+            {title: "To", field: "to_time", width: 90, editor: canEdit ? timeEditor : false, editable: editableCheck},
             {title: "Diff (Hrs)", field: "diff_hrs", width: 80, hozAlign: "right", headerSort: false,
                 mutatorData: function(value, data) { return calcDiffHrs(data.from_time, data.to_time); },
                 formatter: function(cell) {
@@ -687,7 +716,9 @@
                     if (!val && val !== 0) return '';
                     return '<span style="font-weight:500">' + val + '</span>';
                 }},
-            {title: "VCN / MBC", field: "source_display", width: 300, editor: canEdit ? "list" : false,
+            {title: "VCN / MBC", field: "source_display", width: 300,
+                editor: canEdit ? "list" : false,
+                editable: canEdit ? function(cell) { if (_blIconClicked) { _blIconClicked = false; return false; } return !cell.getRow().getData().is_deleted; } : false,
                 editorParams: {values: getVcnMbcOptions(), autocomplete: true, allowEmpty: true, listOnEmpty: true},
                 formatter: function(cell) {
                     const data = cell.getRow().getData();
@@ -708,22 +739,22 @@
                         showBlProgress(icon.dataset.srcType, parseInt(icon.dataset.srcId), icon.dataset.label, icon);
                     }
                 }},
-            {title: "Barge / MBC Name", field: "barge_name", width: 150, editor: canEdit ? bargeEditor : false},
-            {title: "Cargo", field: "cargo_name", width: 140, editor: canEdit ? cargoEditor : false},
-            {title: "Delay", field: "delay_name", width: 140, editor: canEdit ? "list" : false,
+            {title: "Barge / MBC Name", field: "barge_name", width: 150, editor: canEdit ? bargeEditor : false, editable: editableCheck},
+            {title: "Cargo", field: "cargo_name", width: 140, editor: canEdit ? cargoEditor : false, editable: editableCheck},
+            {title: "Delay", field: "delay_name", width: 140, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(delayList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "System", field: "system_name", width: 130, editor: canEdit ? "list" : false,
+            {title: "System", field: "system_name", width: 130, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(systemList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Receiving Route", field: "route_name", width: 160, editor: canEdit ? "list" : false,
+            {title: "Receiving Route", field: "route_name", width: 160, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(routeList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Berth", field: "berth_name", width: 130, editor: canEdit ? "list" : false,
+            {title: "Berth", field: "berth_name", width: 130, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(berthList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Shift Incharge", field: "shift_incharge", width: 140, editor: canEdit ? "list" : false,
+            {title: "Shift Incharge", field: "shift_incharge", width: 140, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(shiftInchargeList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Operator", field: "operator_name", width: 140, editor: canEdit ? "list" : false,
+            {title: "Operator", field: "operator_name", width: 140, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(shiftOperatorList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
             {title: "Quantity", field: "quantity", width: 120, hozAlign: "right",
-                editor: canEdit ? "number" : false, editorParams: {min: 0, step: 0.01},
+                editor: canEdit ? "number" : false, editable: editableCheck, editorParams: {min: 0, step: 0.01},
                 formatter: function(cell) {
                     const val = cell.getValue();
                     if (val === null || val === undefined || val === '') return '';
@@ -739,9 +770,9 @@
                     }
                     return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge;
                 }},
-            {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false,
+            {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(uomList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Remarks", field: "remarks", width: 200, editor: canEdit ? "input" : false},
+            {title: "Remarks", field: "remarks", width: 200, editor: canEdit ? "input" : false, editable: editableCheck},
             ...(permissions.can_delete ? [{
                 title: "Del",
                 field: "is_deleted",
@@ -794,10 +825,16 @@
             },
             rowFormatter: function(row) {
                 var el = row.getElement();
-                if (row.getData()._is_new) {
+                var data = row.getData();
+                if (data._is_new) {
                     el.classList.add('new-row-highlight');
+                    el.classList.remove('deleted-row');
+                } else if (data.is_deleted) {
+                    el.classList.add('deleted-row');
+                    el.classList.remove('new-row-highlight');
                 } else {
                     el.classList.remove('new-row-highlight');
+                    el.classList.remove('deleted-row');
                 }
             },
             selectable: true
@@ -848,6 +885,14 @@
             }
         });
 
+        // Intercept mousedown on info icon so Tabulator doesn't open the editor
+        document.getElementById('table').addEventListener('mousedown', function(e) {
+            if (e.target.closest('.bl-info-icon')) {
+                _blIconClicked = true;
+                e.stopPropagation();
+            }
+        }, true); // capture phase — fires before Tabulator's listener
+
         document.getElementById('table').addEventListener('change', function(e) {
             if (e.target && e.target.classList.contains('eu-del-cb') && e.target.checked) {
                 handleSoftDelete(e.target);
@@ -896,25 +941,73 @@
         table.addRow(newData, true);
     }
 
+    let _pendingDeleteCheckbox = null;
+    let _pendingDeleteId = null;
+
     function handleSoftDelete(checkbox) {
-        const euLineId = checkbox.getAttribute('data-id');
-        if (!confirm('Mark this EU line for deletion?\n\nIf it has been invoiced, a Credit Note will be automatically created in FDCN01 pending approval.')) {
-            checkbox.checked = false;
+        _pendingDeleteCheckbox = checkbox;
+        _pendingDeleteId = checkbox.getAttribute('data-id');
+        const modal = document.getElementById('delPasswordModal');
+        const input = document.getElementById('delPasswordInput');
+        const err = document.getElementById('delPasswordError');
+        input.value = '';
+        document.getElementById('delPasswordConfirm').value = '';
+        err.style.display = 'none';
+        modal.style.display = 'flex';
+        setTimeout(() => input.focus(), 50);
+    }
+
+    function cancelDelModal() {
+        document.getElementById('delPasswordModal').style.display = 'none';
+        if (_pendingDeleteCheckbox) _pendingDeleteCheckbox.checked = false;
+        _pendingDeleteCheckbox = null;
+        _pendingDeleteId = null;
+    }
+
+    function confirmDelModal() {
+        const password = document.getElementById('delPasswordInput').value;
+        const confirm = document.getElementById('delPasswordConfirm').value;
+        const err = document.getElementById('delPasswordError');
+        if (!password) {
+            err.textContent = 'Password is required.';
+            err.style.display = 'block';
             return;
         }
+        if (!confirm) {
+            err.textContent = 'Please re-enter your password.';
+            err.style.display = 'block';
+            return;
+        }
+        if (password !== confirm) {
+            err.textContent = 'Passwords do not match.';
+            err.style.display = 'block';
+            document.getElementById('delPasswordConfirm').value = '';
+            document.getElementById('delPasswordConfirm').focus();
+            return;
+        }
+
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
 
         fetch('/api/module/LUEU01/delete', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ids: [parseInt(euLineId)]})
+            body: JSON.stringify({ids: [parseInt(_pendingDeleteId)], password: password})
         })
         .then(r => r.json())
         .then(result => {
+            btn.disabled = false;
+            btn.textContent = 'Delete';
             if (!result.success) {
-                alert('Error: ' + (result.error || 'Unknown error'));
-                checkbox.checked = false;
+                err.textContent = result.error || 'Deletion failed.';
+                err.style.display = 'block';
+                if (_pendingDeleteCheckbox) _pendingDeleteCheckbox.checked = false;
                 return;
             }
+            document.getElementById('delPasswordModal').style.display = 'none';
+            _pendingDeleteCheckbox = null;
+            _pendingDeleteId = null;
             table.replaceData();
             if (result.auto_cn_created && result.auto_cn_created.length > 0) {
                 const cnNums = result.auto_cn_created.map(cn => cn.doc_number).join(', ');
@@ -922,10 +1015,20 @@
             }
         })
         .catch(() => {
-            alert('Network error during delete.');
-            checkbox.checked = false;
+            btn.disabled = false;
+            btn.textContent = 'Delete';
+            err.textContent = 'Network error. Please try again.';
+            err.style.display = 'block';
+            if (_pendingDeleteCheckbox) _pendingDeleteCheckbox.checked = false;
         });
     }
+
+    // Allow Enter key to submit the password modal
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('delPasswordModal').style.display === 'flex') {
+            cancelDelModal();
+        }
+    });
 
     async function saveAll() {
         cancelAutoSave();

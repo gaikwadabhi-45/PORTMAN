@@ -10,7 +10,6 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     allowed = {'entry_date', 'shift', 'source_display', 'barge_name', 'cargo_name',
                'delay_name', 'berth_name', 'operator_name', 'route_name'}
     where_clauses, params = [], []
-    where_clauses.append('(is_deleted IS NOT TRUE)')
 
     if equipment_name:
         where_clauses.append('equipment_name = %s')

@@ -81,7 +81,17 @@ def delete_data():
     if not ids:
         return jsonify({'error': 'No IDs provided'}), 400
 
+    password = request.json.get('password', '')
     username = session.get('username')
+
+    # Verify the current user's password before allowing deletion
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id FROM users WHERE username = %s AND password = %s', (username, password))
+    user = cur.fetchone()
+    conn.close()
+    if not user:
+        return jsonify({'error': 'Incorrect password. Deletion not authorised.'}), 403
 
     # Soft-delete; returns refs for any lines that are billed+invoiced
     invoiced_refs = model.soft_delete_lines(ids, username=username)
