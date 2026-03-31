@@ -235,10 +235,11 @@ background: linear-gradient(90deg, rgba(236, 28, 36, 1) 11%, rgba(37, 68, 167, 1
     left: 0;
     top: 0;
     bottom: 0;
-    width: 44px;
+    width: 54px;
     overflow: hidden;
     padding: 12px 4px;
     border-top-left-radius: 40px;
+    border-bottom-right-radius: 90px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.65);
     transition: width 0.25s ease, padding 0.25s ease;
     z-index: 500;
@@ -501,7 +502,7 @@ background: linear-gradient(90deg, rgba(236, 28, 36, 1) 11%, rgba(37, 68, 167, 1
     flex: 1;
     overflow: auto;
     padding: 16px;
-    margin-left: 44px;
+    margin-left: 54px;
 }
 
 /* Welcome Content */

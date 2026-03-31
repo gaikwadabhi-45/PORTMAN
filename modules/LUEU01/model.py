@@ -312,6 +312,85 @@ def get_mbc_names():
     return [r['mbc_name'] for r in rows]
 
 
+def get_bl_progress(source_type, source_id):
+    """Return BL declared qty vs handled qty per cargo for a VCN or MBC source."""
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    declared = []
+    if source_type == 'VCN':
+        cur.execute('''
+            SELECT COALESCE(cargo_name, '') as cargo_name, COALESCE(bl_quantity, 0) as bl_qty, 'Import' as decl_type
+            FROM vcn_cargo_declaration WHERE vcn_id = %s
+        ''', [source_id])
+        for r in cur.fetchall():
+            declared.append({'cargo_name': r['cargo_name'], 'bl_qty': float(r['bl_qty'] or 0), 'decl_type': 'Import'})
+        cur.execute('''
+            SELECT COALESCE(cargo_name, '') as cargo_name, COALESCE(bl_quantity, 0) as bl_qty, 'Export' as decl_type
+            FROM vcn_export_cargo_declaration WHERE vcn_id = %s
+        ''', [source_id])
+        for r in cur.fetchall():
+            declared.append({'cargo_name': r['cargo_name'], 'bl_qty': float(r['bl_qty'] or 0), 'decl_type': 'Export'})
+    elif source_type == 'MBC':
+        cur.execute('''
+            SELECT COALESCE(cargo_name, '') as cargo_name, COALESCE(quantity, 0) as bl_qty
+            FROM mbc_customer_details WHERE mbc_id = %s
+        ''', [source_id])
+        for r in cur.fetchall():
+            declared.append({'cargo_name': r['cargo_name'], 'bl_qty': float(r['bl_qty'] or 0), 'decl_type': 'MBC'})
+
+    # Sum handled quantities from lueu_lines per cargo (exclude deleted)
+    cur.execute('''
+        SELECT COALESCE(cargo_name, '') as cargo_name,
+               COALESCE(SUM(quantity), 0) as handled_qty,
+               MAX(quantity_uom) as uom
+        FROM lueu_lines
+        WHERE source_type = %s AND source_id = %s AND (is_deleted IS NOT TRUE)
+        GROUP BY cargo_name
+    ''', [source_type, source_id])
+    handled_map = {}
+    uom_map = {}
+    for r in cur.fetchall():
+        handled_map[r['cargo_name']] = float(r['handled_qty'] or 0)
+        uom_map[r['cargo_name']] = r['uom'] or ''
+
+    conn.close()
+
+    result = []
+    seen = set()
+    for d in declared:
+        cargo = d['cargo_name']
+        bl_qty = d['bl_qty']
+        handled = handled_map.get(cargo, 0)
+        seen.add(cargo)
+        result.append({
+            'cargo_name': cargo,
+            'bl_qty': round(bl_qty, 3),
+            'handled_qty': round(handled, 3),
+            'uom': uom_map.get(cargo, ''),
+            'remaining': round(bl_qty - handled, 3),
+            'exceeded': handled > bl_qty and bl_qty > 0,
+            'exceeded_by': round(max(0.0, handled - bl_qty), 3),
+            'decl_type': d.get('decl_type', ''),
+        })
+
+    # Handled cargos with no declaration at all
+    for cargo, handled in handled_map.items():
+        if cargo not in seen:
+            result.append({
+                'cargo_name': cargo,
+                'bl_qty': 0,
+                'handled_qty': round(handled, 3),
+                'uom': uom_map.get(cargo, ''),
+                'remaining': round(-handled, 3),
+                'exceeded': True,
+                'exceeded_by': round(handled, 3),
+                'decl_type': 'No Declaration',
+            })
+
+    return result
+
+
 def get_barge_cargos(vcn_id, barge_name):
     """Get cargo names for a specific barge from a VCN's LDUD"""
     # Strip trip number if barge_name is in "barge / trip" format

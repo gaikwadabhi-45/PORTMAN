@@ -247,6 +247,14 @@ def get_shift_operators():
     conn.close()
     return jsonify([r['name'] for r in rows])
 
+@bp.route('/api/module/LUEU01/bl-progress/<source_type>/<int:source_id>')
+@login_required
+def get_bl_progress(source_type, source_id):
+    if source_type not in ('VCN', 'MBC'):
+        return jsonify({'error': 'Invalid source type'}), 400
+    return jsonify(model.get_bl_progress(source_type, source_id))
+
+
 @bp.route('/api/module/LUEU01/barge-cargos/<int:vcn_id>')
 @login_required
 def get_barge_cargos(vcn_id):

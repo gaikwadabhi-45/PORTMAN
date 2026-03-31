@@ -123,6 +123,97 @@
     .btn-filter-add { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
     .btn-filter-apply { background: #3182ce; color: white; border: none; padding: 5px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
     .btn-filter-clear { background: #e2e8f0; color: #2d3748; border: none; padding: 5px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+
+    /* ── BL Progress popup ─────────────────────────────────── */
+    .blp-overlay {
+        display: none;
+        position: fixed; inset: 0; z-index: 9000;
+    }
+    .blp-popup {
+        position: fixed;
+        z-index: 9001;
+        background: #fff;
+        border: 1px solid #cbd5e0;
+        border-radius: 8px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+        min-width: 380px;
+        max-width: 520px;
+        font-size: 12px;
+        overflow: hidden;
+    }
+    .dark-theme .blp-popup { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+    .blp-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; background: #2d3748; color: #fff;
+        font-weight: 600; font-size: 12px; gap: 8px;
+    }
+    .blp-header-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .blp-close {
+        background: none; border: none; color: rgba(255,255,255,0.7);
+        font-size: 18px; cursor: pointer; line-height: 1; padding: 0 2px;
+    }
+    .blp-close:hover { color: #fff; }
+    .blp-body { padding: 12px 14px; max-height: 400px; overflow-y: auto; }
+    .blp-cargo-block { margin-bottom: 12px; }
+    .blp-cargo-block:last-child { margin-bottom: 0; }
+    .blp-cargo-name {
+        font-weight: 600; font-size: 11px; margin-bottom: 4px;
+        display: flex; align-items: center; gap: 6px;
+    }
+    .blp-decl-badge {
+        font-size: 9px; font-weight: 600; padding: 1px 5px;
+        border-radius: 8px; background: #e2e8f0; color: #4a5568;
+    }
+    .dark-theme .blp-decl-badge { background: #334155; color: #a0aec0; }
+    .blp-stats {
+        display: flex; gap: 16px; margin-bottom: 5px; font-size: 11px;
+    }
+    .blp-stat { display: flex; flex-direction: column; gap: 1px; }
+    .blp-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; }
+    .dark-theme .blp-stat-label { color: #94a3b8; }
+    .blp-stat-value { font-weight: 600; }
+    .blp-stat-value.exceeded { color: #e53e3e; }
+    .blp-stat-value.ok { color: #38a169; }
+    .blp-progress-wrap {
+        background: #e2e8f0; border-radius: 4px; height: 8px; overflow: hidden;
+    }
+    .dark-theme .blp-progress-wrap { background: #334155; }
+    .blp-progress-bar {
+        height: 100%; border-radius: 4px;
+        transition: width 0.4s ease;
+    }
+    .blp-progress-bar.ok { background: linear-gradient(90deg, #48bb78, #38a169); }
+    .blp-progress-bar.exceeded { background: linear-gradient(90deg, #fc8181, #e53e3e); }
+    .blp-exceeded-pill {
+        display: inline-block; margin-top: 4px;
+        background: #fff5f5; color: #c53030; border: 1px solid #fed7d7;
+        border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 600;
+    }
+    .dark-theme .blp-exceeded-pill { background: #4a1a1a; border-color: #9b2c2c; color: #fc8181; }
+    .blp-no-decl-note {
+        font-size: 10px; color: #718096; margin-top: 4px; font-style: italic;
+    }
+    .blp-empty { padding: 16px; text-align: center; color: #a0aec0; font-size: 12px; }
+
+    /* Info icon in VCN/MBC cell */
+    .bl-info-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px; border-radius: 50%;
+        background: #3182ce; color: #fff;
+        font-size: 9px; font-weight: 700; cursor: pointer;
+        margin-left: 5px; vertical-align: middle; flex-shrink: 0;
+        user-select: none; line-height: 1;
+    }
+    .bl-info-icon:hover { background: #2b6cb0; transform: scale(1.2); }
+
+    /* Exceeded warning on quantity cell */
+    .qty-exceeded-badge {
+        display: inline-block; margin-left: 4px;
+        background: #fff5f5; color: #c53030; border: 1px solid #feb2b2;
+        border-radius: 3px; padding: 0 4px; font-size: 9px; font-weight: 700;
+        vertical-align: middle; cursor: help;
+    }
+    .dark-theme .qty-exceeded-badge { background: #4a1a1a; border-color: #9b2c2c; color: #fc8181; }
 </style>
 <div class="module-header">
     <h2>Load Unload Equipment Utilization</h2>
@@ -158,6 +249,16 @@
     <div id="table"></div>
 </div>
 
+<!-- BL Progress Popup -->
+<div class="blp-overlay" id="blpOverlay" onclick="closeBlPopup()"></div>
+<div class="blp-popup" id="blpPopup" style="display:none;">
+    <div class="blp-header">
+        <span class="blp-header-title" id="blpTitle"></span>
+        <button class="blp-close" onclick="closeBlPopup()">&#x2715;</button>
+    </div>
+    <div class="blp-body" id="blpBody"></div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -185,6 +286,7 @@
     let berthList = [];
     let shiftInchargeList = [];
     let shiftOperatorList = [];
+    let blProgressCache = {};  // key: "SOURCE_TYPE:source_id" -> array of cargo progress
 
     const currentUser = '{{ session.username }}';
     const permissions = {
@@ -232,6 +334,91 @@
     function cancelAutoSave() {
         if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
         if (autoSaveCountdown) { clearInterval(autoSaveCountdown); autoSaveCountdown = null; }
+    }
+
+    // ── BL Progress popup ─────────────────────────────────────────────────────
+    async function fetchBlProgress(sourceType, sourceId) {
+        const key = sourceType + ':' + sourceId;
+        if (blProgressCache[key] !== undefined) return blProgressCache[key];
+        blProgressCache[key] = null; // mark as fetching
+        try {
+            const res = await fetch(`/api/module/LUEU01/bl-progress/${sourceType}/${sourceId}`);
+            blProgressCache[key] = await res.json();
+        } catch(e) {
+            blProgressCache[key] = [];
+        }
+        return blProgressCache[key];
+    }
+
+    async function showBlProgress(sourceType, sourceId, label, anchorEl) {
+        const popup = document.getElementById('blpPopup');
+        const overlay = document.getElementById('blpOverlay');
+        const body = document.getElementById('blpBody');
+        const title = document.getElementById('blpTitle');
+
+        title.textContent = label || (sourceType + ' #' + sourceId);
+        body.innerHTML = '<div class="blp-empty">Loading...</div>';
+        popup.style.display = 'block';
+        overlay.style.display = 'block';
+        positionPopup(popup, anchorEl);
+
+        const data = await fetchBlProgress(sourceType, sourceId);
+        if (table) table.redraw(); // refresh qty cells with new cache
+
+        if (!data || data.length === 0) {
+            body.innerHTML = '<div class="blp-empty">No cargo declarations found for this source.</div>';
+            return;
+        }
+
+        body.innerHTML = data.map(function(d) {
+            const pct = d.bl_qty > 0 ? Math.min(100, (d.handled_qty / d.bl_qty) * 100) : 100;
+            const barClass = d.exceeded ? 'exceeded' : 'ok';
+            const remClass = d.exceeded ? 'exceeded' : (d.remaining < 0.01 ? 'ok' : '');
+            const noDecl = d.decl_type === 'No Declaration';
+            return `
+            <div class="blp-cargo-block">
+                <div class="blp-cargo-name">
+                    ${d.cargo_name || '<em style="opacity:0.5">Unspecified</em>'}
+                    <span class="blp-decl-badge">${d.decl_type}</span>
+                </div>
+                <div class="blp-stats">
+                    <div class="blp-stat">
+                        <span class="blp-stat-label">BL / Declared</span>
+                        <span class="blp-stat-value">${noDecl ? '—' : (d.bl_qty.toLocaleString() + (d.uom ? ' ' + d.uom : ''))}</span>
+                    </div>
+                    <div class="blp-stat">
+                        <span class="blp-stat-label">Handled</span>
+                        <span class="blp-stat-value ${barClass}">${d.handled_qty.toLocaleString() + (d.uom ? ' ' + d.uom : '')}</span>
+                    </div>
+                    <div class="blp-stat">
+                        <span class="blp-stat-label">Remaining</span>
+                        <span class="blp-stat-value ${remClass}">${noDecl ? '—' : ((d.remaining >= 0 ? '' : '') + d.remaining.toLocaleString() + (d.uom ? ' ' + d.uom : ''))}</span>
+                    </div>
+                </div>
+                ${noDecl ? '<div class="blp-no-decl-note">No declaration found — all quantity is unaccounted.</div>' : `
+                <div class="blp-progress-wrap">
+                    <div class="blp-progress-bar ${barClass}" style="width:${pct.toFixed(1)}%"></div>
+                </div>`}
+                ${d.exceeded ? `<div class="blp-exceeded-pill">&#9888; Exceeded by ${d.exceeded_by.toLocaleString()}${d.uom ? ' ' + d.uom : ''}</div>` : ''}
+            </div>`;
+        }).join('<hr style="border:none;border-top:1px solid var(--border-color);margin:8px 0;">');
+    }
+
+    function positionPopup(popup, anchorEl) {
+        const rect = anchorEl.getBoundingClientRect();
+        const popupW = 420;
+        let left = rect.left;
+        let top = rect.bottom + 6;
+        if (left + popupW > window.innerWidth - 16) left = window.innerWidth - popupW - 16;
+        if (left < 8) left = 8;
+        if (top + 300 > window.innerHeight) top = rect.top - 6 - Math.min(300, top + 300 - window.innerHeight);
+        popup.style.left = left + 'px';
+        popup.style.top = top + 'px';
+    }
+
+    function closeBlPopup() {
+        document.getElementById('blpPopup').style.display = 'none';
+        document.getElementById('blpOverlay').style.display = 'none';
     }
 
     async function loadMasterData() {
@@ -291,6 +478,7 @@
 
     function openEquipmentTable(equipName) {
         currentEquipment = equipName;
+        blProgressCache = {};  // reset cache per equipment view
         document.getElementById('buttonView').style.display = 'none';
         document.getElementById('equipmentView').style.display = 'block';
         document.getElementById('currentEquipLabel').textContent = equipName;
@@ -499,15 +687,26 @@
                     if (!val && val !== 0) return '';
                     return '<span style="font-weight:500">' + val + '</span>';
                 }},
-            {title: "VCN / MBC", field: "source_display", width: 280, editor: canEdit ? "list" : false,
+            {title: "VCN / MBC", field: "source_display", width: 300, editor: canEdit ? "list" : false,
                 editorParams: {values: getVcnMbcOptions(), autocomplete: true, allowEmpty: true, listOnEmpty: true},
                 formatter: function(cell) {
                     const data = cell.getRow().getData();
                     const val = cell.getValue() || '';
+                    let html = val;
                     if (data._multi_customer && data.customer_name) {
-                        return val + ' <span style="background:#805ad5;color:white;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:600;margin-left:4px;">' + data.customer_name + '</span>';
+                        html += ' <span style="background:#805ad5;color:white;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:600;margin-left:4px;">' + data.customer_name + '</span>';
                     }
-                    return val;
+                    if (data.source_type && data.source_id) {
+                        html += ' <span class="bl-info-icon" data-src-type="' + data.source_type + '" data-src-id="' + data.source_id + '" data-label="' + val.replace(/"/g, '&quot;') + '" title="View BL vs Handled">i</span>';
+                    }
+                    return html;
+                },
+                cellClick: function(e, cell) {
+                    const icon = e.target.closest('.bl-info-icon');
+                    if (icon) {
+                        e.stopPropagation();
+                        showBlProgress(icon.dataset.srcType, parseInt(icon.dataset.srcId), icon.dataset.label, icon);
+                    }
                 }},
             {title: "Barge / MBC Name", field: "barge_name", width: 150, editor: canEdit ? bargeEditor : false},
             {title: "Cargo", field: "cargo_name", width: 140, editor: canEdit ? cargoEditor : false},
@@ -523,8 +722,23 @@
                 editorParams: {values: toOptions(shiftInchargeList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
             {title: "Operator", field: "operator_name", width: 140, editor: canEdit ? "list" : false,
                 editorParams: {values: toOptions(shiftOperatorList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
-            {title: "Quantity", field: "quantity", width: 100, hozAlign: "right",
-                editor: canEdit ? "number" : false, editorParams: {min: 0, step: 0.01}},
+            {title: "Quantity", field: "quantity", width: 120, hozAlign: "right",
+                editor: canEdit ? "number" : false, editorParams: {min: 0, step: 0.01},
+                formatter: function(cell) {
+                    const val = cell.getValue();
+                    if (val === null || val === undefined || val === '') return '';
+                    const data = cell.getRow().getData();
+                    const cacheKey = data.source_type + ':' + data.source_id;
+                    const progress = data.source_type && data.source_id ? blProgressCache[cacheKey] : null;
+                    let badge = '';
+                    if (progress && Array.isArray(progress)) {
+                        const cargoRow = progress.find(p => p.cargo_name === (data.cargo_name || ''));
+                        if (cargoRow && cargoRow.exceeded) {
+                            badge = '<span class="qty-exceeded-badge" title="BL exceeded by ' + cargoRow.exceeded_by.toLocaleString() + (cargoRow.uom ? ' ' + cargoRow.uom : '') + '">&#9888; OVR</span>';
+                        }
+                    }
+                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge;
+                }},
             {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false,
                 editorParams: {values: toOptions(uomList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
             {title: "Remarks", field: "remarks", width: 200, editor: canEdit ? "input" : false},
@@ -563,6 +777,19 @@
             ajaxResponse: function(url, params, response) {
                 document.getElementById('rowCount').textContent = response.data.length;
                 document.getElementById('totalCount').textContent = response.total;
+                // Pre-fetch BL progress for all unique sources in this page
+                const seen = new Set();
+                response.data.forEach(function(row) {
+                    if (row.source_type && row.source_id) {
+                        const key = row.source_type + ':' + row.source_id;
+                        if (!seen.has(key) && blProgressCache[key] === undefined) {
+                            seen.add(key);
+                            fetchBlProgress(row.source_type, row.source_id).then(function() {
+                                if (table) table.redraw();
+                            });
+                        }
+                    }
+                });
                 return response;
             },
             rowFormatter: function(row) {
