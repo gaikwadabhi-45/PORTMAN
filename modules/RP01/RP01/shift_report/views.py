@@ -2,6 +2,7 @@ from flask import render_template, request, session, redirect, url_for, Response
 from functools import wraps
 from datetime import datetime
 import io
+import json
 import re
 
 from .. import bp
@@ -61,12 +62,23 @@ def shift_report_preview():
 
     cargo_pivot = _fetch_cargo_pivot(entry_date, shift)
     delays = _fetch_delays(entry_date, shift)
+    delay_keys = _parse_delay_keys(request.args.get('delay_keys'))
     cargo_tables = _build_cargo_tables(entry_date, shift, cargo_pivot)
-    delay_view = _build_delay_view(entry_date, shift, delays)
+    delay_view = _build_delay_view(entry_date, shift, delays, delay_keys)
     return jsonify({
         'cargo_tables': cargo_tables,
         'delay_view': delay_view,
     })
+
+
+@bp.route('/api/module/RP01/shift-report/delay-options')
+@login_required
+def shift_report_delay_options():
+    entry_date = request.args.get('entry_date', '')
+    shift = request.args.get('shift', '')
+    if not entry_date or not shift:
+        return jsonify([])
+    return jsonify(_fetch_delay_options(entry_date, shift))
 
 
 @bp.route('/api/module/RP01/shift-report/download')
@@ -79,8 +91,9 @@ def shift_report_download():
 
     cargo_pivot = _fetch_cargo_pivot(entry_date, shift)
     delays = _fetch_delays(entry_date, shift)
+    delay_keys = _parse_delay_keys(request.args.get('delay_keys'))
     cargo_tables = _build_cargo_tables(entry_date, shift, cargo_pivot)
-    delay_view = _build_delay_view(entry_date, shift, delays)
+    delay_view = _build_delay_view(entry_date, shift, delays, delay_keys)
     buf = _build_excel(cargo_tables, delay_view)
     fname = f'ShiftReport_{entry_date}_Shift{shift}.xlsx'
     return Response(
@@ -93,17 +106,23 @@ def shift_report_download():
 def _fetch_cargo_pivot(entry_date, shift):
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute("""
+    query = """
         SELECT cargo_name, equipment_name, route_name,
                COALESCE(SUM(quantity), 0) AS qty
         FROM lueu_lines
         WHERE entry_date = %s
-          AND shift = %s
           AND quantity > 0
           AND cargo_name IS NOT NULL AND cargo_name != ''
+    """
+    params = [entry_date]
+    if not _is_all_shifts(shift):
+        query += " AND shift = %s"
+        params.append(shift)
+    query += """
         GROUP BY cargo_name, equipment_name, route_name
         ORDER BY cargo_name, equipment_name, route_name
-    """, (entry_date, shift))
+    """
+    cur.execute(query, tuple(params))
     rows = cur.fetchall()
     conn.close()
 
@@ -132,17 +151,23 @@ def _fetch_cargo_pivot(entry_date, shift):
 def _fetch_delays(entry_date, shift):
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute("""
+    query = """
         SELECT l.delay_name, l.equipment_name, l.system_name, l.route_name,
                l.from_time, l.to_time,
                COALESCE(d.type, 'Other') AS delay_type
         FROM lueu_lines l
         LEFT JOIN port_delay_types d ON d.name = l.delay_name
         WHERE l.entry_date = %s
-          AND l.shift = %s
           AND l.delay_name IS NOT NULL AND l.delay_name != ''
+    """
+    params = [entry_date]
+    if not _is_all_shifts(shift):
+        query += " AND l.shift = %s"
+        params.append(shift)
+    query += """
         ORDER BY d.type, l.delay_name, l.equipment_name, l.system_name, l.route_name, l.from_time
-    """, (entry_date, shift))
+    """
+    cur.execute(query, tuple(params))
     rows = cur.fetchall()
     conn.close()
 
@@ -162,6 +187,46 @@ def _fetch_delays(entry_date, shift):
         })
 
     return delays
+
+
+def _fetch_delay_options(entry_date, shift):
+    conn = get_db()
+    cur = get_cursor(conn)
+    query = """
+        SELECT COALESCE(d.type, 'Other') AS delay_type,
+               l.delay_name
+        FROM lueu_lines l
+        LEFT JOIN port_delay_types d ON d.name = l.delay_name
+        WHERE l.entry_date = %s
+          AND l.delay_name IS NOT NULL AND l.delay_name != ''
+    """
+    params = [entry_date]
+    if not _is_all_shifts(shift):
+        query += " AND l.shift = %s"
+        params.append(shift)
+    query += """
+        GROUP BY COALESCE(d.type, 'Other'), l.delay_name
+        ORDER BY COALESCE(d.type, 'Other'), l.delay_name
+    """
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+    conn.close()
+
+    options = []
+    for row in rows:
+        delay_type = _blank_label(row['delay_type'])
+        delay_name = _blank_label(row['delay_name'])
+        options.append({
+            'key': _delay_key(delay_type, delay_name),
+            'label': f'{delay_name} [{delay_type}]',
+            'delay_name': delay_name,
+            'delay_type': delay_type,
+        })
+
+    return sorted(
+        options,
+        key=lambda item: (_delay_type_sort_key(item['delay_type']), _natural_sort_key(item['delay_name'])),
+    )
 
 
 def _calc_minutes(from_t, to_t):
@@ -192,6 +257,17 @@ def _fmt_qty(value):
     return int(round(value))
 
 
+def _is_all_shifts(shift):
+    return str(shift or '').strip().upper() in {'ALL', 'ALL SHIFTS'}
+
+
+def _shift_scope_label(shift):
+    shift = str(shift or '').strip().upper()
+    if _is_all_shifts(shift):
+        return 'All Shifts'
+    return f'{shift} Shift'
+
+
 def _report_date(entry_date):
     try:
         return datetime.strptime(entry_date, '%Y-%m-%d').strftime('%d.%m.%Y')
@@ -205,10 +281,7 @@ def _blank_label(value):
 
 
 def _total_label(value):
-    label = (value or '').strip()
-    if not label or label == '(blank)':
-        return 'Total'
-    return f'{label} Total'
+    return f'{_blank_label(value)} Total'
 
 
 def _natural_sort_key(value):
@@ -284,6 +357,33 @@ def _delay_type_sort_key(value):
     return (order.get(value, 99), _natural_sort_key(value))
 
 
+def _delay_key(delay_type, delay_name):
+    return f'{_blank_label(delay_type)}||{_blank_label(delay_name)}'
+
+
+def _parse_delay_keys(raw_value):
+    if raw_value is None:
+        return None
+    try:
+        values = json.loads(raw_value)
+    except Exception:
+        return []
+    if not isinstance(values, list):
+        return []
+
+    cleaned = []
+    seen = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        value = value.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(value)
+    return cleaned
+
+
 def _make_matrix_table(title, row_header, column_headers, row_names, values):
     rows = []
     column_totals = [0] * len(column_headers)
@@ -354,23 +454,24 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
     }
 
     date_label = _report_date(entry_date)
+    shift_label = _shift_scope_label(shift)
     return [
         _make_matrix_table(
-            f'{shift} Shift Jetty Discharge: {date_label}',
+            f'{shift_label} Jetty Discharge: {date_label}',
             'Cargo Name',
             equipments,
             cargo_names,
             equipment_values,
         ),
         _make_matrix_table(
-            f'{shift} Shift Location Wise Discharge: {date_label}',
+            f'{shift_label} Location Wise Discharge: {date_label}',
             '',
             location_columns,
             cargo_names,
             location_values,
         ),
         _make_matrix_table(
-            f'{shift} Shift Receiving Route Wise Discharge: {date_label}',
+            f'{shift_label} Receiving Route Wise Discharge: {date_label}',
             'Row Labels',
             cargo_names,
             route_rows,
@@ -379,17 +480,28 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
     ]
 
 
-def _build_delay_view(entry_date, shift, delays):
+def _build_delay_view(entry_date, shift, delays, delay_keys=None):
+    shift_label = _shift_scope_label(shift)
     view = {
-        'title': f'{shift} Shift Jetty & RMHS Delays: {_report_date(entry_date)}',
+        'title': f'{shift_label} Jetty & RMHS Delays: {_report_date(entry_date)}',
         'rows': [],
         'grand_total': '',
     }
-    if not delays:
+    if delay_keys is None:
+        filtered_delays = list(delays)
+        delay_order = {}
+    else:
+        delay_order = {key: idx for idx, key in enumerate(delay_keys)}
+        filtered_delays = [
+            delay for delay in delays
+            if _delay_key(delay['delay_type'], delay['delay_name']) in delay_order
+        ]
+
+    if not filtered_delays:
         return view
 
     grouped = {}
-    for delay in delays:
+    for delay in filtered_delays:
         delay_type = _blank_label(delay['delay_type'])
         activity = _blank_label(delay['delay_name'])
         equipment = _blank_label(delay['equipment_name'])
@@ -398,11 +510,21 @@ def _build_delay_view(entry_date, shift, delays):
 
     grand_total = 0
 
-    for delay_type in sorted(grouped, key=_delay_type_sort_key):
+    type_order = {}
+    if delay_order:
+        for delay in filtered_delays:
+            delay_type = _blank_label(delay['delay_type'])
+            key = _delay_key(delay['delay_type'], delay['delay_name'])
+            type_order[delay_type] = min(type_order.get(delay_type, 10**9), delay_order.get(key, 10**9))
+
+    for delay_type in sorted(grouped, key=lambda value: (type_order.get(value, 10**9),) + _delay_type_sort_key(value)):
         type_rows = []
         type_total = 0
 
-        for activity in sorted(grouped[delay_type], key=_natural_sort_key):
+        for activity in sorted(
+            grouped[delay_type],
+            key=lambda value: (delay_order.get(_delay_key(delay_type, value), 10**9), _natural_sort_key(value)),
+        ):
             activity_rows = []
             activity_total = 0
 
