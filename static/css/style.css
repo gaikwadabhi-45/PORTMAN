@@ -226,17 +226,103 @@ background: linear-gradient(90deg, rgba(236, 28, 36, 1) 11%, rgba(37, 68, 167, 1
     display: flex;
     margin-top: 40px;
     height: calc(100vh - 40px);
+    position: relative;
 }
 
 /* Sidebar */
 .sidebar {
-    width: 220px;
-    min-width: 220px;
-    height: 100%;
-    overflow-y: auto;
-    padding: 12px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 44px;
+    overflow: hidden;
+    padding: 12px 4px;
     border-top-left-radius: 40px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.65);
+    transition: width 0.25s ease, padding 0.25s ease;
+    z-index: 500;
+}
+
+.sidebar:hover {
+    width: 220px;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+/* Hide text/search/recent when sidebar is not hovered */
+.sidebar:not(:hover) .sidebar-section,
+.sidebar:not(:hover) .sidebar-divider,
+.sidebar:not(:hover) .nav-title,
+.sidebar:not(:hover) .accordion-header > span.arrow,
+.sidebar:not(:hover) .accordion-content,
+.sidebar:not(:hover) .sidebar-logo {
+    display: none;
+}
+
+/* Icon label in collapsed state */
+.sidebar:not(:hover) .accordion-header {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 6px 0;
+    gap: 3px;
+}
+.sidebar:not(:hover) .accordion-header > span:not(.arrow) {
+    font-size: 8px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    max-width: 40px;
+    opacity: 0.75;
+}
+
+/* Collapsed-only search/recent icons */
+.sidebar-collapsed-icons {
+    display: none;
+}
+.sidebar:not(:hover) .sidebar-collapsed-icons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.collapsed-icon-item {
+    width: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 4px 0;
+}
+.collapsed-icon-item:hover {
+    transform: scale(1.3);
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));
+}
+.collapsed-icon-item .icon {
+    width: 22px;
+    height: 22px;
+}
+.collapsed-icon-item span {
+    font-size: 8px;
+    text-align: center;
+    opacity: 0.75;
+}
+
+.sidebar:not(:hover) .accordion-header {
+    justify-content: center;
+    padding: 10px 0;
+}
+
+.sidebar:not(:hover) .accordion-section {
+    margin-bottom: 4px;
 }
 
 .sidebar-section {
@@ -415,6 +501,7 @@ background: linear-gradient(90deg, rgba(236, 28, 36, 1) 11%, rgba(37, 68, 167, 1
     flex: 1;
     overflow: auto;
     padding: 16px;
+    margin-left: 44px;
 }
 
 /* Welcome Content */

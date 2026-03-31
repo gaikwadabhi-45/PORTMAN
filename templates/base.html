@@ -138,8 +138,20 @@
 
     <div class="main-container">
         <div class="sidebar">
-            <div style="text-align: center; padding: 0px 0 8px 0;">
+            <div class="sidebar-logo" style="text-align: center; padding: 0px 0 8px 0;">
                 <img src="{{ url_for('static', filename='img/logo31.png') }}" alt="Logo" style="max-width: 85%; height: auto;">
+            </div>
+
+            <!-- Collapsed-only icons for search and recent -->
+            <div class="sidebar-collapsed-icons">
+                <div class="collapsed-icon-item" title="Search">
+                    <img src="{{ url_for('static', filename='img/search.png') }}" alt="Search" class="icon">
+                    <span>Search</span>
+                </div>
+                <div class="collapsed-icon-item" title="Recent">
+                    <img src="{{ url_for('static', filename='img/recent.png') }}" alt="Recent" class="icon">
+                    <span>Recent</span>
+                </div>
             </div>
 
             <div class="sidebar-section">
