@@ -138,6 +138,14 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+@app.after_request
+def no_cache(response):
+    """Prevent browser from caching authenticated pages."""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))
@@ -172,8 +180,9 @@ def home():
     return render_template('home.html', modules=MODULES, username=session.get('username'), is_admin=session.get('is_admin'))
 
 @app.route('/api/modules/search')
-@login_required
 def search_modules():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
     query = request.args.get('q', '').lower()
     results = [{'code': k, 'name': v['name']} for k, v in MODULES.items()
                if query in k.lower() or query in v['name'].lower()]

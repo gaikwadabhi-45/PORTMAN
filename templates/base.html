@@ -424,6 +424,22 @@
 
     <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
     <script>
+        // Redirect to login if session has expired (e.g. after back-button post-logout)
+        function checkSession() {
+            fetch('/api/modules/search?q=__session_check__', {cache: 'no-store'})
+                .then(r => { if (r.status === 401 || r.redirected) window.location.replace('/login'); })
+                .catch(() => {});
+        }
+        // Check on page show (catches back/forward cache)
+        window.addEventListener('pageshow', function(e) {
+            if (e.persisted) checkSession();
+        });
+        // Check when tab regains focus
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) checkSession();
+        });
+    </script>
+    <script>
         // Accordion toggle
         function toggleAccordion(header) {
             header.classList.toggle('active');
