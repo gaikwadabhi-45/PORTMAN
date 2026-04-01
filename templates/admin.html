@@ -51,8 +51,13 @@
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
                 <input type="text" id="permModuleFilter" placeholder="Filter modules..." oninput="filterPermTable()" style="padding:5px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;width:180px;">
             </label>
-            <button class="btn" style="font-size:11px;padding:4px 10px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="toggleAllPerms(true)">Grant All Read</button>
-            <button class="btn" style="font-size:11px;padding:4px 10px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="toggleAllPerms(false)">Clear All</button>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:11px;color:#718096;font-weight:600;">Bulk:</span>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="bulkSetPerms(1,0,0,0)">Read Only</button>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="bulkSetPerms(1,1,1,0)">Read+Add+Edit</button>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="bulkSetPerms(1,1,1,1)">Full Access</button>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#fed7d7;color:#c53030;border:1px solid #feb2b2;" onclick="bulkSetPerms(0,0,0,0)">Revoke All</button>
+            </div>
             <button class="btn btn-save" onclick="saveUserPermissions()">Save Permissions</button>
             <span id="permSaveStatus" style="font-size:11px;"></span>
         </div>
@@ -83,6 +88,18 @@
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
                 <input type="text" id="cfgModuleFilter" placeholder="Filter modules..." oninput="filterConfigTable()" style="padding:5px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;width:180px;">
             </label>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:11px;color:#718096;font-weight:600;">Bulk:</span>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="bulkSetConfig('approval_add', true)">Approve All Add</button>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="bulkSetConfig('approval_edit', true)">Approve All Edit</button>
+                <button class="btn" style="font-size:11px;padding:3px 8px;background:#fed7d7;color:#c53030;border:1px solid #feb2b2;" onclick="bulkSetConfig('both', false)">Clear All Approvals</button>
+                <label style="font-size:11px;display:flex;align-items:center;gap:4px;margin-left:6px;">Bulk Approver:
+                    <select id="cfgBulkApprover" style="padding:3px 6px;border:1px solid #cbd5e0;border-radius:3px;font-size:11px;">
+                        <option value="">-- None --</option>
+                    </select>
+                    <button class="btn" style="font-size:11px;padding:3px 8px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="bulkSetApprover()">Apply</button>
+                </label>
+            </div>
             <button class="btn btn-save" onclick="saveAllConfigs()">Save Config</button>
             <span id="cfgSaveStatus" style="font-size:11px;"></span>
         </div>
@@ -243,6 +260,27 @@
     </div>
 </div>
 
+<!-- Reset Password Modal -->
+<div id="resetPwModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3>Reset Password</h3>
+        <p id="resetPwUsername" style="font-size:12px;color:#718096;margin-bottom:12px;"></p>
+        <div class="form-group">
+            <label>New Password</label>
+            <input type="password" id="resetPwNew" placeholder="Enter new password">
+        </div>
+        <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" id="resetPwConfirm" placeholder="Re-enter new password">
+        </div>
+        <p id="resetPwError" style="color:#c53030;font-size:11px;margin-top:4px;display:none;"></p>
+        <div class="modal-actions">
+            <button class="btn" onclick="hideResetPw()">Cancel</button>
+            <button class="btn btn-save" onclick="doResetPassword()">Reset Password</button>
+        </div>
+    </div>
+</div>
+
 <!-- Add User Modal -->
 <div id="addUserModal" class="modal" style="display:none;">
     <div class="modal-content">
@@ -334,8 +372,9 @@ async function loadUsers() {
         <tr>
             <td>${u.username}</td>
             <td>${u.is_admin ? 'Yes' : 'No'}</td>
-            <td>
-                ${u.username !== 'admin' ? `<button class="btn btn-danger" onclick="deleteUser(${u.id})">Delete</button>` : ''}
+            <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn btn-save" style="font-size:11px;padding:3px 10px;" onclick="showResetPw(${u.id}, '${u.username}')">Reset Password</button>
+                ${u.username !== 'admin' ? `<button class="btn btn-danger" style="font-size:11px;padding:3px 10px;" onclick="deleteUser(${u.id})">Delete</button>` : ''}
             </td>
         </tr>
     `).join('');
@@ -347,7 +386,7 @@ async function loadUsers() {
         users.map(u => `<option value="${u.id}">${u.username}${u.is_admin ? ' (admin)' : ''}</option>`).join('');
     if (prevVal) permUserSelect.value = prevVal;
 
-    // Populate approver dropdowns in config table
+    // Populate approver dropdowns in config table + bulk approver
     const approverOptions = '<option value="">-- None --</option>' +
         users.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
     document.querySelectorAll('.cfg-approver-select').forEach(sel => {
@@ -355,6 +394,8 @@ async function loadUsers() {
         sel.innerHTML = approverOptions;
         sel.value = cur;
     });
+    const bulkApproverSel = document.getElementById('cfgBulkApprover');
+    if (bulkApproverSel) { const cur = bulkApproverSel.value; bulkApproverSel.innerHTML = approverOptions; bulkApproverSel.value = cur; }
 }
 
 async function loadModules() {
@@ -402,6 +443,35 @@ async function addUser() {
         const data = await res.json();
         alert(data.error || 'Failed to add user');
     }
+}
+
+let _resetPwUserId = null;
+function showResetPw(id, username) {
+    _resetPwUserId = id;
+    document.getElementById('resetPwUsername').textContent = 'User: ' + username;
+    document.getElementById('resetPwNew').value = '';
+    document.getElementById('resetPwConfirm').value = '';
+    document.getElementById('resetPwError').style.display = 'none';
+    document.getElementById('resetPwModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('resetPwNew').focus(), 50);
+}
+function hideResetPw() {
+    document.getElementById('resetPwModal').style.display = 'none';
+    _resetPwUserId = null;
+}
+async function doResetPassword() {
+    const pw = document.getElementById('resetPwNew').value;
+    const pw2 = document.getElementById('resetPwConfirm').value;
+    const err = document.getElementById('resetPwError');
+    if (!pw) { err.textContent = 'Password is required.'; err.style.display = 'block'; return; }
+    if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; document.getElementById('resetPwConfirm').value = ''; document.getElementById('resetPwConfirm').focus(); return; }
+    const res = await fetch('/admin/api/users/reset-password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: _resetPwUserId, password: pw})
+    });
+    if (res.ok) { hideResetPw(); }
+    else { const d = await res.json(); err.textContent = d.error || 'Failed to reset password.'; err.style.display = 'block'; }
 }
 
 async function deleteUser(id) {
@@ -464,13 +534,14 @@ function toggleRowPerms(idx, checked) {
     row.querySelectorAll('input[data-perm]').forEach(cb => cb.checked = checked);
 }
 
-function toggleAllPerms(readOnly) {
+function bulkSetPerms(r, a, e, d) {
+    // Only apply to visible (non-filtered) rows
+    const visibleIdxs = new Set();
+    document.querySelectorAll('#permissionsBody tr:not(.perm-row-filtered)').forEach(tr => visibleIdxs.add(parseInt(tr.dataset.idx)));
     userPermData.forEach((p, i) => {
-        p.can_read = 1;
-        p.can_add = readOnly ? 0 : 0;
-        p.can_edit = readOnly ? 0 : 0;
-        p.can_delete = readOnly ? 0 : 0;
-        if (!readOnly) { p.can_read = 0; }
+        if (!visibleIdxs.size || visibleIdxs.has(i)) {
+            p.can_read = r; p.can_add = a; p.can_edit = e; p.can_delete = d;
+        }
     });
     renderPermTable();
 }
@@ -537,6 +608,37 @@ function filterConfigTable() {
     const q = document.getElementById('cfgModuleFilter').value.toLowerCase();
     document.querySelectorAll('#configBody tr').forEach(tr => {
         tr.classList.toggle('cfg-row-filtered', q.length > 0 && !tr.textContent.toLowerCase().includes(q));
+    });
+}
+
+function _visibleCfgIdxs() {
+    const s = new Set();
+    document.querySelectorAll('#configBody tr:not(.cfg-row-filtered)').forEach(tr => s.add(parseInt(tr.dataset.idx)));
+    return s;
+}
+
+function bulkSetConfig(field, val) {
+    const visible = _visibleCfgIdxs();
+    allConfigData.forEach((c, i) => {
+        if (!visible.size || visible.has(i)) {
+            if (field === 'both') { c.approval_add = val; c.approval_edit = val; }
+            else c[field] = val;
+        }
+    });
+    // Sync checkboxes
+    document.querySelectorAll('#configBody tr:not(.cfg-row-filtered) input[data-cfg]').forEach(cb => {
+        if (field === 'both' || cb.dataset.cfg === field) cb.checked = val;
+    });
+}
+
+function bulkSetApprover() {
+    const approver = document.getElementById('cfgBulkApprover').value || null;
+    const visible = _visibleCfgIdxs();
+    allConfigData.forEach((c, i) => {
+        if (!visible.size || visible.has(i)) c.approver_id = approver;
+    });
+    document.querySelectorAll('#configBody tr:not(.cfg-row-filtered) .cfg-approver-select').forEach(sel => {
+        sel.value = approver || '';
     });
 }
 

@@ -63,6 +63,22 @@ def add_user():
         conn.close()
         return jsonify({'error': 'Username already exists'}), 400
 
+@bp.route('/api/users/reset-password', methods=['POST'])
+@admin_required
+def reset_password():
+    data = request.json
+    user_id = data.get('id')
+    new_password = data.get('password', '').strip()
+    if not user_id or not new_password:
+        return jsonify({'error': 'User ID and new password required'}), 400
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('UPDATE users SET password = %s WHERE id = %s', [new_password, user_id])
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
 @bp.route('/api/users/delete', methods=['POST'])
 @admin_required
 def delete_user():
