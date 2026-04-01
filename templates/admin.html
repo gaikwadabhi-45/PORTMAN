@@ -42,26 +42,36 @@
 <div id="permissions-tab" class="tab-content">
     <div class="admin-section">
         <h3>Module Permissions</h3>
-        <div class="toolbar">
-            <label>Select Module:
-                <select id="permModuleSelect" onchange="loadPermissions()">
-                    <option value="">-- Select --</option>
+        <div class="toolbar" style="align-items:center;flex-wrap:wrap;gap:10px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;">User:
+                <select id="permUserSelect" onchange="loadUserPermissions()" style="padding:5px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;">
+                    <option value="">-- Select User --</option>
                 </select>
             </label>
-            <button class="btn btn-save" onclick="savePermissions()">Save Permissions</button>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                <input type="text" id="permModuleFilter" placeholder="Filter modules..." oninput="filterPermTable()" style="padding:5px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;width:180px;">
+            </label>
+            <button class="btn" style="font-size:11px;padding:4px 10px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="toggleAllPerms(true)">Grant All Read</button>
+            <button class="btn" style="font-size:11px;padding:4px 10px;background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="toggleAllPerms(false)">Clear All</button>
+            <button class="btn btn-save" onclick="saveUserPermissions()">Save Permissions</button>
+            <span id="permSaveStatus" style="font-size:11px;"></span>
         </div>
-        <table class="admin-table" id="permissionsTable">
-            <thead>
-                <tr>
-                    <th>User</th>
-                    <th>Read</th>
-                    <th>Add</th>
-                    <th>Edit</th>
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+        <div id="permTableWrap" style="display:none;margin-top:8px;">
+            <table class="admin-table" id="permissionsTable">
+                <thead>
+                    <tr>
+                        <th style="width:60px;">Code</th>
+                        <th>Module Name</th>
+                        <th style="width:60px;text-align:center;">Read</th>
+                        <th style="width:60px;text-align:center;">Add</th>
+                        <th style="width:60px;text-align:center;">Edit</th>
+                        <th style="width:60px;text-align:center;">Delete</th>
+                        <th style="width:80px;text-align:center;">All</th>
+                    </tr>
+                </thead>
+                <tbody id="permissionsBody"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -69,31 +79,26 @@
 <div id="config-tab" class="tab-content">
     <div class="admin-section">
         <h3>Module Configuration</h3>
-        <div class="toolbar">
-            <label>Select Module:
-                <select id="configModuleSelect" onchange="loadConfig()">
-                    <option value="">-- Select --</option>
-                </select>
+        <div class="toolbar" style="align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                <input type="text" id="cfgModuleFilter" placeholder="Filter modules..." oninput="filterConfigTable()" style="padding:5px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;width:180px;">
             </label>
-            <button class="btn btn-save" onclick="saveConfig()">Save Config</button>
+            <button class="btn btn-save" onclick="saveAllConfigs()">Save Config</button>
+            <span id="cfgSaveStatus" style="font-size:11px;"></span>
         </div>
-        <div id="configPanel" class="config-panel" style="display:none;">
-            <div class="config-group">
-                <h4>Approval Workflow</h4>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="cfgApprovalAdd"> Require approval for Add
-                </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" id="cfgApprovalEdit"> Require approval for Edit
-                </label>
-                <div class="config-row">
-                    <label>Approver:
-                        <select id="cfgApprover">
-                            <option value="">-- None --</option>
-                        </select>
-                    </label>
-                </div>
-            </div>
+        <div style="margin-top:8px;">
+            <table class="admin-table" id="configTable">
+                <thead>
+                    <tr>
+                        <th style="width:70px;">Code</th>
+                        <th>Module Name</th>
+                        <th style="width:120px;text-align:center;">Approval on Add</th>
+                        <th style="width:120px;text-align:center;">Approval on Edit</th>
+                        <th style="width:160px;">Approver</th>
+                    </tr>
+                </thead>
+                <tbody id="configBody"></tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -295,6 +300,23 @@ body.dark-theme .form-group input { background: #1a202c; border-color: #4a5568; 
 body.dark-theme .tab-btn { background: #4a5568; color: #e2e8f0; }
 body.dark-theme .tab-btn.active { background: #4299e1; color: white; }
 body.dark-theme #banksTable input[type="text"] { background: #1a202c; border-color: #4a5568; color: #e2e8f0; }
+
+/* Permissions table */
+#permissionsTable td { text-align: left; vertical-align: middle; }
+#permissionsTable td:nth-child(3),
+#permissionsTable td:nth-child(4),
+#permissionsTable td:nth-child(5),
+#permissionsTable td:nth-child(6),
+#permissionsTable td:nth-child(7) { text-align: center; }
+#permissionsTable .code-badge { background:#4a90d9;color:#fff;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:600; }
+.perm-row-filtered { display: none; }
+
+/* Config table */
+#configTable td { text-align: left; vertical-align: middle; }
+#configTable td:nth-child(3), #configTable td:nth-child(4) { text-align: center; }
+#configTable select { padding:3px 6px;border:1px solid #cbd5e0;border-radius:3px;font-size:11px; }
+body.dark-theme #configTable select { background:#1a202c;border-color:#4a5568;color:#e2e8f0; }
+.cfg-row-filtered { display: none; }
 </style>
 {% endblock %}
 
@@ -318,20 +340,26 @@ async function loadUsers() {
         </tr>
     `).join('');
 
-    // Update approver dropdown
-    const approverSelect = document.getElementById('cfgApprover');
-    approverSelect.innerHTML = '<option value="">-- None --</option>' +
+    // Populate user select in permissions tab
+    const permUserSelect = document.getElementById('permUserSelect');
+    const prevVal = permUserSelect.value;
+    permUserSelect.innerHTML = '<option value="">-- Select User --</option>' +
+        users.map(u => `<option value="${u.id}">${u.username}${u.is_admin ? ' (admin)' : ''}</option>`).join('');
+    if (prevVal) permUserSelect.value = prevVal;
+
+    // Populate approver dropdowns in config table
+    const approverOptions = '<option value="">-- None --</option>' +
         users.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+    document.querySelectorAll('.cfg-approver-select').forEach(sel => {
+        const cur = sel.value;
+        sel.innerHTML = approverOptions;
+        sel.value = cur;
+    });
 }
 
 async function loadModules() {
     const res = await fetch('/admin/api/modules');
     modules = await res.json();
-    const permSelect = document.getElementById('permModuleSelect');
-    const configSelect = document.getElementById('configModuleSelect');
-    const options = modules.map(m => `<option value="${m.code}">${m.code} - ${m.name}</option>`).join('');
-    permSelect.innerHTML = '<option value="">-- Select --</option>' + options;
-    configSelect.innerHTML = '<option value="">-- Select --</option>' + options;
 }
 
 function showTab(tab) {
@@ -343,6 +371,7 @@ function showTab(tab) {
     if (tab === 'gst') loadGstConfig();
     if (tab === 'sap') loadSapConfig();
     if (tab === 'banks') loadBankAccounts();
+    if (tab === 'config') loadAllConfigs();
 }
 
 function showAddUser() { document.getElementById('addUserModal').style.display = 'flex'; }
@@ -386,81 +415,149 @@ async function deleteUser(id) {
     else alert('Failed to delete user');
 }
 
-async function loadPermissions() {
-    const moduleCode = document.getElementById('permModuleSelect').value;
-    if (!moduleCode) { document.querySelector('#permissionsTable tbody').innerHTML = ''; return; }
+// ── Permissions (user-centric) ────────────────────────────────────────────────
+let userPermData = [];
 
-    const res = await fetch(`/admin/api/permissions/${moduleCode}`);
-    currentPermissions = await res.json();
+async function loadUserPermissions() {
+    const userId = document.getElementById('permUserSelect').value;
+    const wrap = document.getElementById('permTableWrap');
+    if (!userId) { wrap.style.display = 'none'; return; }
 
-    const tbody = document.querySelector('#permissionsTable tbody');
-    tbody.innerHTML = currentPermissions.map((p, i) => `
-        <tr>
-            <td>${p.username}</td>
+    const res = await fetch(`/admin/api/permissions/user/${userId}`);
+    userPermData = await res.json();
+    renderPermTable();
+    wrap.style.display = 'block';
+    document.getElementById('permSaveStatus').textContent = '';
+}
+
+function renderPermTable() {
+    const approverOptions = '<option value="">-- None --</option>' +
+        users.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+    const tbody = document.getElementById('permissionsBody');
+    tbody.innerHTML = userPermData.map((p, i) => `
+        <tr data-idx="${i}">
+            <td><span class="code-badge">${p.module_code}</span></td>
+            <td>${p.module_name}</td>
             <td><input type="checkbox" data-idx="${i}" data-perm="can_read" ${p.can_read ? 'checked' : ''}></td>
             <td><input type="checkbox" data-idx="${i}" data-perm="can_add" ${p.can_add ? 'checked' : ''}></td>
             <td><input type="checkbox" data-idx="${i}" data-perm="can_edit" ${p.can_edit ? 'checked' : ''}></td>
             <td><input type="checkbox" data-idx="${i}" data-perm="can_delete" ${p.can_delete ? 'checked' : ''}></td>
+            <td>
+                <input type="checkbox" title="Toggle all" onchange="toggleRowPerms(${i}, this.checked)"
+                    ${p.can_read && p.can_add && p.can_edit && p.can_delete ? 'checked' : ''}>
+            </td>
         </tr>
     `).join('');
 
-    // Add change listeners
-    tbody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    tbody.querySelectorAll('input[data-perm]').forEach(cb => {
         cb.addEventListener('change', () => {
             const idx = parseInt(cb.dataset.idx);
-            const perm = cb.dataset.perm;
-            currentPermissions[idx][perm] = cb.checked ? 1 : 0;
+            userPermData[idx][cb.dataset.perm] = cb.checked ? 1 : 0;
         });
     });
 }
 
-async function savePermissions() {
-    const moduleCode = document.getElementById('permModuleSelect').value;
-    if (!moduleCode) { alert('Select a module first'); return; }
-
-    const res = await fetch(`/admin/api/permissions/${moduleCode}/save`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(currentPermissions)
-    });
-
-    if (res.ok) alert('Permissions saved!');
-    else alert('Failed to save permissions');
+function toggleRowPerms(idx, checked) {
+    const val = checked ? 1 : 0;
+    ['can_read','can_add','can_edit','can_delete'].forEach(p => userPermData[idx][p] = val);
+    const row = document.querySelector(`#permissionsBody tr[data-idx="${idx}"]`);
+    row.querySelectorAll('input[data-perm]').forEach(cb => cb.checked = checked);
 }
 
-async function loadConfig() {
-    const moduleCode = document.getElementById('configModuleSelect').value;
-    const panel = document.getElementById('configPanel');
-    if (!moduleCode) { panel.style.display = 'none'; return; }
-
-    panel.style.display = 'block';
-
-    const res = await fetch(`/admin/api/config/${moduleCode}`);
-    const config = await res.json();
-
-    document.getElementById('cfgApprovalAdd').checked = config.approval_add || false;
-    document.getElementById('cfgApprovalEdit').checked = config.approval_edit || false;
-    document.getElementById('cfgApprover').value = config.approver_id || '';
+function toggleAllPerms(readOnly) {
+    userPermData.forEach((p, i) => {
+        p.can_read = 1;
+        p.can_add = readOnly ? 0 : 0;
+        p.can_edit = readOnly ? 0 : 0;
+        p.can_delete = readOnly ? 0 : 0;
+        if (!readOnly) { p.can_read = 0; }
+    });
+    renderPermTable();
 }
 
-async function saveConfig() {
-    const moduleCode = document.getElementById('configModuleSelect').value;
-    if (!moduleCode) { alert('Select a module first'); return; }
+function filterPermTable() {
+    const q = document.getElementById('permModuleFilter').value.toLowerCase();
+    document.querySelectorAll('#permissionsBody tr').forEach(tr => {
+        const text = tr.textContent.toLowerCase();
+        tr.classList.toggle('perm-row-filtered', q.length > 0 && !text.includes(q));
+    });
+}
 
-    const config = {
-        approval_add: document.getElementById('cfgApprovalAdd').checked,
-        approval_edit: document.getElementById('cfgApprovalEdit').checked,
-        approver_id: document.getElementById('cfgApprover').value || null
-    };
-
-    const res = await fetch(`/admin/api/config/${moduleCode}/save`, {
+async function saveUserPermissions() {
+    const userId = document.getElementById('permUserSelect').value;
+    if (!userId) { alert('Select a user first'); return; }
+    const status = document.getElementById('permSaveStatus');
+    status.textContent = 'Saving...'; status.style.color = '#c05621';
+    const res = await fetch(`/admin/api/permissions/user/${userId}/save`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(config)
+        body: JSON.stringify(userPermData)
     });
+    if (res.ok) { status.textContent = 'Saved!'; status.style.color = '#276749'; setTimeout(() => status.textContent = '', 2000); }
+    else { status.textContent = 'Failed to save'; status.style.color = '#c53030'; }
+}
 
-    if (res.ok) alert('Config saved!');
-    else alert('Failed to save config');
+// ── Config (all-modules table) ────────────────────────────────────────────────
+let allConfigData = [];
+
+async function loadAllConfigs() {
+    const res = await fetch('/admin/api/config/all');
+    allConfigData = await res.json();
+    const approverOptions = '<option value="">-- None --</option>' +
+        users.map(u => `<option value="${u.id}">${u.username}</option>`).join('');
+    const tbody = document.getElementById('configBody');
+    tbody.innerHTML = allConfigData.map((c, i) => `
+        <tr data-idx="${i}">
+            <td><span class="code-badge">${c.module_code}</span></td>
+            <td>${c.module_name}</td>
+            <td><input type="checkbox" data-idx="${i}" data-cfg="approval_add" ${c.approval_add ? 'checked' : ''}></td>
+            <td><input type="checkbox" data-idx="${i}" data-cfg="approval_edit" ${c.approval_edit ? 'checked' : ''}></td>
+            <td>
+                <select class="cfg-approver-select" data-idx="${i}">
+                    ${approverOptions}
+                </select>
+            </td>
+        </tr>
+    `).join('');
+
+    // Set approver values
+    tbody.querySelectorAll('.cfg-approver-select').forEach(sel => {
+        const idx = parseInt(sel.dataset.idx);
+        sel.value = allConfigData[idx].approver_id || '';
+        sel.addEventListener('change', () => { allConfigData[parseInt(sel.dataset.idx)].approver_id = sel.value || null; });
+    });
+    tbody.querySelectorAll('input[data-cfg]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            allConfigData[parseInt(cb.dataset.idx)][cb.dataset.cfg] = cb.checked;
+        });
+    });
+}
+
+function filterConfigTable() {
+    const q = document.getElementById('cfgModuleFilter').value.toLowerCase();
+    document.querySelectorAll('#configBody tr').forEach(tr => {
+        tr.classList.toggle('cfg-row-filtered', q.length > 0 && !tr.textContent.toLowerCase().includes(q));
+    });
+}
+
+async function saveAllConfigs() {
+    const status = document.getElementById('cfgSaveStatus');
+    status.textContent = 'Saving...'; status.style.color = '#c05621';
+    let failed = 0;
+    for (const c of allConfigData) {
+        const res = await fetch(`/admin/api/config/${c.module_code}/save`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                approval_add: c.approval_add,
+                approval_edit: c.approval_edit,
+                approver_id: c.approver_id || null
+            })
+        });
+        if (!res.ok) failed++;
+    }
+    if (failed === 0) { status.textContent = 'All saved!'; status.style.color = '#276749'; setTimeout(() => status.textContent = '', 2000); }
+    else { status.textContent = `${failed} module(s) failed`; status.style.color = '#c53030'; }
 }
 
 // ── GST Config ─────────────────────────────────────────────────────────────
@@ -659,7 +756,7 @@ async function openVessel(id, docNum) {
 }
 
 // Initialize
-loadUsers();
+loadUsers().then(() => loadAllConfigs());
 loadModules();
 </script>
 {% endblock %}

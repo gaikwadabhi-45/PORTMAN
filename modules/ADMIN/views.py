@@ -131,6 +131,72 @@ def save_permissions(module_code):
     conn.close()
     return jsonify({'success': True})
 
+@bp.route('/api/permissions/user/<int:user_id>')
+@admin_required
+def get_user_permissions(user_id):
+    from app import MODULES
+    all_modules = [{'code': k, 'name': v['name']} for k, v in MODULES.items() if k != 'ADMIN']
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''
+        SELECT module_code, can_read, can_add, can_edit, can_delete
+        FROM module_permissions WHERE user_id = %s
+    ''', [user_id])
+    perm_map = {r['module_code']: dict(r) for r in cur.fetchall()}
+    conn.close()
+    result = []
+    for m in all_modules:
+        p = perm_map.get(m['code'], {'can_read': 0, 'can_add': 0, 'can_edit': 0, 'can_delete': 0})
+        result.append({
+            'module_code': m['code'],
+            'module_name': m['name'],
+            'can_read': p['can_read'],
+            'can_add': p['can_add'],
+            'can_edit': p['can_edit'],
+            'can_delete': p['can_delete'],
+        })
+    return jsonify(result)
+
+
+@bp.route('/api/permissions/user/<int:user_id>/save', methods=['POST'])
+@admin_required
+def save_user_permissions(user_id):
+    data = request.json  # list of {module_code, can_read, can_add, can_edit, can_delete}
+    conn = get_db()
+    cur = conn.cursor()
+    for p in data:
+        cur.execute('''
+            INSERT INTO module_permissions (user_id, module_code, can_read, can_add, can_edit, can_delete)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT(user_id, module_code) DO UPDATE SET
+                can_read = %s, can_add = %s, can_edit = %s, can_delete = %s
+        ''', [user_id, p['module_code'],
+              p['can_read'], p['can_add'], p['can_edit'], p['can_delete'],
+              p['can_read'], p['can_add'], p['can_edit'], p['can_delete']])
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@bp.route('/api/config/all')
+@admin_required
+def get_all_configs():
+    from app import MODULES
+    from database import get_module_config
+    all_modules = [{'code': k, 'name': v['name']} for k, v in MODULES.items() if k != 'ADMIN']
+    result = []
+    for m in all_modules:
+        cfg = get_module_config(m['code'])
+        result.append({
+            'module_code': m['code'],
+            'module_name': m['name'],
+            'approval_add': cfg.get('approval_add', False),
+            'approval_edit': cfg.get('approval_edit', False),
+            'approver_id': cfg.get('approver_id', None),
+        })
+    return jsonify(result)
+
+
 @bp.route('/api/config/<module_code>')
 @login_required
 def get_config(module_code):
