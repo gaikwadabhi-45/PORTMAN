@@ -319,6 +319,87 @@
             0%, 100% { opacity: 0.3; }
             50% { opacity: 0.6; }
         }
+
+        .forgot-link {
+            display: block;
+            text-align: center;
+            margin-top: 14px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: color 0.2s;
+        }
+        .forgot-link:hover { color: rgba(255,255,255,0.85); }
+
+        .fp-step { display: none; }
+        .fp-step.active { display: block; }
+
+        .fp-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.45);
+            cursor: pointer;
+            margin-bottom: 16px;
+            letter-spacing: 0.5px;
+            transition: color 0.2s;
+            background: none;
+            border: none;
+            padding: 0;
+        }
+        .fp-back:hover { color: rgba(255,255,255,0.8); }
+
+        .otp-inputs {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .otp-inputs input {
+            width: 44px !important;
+            padding: 12px 0 !important;
+            text-align: center;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
+        .fp-title {
+            font-size: 13px;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 6px;
+            text-align: center;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .fp-subtitle {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            text-align: center;
+            margin-bottom: 22px;
+            line-height: 1.5;
+        }
+
+        .fp-msg {
+            font-size: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            text-align: center;
+        }
+        .fp-msg.error {
+            background: rgba(236,28,36,0.2);
+            border: 1px solid rgba(236,28,36,0.4);
+            color: #fff;
+        }
+        .fp-msg.success {
+            background: rgba(72,187,120,0.2);
+            border: 1px solid rgba(72,187,120,0.4);
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -339,28 +420,216 @@
    
     </div>
 
-    <!-- Login Form -->
+    <!-- Login / Forgot Password Container -->
     <div class="login-container">
         <div class="login-box">
-           
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
-            <form method="POST">
+
+            <!-- Step 0: Login -->
+            <div id="fp-step-0" class="fp-step active">
+                {% if error %}
+                <div class="error">{{ error }}</div>
+                {% endif %}
+                <form method="POST">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" name="username" placeholder="Enter username" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" name="password" placeholder="Enter password" required>
+                    </div>
+                    <button type="submit" class="btn">Sign In</button>
+                </form>
+                <span class="forgot-link" onclick="showFP(1)">Forgot Password?</span>
+            </div>
+
+            <!-- Step 1: Enter Email -->
+            <div id="fp-step-1" class="fp-step">
+                <button class="fp-back" onclick="showFP(0)">&#8592; Back to Login</button>
+                <div class="fp-title">Reset Password</div>
+                <div class="fp-subtitle">Enter the email address linked to your account.<br>We'll send you a 6-digit OTP.</div>
+                <div id="fp1-msg" class="fp-msg" style="display:none;"></div>
                 <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" name="username" placeholder="Enter username" required autofocus>
+                    <label>Email Address</label>
+                    <input type="email" id="fp-email" placeholder="you@example.com" autocomplete="off">
+                </div>
+                <button class="btn" id="fp1-btn" onclick="fpSendOtp()">Send OTP</button>
+            </div>
+
+            <!-- Step 2: Enter OTP -->
+            <div id="fp-step-2" class="fp-step">
+                <button class="fp-back" onclick="showFP(1)">&#8592; Change Email</button>
+                <div class="fp-title">Enter OTP</div>
+                <div class="fp-subtitle" id="fp2-subtitle">Enter the 6-digit code sent to your email.</div>
+                <div id="fp2-msg" class="fp-msg" style="display:none;"></div>
+                <div class="otp-inputs">
+                    <input type="text" maxlength="1" class="otp-digit" inputmode="numeric" pattern="[0-9]">
+                    <input type="text" maxlength="1" class="otp-digit" inputmode="numeric" pattern="[0-9]">
+                    <input type="text" maxlength="1" class="otp-digit" inputmode="numeric" pattern="[0-9]">
+                    <input type="text" maxlength="1" class="otp-digit" inputmode="numeric" pattern="[0-9]">
+                    <input type="text" maxlength="1" class="otp-digit" inputmode="numeric" pattern="[0-9]">
+                    <input type="text" maxlength="1" class="otp-digit" inputmode="numeric" pattern="[0-9]">
+                </div>
+                <button class="btn" id="fp2-btn" onclick="fpVerifyOtp()">Verify OTP</button>
+                <span class="forgot-link" onclick="fpResendOtp()">Resend OTP</span>
+            </div>
+
+            <!-- Step 3: Set New Password -->
+            <div id="fp-step-3" class="fp-step">
+                <div class="fp-title">Set New Password</div>
+                <div class="fp-subtitle">Choose a strong password for your account.</div>
+                <div id="fp3-msg" class="fp-msg" style="display:none;"></div>
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" id="fp-pw1" placeholder="Enter new password">
                 </div>
                 <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" name="password" placeholder="Enter password" required>
+                    <label>Confirm Password</label>
+                    <input type="password" id="fp-pw2" placeholder="Re-enter password">
                 </div>
-                <button type="submit" class="btn">Sign In</button>
-            </form>
+                <button class="btn" id="fp3-btn" onclick="fpSetPassword()">Update Password</button>
+            </div>
+
         </div>
     </div>
 
     <script>
+        // ── Forgot Password Flow ──────────────────────────────────────────────
+        let _fpEmail = '';
+        let _fpResetToken = '';
+
+        function showFP(step) {
+            document.querySelectorAll('.fp-step').forEach(el => el.classList.remove('active'));
+            document.getElementById('fp-step-' + step).classList.add('active');
+            if (step === 1) setTimeout(() => document.getElementById('fp-email').focus(), 50);
+            if (step === 2) setTimeout(() => document.querySelectorAll('.otp-digit')[0].focus(), 50);
+        }
+
+        function _fpMsg(stepNum, type, text) {
+            const el = document.getElementById('fp' + stepNum + '-msg');
+            el.className = 'fp-msg ' + type;
+            el.textContent = text;
+            el.style.display = 'block';
+        }
+        function _fpClearMsg(stepNum) {
+            const el = document.getElementById('fp' + stepNum + '-msg');
+            if (el) el.style.display = 'none';
+        }
+        function _setBtnLoading(id, loading, text) {
+            const btn = document.getElementById(id);
+            btn.disabled = loading;
+            btn.textContent = loading ? 'Please wait...' : text;
+        }
+
+        async function fpSendOtp() {
+            const email = document.getElementById('fp-email').value.trim();
+            if (!email) { _fpMsg(1, 'error', 'Please enter your email address.'); return; }
+            _setBtnLoading('fp1-btn', true, 'Send OTP');
+            _fpClearMsg(1);
+            try {
+                const res = await fetch('/auth/send-otp', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email})
+                });
+                const data = await res.json();
+                if (!res.ok) { _fpMsg(1, 'error', data.error || 'Failed to send OTP.'); return; }
+                _fpEmail = email;
+                document.getElementById('fp2-subtitle').textContent =
+                    'Enter the 6-digit code sent to ' + email.replace(/(.{2}).+(@.+)/, '$1…$2');
+                document.querySelectorAll('.otp-digit').forEach(i => i.value = '');
+                showFP(2);
+            } catch(e) { _fpMsg(1, 'error', 'Network error. Please try again.'); }
+            finally { _setBtnLoading('fp1-btn', false, 'Send OTP'); }
+        }
+
+        async function fpResendOtp() {
+            if (!_fpEmail) { showFP(1); return; }
+            _fpClearMsg(2);
+            try {
+                const res = await fetch('/auth/send-otp', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: _fpEmail})
+                });
+                if (res.ok) {
+                    document.querySelectorAll('.otp-digit').forEach(i => i.value = '');
+                    _fpMsg(2, 'success', 'A new OTP has been sent.');
+                    setTimeout(() => document.querySelectorAll('.otp-digit')[0].focus(), 50);
+                } else {
+                    _fpMsg(2, 'error', 'Failed to resend OTP. Please try again.');
+                }
+            } catch(e) { _fpMsg(2, 'error', 'Network error.'); }
+        }
+
+        async function fpVerifyOtp() {
+            const digits = [...document.querySelectorAll('.otp-digit')].map(i => i.value.trim());
+            const otp = digits.join('');
+            if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+                _fpMsg(2, 'error', 'Please enter all 6 digits.'); return;
+            }
+            _setBtnLoading('fp2-btn', true, 'Verify OTP');
+            _fpClearMsg(2);
+            try {
+                const res = await fetch('/auth/verify-otp', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: _fpEmail, otp})
+                });
+                const data = await res.json();
+                if (!res.ok) { _fpMsg(2, 'error', data.error || 'Invalid OTP.'); return; }
+                _fpResetToken = data.reset_token;
+                document.getElementById('fp-pw1').value = '';
+                document.getElementById('fp-pw2').value = '';
+                showFP(3);
+                setTimeout(() => document.getElementById('fp-pw1').focus(), 50);
+            } catch(e) { _fpMsg(2, 'error', 'Network error. Please try again.'); }
+            finally { _setBtnLoading('fp2-btn', false, 'Verify OTP'); }
+        }
+
+        async function fpSetPassword() {
+            const pw1 = document.getElementById('fp-pw1').value;
+            const pw2 = document.getElementById('fp-pw2').value;
+            if (!pw1) { _fpMsg(3, 'error', 'Password is required.'); return; }
+            if (pw1 !== pw2) { _fpMsg(3, 'error', 'Passwords do not match.'); document.getElementById('fp-pw2').value = ''; document.getElementById('fp-pw2').focus(); return; }
+            _setBtnLoading('fp3-btn', true, 'Update Password');
+            _fpClearMsg(3);
+            try {
+                const res = await fetch('/auth/set-password', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({reset_token: _fpResetToken, password: pw1})
+                });
+                const data = await res.json();
+                if (!res.ok) { _fpMsg(3, 'error', data.error || 'Failed to update password.'); return; }
+                _fpMsg(3, 'success', 'Password updated successfully! Redirecting to login...');
+                setTimeout(() => { _fpEmail = ''; _fpResetToken = ''; showFP(0); }, 2000);
+            } catch(e) { _fpMsg(3, 'error', 'Network error. Please try again.'); }
+            finally { _setBtnLoading('fp3-btn', false, 'Update Password'); }
+        }
+
+        // OTP digit auto-advance
+        document.addEventListener('DOMContentLoaded', () => {
+            const digits = document.querySelectorAll('.otp-digit');
+            digits.forEach((inp, idx) => {
+                inp.addEventListener('input', () => {
+                    inp.value = inp.value.replace(/\D/g, '').slice(-1);
+                    if (inp.value && idx < digits.length - 1) digits[idx + 1].focus();
+                });
+                inp.addEventListener('keydown', e => {
+                    if (e.key === 'Backspace' && !inp.value && idx > 0) digits[idx - 1].focus();
+                    if (e.key === 'Enter') fpVerifyOtp();
+                });
+                inp.addEventListener('paste', e => {
+                    e.preventDefault();
+                    const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+                    [...text.slice(0, 6)].forEach((ch, i) => { if (digits[idx + i]) digits[idx + i].value = ch; });
+                    const next = Math.min(idx + text.length, digits.length - 1);
+                    digits[next].focus();
+                });
+            });
+        });
+
         // Mouse interaction - blobs get cut through by cursor
         const blobs = document.querySelectorAll('.blob');
         let mouseX = 0;

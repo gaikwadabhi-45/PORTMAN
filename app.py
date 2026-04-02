@@ -174,6 +174,121 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/auth/send-otp', methods=['POST'])
+def send_otp():
+    import random
+    import string
+    import secrets
+    import datetime
+    import threading
+    from mail_service import queue_mail, process_mail_queue
+
+    email = (request.json or {}).get('email', '').strip().lower()
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id, username FROM users WHERE LOWER(email) = %s', [email])
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'success': True})  # don't reveal if email exists
+
+    cur.execute('UPDATE password_reset_tokens SET used=TRUE WHERE user_id=%s AND used=FALSE', [user['id']])
+
+    otp_code = ''.join(random.choices(string.digits, k=6))
+    reset_token = secrets.token_urlsafe(32)
+    expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
+
+    cur.execute('''
+        INSERT INTO password_reset_tokens (user_id, email, otp_code, reset_token, expires_at)
+        VALUES (%s, %s, %s, %s, %s)
+    ''', [user['id'], email, otp_code, reset_token, expires_at])
+    conn.commit()
+    conn.close()
+
+    body_html = f"""
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f7fafc;border-radius:10px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <h2 style="color:#2d3748;font-size:20px;margin:0;">Portbird - DPPL</h2>
+        <p style="color:#718096;font-size:13px;margin:4px 0 0;">Password Reset Request</p>
+      </div>
+      <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e2e8f0;">
+        <p style="color:#2d3748;font-size:14px;margin:0 0 16px;">Hi <strong>{user['username']}</strong>,</p>
+        <p style="color:#4a5568;font-size:13px;margin:0 0 20px;">We received a request to reset your password. Use the OTP below to proceed.</p>
+        <div style="text-align:center;background:#ebf8ff;border-radius:8px;padding:20px;margin:0 0 20px;">
+          <p style="color:#2b6cb0;font-size:12px;font-weight:600;margin:0 0 8px;letter-spacing:1px;text-transform:uppercase;">Your One-Time Password</p>
+          <div style="font-size:36px;font-weight:700;letter-spacing:10px;color:#1a365d;font-family:monospace;">{otp_code}</div>
+          <p style="color:#718096;font-size:11px;margin:10px 0 0;">Valid for 15 minutes</p>
+        </div>
+        <p style="color:#4a5568;font-size:12px;margin:0 0 8px;">Enter this OTP on the login page to reset your password.</p>
+        <p style="color:#a0aec0;font-size:11px;margin:0;">If you did not request this, you can safely ignore this email.</p>
+      </div>
+      <p style="text-align:center;color:#a0aec0;font-size:10px;margin:16px 0 0;">Portbird - DPPL &mdash; Port Management System</p>
+    </div>
+    """
+
+    queue_mail(email, user['username'],
+               'Password Reset OTP - Portbird DPPL', body_html, 'AUTH', user['id'])
+    threading.Thread(target=process_mail_queue, daemon=True).start()
+
+    return jsonify({'success': True})
+
+
+@app.route('/auth/verify-otp', methods=['POST'])
+def verify_otp():
+    data = request.json or {}
+    email = data.get('email', '').strip().lower()
+    otp = data.get('otp', '').strip()
+    if not email or not otp:
+        return jsonify({'error': 'Email and OTP required'}), 400
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''
+        SELECT * FROM password_reset_tokens
+        WHERE LOWER(email)=%s AND otp_code=%s AND used=FALSE AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1
+    ''', [email, otp])
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Invalid or expired OTP'}), 400
+
+    cur.execute('UPDATE password_reset_tokens SET otp_verified=TRUE WHERE id=%s', [row['id']])
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'reset_token': row['reset_token']})
+
+
+@app.route('/auth/set-password', methods=['POST'])
+def set_password_otp():
+    data = request.json or {}
+    reset_token = data.get('reset_token', '').strip()
+    new_password = data.get('password', '').strip()
+    if not reset_token or not new_password:
+        return jsonify({'error': 'Token and password required'}), 400
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''
+        SELECT * FROM password_reset_tokens
+        WHERE reset_token=%s AND otp_verified=TRUE AND used=FALSE AND expires_at > NOW()
+        LIMIT 1
+    ''', [reset_token])
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Invalid or expired reset session. Please start over.'}), 400
+
+    cur.execute('UPDATE users SET password=%s WHERE id=%s', [new_password, row['user_id']])
+    cur.execute('UPDATE password_reset_tokens SET used=TRUE WHERE id=%s', [row['id']])
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
 @app.route('/home')
 @login_required
 def home():

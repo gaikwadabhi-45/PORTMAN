@@ -290,7 +290,7 @@
             </div>
             <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:10px;">
                 <label>From Email:<br><input type="text" id="smtpFromEmail" placeholder="noreply@domain.com" style="width:100%;padding:6px;box-sizing:border-box;"></label>
-                <label>From Name:<br><input type="text" id="smtpFromName" placeholder="PORTMAN" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+                <label>From Name:<br><input type="text" id="smtpFromName" placeholder="Portbird - DPPL" style="width:100%;padding:6px;box-sizing:border-box;"></label>
                 <label style="display:flex;align-items:center;gap:8px;padding-top:20px;">
                     <input type="checkbox" id="smtpUseTls"> Use TLS (STARTTLS)
                 </label>
@@ -335,6 +335,32 @@
         <div class="modal-actions">
             <button class="btn" onclick="hideResetPw()">Cancel</button>
             <button class="btn btn-save" onclick="doResetPassword()">Reset Password</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3>Edit User</h3>
+        <input type="hidden" id="editUserId">
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="editUsername" placeholder="Enter username">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="editEmail" placeholder="user@domain.com">
+        </div>
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="editIsAdmin"> Is Admin
+            </label>
+        </div>
+        <p id="editUserError" style="color:#c53030;font-size:11px;margin-top:4px;display:none;"></p>
+        <div class="modal-actions">
+            <button class="btn" onclick="hideEditUser()">Cancel</button>
+            <button class="btn btn-save" onclick="doEditUser()">Save Changes</button>
         </div>
     </div>
 </div>
@@ -441,11 +467,13 @@ async function loadUsers() {
     const tbody = document.querySelector('#usersTable tbody');
     tbody.innerHTML = users.map(u => `
         <tr>
-            <td>${u.username}</td>
-            <td>${u.email || '<span style="color:#a0aec0">—</span>'}</td>
-            <td>${u.is_admin ? 'Yes' : 'No'}</td>
-            <td style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="btn btn-save" style="font-size:11px;padding:3px 10px;" onclick="showResetPw(${u.id}, '${u.username}')">Reset Password</button>
+            <td style="font-weight:600;">${u.username}</td>
+            <td style="color:${u.email ? '#2d3748' : '#a0aec0'};font-size:12px;">${u.email || '— no email —'}</td>
+            <td>${u.is_admin ? '<span style="background:#ebf8ff;color:#2b6cb0;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">Admin</span>' : '<span style="background:#f7fafc;color:#718096;padding:2px 8px;border-radius:10px;font-size:11px;">User</span>'}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn" style="font-size:11px;padding:3px 10px;background:#edf2f7;color:#4a5568;border:1px solid #cbd5e0;" onclick="showEditUser(${u.id}, '${u.username.replace(/'/g,"\\'")}', '${(u.email||'').replace(/'/g,"\\'")}', ${u.is_admin ? 1 : 0})">Edit</button>
+                <button class="btn btn-save" style="font-size:11px;padding:3px 10px;" onclick="showResetPw(${u.id}, '${u.username.replace(/'/g,"\\'")}')">Reset PW</button>
+                <button class="btn" style="font-size:11px;padding:3px 10px;background:#e6fffa;color:#276749;border:1px solid #9ae6b4;" onclick="sendResetEmail(${u.id}, '${u.username.replace(/'/g,"\\'")}')">Send Reset Email</button>
                 ${u.username !== 'admin' ? `<button class="btn btn-danger" style="font-size:11px;padding:3px 10px;" onclick="deleteUser(${u.id})">Delete</button>` : ''}
             </td>
         </tr>
@@ -518,6 +546,46 @@ async function addUser() {
         const data = await res.json();
         alert(data.error || 'Failed to add user');
     }
+}
+
+function showEditUser(id, username, email, isAdmin) {
+    document.getElementById('editUserId').value = id;
+    document.getElementById('editUsername').value = username;
+    document.getElementById('editEmail').value = email;
+    document.getElementById('editIsAdmin').checked = !!isAdmin;
+    document.getElementById('editUserError').style.display = 'none';
+    document.getElementById('editUserModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('editUsername').focus(), 50);
+}
+function hideEditUser() {
+    document.getElementById('editUserModal').style.display = 'none';
+}
+async function doEditUser() {
+    const id = parseInt(document.getElementById('editUserId').value);
+    const username = document.getElementById('editUsername').value.trim();
+    const email = document.getElementById('editEmail').value.trim();
+    const is_admin = document.getElementById('editIsAdmin').checked;
+    const err = document.getElementById('editUserError');
+    if (!username) { err.textContent = 'Username is required.'; err.style.display = 'block'; return; }
+    const res = await fetch('/admin/api/users/edit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id, username, email, is_admin})
+    });
+    if (res.ok) { hideEditUser(); loadUsers(); }
+    else { const d = await res.json(); err.textContent = d.error || 'Failed to save.'; err.style.display = 'block'; }
+}
+
+async function sendResetEmail(id, username) {
+    if (!confirm(`Send password reset OTP email to ${username}?`)) return;
+    const res = await fetch('/admin/api/users/send-reset-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id})
+    });
+    const data = await res.json();
+    if (res.ok) alert(data.message || 'Reset email sent successfully.');
+    else alert(data.error || 'Failed to send reset email.');
 }
 
 let _resetPwUserId = null;

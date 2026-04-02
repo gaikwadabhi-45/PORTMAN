@@ -80,6 +80,103 @@ def reset_password():
     return jsonify({'success': True})
 
 
+@bp.route('/api/users/edit', methods=['POST'])
+@admin_required
+def edit_user():
+    data = request.json
+    user_id = data.get('id')
+    username = data.get('username', '').strip()
+    email = data.get('email', '').strip() or None
+    is_admin = 1 if data.get('is_admin') else 0
+
+    if not user_id or not username:
+        return jsonify({'error': 'User ID and username required'}), 400
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        cur.execute('UPDATE users SET username=%s, email=%s, is_admin=%s WHERE id=%s',
+                    [username, email, is_admin, user_id])
+        conn.commit()
+        # Sync session if admin edited themselves
+        conn.close()
+        return jsonify({'success': True})
+    except Exception:
+        conn.rollback()
+        conn.close()
+        return jsonify({'error': 'Username already exists'}), 400
+
+
+@bp.route('/api/users/send-reset-email', methods=['POST'])
+@admin_required
+def send_reset_email():
+    import random
+    import string
+    import secrets
+    import datetime
+    from mail_service import queue_mail, process_mail_queue
+    import threading
+
+    data = request.json
+    user_id = data.get('id')
+    if not user_id:
+        return jsonify({'error': 'User ID required'}), 400
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id, username, email FROM users WHERE id=%s', [user_id])
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'error': 'User not found'}), 404
+    if not user['email']:
+        conn.close()
+        return jsonify({'error': 'User has no email address. Edit the user to add one first.'}), 400
+
+    # Expire existing tokens
+    cur.execute('UPDATE password_reset_tokens SET used=TRUE WHERE user_id=%s AND used=FALSE', [user_id])
+
+    otp_code = ''.join(random.choices(string.digits, k=6))
+    reset_token = secrets.token_urlsafe(32)
+    expires_at = datetime.datetime.now() + datetime.timedelta(minutes=15)
+
+    cur.execute('''
+        INSERT INTO password_reset_tokens (user_id, email, otp_code, reset_token, expires_at)
+        VALUES (%s, %s, %s, %s, %s)
+    ''', [user_id, user['email'], otp_code, reset_token, expires_at])
+    conn.commit()
+    conn.close()
+
+    body_html = f"""
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f7fafc;border-radius:10px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <h2 style="color:#2d3748;font-size:20px;margin:0;">Portbird - DPPL</h2>
+        <p style="color:#718096;font-size:13px;margin:4px 0 0;">Password Reset Request</p>
+      </div>
+      <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e2e8f0;">
+        <p style="color:#2d3748;font-size:14px;margin:0 0 16px;">Hi <strong>{user['username']}</strong>,</p>
+        <p style="color:#4a5568;font-size:13px;margin:0 0 20px;">An administrator has requested a password reset for your account. Use the OTP below to reset your password.</p>
+        <div style="text-align:center;background:#ebf8ff;border-radius:8px;padding:20px;margin:0 0 20px;">
+          <p style="color:#2b6cb0;font-size:12px;font-weight:600;margin:0 0 8px;letter-spacing:1px;text-transform:uppercase;">Your One-Time Password</p>
+          <div style="font-size:36px;font-weight:700;letter-spacing:10px;color:#1a365d;font-family:monospace;">{otp_code}</div>
+          <p style="color:#718096;font-size:11px;margin:10px 0 0;">Valid for 15 minutes</p>
+        </div>
+        <p style="color:#4a5568;font-size:12px;margin:0 0 8px;">To complete the reset, go to the login page and click <strong>Forgot Password</strong>.</p>
+        <p style="color:#a0aec0;font-size:11px;margin:0;">If you did not request this, please ignore this email or contact your administrator.</p>
+      </div>
+      <p style="text-align:center;color:#a0aec0;font-size:10px;margin:16px 0 0;">Portbird - DPPL &mdash; Port Management System</p>
+    </div>
+    """
+
+    queue_mail(user['email'], user['username'],
+               'Password Reset OTP - Portbird DPPL', body_html, 'ADMIN', user_id)
+
+    # Fire off a send attempt in background
+    threading.Thread(target=process_mail_queue, daemon=True).start()
+
+    return jsonify({'success': True, 'message': f"Reset OTP sent to {user['email']}"})
+
+
 @bp.route('/api/users/delete', methods=['POST'])
 @admin_required
 def delete_user():

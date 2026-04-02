@@ -57,7 +57,7 @@ def _send_one(mail, cfg):
     try:
         msg = MIMEMultipart('alternative')
         msg['Subject'] = mail['subject']
-        msg['From'] = f"{cfg.get('from_name', 'PORTMAN')} <{cfg['from_email']}>"
+        msg['From'] = f"{cfg.get('from_name', 'Portbird - DPPL')} <{cfg['from_email']}>"
         msg['To'] = mail['to_email']
         msg.attach(MIMEText(mail['body_html'], 'html'))
 
