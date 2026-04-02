@@ -16,6 +16,7 @@
     <button class="tab-btn" onclick="showTab('gst')">GST Config</button>
     <button class="tab-btn" onclick="showTab('sap')">SAP Config</button>
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
+    <button class="tab-btn" onclick="showTab('mail')">Mail</button>
 </div>
 
 <!-- User Management Tab -->
@@ -29,6 +30,7 @@
             <thead>
                 <tr>
                     <th>Username</th>
+                    <th>Email</th>
                     <th>Is Admin</th>
                     <th>Actions</th>
                 </tr>
@@ -260,6 +262,62 @@
     </div>
 </div>
 
+<!-- Mail Tab -->
+<div id="mail-tab" class="tab-content">
+    <div class="admin-section" style="margin-bottom:16px;">
+        <h3>SMTP Configuration</h3>
+        <div class="toolbar" style="flex-wrap:wrap;gap:10px;align-items:center;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;">
+                Mail Enabled:
+                <label class="smtp-toggle">
+                    <input type="checkbox" id="smtpEnabled">
+                    <span class="smtp-slider"></span>
+                </label>
+            </label>
+            <button class="btn btn-save" onclick="saveSmtpConfig()">Save Config</button>
+            <button class="btn" style="background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="sendMailNow()">Send Now</button>
+            <span id="smtpStatus" style="font-size:11px;"></span>
+        </div>
+        <div class="config-panel" style="display:block;margin-top:12px;">
+            <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                <label>Host:<br><input type="text" id="smtpHost" placeholder="smtp-mail.outlook.com" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+                <label>Port:<br><input type="number" id="smtpPort" placeholder="587" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+                <label>Schedule (minutes):<br><input type="number" id="smtpSchedule" min="1" placeholder="5" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+            </div>
+            <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+                <label>Username:<br><input type="text" id="smtpUsername" placeholder="user@domain.com" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+                <label>Password:<br><input type="password" id="smtpPassword" placeholder="••••••••" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+            </div>
+            <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:10px;">
+                <label>From Email:<br><input type="text" id="smtpFromEmail" placeholder="noreply@domain.com" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+                <label>From Name:<br><input type="text" id="smtpFromName" placeholder="PORTMAN" style="width:100%;padding:6px;box-sizing:border-box;"></label>
+                <label style="display:flex;align-items:center;gap:8px;padding-top:20px;">
+                    <input type="checkbox" id="smtpUseTls"> Use TLS (STARTTLS)
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-section">
+        <h3>Mail Queue</h3>
+        <div class="toolbar" style="gap:8px;flex-wrap:wrap;">
+            <button class="btn" style="background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="loadMailQueue()">&#8635; Refresh</button>
+            <button class="btn" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" onclick="retryFailed()">Retry Failed</button>
+            <span id="mailQueueCount" style="font-size:11px;color:#718096;margin-left:8px;"></span>
+        </div>
+        <table class="admin-table" id="mailQueueTable" style="margin-top:8px;">
+            <thead>
+                <tr>
+                    <th>ID</th><th>To</th><th>Subject</th>
+                    <th>Status</th><th>Retries</th>
+                    <th>Created</th><th>Sent</th><th>Error</th>
+                </tr>
+            </thead>
+            <tbody id="mailQueueBody"></tbody>
+        </table>
+    </div>
+</div>
+
 <!-- Reset Password Modal -->
 <div id="resetPwModal" class="modal" style="display:none;">
     <div class="modal-content">
@@ -292,6 +350,10 @@
         <div class="form-group">
             <label>Password</label>
             <input type="password" id="newPassword" placeholder="Enter password">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="newEmail" placeholder="user@domain.com">
         </div>
         <div class="form-group">
             <label class="checkbox-label">
@@ -355,6 +417,15 @@ body.dark-theme #banksTable input[type="text"] { background: #1a202c; border-col
 #configTable select { padding:3px 6px;border:1px solid #cbd5e0;border-radius:3px;font-size:11px; }
 body.dark-theme #configTable select { background:#1a202c;border-color:#4a5568;color:#e2e8f0; }
 .cfg-row-filtered { display: none; }
+
+/* SMTP toggle switch */
+.smtp-toggle { position:relative; display:inline-block; width:44px; height:24px; vertical-align:middle; }
+.smtp-toggle input { opacity:0; width:0; height:0; }
+.smtp-slider { position:absolute; cursor:pointer; inset:0; background:#cbd5e0; border-radius:24px; transition:.3s; }
+.smtp-slider:before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.3s; }
+.smtp-toggle input:checked + .smtp-slider { background:#48bb78; }
+.smtp-toggle input:checked + .smtp-slider:before { transform:translateX(20px); }
+body.dark-theme .smtp-slider { background:#4a5568; }
 </style>
 {% endblock %}
 
@@ -371,6 +442,7 @@ async function loadUsers() {
     tbody.innerHTML = users.map(u => `
         <tr>
             <td>${u.username}</td>
+            <td>${u.email || '<span style="color:#a0aec0">—</span>'}</td>
             <td>${u.is_admin ? 'Yes' : 'No'}</td>
             <td style="display:flex;gap:6px;flex-wrap:wrap;">
                 <button class="btn btn-save" style="font-size:11px;padding:3px 10px;" onclick="showResetPw(${u.id}, '${u.username}')">Reset Password</button>
@@ -413,6 +485,7 @@ function showTab(tab) {
     if (tab === 'sap') loadSapConfig();
     if (tab === 'banks') loadBankAccounts();
     if (tab === 'config') loadAllConfigs();
+    if (tab === 'mail') { loadSmtpConfig(); loadMailQueue(); }
 }
 
 function showAddUser() { document.getElementById('addUserModal').style.display = 'flex'; }
@@ -420,12 +493,14 @@ function hideAddUser() {
     document.getElementById('addUserModal').style.display = 'none';
     document.getElementById('newUsername').value = '';
     document.getElementById('newPassword').value = '';
+    document.getElementById('newEmail').value = '';
     document.getElementById('newIsAdmin').checked = false;
 }
 
 async function addUser() {
     const username = document.getElementById('newUsername').value.trim();
     const password = document.getElementById('newPassword').value.trim();
+    const email = document.getElementById('newEmail').value.trim();
     const is_admin = document.getElementById('newIsAdmin').checked;
 
     if (!username || !password) { alert('Username and password required'); return; }
@@ -433,7 +508,7 @@ async function addUser() {
     const res = await fetch('/admin/api/users/add', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username, password, is_admin})
+        body: JSON.stringify({username, password, email, is_admin})
     });
 
     if (res.ok) {
@@ -855,6 +930,76 @@ async function openVessel(id, docNum) {
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
     loadLdudVessels();
+}
+
+// ── Mail Tab ─────────────────────────────────────────────────────────────────
+async function loadSmtpConfig() {
+    const res = await fetch('/admin/api/smtp-config');
+    const cfg = await res.json();
+    document.getElementById('smtpEnabled').checked  = !!cfg.is_enabled;
+    document.getElementById('smtpHost').value        = cfg.host || 'smtp-mail.outlook.com';
+    document.getElementById('smtpPort').value        = cfg.port || 587;
+    document.getElementById('smtpUsername').value    = cfg.username || '';
+    document.getElementById('smtpPassword').value    = cfg.password || '';
+    document.getElementById('smtpFromEmail').value   = cfg.from_email || '';
+    document.getElementById('smtpFromName').value    = cfg.from_name || 'PORTMAN';
+    document.getElementById('smtpUseTls').checked    = cfg.use_tls !== false;
+    document.getElementById('smtpSchedule').value    = cfg.schedule_minutes || 5;
+}
+
+async function saveSmtpConfig() {
+    const status = document.getElementById('smtpStatus');
+    status.textContent = 'Saving...'; status.style.color = '#c05621';
+    const data = {
+        host:             document.getElementById('smtpHost').value.trim(),
+        port:             parseInt(document.getElementById('smtpPort').value) || 587,
+        username:         document.getElementById('smtpUsername').value.trim(),
+        password:         document.getElementById('smtpPassword').value,
+        from_email:       document.getElementById('smtpFromEmail').value.trim(),
+        from_name:        document.getElementById('smtpFromName').value.trim() || 'PORTMAN',
+        use_tls:          document.getElementById('smtpUseTls').checked,
+        is_enabled:       document.getElementById('smtpEnabled').checked,
+        schedule_minutes: parseInt(document.getElementById('smtpSchedule').value) || 5,
+    };
+    const res = await fetch('/admin/api/smtp-config/save', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+    });
+    if (res.ok) { status.textContent = 'Saved!'; status.style.color = '#276749'; setTimeout(()=>status.textContent='',2000); }
+    else { status.textContent = 'Failed to save'; status.style.color = '#c53030'; }
+}
+
+async function loadMailQueue() {
+    const res = await fetch('/admin/api/mail-queue');
+    const rows = await res.json();
+    document.getElementById('mailQueueCount').textContent = `${rows.length} record(s)`;
+    const statusColors = { pending:'#c05621', sent:'#276749', failed:'#c53030' };
+    const statusBg     = { pending:'#feebc8', sent:'#c6f6d5',  failed:'#fed7d7' };
+    document.getElementById('mailQueueBody').innerHTML = rows.map(r => `
+        <tr>
+            <td>${r.id}</td>
+            <td style="font-size:11px;">${r.to_email}<br><span style="color:#718096;">${r.to_name||''}</span></td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(r.subject||'').replace(/"/g,'&quot;')}">${r.subject||''}</td>
+            <td><span style="background:${statusBg[r.status]||'#e2e8f0'};color:${statusColors[r.status]||'#2d3748'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${r.status}</span></td>
+            <td style="text-align:center;">${r.retry_count}/${r.max_retries}</td>
+            <td style="font-size:11px;">${r.created_at||''}</td>
+            <td style="font-size:11px;">${r.sent_at||'—'}</td>
+            <td style="font-size:11px;color:#c53030;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(r.error_message||'').replace(/"/g,'&quot;')}">${r.error_message||''}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="8" style="text-align:center;color:#a0aec0;padding:16px;">No mail records found.</td></tr>';
+}
+
+async function retryFailed() {
+    const res = await fetch('/admin/api/mail-queue/retry', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await res.json();
+    if (d.success) { alert(`Reset ${d.reset} failed mail(s) to pending.`); loadMailQueue(); }
+}
+
+async function sendMailNow() {
+    const status = document.getElementById('smtpStatus');
+    status.textContent = 'Sending...'; status.style.color = '#c05621';
+    const res = await fetch('/admin/api/mail-queue/send-now', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    if (res.ok) { status.textContent = 'Done!'; status.style.color = '#276749'; loadMailQueue(); setTimeout(()=>status.textContent='',3000); }
+    else { const d=await res.json(); status.textContent=d.error||'Failed'; status.style.color='#c53030'; }
 }
 
 // Initialize
