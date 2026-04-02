@@ -325,11 +325,12 @@
         <p id="resetPwUsername" style="font-size:12px;color:#718096;margin-bottom:12px;"></p>
         <div class="form-group">
             <label>New Password</label>
-            <input type="password" id="resetPwNew" placeholder="Enter new password">
+            <input type="password" id="resetPwNew" placeholder="Enter new password" autocomplete="new-password">
+            <div id="resetPwStrength"></div>
         </div>
         <div class="form-group">
             <label>Confirm Password</label>
-            <input type="password" id="resetPwConfirm" placeholder="Re-enter new password">
+            <input type="password" id="resetPwConfirm" placeholder="Re-enter new password" autocomplete="new-password">
         </div>
         <p id="resetPwError" style="color:#c53030;font-size:11px;margin-top:4px;display:none;"></p>
         <div class="modal-actions">
@@ -375,7 +376,8 @@
         </div>
         <div class="form-group">
             <label>Password</label>
-            <input type="password" id="newPassword" placeholder="Enter password">
+            <input type="password" id="newPassword" placeholder="Enter password" autocomplete="new-password">
+            <div id="newPwStrength"></div>
         </div>
         <div class="form-group">
             <label>Email</label>
@@ -452,10 +454,16 @@ body.dark-theme #configTable select { background:#1a202c;border-color:#4a5568;co
 .smtp-toggle input:checked + .smtp-slider { background:#48bb78; }
 .smtp-toggle input:checked + .smtp-slider:before { transform:translateX(20px); }
 body.dark-theme .smtp-slider { background:#4a5568; }
+
+/* Password strength widget */
+.ps-rules li { transition: color .2s; }
+body.dark-theme .ps-bar { background:#4a5568 !important; }
+body.dark-theme .ps-rules li { color:#a0aec0; }
 </style>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/password-strength.js') }}"></script>
 <script>
 let users = [];
 let modules = [];
@@ -516,13 +524,27 @@ function showTab(tab) {
     if (tab === 'mail') { loadSmtpConfig(); loadMailQueue(); }
 }
 
-function showAddUser() { document.getElementById('addUserModal').style.display = 'flex'; }
+let _newPwStrength = null;
+
+function showAddUser() {
+    document.getElementById('addUserModal').style.display = 'flex';
+    setTimeout(() => {
+        if (_newPwStrength) _newPwStrength.destroy();
+        _newPwStrength = initPasswordStrength(
+            document.getElementById('newPassword'),
+            document.getElementById('newPwStrength'),
+            () => document.getElementById('newUsername').value.trim()
+        );
+        document.getElementById('newUsername').focus();
+    }, 50);
+}
 function hideAddUser() {
     document.getElementById('addUserModal').style.display = 'none';
     document.getElementById('newUsername').value = '';
     document.getElementById('newPassword').value = '';
     document.getElementById('newEmail').value = '';
     document.getElementById('newIsAdmin').checked = false;
+    if (_newPwStrength) { _newPwStrength.destroy(); _newPwStrength = null; }
 }
 
 async function addUser() {
@@ -532,6 +554,9 @@ async function addUser() {
     const is_admin = document.getElementById('newIsAdmin').checked;
 
     if (!username || !password) { alert('Username and password required'); return; }
+    if (_newPwStrength && !_newPwStrength.validate()) {
+        alert('Password does not meet all requirements. Please check the checklist.'); return;
+    }
 
     const res = await fetch('/admin/api/users/add', {
         method: 'POST',
@@ -589,24 +614,41 @@ async function sendResetEmail(id, username) {
 }
 
 let _resetPwUserId = null;
+let _resetPwStrength = null;
+let _resetPwUsername = '';
+
 function showResetPw(id, username) {
     _resetPwUserId = id;
+    _resetPwUsername = username;
     document.getElementById('resetPwUsername').textContent = 'User: ' + username;
     document.getElementById('resetPwNew').value = '';
     document.getElementById('resetPwConfirm').value = '';
     document.getElementById('resetPwError').style.display = 'none';
     document.getElementById('resetPwModal').style.display = 'flex';
-    setTimeout(() => document.getElementById('resetPwNew').focus(), 50);
+    setTimeout(() => {
+        if (_resetPwStrength) _resetPwStrength.destroy();
+        _resetPwStrength = initPasswordStrength(
+            document.getElementById('resetPwNew'),
+            document.getElementById('resetPwStrength'),
+            () => _resetPwUsername
+        );
+        document.getElementById('resetPwNew').focus();
+    }, 50);
 }
 function hideResetPw() {
     document.getElementById('resetPwModal').style.display = 'none';
     _resetPwUserId = null;
+    if (_resetPwStrength) { _resetPwStrength.destroy(); _resetPwStrength = null; }
 }
 async function doResetPassword() {
     const pw = document.getElementById('resetPwNew').value;
     const pw2 = document.getElementById('resetPwConfirm').value;
     const err = document.getElementById('resetPwError');
     if (!pw) { err.textContent = 'Password is required.'; err.style.display = 'block'; return; }
+    if (_resetPwStrength && !_resetPwStrength.validate()) {
+        err.textContent = 'Password does not meet all requirements. Check the checklist.';
+        err.style.display = 'block'; return;
+    }
     if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; document.getElementById('resetPwConfirm').value = ''; document.getElementById('resetPwConfirm').focus(); return; }
     const res = await fetch('/admin/api/users/reset-password', {
         method: 'POST',

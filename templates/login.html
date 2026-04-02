@@ -400,6 +400,13 @@
             border: 1px solid rgba(72,187,120,0.4);
             color: #fff;
         }
+
+        /* password strength widget — dark background overrides */
+        #fp-pw-strength .ps-bar { background: rgba(255,255,255,0.12) !important; }
+        #fp-pw-strength .ps-rules li { color: rgba(255,255,255,0.45); font-size: 11px; }
+        #fp-pw-strength .ps-rules li.ps-pass { color: #68d391; }
+        #fp-pw-strength .ps-rules li.ps-fail { color: #fc8181; }
+        #fp-pw-strength .ps-label { font-size: 11px; }
     </style>
 </head>
 <body>
@@ -481,11 +488,12 @@
                 <div id="fp3-msg" class="fp-msg" style="display:none;"></div>
                 <div class="form-group">
                     <label>New Password</label>
-                    <input type="password" id="fp-pw1" placeholder="Enter new password">
+                    <input type="password" id="fp-pw1" placeholder="Enter new password" autocomplete="new-password">
+                    <div id="fp-pw-strength"></div>
                 </div>
                 <div class="form-group">
                     <label>Confirm Password</label>
-                    <input type="password" id="fp-pw2" placeholder="Re-enter password">
+                    <input type="password" id="fp-pw2" placeholder="Re-enter password" autocomplete="new-password">
                 </div>
                 <button class="btn" id="fp3-btn" onclick="fpSetPassword()">Update Password</button>
             </div>
@@ -582,15 +590,30 @@
                 document.getElementById('fp-pw1').value = '';
                 document.getElementById('fp-pw2').value = '';
                 showFP(3);
-                setTimeout(() => document.getElementById('fp-pw1').focus(), 50);
+                setTimeout(() => { _initFpStrength(); document.getElementById('fp-pw1').focus(); }, 50);
             } catch(e) { _fpMsg(2, 'error', 'Network error. Please try again.'); }
             finally { _setBtnLoading('fp2-btn', false, 'Verify OTP'); }
+        }
+
+        let _fpPwStrength = null;
+
+        function _initFpStrength() {
+            if (_fpPwStrength) _fpPwStrength.destroy();
+            _fpPwStrength = initPasswordStrength(
+                document.getElementById('fp-pw1'),
+                document.getElementById('fp-pw-strength'),
+                () => ''
+            );
         }
 
         async function fpSetPassword() {
             const pw1 = document.getElementById('fp-pw1').value;
             const pw2 = document.getElementById('fp-pw2').value;
             if (!pw1) { _fpMsg(3, 'error', 'Password is required.'); return; }
+            if (_fpPwStrength && !_fpPwStrength.validate()) {
+                _fpMsg(3, 'error', 'Password does not meet all requirements. Please check the checklist below.');
+                return;
+            }
             if (pw1 !== pw2) { _fpMsg(3, 'error', 'Passwords do not match.'); document.getElementById('fp-pw2').value = ''; document.getElementById('fp-pw2').focus(); return; }
             _setBtnLoading('fp3-btn', true, 'Update Password');
             _fpClearMsg(3);
@@ -695,5 +718,6 @@
         });
     </script>
 
+    <script src="{{ url_for('static', filename='js/password-strength.js') }}"></script>
 </body>
 </html>
