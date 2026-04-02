@@ -33,7 +33,7 @@ def admin_panel():
 def get_users():
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT id, username, is_admin FROM users')
+    cur.execute('SELECT id, username, email, is_admin FROM users ORDER BY username')
     users = cur.fetchall()
     conn.close()
     return jsonify([dict(u) for u in users])
@@ -44,6 +44,7 @@ def add_user():
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
+    email = data.get('email', '').strip() or None
     is_admin = 1 if data.get('is_admin') else 0
 
     if not username or not password:
@@ -52,8 +53,8 @@ def add_user():
     conn = get_db()
     cur = get_cursor(conn)
     try:
-        cur.execute('INSERT INTO users (username, password, is_admin) VALUES (%s, %s, %s) RETURNING id',
-                    [username, password, is_admin])
+        cur.execute('INSERT INTO users (username, password, email, is_admin) VALUES (%s, %s, %s, %s) RETURNING id',
+                    [username, password, email, is_admin])
         user_id = cur.fetchone()['id']
         conn.commit()
         conn.close()
@@ -372,6 +373,92 @@ def delete_port_bank():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+# ── SMTP Config ───────────────────────────────────────────────────────────────
+
+@bp.route('/api/smtp-config')
+@admin_required
+def get_smtp_config_route():
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT * FROM smtp_config ORDER BY id LIMIT 1')
+    row = cur.fetchone()
+    conn.close()
+    return jsonify(dict(row) if row else {})
+
+
+@bp.route('/api/smtp-config/save', methods=['POST'])
+@admin_required
+def save_smtp_config_route():
+    data = request.json
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id FROM smtp_config ORDER BY id LIMIT 1')
+    existing = cur.fetchone()
+    now = __import__('datetime').datetime.now()
+    fields = ['host', 'port', 'username', 'password', 'from_email', 'from_name',
+              'use_tls', 'is_enabled', 'schedule_minutes']
+    vals = [data.get(f) for f in fields] + [session.get('username'), now]
+    if existing:
+        sets = ', '.join(f'{f}=%s' for f in fields)
+        cur.execute(f'UPDATE smtp_config SET {sets}, updated_by=%s, updated_at=%s WHERE id=%s',
+                    vals + [existing['id']])
+    else:
+        cols = ', '.join(fields + ['updated_by', 'updated_at'])
+        phs = ', '.join('%s' for _ in fields + ['updated_by', 'updated_at'])
+        cur.execute(f'INSERT INTO smtp_config ({cols}) VALUES ({phs})', vals)
+    conn.commit()
+    conn.close()
+    try:
+        from app import _reschedule_mail_job
+        _reschedule_mail_job()
+    except Exception:
+        pass
+    return jsonify({'success': True})
+
+
+@bp.route('/api/mail-queue')
+@admin_required
+def get_mail_queue():
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute("""
+        SELECT id, to_email, to_name, subject, status, retry_count, max_retries,
+               to_char(created_at, 'DD-MM-YYYY HH24:MI') AS created_at,
+               to_char(sent_at,    'DD-MM-YYYY HH24:MI') AS sent_at,
+               error_message, module_code, ref_id
+        FROM mail_queue ORDER BY id DESC LIMIT 200
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.route('/api/mail-queue/retry', methods=['POST'])
+@admin_required
+def retry_failed_mail():
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute("""
+        UPDATE mail_queue SET status='pending', retry_count=0, error_message=NULL
+        WHERE status='failed'
+    """)
+    count = cur.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'reset': count})
+
+
+@bp.route('/api/mail-queue/send-now', methods=['POST'])
+@admin_required
+def send_mail_now():
+    from mail_service import process_mail_queue
+    try:
+        process_mail_queue()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ── LDUD Vessel Closure Admin ─────────────────────────────────────────────────
