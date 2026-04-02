@@ -147,6 +147,9 @@ def send_reset_email():
     conn.commit()
     conn.close()
 
+    import urllib.parse
+    login_url = request.host_url.rstrip('/') + '/login?reset=1&email=' + urllib.parse.quote(user['email'])
+
     body_html = f"""
     <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;background:#f7fafc;border-radius:10px;">
       <div style="text-align:center;margin-bottom:24px;">
@@ -155,14 +158,18 @@ def send_reset_email():
       </div>
       <div style="background:#fff;border-radius:8px;padding:24px;border:1px solid #e2e8f0;">
         <p style="color:#2d3748;font-size:14px;margin:0 0 16px;">Hi <strong>{user['username']}</strong>,</p>
-        <p style="color:#4a5568;font-size:13px;margin:0 0 20px;">An administrator has requested a password reset for your account. Use the OTP below to reset your password.</p>
-        <div style="text-align:center;background:#ebf8ff;border-radius:8px;padding:20px;margin:0 0 20px;">
+        <p style="color:#4a5568;font-size:13px;margin:0 0 20px;">An administrator has requested a password reset for your account. Use the OTP below to set a new password.</p>
+        <div style="text-align:center;background:#ebf8ff;border-radius:8px;padding:20px;margin:0 0 24px;">
           <p style="color:#2b6cb0;font-size:12px;font-weight:600;margin:0 0 8px;letter-spacing:1px;text-transform:uppercase;">Your One-Time Password</p>
           <div style="font-size:36px;font-weight:700;letter-spacing:10px;color:#1a365d;font-family:monospace;">{otp_code}</div>
           <p style="color:#718096;font-size:11px;margin:10px 0 0;">Valid for 15 minutes</p>
         </div>
-        <p style="color:#4a5568;font-size:12px;margin:0 0 8px;">To complete the reset, go to the login page and click <strong>Forgot Password</strong>.</p>
-        <p style="color:#a0aec0;font-size:11px;margin:0;">If you did not request this, please ignore this email or contact your administrator.</p>
+        <div style="text-align:center;margin:0 0 20px;">
+          <a href="{login_url}" style="display:inline-block;background:linear-gradient(135deg,#ec1c24,#2544a7);color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;letter-spacing:0.5px;">Enter OTP &amp; Reset Password</a>
+        </div>
+        <p style="color:#718096;font-size:11px;margin:0 0 6px;">Or copy this link into your browser:</p>
+        <p style="color:#4a90d9;font-size:11px;word-break:break-all;margin:0 0 16px;">{login_url}</p>
+        <p style="color:#a0aec0;font-size:11px;margin:0;">If you did not expect this email, please contact your administrator.</p>
       </div>
       <p style="text-align:center;color:#a0aec0;font-size:10px;margin:16px 0 0;">Portbird - DPPL &mdash; Port Management System</p>
     </div>

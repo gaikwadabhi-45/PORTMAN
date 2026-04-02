@@ -608,6 +608,25 @@
             finally { _setBtnLoading('fp3-btn', false, 'Update Password'); }
         }
 
+        // Auto-open OTP step if ?reset=1 link was clicked
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('reset') === '1') {
+                const emailFromLink = params.get('email') || '';
+                if (emailFromLink) {
+                    _fpEmail = emailFromLink;
+                    document.getElementById('fp2-subtitle').textContent =
+                        'Enter the 6-digit code sent to ' + emailFromLink.replace(/(.{2}).+(@.+)/, '$1…$2');
+                    document.querySelectorAll('.otp-digit').forEach(i => i.value = '');
+                    showFP(2);
+                } else {
+                    showFP(1);
+                }
+                // Clean URL without reload
+                history.replaceState(null, '', window.location.pathname);
+            }
+        });
+
         // OTP digit auto-advance
         document.addEventListener('DOMContentLoaded', () => {
             const digits = document.querySelectorAll('.otp-digit');
