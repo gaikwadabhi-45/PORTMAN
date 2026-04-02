@@ -188,6 +188,38 @@ def search_modules():
                if query in k.lower() or query in v['name'].lower()]
     return jsonify(results)
 
+# ── Mail queue scheduler ──────────────────────────────────────────────────────
+from apscheduler.schedulers.background import BackgroundScheduler
+from mail_service import process_mail_queue as _process_mail_queue
+from mail_service import get_smtp_config as _get_smtp_cfg
+
+def _mail_tick():
+    """Runs every N minutes. No-op if mail is disabled."""
+    try:
+        _process_mail_queue()
+    except Exception:
+        pass
+
+def _reschedule_mail_job():
+    """Re-read schedule_minutes from DB and reschedule if needed."""
+    try:
+        cfg = _get_smtp_cfg()
+        mins = max(1, int(cfg.get('schedule_minutes', 5))) if cfg else 5
+        _mail_scheduler.reschedule_job('mail_queue', trigger='interval', minutes=mins)
+    except Exception:
+        pass
+
+_mail_scheduler = BackgroundScheduler(daemon=True)
+_mail_scheduler.add_job(
+    _mail_tick,
+    trigger='interval',
+    minutes=5,
+    id='mail_queue',
+    replace_existing=True,
+    max_instances=1,
+)
+_mail_scheduler.start()
+
 if __name__ == '__main__':
     is_production = FLASK_ENV == 'production'
 
