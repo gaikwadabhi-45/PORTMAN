@@ -3,9 +3,45 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_module_config
+from mail_service import queue_mail as _queue_mail
 
 bp = Blueprint('LDUD01', __name__, template_folder='.')
 MODULE_CODE = 'LDUD01'
+
+def _get_user_email_by_id(user_id):
+    """Return (email, username) for a user_id."""
+    if not user_id:
+        return None, None
+    from database import get_db, get_cursor
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT email, username FROM users WHERE id=%s', [user_id])
+    row = cur.fetchone()
+    conn.close()
+    return (row['email'], row['username']) if row else (None, None)
+
+def _get_closer_email(record_id):
+    """Return (email, username) of the last user who closed this LDUD record."""
+    from database import get_db, get_cursor
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute("""
+        SELECT actioned_by FROM approval_log
+        WHERE module_code='LDUD01' AND record_id=%s
+          AND action IN ('Closed','Partial Close')
+        ORDER BY actioned_at DESC LIMIT 1
+    """, [record_id])
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None, None
+    closer_username = row['actioned_by']
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT email, username FROM users WHERE username=%s', [closer_username])
+    row2 = cur.fetchone()
+    conn.close()
+    return (row2['email'], row2['username']) if row2 else (None, closer_username)
 
 def login_required(f):
     @wraps(f)
@@ -126,6 +162,26 @@ def close():
         return jsonify({'error': f"LUEU total ({eligibility['lueu_total']}) does not match BL total ({eligibility['bl_total']}) — use Partial Close instead"}), 400
 
     model.close_record(record_id, close_type, session.get('username'))
+    # Queue notification to approver
+    try:
+        from database import get_module_config
+        cfg = get_module_config('LDUD01')
+        approver_email, approver_name = _get_user_email_by_id(cfg.get('approver_id'))
+        if approver_email:
+            _queue_mail(
+                to_email=approver_email,
+                to_name=approver_name,
+                subject=f"[PORTMAN] LDUD01 Record #{record_id} — {close_type}",
+                body_html=f"""<p>Hello {approver_name or 'Approver'},</p>
+<p>LDUD01 record <strong>#{record_id}</strong> has been marked as
+<strong>{close_type}</strong> by <strong>{session.get('username')}</strong>.</p>
+<p>Please review in PORTMAN.</p>
+<hr><p style="color:#888;font-size:11px;">Automated notification from PORTMAN.</p>""",
+                module_code='LDUD01',
+                ref_id=record_id,
+            )
+    except Exception:
+        pass
     return jsonify({'doc_status': close_type})
 
 
@@ -144,6 +200,25 @@ def reopen():
     if not comment:
         return jsonify({'error': 'A reason is required when sending back to Draft'}), 400
     model.reopen_record(record_id, comment, session.get('username'))
+    # Queue notification to the operator who last closed this record
+    try:
+        closer_email, closer_name = _get_closer_email(record_id)
+        if closer_email:
+            _queue_mail(
+                to_email=closer_email,
+                to_name=closer_name,
+                subject=f"[PORTMAN] LDUD01 Record #{record_id} — Sent Back to Draft",
+                body_html=f"""<p>Hello {closer_name or ''},</p>
+<p>LDUD01 record <strong>#{record_id}</strong> has been <strong>sent back to Draft</strong>
+by <strong>{session.get('username')}</strong>.</p>
+<p><strong>Reason:</strong> {comment}</p>
+<p>Please review and resubmit in PORTMAN.</p>
+<hr><p style="color:#888;font-size:11px;">Automated notification from PORTMAN.</p>""",
+                module_code='LDUD01',
+                ref_id=record_id,
+            )
+    except Exception:
+        pass
     return jsonify({'doc_status': 'Draft'})
 
 
