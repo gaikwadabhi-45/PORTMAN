@@ -568,8 +568,27 @@ def get_dashboard_data():
         SELECT
             entry_date,
             shift,
-            COALESCE(SUM(quantity), 0)    AS total_tonnes,
-            ROUND(COALESCE(SUM(diff_hrs), 0)::numeric, 2) AS total_hrs
+            COALESCE(SUM(quantity), 0) AS total_tonnes,
+            ROUND(COALESCE(SUM(
+                CASE
+                    WHEN from_time IS NOT NULL AND to_time IS NOT NULL
+                         AND from_time != '' AND to_time != ''
+                    THEN
+                        CASE
+                            WHEN to_time > from_time
+                            THEN (
+                                (CAST(SPLIT_PART(to_time,':',1) AS INT)*60 + CAST(SPLIT_PART(to_time,':',2) AS INT))
+                              - (CAST(SPLIT_PART(from_time,':',1) AS INT)*60 + CAST(SPLIT_PART(from_time,':',2) AS INT))
+                            ) / 60.0
+                            ELSE
+                            (1440
+                              - (CAST(SPLIT_PART(from_time,':',1) AS INT)*60 + CAST(SPLIT_PART(from_time,':',2) AS INT))
+                              + (CAST(SPLIT_PART(to_time,':',1) AS INT)*60 + CAST(SPLIT_PART(to_time,':',2) AS INT))
+                            ) / 60.0
+                        END
+                    ELSE 0
+                END
+            ), 0)::numeric, 2) AS total_hrs
         FROM lueu_lines
         WHERE entry_date IN (%s, %s) AND (is_deleted IS NOT TRUE)
         GROUP BY entry_date, shift
