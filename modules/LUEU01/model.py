@@ -607,12 +607,111 @@ def get_dashboard_data():
             'hrs':    float(r['total_hrs'] or 0),
         }
 
+    # ── Current shift (A=06-14, B=14-22, C=22-06) ───────────────────────────
+    now = datetime.now()
+    h = now.hour
+    if 6 <= h < 14:
+        current_shift = 'A'
+    elif 14 <= h < 22:
+        current_shift = 'B'
+    else:
+        current_shift = 'C'
+
+    # ── All equipment master list ─────────────────────────────────────────────
+    cur.execute('SELECT name FROM equipment ORDER BY name')
+    all_equipment = [r['name'] for r in cur.fetchall()]
+
+    # ── Today aggregates per equipment ───────────────────────────────────────
+    cur.execute('''
+        SELECT
+            equipment_name,
+            COUNT(*)                         AS entry_count,
+            COALESCE(SUM(quantity), 0)       AS today_qty,
+            MAX(quantity_uom)                AS uom,
+            COUNT(CASE WHEN shift = %s THEN 1 END) AS current_shift_count
+        FROM lueu_lines
+        WHERE entry_date = %s AND (is_deleted IS NOT TRUE)
+          AND equipment_name IS NOT NULL AND equipment_name != ''
+        GROUP BY equipment_name
+    ''', [current_shift, today_s])
+    eq_agg = {r['equipment_name']: dict(r) for r in cur.fetchall()}
+
+    # ── Most recent assignment per equipment today (by highest id) ───────────
+    cur.execute('''
+        SELECT DISTINCT ON (equipment_name)
+            equipment_name,
+            source_display,
+            barge_name,
+            cargo_name,
+            shift,
+            from_time,
+            to_time,
+            shift_incharge,
+            operator_name,
+            delay_name,
+            id
+        FROM lueu_lines
+        WHERE entry_date = %s AND (is_deleted IS NOT TRUE)
+          AND equipment_name IS NOT NULL AND equipment_name != ''
+        ORDER BY equipment_name, id DESC
+    ''', [today_s])
+    eq_latest = {r['equipment_name']: dict(r) for r in cur.fetchall()}
+
+    # ── Last entry across all equipment today ────────────────────────────────
+    cur.execute('''
+        SELECT equipment_name, to_time, created_by, source_display, barge_name, id
+        FROM lueu_lines
+        WHERE entry_date = %s AND (is_deleted IS NOT TRUE)
+          AND to_time IS NOT NULL AND to_time != ''
+        ORDER BY id DESC
+        LIMIT 1
+    ''', [today_s])
+    last_row = cur.fetchone()
+    last_entry = dict(last_row) if last_row else None
+
+    conn.close()
+
+    # ── Build equipment board ─────────────────────────────────────────────────
+    equipment_board = []
+    for eq in all_equipment:
+        agg = eq_agg.get(eq, {})
+        lat = eq_latest.get(eq, {})
+        entry_count = int(agg.get('entry_count', 0))
+        today_qty   = round(float(agg.get('today_qty', 0)), 2)
+        cur_shift_count = int(agg.get('current_shift_count', 0))
+
+        if entry_count == 0:
+            status = 'no_data'
+        elif cur_shift_count == 0:
+            status = 'idle'   # has entries today but none in current shift
+        else:
+            status = 'active'
+
+        equipment_board.append({
+            'name':            eq,
+            'status':          status,
+            'entry_count':     entry_count,
+            'today_qty':       today_qty,
+            'uom':             agg.get('uom') or '',
+            'source_display':  lat.get('source_display') or '',
+            'barge_name':      lat.get('barge_name') or '',
+            'cargo_name':      lat.get('cargo_name') or '',
+            'last_shift':      lat.get('shift') or '',
+            'last_to_time':    lat.get('to_time') or '',
+            'shift_incharge':  lat.get('shift_incharge') or '',
+            'operator_name':   lat.get('operator_name') or '',
+            'delay_name':      lat.get('delay_name') or '',
+        })
+
     return {
-        'kpis': kpis,
-        'vcn': vcn_rows,
-        'mbc': mbc_rows,
-        'shifts': shifts,
-        'as_of': datetime.now().strftime('%d-%b-%Y %H:%M:%S'),
-        'today': today_s,
-        'yesterday': yesterday_s,
+        'kpis':            kpis,
+        'vcn':             vcn_rows,
+        'mbc':             mbc_rows,
+        'shifts':          shifts,
+        'equipment_board': equipment_board,
+        'current_shift':   current_shift,
+        'last_entry':      last_entry,
+        'as_of':           now.strftime('%d-%b-%Y %H:%M:%S'),
+        'today':           today_s,
+        'yesterday':       yesterday_s,
     }

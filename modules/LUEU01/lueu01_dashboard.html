@@ -8,19 +8,30 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-        --bg:        #050d1a;
-        --surface:   #0d1f35;
-        --border:    #1a3050;
-        --text:      #e2e8f0;
-        --muted:     #64748b;
-        --accent:    #38bdf8;
-        --green:     #22c55e;
-        --amber:     #f59e0b;
-        --red:       #ef4444;
-        --header-h:  6vh;
-        --kpi-h:     13vh;
-        --vessels-h: 35vh;
-        --shifts-h:  calc(100vh - 6vh - 13vh - 35vh - 2px);
+        --bg:         #eef2f7;
+        --surface:    #ffffff;
+        --surface2:   #f8fafc;
+        --border:     #cbd5e1;
+        --border2:    #e2e8f0;
+        --text:       #1e293b;
+        --muted:      #64748b;
+        --accent:     #1d4ed8;
+        --accent-bg:  #eff6ff;
+        --accent-bdr: #bfdbfe;
+        --green:      #15803d;
+        --green-bg:   #f0fdf4;
+        --green-bdr:  #bbf7d0;
+        --amber:      #b45309;
+        --amber-bg:   #fffbeb;
+        --amber-bdr:  #fde68a;
+        --red:        #b91c1c;
+        --red-bg:     #fef2f2;
+        --red-bdr:    #fecaca;
+        --header-h:   7vh;
+        --kpi-h:      11vh;
+        --equip-h:    24vh;
+        --vessels-h:  32vh;
+        --shifts-h:   calc(100vh - 7vh - 11vh - 24vh - 32vh - 5px);
     }
 
     html, body {
@@ -35,23 +46,67 @@
     #header {
         width: 100vw; height: var(--header-h);
         display: flex; align-items: center; justify-content: space-between;
-        padding: 0 2vw;
-        background: linear-gradient(90deg, #051428 0%, #0a2240 50%, #051428 100%);
-        border-bottom: 1px solid var(--border);
+        padding: 0 1.5vw;
+        background: #fff;
+        border-bottom: 2px solid var(--border);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+        gap: 1vw;
     }
-    #header .title {
-        font-size: 1.4vh; font-weight: 700; letter-spacing: 2px;
+    .hdr-left  { display: flex; align-items: center; gap: 1vw; flex-shrink: 0; }
+    .hdr-mid   { flex: 1; display: flex; align-items: center; gap: 1vw; justify-content: center; }
+    .hdr-right { display: flex; align-items: center; gap: 1.2vw; flex-shrink: 0; }
+
+    .logo { height: 4vh; width: auto; }
+    .hdivider { width: 1px; height: 3.5vh; background: var(--border); }
+
+    .page-title {
+        font-size: 1.2vh; font-weight: 700; letter-spacing: 1.5px;
         text-transform: uppercase; color: var(--accent);
     }
-    #header .badge {
-        background: #1e3a5f; color: var(--accent);
-        padding: 2px 10px; border-radius: 3px;
-        font-size: 1.1vh; font-weight: 600; letter-spacing: 1px; margin-left: 10px;
+    .mod-badge {
+        background: var(--accent-bg); color: var(--accent);
+        padding: 2px 7px; border-radius: 3px;
+        font-size: 0.95vh; font-weight: 700; letter-spacing: 1px;
+        border: 1px solid var(--accent-bdr);
     }
-    #header .meta {
-        font-size: 1.1vh; color: var(--muted); text-align: right; line-height: 1.7;
+
+    /* shift badge */
+    .shift-now {
+        display: flex; align-items: center; gap: 0.5vw;
+        background: var(--accent-bg); border: 1px solid var(--accent-bdr);
+        border-radius: 5px; padding: 0.4vh 1vw;
     }
-    #header .meta span { color: var(--text); font-weight: 600; }
+    .shift-now-label { font-size: 0.95vh; color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+    .shift-now-letter {
+        font-size: 2.2vh; font-weight: 900; color: var(--accent);
+        line-height: 1;
+    }
+    .shift-now-time { font-size: 0.9vh; color: var(--muted); }
+
+    /* stale warning */
+    #stale-warn {
+        display: none;
+        background: var(--red-bg); border: 1px solid var(--red-bdr);
+        border-radius: 4px; padding: 0.4vh 0.8vw;
+        font-size: 0.95vh; font-weight: 700; color: var(--red);
+        letter-spacing: 0.5px; animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    /* last entry chip */
+    #last-entry-chip {
+        font-size: 0.9vh; color: var(--muted); text-align: right; line-height: 1.7;
+    }
+    #last-entry-chip span { color: var(--text); font-weight: 600; }
+    .meta-refresh { font-size: 0.85vh; color: var(--muted); }
+
+    /* live dot */
+    .live-dot {
+        display: inline-block; width: 0.7vh; height: 0.7vh;
+        border-radius: 50%; background: #16a34a;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.6)} }
 
     /* ── KPI BAR ─────────────────────────────────────────── */
     #kpi-bar {
@@ -63,19 +118,94 @@
     .kpi-card {
         background: var(--surface);
         display: flex; flex-direction: column;
-        align-items: center; justify-content: center; gap: 0.4vh;
+        align-items: center; justify-content: center; gap: 0.25vh;
     }
-    .kpi-label {
-        font-size: 1.1vh; font-weight: 600; letter-spacing: 1.5px;
-        text-transform: uppercase; color: var(--muted);
-    }
-    .kpi-value {
-        font-size: 3.2vh; font-weight: 700; color: var(--text);
-        font-variant-numeric: tabular-nums;
-    }
-    .kpi-unit { font-size: 1.1vh; color: var(--muted); }
+    .kpi-card.today-card { background: var(--accent-bg); }
+    .kpi-label { font-size: 0.9vh; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+    .kpi-value { font-size: 2.8vh; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+    .today-card .kpi-value { color: var(--accent); }
+    .kpi-unit { font-size: 0.85vh; color: var(--muted); }
 
-    /* ── VESSELS / MBC SECTION ───────────────────────────── */
+    /* ── EQUIPMENT BOARD ─────────────────────────────────── */
+    #equip-section {
+        width: 100vw; height: var(--equip-h);
+        background: var(--surface2);
+        border-bottom: 1px solid var(--border);
+        display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .section-hdr {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.6vh 1.2vw;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border2);
+        flex-shrink: 0;
+    }
+    .section-title { font-size: 1vh; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+    .section-sub { font-size: 0.85vh; color: var(--muted); }
+
+    #equip-grid {
+        flex: 1;
+        display: flex; flex-wrap: nowrap; gap: 0.8vw;
+        padding: 0.8vh 1.2vw;
+        overflow-x: auto; overflow-y: hidden;
+        align-items: stretch;
+    }
+    #equip-grid::-webkit-scrollbar { height: 3px; }
+    #equip-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .eq-card {
+        flex-shrink: 0;
+        width: 14vw; min-width: 180px;
+        border-radius: 6px; border: 1.5px solid var(--border2);
+        background: var(--surface);
+        display: flex; flex-direction: column;
+        overflow: hidden;
+        transition: box-shadow 0.2s;
+    }
+    .eq-card.active  { border-color: var(--green-bdr); background: #fafffe; }
+    .eq-card.idle    { border-color: var(--amber-bdr); background: #fffef8; }
+    .eq-card.no_data { border-color: var(--red-bdr);   background: #fffafa; }
+
+    .eq-card-top {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.5vh 0.7vw 0.3vh;
+        border-bottom: 1px solid var(--border2);
+    }
+    .eq-name { font-size: 1.05vh; font-weight: 800; color: var(--text); }
+    .eq-status-pill {
+        font-size: 0.75vh; font-weight: 700; letter-spacing: 0.8px;
+        padding: 1px 6px; border-radius: 8px; text-transform: uppercase;
+    }
+    .eq-status-pill.active  { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+    .eq-status-pill.idle    { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bdr); }
+    .eq-status-pill.no_data { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-bdr); }
+
+    .eq-card-body { flex: 1; padding: 0.4vh 0.7vw; display: flex; flex-direction: column; gap: 0.3vh; }
+
+    .eq-row { display: flex; align-items: baseline; gap: 0.3vw; }
+    .eq-row-label { font-size: 0.7vh; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); min-width: 4vw; flex-shrink: 0; }
+    .eq-row-val { font-size: 0.9vh; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .eq-row-val.nodata { color: var(--muted); font-weight: 400; font-style: italic; }
+
+    .eq-card-foot {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.3vh 0.7vw;
+        background: var(--surface2);
+        border-top: 1px solid var(--border2);
+    }
+    .eq-qty { font-size: 1.1vh; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+    .eq-qty.active  { color: var(--green); }
+    .eq-qty.no_data { color: var(--muted); }
+    .eq-last-time { font-size: 0.8vh; color: var(--muted); }
+
+    .delay-tag {
+        font-size: 0.7vh; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+        background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bdr);
+        white-space: nowrap;
+    }
+
+    /* ── VESSELS + MBC ───────────────────────────────────── */
     #vessels-section {
         width: 100vw; height: var(--vessels-h);
         display: grid; grid-template-columns: 1fr 1fr;
@@ -83,176 +213,105 @@
         border-bottom: 1px solid var(--border);
         overflow: hidden;
     }
-    .vessel-panel {
-        background: var(--surface);
-        display: flex; flex-direction: column;
-        overflow: hidden;
-    }
+    .vessel-panel { background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
     .panel-header {
         display: flex; align-items: center; justify-content: space-between;
-        padding: 0.8vh 1.2vw;
-        background: #091829;
-        border-bottom: 1px solid var(--border);
-        flex-shrink: 0;
+        padding: 0.6vh 1vw;
+        background: var(--surface2);
+        border-bottom: 1px solid var(--border2); flex-shrink: 0;
     }
-    .panel-title {
-        font-size: 1.1vh; font-weight: 700; letter-spacing: 1.5px;
-        text-transform: uppercase; color: var(--accent);
-    }
-    .panel-count {
-        font-size: 1vh; color: var(--muted);
-    }
-    .panel-body {
-        flex: 1; overflow-y: auto; overflow-x: hidden;
-    }
-    .panel-body::-webkit-scrollbar { width: 4px; }
-    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-title { font-size: 1vh; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+    .panel-count { font-size: 0.85vh; color: var(--muted); }
+    .panel-body { flex: 1; overflow-y: auto; }
+    .panel-body::-webkit-scrollbar { width: 3px; }
     .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-    /* vessel table */
-    .vtable {
-        width: 100%; border-collapse: collapse;
-    }
+    .vtable { width: 100%; border-collapse: collapse; }
     .vtable thead th {
         position: sticky; top: 0; z-index: 1;
-        background: #091829;
-        font-size: 0.9vh; font-weight: 600; letter-spacing: 0.8px;
-        text-transform: uppercase; color: var(--muted);
-        padding: 0.5vh 0.8vw; text-align: left;
-        border-bottom: 1px solid var(--border);
+        background: #f8fafc;
+        font-size: 0.8vh; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted);
+        padding: 0.45vh 0.6vw; text-align: left;
+        border-bottom: 1px solid var(--border2);
     }
     .vtable thead th.right { text-align: right; }
-    .vtable tbody tr {
-        border-bottom: 1px solid rgba(26,48,80,0.6);
-        transition: background 0.2s;
-    }
+    .vtable tbody tr { border-bottom: 1px solid var(--border2); }
     .vtable tbody tr:last-child { border-bottom: none; }
-    .vtable tbody tr.exceeded { background: rgba(239,68,68,0.05); }
-    .vtable td {
-        padding: 0.55vh 0.8vw;
-        font-size: 1.05vh; color: var(--text);
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
+    .vtable tbody tr.exceeded { background: var(--red-bg); }
+    .vtable td { padding: 0.45vh 0.6vw; font-size: 0.92vh; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .vtable td.right { text-align: right; font-variant-numeric: tabular-nums; }
-    .vtable td.muted { color: var(--muted); font-size: 0.9vh; }
+    .vtable td.muted { color: var(--muted); font-size: 0.8vh; }
+
     .doc-chip {
         display: inline-block;
-        background: #1e3a5f; color: var(--accent);
-        padding: 1px 6px; border-radius: 3px;
-        font-size: 0.85vh; font-weight: 700; letter-spacing: 0.5px;
-    }
-    .status-chip {
-        display: inline-block;
-        padding: 1px 6px; border-radius: 3px;
+        background: var(--accent-bg); color: var(--accent);
+        padding: 1px 5px; border-radius: 3px;
         font-size: 0.8vh; font-weight: 700;
+        border: 1px solid var(--accent-bdr);
     }
-    .status-chip.active  { background: rgba(34,197,94,0.15); color: var(--green); }
-    .status-chip.pending { background: rgba(245,158,11,0.15); color: var(--amber); }
-    .status-chip.other   { background: rgba(100,116,139,0.15); color: var(--muted); }
+    .status-chip { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 0.75vh; font-weight: 700; }
+    .status-chip.active  { background: var(--green-bg); color: var(--green); }
+    .status-chip.pending { background: var(--amber-bg); color: var(--amber); }
+    .status-chip.other   { background: #f1f5f9; color: var(--muted); }
 
-    /* progress bar cell */
-    .prog-wrap {
-        display: flex; align-items: center; gap: 0.4vw;
-        min-width: 8vw;
-    }
-    .prog-bar-bg {
-        flex: 1; height: 0.8vh; border-radius: 2px;
-        background: rgba(255,255,255,0.07); overflow: hidden;
-    }
-    .prog-bar-fill {
-        height: 100%; border-radius: 2px;
-        transition: width 0.6s ease;
-    }
-    .prog-bar-fill.green { background: linear-gradient(90deg,#16a34a,#22c55e); }
-    .prog-bar-fill.amber { background: linear-gradient(90deg,#d97706,#f59e0b); }
-    .prog-bar-fill.red   { background: linear-gradient(90deg,#dc2626,#ef4444); }
-    .prog-pct {
-        font-size: 0.9vh; font-weight: 700; min-width: 2.5vw; text-align: right;
-        font-variant-numeric: tabular-nums;
-    }
+    .prog-wrap { display: flex; align-items: center; gap: 0.3vw; min-width: 7vw; }
+    .prog-bar-bg { flex: 1; height: 0.75vh; border-radius: 2px; background: #e2e8f0; overflow: hidden; }
+    .prog-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s; }
+    .prog-bar-fill.green { background: linear-gradient(90deg,#15803d,#22c55e); }
+    .prog-bar-fill.amber { background: linear-gradient(90deg,#b45309,#f59e0b); }
+    .prog-bar-fill.red   { background: linear-gradient(90deg,#b91c1c,#ef4444); }
+    .prog-pct { font-size: 0.85vh; font-weight: 700; min-width: 2.2vw; text-align: right; font-variant-numeric: tabular-nums; }
     .prog-pct.green { color: var(--green); }
     .prog-pct.amber { color: var(--amber); }
     .prog-pct.red   { color: var(--red);   }
-    .remaining-neg  { color: var(--red); font-weight: 700; }
-    .remaining-pos  { color: var(--muted); }
-    .empty-msg {
-        padding: 3vh 2vw; text-align: center;
-        color: var(--muted); font-size: 1.1vh;
-    }
+    .near-complete { background: #f0fdf4; }
+    .remaining-neg { color: var(--red); font-weight: 700; }
+    .remaining-pos { color: var(--muted); }
+    .empty-msg { padding: 3vh 2vw; text-align: center; color: var(--muted); font-size: 1vh; }
 
-    /* ── SHIFTS SECTION ──────────────────────────────────── */
+    /* ── SHIFTS ──────────────────────────────────────────── */
     #shifts-section {
         width: 100vw; height: var(--shifts-h);
         display: grid; grid-template-columns: 1fr 1fr;
         gap: 1px; background: var(--border);
         overflow: hidden;
     }
-    .shift-panel {
-        background: var(--surface);
-        display: flex; flex-direction: column;
-        overflow: hidden;
-    }
-    .shift-table {
-        width: 100%; border-collapse: collapse;
-    }
+    .shift-panel { background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
+    .shift-table { width: 100%; border-collapse: collapse; }
     .shift-table thead th {
         position: sticky; top: 0; z-index: 1;
-        background: #091829;
-        font-size: 0.95vh; font-weight: 600; letter-spacing: 1px;
-        text-transform: uppercase; color: var(--muted);
-        padding: 0.6vh 1vw; text-align: left;
-        border-bottom: 1px solid var(--border);
+        background: #f8fafc;
+        font-size: 0.85vh; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);
+        padding: 0.55vh 1vw; text-align: left;
+        border-bottom: 1px solid var(--border2);
     }
     .shift-table thead th.right { text-align: right; }
-    .shift-table tbody tr {
-        border-bottom: 1px solid rgba(26,48,80,0.5);
-    }
+    .shift-table tbody tr { border-bottom: 1px solid var(--border2); }
     .shift-table tbody tr:last-child { border-bottom: none; }
-    .shift-table td {
-        padding: 0.7vh 1vw; font-size: 1.1vh;
-        font-variant-numeric: tabular-nums;
-    }
+    .shift-table td { padding: 0.65vh 1vw; font-size: 1.05vh; font-variant-numeric: tabular-nums; }
     .shift-table td.right { text-align: right; }
     .shift-letter {
         display: inline-flex; align-items: center; justify-content: center;
-        width: 2.4vh; height: 2.4vh; border-radius: 50%;
-        font-size: 1vh; font-weight: 800;
-        background: #1e3a5f; color: var(--accent);
+        width: 2.2vh; height: 2.2vh; border-radius: 50%;
+        font-size: 0.95vh; font-weight: 900;
+        background: var(--accent-bg); color: var(--accent);
+        border: 1px solid var(--accent-bdr);
     }
-    .shift-total-row td {
-        background: rgba(56,189,248,0.05);
-        border-top: 1px solid var(--border) !important;
-        color: var(--accent); font-weight: 700;
+    .shift-letter.current-shift {
+        background: var(--accent); color: #fff; border-color: var(--accent);
     }
+    .shift-total-row td { background: var(--accent-bg); border-top: 1px solid var(--accent-bdr) !important; color: var(--accent); font-weight: 700; }
 
-    /* ── LOADING / ERROR ─────────────────────────────────── */
+    /* ── LOADING ─────────────────────────────────────────── */
     #loading-overlay {
         position: fixed; inset: 0; z-index: 999;
-        background: var(--bg);
+        background: #eef2f7;
         display: flex; align-items: center; justify-content: center;
         flex-direction: column; gap: 2vh;
     }
-    .spinner {
-        width: 4vh; height: 4vh;
-        border: 3px solid var(--border);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-    }
+    .spinner { width: 4vh; height: 4vh; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { font-size: 1.2vh; color: var(--muted); letter-spacing: 1px; }
-
-    /* pulse dot on header */
-    .live-dot {
-        display: inline-block; width: 0.8vh; height: 0.8vh;
-        border-radius: 50%; background: var(--green);
-        margin-right: 0.4vw;
-        animation: pulse 2s ease-in-out infinite;
-    }
-    @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50%       { opacity: 0.4; transform: scale(0.7); }
-    }
+    .loading-text { font-size: 1.1vh; color: var(--muted); letter-spacing: 1px; }
 </style>
 </head>
 <body>
@@ -264,14 +323,29 @@
 
 <!-- HEADER -->
 <div id="header">
-    <div style="display:flex;align-items:center;gap:0.8vw;">
-        <span class="live-dot"></span>
-        <span class="title">Operations Dashboard</span>
-        <span class="badge">LUEU01</span>
+    <div class="hdr-left">
+        <img src="/static/img/logo31.png" class="logo" alt="JSW Dharamtar Port">
+        <div class="hdivider"></div>
+        <span class="page-title">Operations Dashboard</span>
+        <span class="mod-badge">LUEU01</span>
+        <span class="live-dot" style="margin-left:0.3vw;"></span>
     </div>
-    <div class="meta">
-        Last updated: <span id="asOf">—</span><br>
-        Refreshing in <span id="countdown">60</span>s
+    <div class="hdr-mid">
+        <div id="stale-warn">&#9888; No entries logged in last 2 hours</div>
+        <div id="last-entry-chip">—</div>
+    </div>
+    <div class="hdr-right">
+        <div class="shift-now" id="shift-now-box">
+            <div>
+                <div class="shift-now-label">CURRENT SHIFT</div>
+                <div class="shift-now-time" id="shift-now-time">—</div>
+            </div>
+            <div class="shift-now-letter" id="shift-now-letter">—</div>
+        </div>
+        <div class="meta-refresh">
+            Updated: <strong id="asOf">—</strong><br>
+            Refresh in <strong id="countdown">60</strong>s
+        </div>
     </div>
 </div>
 
@@ -280,28 +354,40 @@
     <div class="kpi-card">
         <div class="kpi-label">Year to Date</div>
         <div class="kpi-value" id="kpi-ytd">—</div>
-        <div class="kpi-unit">Tonnes</div>
+        <div class="kpi-unit">Quantity</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-label">Month to Date</div>
         <div class="kpi-value" id="kpi-mtd">—</div>
-        <div class="kpi-unit">Tonnes</div>
+        <div class="kpi-unit">Quantity</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-label">Yesterday</div>
         <div class="kpi-value" id="kpi-yesterday">—</div>
-        <div class="kpi-unit">Tonnes</div>
+        <div class="kpi-unit">Quantity</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card today-card">
         <div class="kpi-label">Today</div>
         <div class="kpi-value" id="kpi-today">—</div>
-        <div class="kpi-unit">Tonnes</div>
+        <div class="kpi-unit">Quantity</div>
     </div>
+</div>
+
+<!-- EQUIPMENT BOARD -->
+<div id="equip-section">
+    <div class="section-hdr">
+        <span class="section-title">Equipment Status Board</span>
+        <span class="section-sub" id="equip-legend">
+            <span style="color:var(--green);font-weight:700;">&#9679; Active</span> &nbsp;
+            <span style="color:var(--amber);font-weight:700;">&#9679; Idle (no entries this shift)</span> &nbsp;
+            <span style="color:var(--red);font-weight:700;">&#9679; No data today</span>
+        </span>
+    </div>
+    <div id="equip-grid"></div>
 </div>
 
 <!-- VESSELS + MBC -->
 <div id="vessels-section">
-    <!-- VCN panel -->
     <div class="vessel-panel">
         <div class="panel-header">
             <span class="panel-title">Active Vessels (VCN)</span>
@@ -309,7 +395,6 @@
         </div>
         <div class="panel-body" id="vcn-body"></div>
     </div>
-    <!-- MBC panel -->
     <div class="vessel-panel">
         <div class="panel-header">
             <span class="panel-title">Active Marine Bulk Cargo (MBC)</span>
@@ -321,7 +406,6 @@
 
 <!-- SHIFTS -->
 <div id="shifts-section">
-    <!-- Yesterday shifts -->
     <div class="shift-panel">
         <div class="panel-header">
             <span class="panel-title">Yesterday — Shift Summary</span>
@@ -329,7 +413,6 @@
         </div>
         <div class="panel-body" id="yest-body"></div>
     </div>
-    <!-- Today shifts -->
     <div class="shift-panel">
         <div class="panel-header">
             <span class="panel-title">Today — Shift Summary</span>
@@ -340,62 +423,128 @@
 </div>
 
 <script>
-    const REFRESH_INTERVAL = 60; // seconds
+    const REFRESH_INTERVAL = 60;
     let countdown = REFRESH_INTERVAL;
-    let countdownTimer = null;
-    let refreshTimer = null;
+    let countdownTimer = null, refreshTimer = null;
+    let _currentShift = 'A';
 
     function fmt(n) {
         if (n === null || n === undefined || isNaN(n)) return '—';
         return Number(n).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
-
-    function pctColor(pct) {
-        if (pct >= 90) return 'green';
-        if (pct >= 50) return 'amber';
-        return 'red';
-    }
-
+    function pctColor(p) { return p >= 90 ? 'green' : p >= 50 ? 'amber' : 'red'; }
     function statusChip(s) {
         const cls = (!s || s === 'Active' || s === 'Open' || s === 'In Progress') ? 'active'
-                    : (s === 'Pending') ? 'pending' : 'other';
+                  : s === 'Pending' ? 'pending' : 'other';
         return `<span class="status-chip ${cls}">${s || 'Active'}</span>`;
     }
 
+    // ── Shift info ──────────────────────────────────────────────────────────
+    const SHIFT_RANGES = { A: '06:00 – 14:00', B: '14:00 – 22:00', C: '22:00 – 06:00' };
+
+    function renderShiftNow(shift) {
+        _currentShift = shift;
+        document.getElementById('shift-now-letter').textContent = shift;
+        document.getElementById('shift-now-time').textContent   = SHIFT_RANGES[shift] || '';
+    }
+
+    // ── Stale check ─────────────────────────────────────────────────────────
+    function checkStale(lastEntry) {
+        const warn = document.getElementById('stale-warn');
+        if (!lastEntry || !lastEntry.to_time) { warn.style.display = 'none'; return; }
+        const [hh, mm] = lastEntry.to_time.split(':').map(Number);
+        const now = new Date();
+        const lastMins = hh * 60 + mm;
+        const nowMins  = now.getHours() * 60 + now.getMinutes();
+        // handle overnight: if last was e.g. 23:00 and now is 01:00
+        let diff = nowMins - lastMins;
+        if (diff < 0) diff += 1440;
+        warn.style.display = diff > 120 ? 'block' : 'none';
+    }
+
+    // ── Last entry chip ──────────────────────────────────────────────────────
+    function renderLastEntry(le) {
+        const el = document.getElementById('last-entry-chip');
+        if (!le) { el.innerHTML = '<span style="color:var(--muted);font-size:0.85vh;">No entries today</span>'; return; }
+        const src = le.barge_name ? `${le.source_display || ''} / ${le.barge_name}` : (le.source_display || '—');
+        el.innerHTML = `Last entry: <span>${le.to_time || '?'}</span> &nbsp;·&nbsp; ${le.equipment_name || ''} &nbsp;·&nbsp; ${src} &nbsp;·&nbsp; by <span>${le.created_by || '?'}</span>`;
+    }
+
+    // ── Equipment board ──────────────────────────────────────────────────────
+    function renderEquipBoard(board) {
+        const grid = document.getElementById('equip-grid');
+        if (!board || !board.length) { grid.innerHTML = '<div style="color:var(--muted);font-size:1vh;padding:2vh">No equipment configured.</div>'; return; }
+        let html = '';
+        for (const eq of board) {
+            const st = eq.status;
+            const pillLabel = st === 'active' ? 'Active' : st === 'idle' ? 'Idle' : 'No Data';
+            const hasData = st !== 'no_data';
+            const src = eq.source_display ? eq.source_display.split(' / ').slice(-1)[0] : '';
+            const assignment = eq.barge_name
+                ? `${src || eq.source_display || '—'} / <b>${eq.barge_name}</b>`
+                : (eq.source_display || null);
+            const delayTag = eq.delay_name
+                ? `<span class="delay-tag">&#9888; ${eq.delay_name}</span>`
+                : '';
+            html += `<div class="eq-card ${st}">
+                <div class="eq-card-top">
+                    <span class="eq-name">${eq.name}</span>
+                    <span class="eq-status-pill ${st}">${pillLabel}</span>
+                </div>
+                <div class="eq-card-body">
+                    <div class="eq-row">
+                        <span class="eq-row-label">Source</span>
+                        <span class="eq-row-val ${hasData ? '' : 'nodata'}">${hasData && assignment ? assignment : 'Not assigned'}</span>
+                    </div>
+                    <div class="eq-row">
+                        <span class="eq-row-label">Cargo</span>
+                        <span class="eq-row-val ${hasData ? '' : 'nodata'}">${hasData && eq.cargo_name ? eq.cargo_name : '—'}</span>
+                    </div>
+                    <div class="eq-row">
+                        <span class="eq-row-label">Incharge</span>
+                        <span class="eq-row-val ${hasData ? '' : 'nodata'}">${hasData && eq.shift_incharge ? eq.shift_incharge : '—'}</span>
+                    </div>
+                    ${delayTag ? `<div class="eq-row" style="margin-top:0.2vh">${delayTag}</div>` : ''}
+                </div>
+                <div class="eq-card-foot">
+                    <span class="eq-qty ${st}">${hasData ? fmt(eq.today_qty) : '—'} <span style="font-size:0.7vh;font-weight:400;color:var(--muted)">${eq.uom||''}</span></span>
+                    <span class="eq-last-time">${hasData && eq.last_to_time ? 'Last: ' + eq.last_to_time : 'No entries'}</span>
+                </div>
+            </div>`;
+        }
+        grid.innerHTML = html;
+    }
+
+    // ── VCN / MBC tables ─────────────────────────────────────────────────────
     function renderVCN(rows) {
         const el = document.getElementById('vcn-body');
-        document.getElementById('vcn-count').textContent = rows.length + ' cargo row(s)';
-        if (!rows.length) {
-            el.innerHTML = '<div class="empty-msg">No active vessels</div>';
-            return;
-        }
+        document.getElementById('vcn-count').textContent = rows.length + ' row(s)';
+        if (!rows.length) { el.innerHTML = '<div class="empty-msg">No active vessels</div>'; return; }
         let html = `<table class="vtable"><thead><tr>
             <th>VCN #</th><th>Vessel</th><th>Cargo</th><th>Type</th><th>Status</th>
             <th class="right">BL Qty</th><th class="right">Actual</th>
             <th class="right">Remaining</th><th>Progress</th>
         </tr></thead><tbody>`;
+        // Sort: near-complete first, then by pct desc
+        rows.sort((a,b) => b.pct - a.pct);
         for (const r of rows) {
-            const cls = r.exceeded ? 'exceeded' : '';
             const pct = Math.min(r.pct, 100);
             const col = pctColor(r.pct);
             const remCls = r.remaining < 0 ? 'remaining-neg' : 'remaining-pos';
-            html += `<tr class="${cls}">
-                <td><span class="doc-chip">${r.doc_num || '—'}</span></td>
-                <td title="${r.vessel_name || ''}">${(r.vessel_name || '—').substring(0,18)}</td>
-                <td title="${r.cargo_name || ''}">${(r.cargo_name || '—').substring(0,14)}</td>
-                <td class="muted">${r.decl_type || ''}</td>
+            const nearCls = r.pct >= 85 && !r.exceeded ? 'near-complete' : r.exceeded ? 'exceeded' : '';
+            html += `<tr class="${nearCls}">
+                <td><span class="doc-chip">${r.doc_num||'—'}</span></td>
+                <td title="${r.vessel_name||''}">${(r.vessel_name||'—').substring(0,16)}</td>
+                <td title="${r.cargo_name||''}">${(r.cargo_name||'—').substring(0,12)}</td>
+                <td class="muted">${r.decl_type||''}</td>
                 <td>${statusChip(r.status)}</td>
-                <td class="right">${fmt(r.bl_quantity)} <span style="color:var(--muted);font-size:0.8vh">${r.uom||''}</span></td>
+                <td class="right">${fmt(r.bl_quantity)} <span style="color:var(--muted);font-size:0.75vh">${r.uom||''}</span></td>
                 <td class="right">${fmt(r.actual)}</td>
                 <td class="right ${remCls}">${fmt(r.remaining)}</td>
-                <td>
-                    <div class="prog-wrap">
-                        <div class="prog-bar-bg">
-                            <div class="prog-bar-fill ${col}" style="width:${pct}%"></div>
-                        </div>
-                        <span class="prog-pct ${col}">${r.pct}%</span>
-                    </div>
-                </td>
+                <td><div class="prog-wrap">
+                    <div class="prog-bar-bg"><div class="prog-bar-fill ${col}" style="width:${pct}%"></div></div>
+                    <span class="prog-pct ${col}">${r.pct}%</span>
+                </div></td>
             </tr>`;
         }
         html += '</tbody></table>';
@@ -405,69 +554,64 @@
     function renderMBC(rows) {
         const el = document.getElementById('mbc-body');
         document.getElementById('mbc-count').textContent = rows.length + ' row(s)';
-        if (!rows.length) {
-            el.innerHTML = '<div class="empty-msg">No active MBCs</div>';
-            return;
-        }
+        if (!rows.length) { el.innerHTML = '<div class="empty-msg">No active MBCs</div>'; return; }
         let html = `<table class="vtable"><thead><tr>
             <th>MBC #</th><th>Name</th><th>Cargo</th><th>Status</th>
             <th class="right">BL Qty</th><th class="right">Actual</th>
             <th class="right">Remaining</th><th>Progress</th>
         </tr></thead><tbody>`;
+        rows.sort((a,b) => b.pct - a.pct);
         for (const r of rows) {
-            const cls = r.exceeded ? 'exceeded' : '';
             const pct = Math.min(r.pct, 100);
             const col = pctColor(r.pct);
             const remCls = r.remaining < 0 ? 'remaining-neg' : 'remaining-pos';
-            html += `<tr class="${cls}">
-                <td><span class="doc-chip">${r.doc_num || '—'}</span></td>
-                <td title="${r.mbc_name || ''}">${(r.mbc_name || '—').substring(0,18)}</td>
-                <td title="${r.cargo_name || ''}">${(r.cargo_name || '—').substring(0,14)}</td>
+            const nearCls = r.pct >= 85 && !r.exceeded ? 'near-complete' : r.exceeded ? 'exceeded' : '';
+            html += `<tr class="${nearCls}">
+                <td><span class="doc-chip">${r.doc_num||'—'}</span></td>
+                <td title="${r.mbc_name||''}">${(r.mbc_name||'—').substring(0,16)}</td>
+                <td title="${r.cargo_name||''}">${(r.cargo_name||'—').substring(0,12)}</td>
                 <td>${statusChip(r.status)}</td>
-                <td class="right">${fmt(r.bl_quantity)} <span style="color:var(--muted);font-size:0.8vh">${r.uom||''}</span></td>
+                <td class="right">${fmt(r.bl_quantity)} <span style="color:var(--muted);font-size:0.75vh">${r.uom||''}</span></td>
                 <td class="right">${fmt(r.actual)}</td>
                 <td class="right ${remCls}">${fmt(r.remaining)}</td>
-                <td>
-                    <div class="prog-wrap">
-                        <div class="prog-bar-bg">
-                            <div class="prog-bar-fill ${col}" style="width:${pct}%"></div>
-                        </div>
-                        <span class="prog-pct ${col}">${r.pct}%</span>
-                    </div>
-                </td>
+                <td><div class="prog-wrap">
+                    <div class="prog-bar-bg"><div class="prog-bar-fill ${col}" style="width:${pct}%"></div></div>
+                    <span class="prog-pct ${col}">${r.pct}%</span>
+                </div></td>
             </tr>`;
         }
         html += '</tbody></table>';
         el.innerHTML = html;
     }
 
+    // ── Shifts ───────────────────────────────────────────────────────────────
     function renderShifts(shifts, dayKey, bodyId, dateId, dateLabel) {
         document.getElementById(dateId).textContent = dateLabel;
         const el = document.getElementById(bodyId);
         const dayData = shifts[dayKey] || {};
-        const allShifts = ['A', 'B', 'C', 'D'];
+        const allShifts = ['A', 'B', 'C'];
         let totalT = 0, totalH = 0;
         let html = `<table class="shift-table"><thead><tr>
-            <th>Shift</th>
-            <th class="right">Tonnes Handled</th>
-            <th class="right">Hours Logged</th>
+            <th>Shift</th><th>Time</th>
+            <th class="right">Qty Handled</th>
+            <th class="right">Hrs Logged</th>
         </tr></thead><tbody>`;
         for (const s of allShifts) {
             const d = dayData[s];
             const t = d ? d.tonnes : 0;
             const h = d ? d.hrs : 0;
-            totalT += t;
-            totalH += h;
-            const hasData = !!d;
-            html += `<tr style="${hasData ? '' : 'opacity:0.35'}">
-                <td><span class="shift-letter">${s}</span></td>
-                <td class="right">${hasData ? fmt(t) : '—'}</td>
-                <td class="right">${hasData ? Number(h).toFixed(2) : '—'}</td>
+            totalT += t; totalH += h;
+            const isCurrent = (dayKey === 'today' && s === _currentShift);
+            const letterCls = isCurrent ? 'shift-letter current-shift' : 'shift-letter';
+            html += `<tr style="${d ? '' : 'opacity:0.4'}">
+                <td><span class="${letterCls}">${s}</span>${isCurrent ? ' <span style="font-size:0.75vh;color:var(--accent);font-weight:700;">NOW</span>' : ''}</td>
+                <td class="muted" style="font-size:0.8vh">${SHIFT_RANGES[s]||''}</td>
+                <td class="right">${d ? fmt(t) : '—'}</td>
+                <td class="right">${d ? Number(h).toFixed(2) : '—'}</td>
             </tr>`;
         }
-        // total row
         html += `<tr class="shift-total-row">
-            <td style="font-size:0.9vh;letter-spacing:1px;">TOTAL</td>
+            <td colspan="2" style="font-size:0.85vh;letter-spacing:1px;">TOTAL</td>
             <td class="right">${fmt(totalT)}</td>
             <td class="right">${Number(totalH).toFixed(2)}</td>
         </tr>`;
@@ -478,34 +622,35 @@
     function fmtDateLabel(iso) {
         if (!iso) return '';
         const [y, m, d] = iso.split('-');
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return `${d} ${months[parseInt(m)-1]} ${y}`;
+        return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]} ${y}`;
     }
 
+    // ── Main render ──────────────────────────────────────────────────────────
     function render(data) {
-        // KPIs
         document.getElementById('kpi-ytd').textContent       = fmt(data.kpis.ytd);
         document.getElementById('kpi-mtd').textContent       = fmt(data.kpis.mtd);
         document.getElementById('kpi-yesterday').textContent = fmt(data.kpis.yesterday);
         document.getElementById('kpi-today').textContent     = fmt(data.kpis.today);
         document.getElementById('asOf').textContent          = data.as_of;
 
+        renderShiftNow(data.current_shift);
+        renderLastEntry(data.last_entry);
+        checkStale(data.last_entry);
+        renderEquipBoard(data.equipment_board);
         renderVCN(data.vcn);
         renderMBC(data.mbc);
         renderShifts(data.shifts, 'yesterday', 'yest-body',  'yest-date',  fmtDateLabel(data.yesterday));
         renderShifts(data.shifts, 'today',     'today-body', 'today-date', fmtDateLabel(data.today));
+
+        document.getElementById('loading-overlay').style.display = 'none';
     }
 
     async function refresh() {
         try {
             const res = await fetch('/api/module/LUEU01/dashboard-data');
             if (!res.ok) throw new Error('HTTP ' + res.status);
-            const data = await res.json();
-            render(data);
-            document.getElementById('loading-overlay').style.display = 'none';
-        } catch (e) {
-            console.error('Dashboard refresh error:', e);
-        }
+            render(await res.json());
+        } catch(e) { console.error('Dashboard refresh error:', e); }
         resetCountdown();
     }
 
@@ -516,15 +661,11 @@
         document.getElementById('countdown').textContent = countdown;
         countdownTimer = setInterval(() => {
             countdown--;
-            document.getElementById('countdown').textContent = Math.max(countdown, 0);
+            document.getElementById('countdown').textContent = Math.max(0, countdown);
         }, 1000);
-        refreshTimer = setTimeout(() => {
-            clearInterval(countdownTimer);
-            refresh();
-        }, REFRESH_INTERVAL * 1000);
+        refreshTimer = setTimeout(() => { clearInterval(countdownTimer); refresh(); }, REFRESH_INTERVAL * 1000);
     }
 
-    // Boot
     refresh();
 </script>
 </body>
