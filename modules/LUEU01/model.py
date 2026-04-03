@@ -596,7 +596,6 @@ def get_dashboard_data():
     ''', [today_s, yesterday_s])
 
     shifts_raw = cur.fetchall()
-    conn.close()
 
     shifts = {'today': {}, 'yesterday': {}}
     for r in shifts_raw:
