@@ -127,36 +127,33 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         cur.execute('DELETE FROM lueu_lines')
         deleted_eu = cur.rowcount
         print(f'  Permanently deleted {deleted_eu} rows from lueu_lines')
-        try:
-            cur.execute("SELECT setval('lueu_lines_id_seq', 1, false)")
-            print('  lueu_lines_id_seq reset to 1')
-        except Exception:
-            conn.rollback()
-            print('  (lueu_lines_id_seq not found, skipping)')
-    else:
-        # Step 1 already ran above — just confirm the reset happened
-        pass
 
-    # Step 6: Reset sequences
-    sequences = {
-        'bill_header_id_seq': 1,
-        'bill_lines_id_seq': 1,
-        'invoice_header_id_seq': 1,
-        'invoice_lines_id_seq': 1,
-        'invoice_bill_mapping_id_seq': 1,
-        'fdcn_header_id_seq': 1,
-        'fdcn_lines_id_seq': 1,
-    }
+    conn.commit()
+
+    # Step 6: Reset sequences (each in its own try so a missing seq doesn't rollback data)
     print('\n=== Resetting Sequences ===')
-    for seq, val in sequences.items():
+    sequences = [
+        'bill_header_id_seq',
+        'bill_lines_id_seq',
+        'invoice_header_id_seq',
+        'invoice_lines_id_seq',
+        'invoice_bill_mapping_id_seq',
+        'fdcn_header_id_seq',
+        'fdcn_lines_id_seq',
+    ]
+    if delete_eu:
+        # Table may have been created as eu_lines originally; try both sequence names
+        sequences += ['lueu_lines_id_seq', 'eu_lines_id_seq']
+
+    for seq in sequences:
         try:
-            cur.execute(f"SELECT setval('{seq}', {val}, false)")
-            print(f'  {seq} reset to {val}')
+            cur.execute(f"SELECT setval('{seq}', 1, false)")
+            conn.commit()
+            print(f'  {seq} reset to 1')
         except Exception:
             conn.rollback()
             print(f'  ({seq} not found, skipping)')
 
-    conn.commit()
     conn.close()
 
     print('\n=== Done ===')
