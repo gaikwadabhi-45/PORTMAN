@@ -1,5 +1,5 @@
 from database import get_db, get_cursor
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
@@ -408,3 +408,192 @@ def get_barge_cargos(vcn_id, barge_name):
         cargos = [r['cargo_name'] for r in cur.fetchall()]
     conn.close()
     return cargos
+
+
+def get_dashboard_data():
+    """Return all data for the LUEU01 operations dashboard."""
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    month_start = today.replace(day=1)
+    # Financial year starts April 1
+    fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+
+    today_s     = today.strftime('%Y-%m-%d')
+    yesterday_s = yesterday.strftime('%Y-%m-%d')
+    month_start_s = month_start.strftime('%Y-%m-%d')
+    fy_start_s  = fy_start.strftime('%Y-%m-%d')
+
+    # ── KPI stats ────────────────────────────────────────────────────────────
+    def _sum_qty(from_date, to_date=None):
+        if to_date:
+            cur.execute(
+                "SELECT COALESCE(SUM(quantity),0) AS t FROM lueu_lines "
+                "WHERE entry_date >= %s AND entry_date <= %s AND (is_deleted IS NOT TRUE)",
+                [from_date, to_date]
+            )
+        else:
+            cur.execute(
+                "SELECT COALESCE(SUM(quantity),0) AS t FROM lueu_lines "
+                "WHERE entry_date = %s AND (is_deleted IS NOT TRUE)",
+                [from_date]
+            )
+        return float(cur.fetchone()['t'] or 0)
+
+    kpis = {
+        'ytd':       round(_sum_qty(fy_start_s, today_s), 2),
+        'mtd':       round(_sum_qty(month_start_s, today_s), 2),
+        'yesterday': round(_sum_qty(yesterday_s), 2),
+        'today':     round(_sum_qty(today_s), 2),
+    }
+
+    # ── Active VCNs ──────────────────────────────────────────────────────────
+    cur.execute('''
+        SELECT
+            v.id, v.vcn_doc_num, v.vessel_name, v.doc_status,
+            cd.cargo_name,
+            COALESCE(cd.bl_quantity, 0) AS bl_quantity,
+            COALESCE(cd.quantity_uom, '') AS uom,
+            'Import' AS decl_type
+        FROM vcn_header v
+        JOIN vcn_cargo_declaration cd ON cd.vcn_id = v.id
+        WHERE v.doc_status != 'Closed'
+        UNION ALL
+        SELECT
+            v.id, v.vcn_doc_num, v.vessel_name, v.doc_status,
+            cd.cargo_name,
+            COALESCE(cd.bl_quantity, 0) AS bl_quantity,
+            COALESCE(cd.quantity_uom, '') AS uom,
+            'Export' AS decl_type
+        FROM vcn_header v
+        JOIN vcn_export_cargo_declaration cd ON cd.vcn_id = v.id
+        WHERE v.doc_status != 'Closed'
+        ORDER BY id DESC
+    ''')
+    vcn_declarations = cur.fetchall()
+
+    # Actual handled per VCN + cargo
+    cur.execute('''
+        SELECT source_id, COALESCE(cargo_name,'') AS cargo_name,
+               COALESCE(SUM(quantity),0) AS actual
+        FROM lueu_lines
+        WHERE source_type = 'VCN' AND (is_deleted IS NOT TRUE)
+        GROUP BY source_id, cargo_name
+    ''')
+    vcn_actual = {}
+    for r in cur.fetchall():
+        vcn_actual[(r['source_id'], r['cargo_name'])] = float(r['actual'] or 0)
+
+    vcn_rows = []
+    seen_vcn = {}
+    for r in vcn_declarations:
+        key = (r['id'], r['cargo_name'], r['decl_type'])
+        if key in seen_vcn:
+            continue
+        seen_vcn[key] = True
+        bl = float(r['bl_quantity'] or 0)
+        actual = vcn_actual.get((r['id'], r['cargo_name'] or ''), 0)
+        pct = round((actual / bl * 100) if bl > 0 else 0, 1)
+        vcn_rows.append({
+            'id': r['id'],
+            'doc_num': r['vcn_doc_num'],
+            'vessel_name': r['vessel_name'],
+            'status': r['doc_status'],
+            'cargo_name': r['cargo_name'],
+            'bl_quantity': round(bl, 2),
+            'actual': round(actual, 2),
+            'remaining': round(bl - actual, 2),
+            'pct': pct,
+            'uom': r['uom'],
+            'decl_type': r['decl_type'],
+            'exceeded': actual > bl and bl > 0,
+        })
+
+    # ── Active MBCs ──────────────────────────────────────────────────────────
+    cur.execute('''
+        SELECT
+            m.id, m.doc_num, m.mbc_name, m.doc_status,
+            COALESCE(cd.cargo_name, m.cargo_name, '') AS cargo_name,
+            COALESCE(cd.quantity, m.bl_quantity, 0) AS bl_quantity,
+            COALESCE(m.quantity_uom, '') AS uom
+        FROM mbc_header m
+        LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+        WHERE m.doc_status != 'Closed'
+        ORDER BY m.id DESC
+    ''')
+    mbc_declarations = cur.fetchall()
+
+    cur.execute('''
+        SELECT source_id, COALESCE(cargo_name,'') AS cargo_name,
+               COALESCE(SUM(quantity),0) AS actual
+        FROM lueu_lines
+        WHERE source_type = 'MBC' AND (is_deleted IS NOT TRUE)
+        GROUP BY source_id, cargo_name
+    ''')
+    mbc_actual_map = {}
+    for r in cur.fetchall():
+        k = r['source_id']
+        if k not in mbc_actual_map:
+            mbc_actual_map[k] = 0
+        mbc_actual_map[k] += float(r['actual'] or 0)
+
+    mbc_rows = []
+    seen_mbc = {}
+    for r in mbc_declarations:
+        key = (r['id'], r['cargo_name'])
+        if key in seen_mbc:
+            continue
+        seen_mbc[key] = True
+        bl = float(r['bl_quantity'] or 0)
+        actual = mbc_actual_map.get(r['id'], 0)
+        pct = round((actual / bl * 100) if bl > 0 else 0, 1)
+        mbc_rows.append({
+            'id': r['id'],
+            'doc_num': r['doc_num'],
+            'mbc_name': r['mbc_name'],
+            'status': r['doc_status'],
+            'cargo_name': r['cargo_name'],
+            'bl_quantity': round(bl, 2),
+            'actual': round(actual, 2),
+            'remaining': round(bl - actual, 2),
+            'pct': pct,
+            'uom': r['uom'],
+            'exceeded': actual > bl and bl > 0,
+        })
+
+    # ── Shift breakdown: Today + Yesterday ───────────────────────────────────
+    cur.execute('''
+        SELECT
+            entry_date,
+            shift,
+            COALESCE(SUM(quantity), 0)    AS total_tonnes,
+            ROUND(COALESCE(SUM(diff_hrs), 0)::numeric, 2) AS total_hrs
+        FROM lueu_lines
+        WHERE entry_date IN (%s, %s) AND (is_deleted IS NOT TRUE)
+        GROUP BY entry_date, shift
+        ORDER BY entry_date, shift
+    ''', [today_s, yesterday_s])
+
+    shifts_raw = cur.fetchall()
+    conn.close()
+
+    shifts = {'today': {}, 'yesterday': {}}
+    for r in shifts_raw:
+        day = 'today' if r['entry_date'] == today_s else 'yesterday'
+        shift = r['shift'] or '?'
+        shifts[day][shift] = {
+            'tonnes': round(float(r['total_tonnes'] or 0), 2),
+            'hrs':    float(r['total_hrs'] or 0),
+        }
+
+    return {
+        'kpis': kpis,
+        'vcn': vcn_rows,
+        'mbc': mbc_rows,
+        'shifts': shifts,
+        'as_of': datetime.now().strftime('%d-%b-%Y %H:%M:%S'),
+        'today': today_s,
+        'yesterday': yesterday_s,
+    }

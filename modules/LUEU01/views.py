@@ -265,6 +265,16 @@ def get_bl_progress(source_type, source_id):
     return jsonify(model.get_bl_progress(source_type, source_id))
 
 
+@bp.route('/module/LUEU01/dashboard')
+@login_required
+def dashboard():
+    return render_template('lueu01_dashboard.html')
+
+@bp.route('/api/module/LUEU01/dashboard-data')
+@login_required
+def dashboard_data():
+    return jsonify(model.get_dashboard_data())
+
 @bp.route('/api/module/LUEU01/barge-cargos/<int:vcn_id>')
 @login_required
 def get_barge_cargos(vcn_id):

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUEU01 — Operations Dashboard</title>
+<style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+        --bg:        #050d1a;
+        --surface:   #0d1f35;
+        --border:    #1a3050;
+        --text:      #e2e8f0;
+        --muted:     #64748b;
+        --accent:    #38bdf8;
+        --green:     #22c55e;
+        --amber:     #f59e0b;
+        --red:       #ef4444;
+        --header-h:  6vh;
+        --kpi-h:     13vh;
+        --vessels-h: 35vh;
+        --shifts-h:  calc(100vh - 6vh - 13vh - 35vh - 2px);
+    }
+
+    html, body {
+        width: 100vw; height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    #header {
+        width: 100vw; height: var(--header-h);
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 2vw;
+        background: linear-gradient(90deg, #051428 0%, #0a2240 50%, #051428 100%);
+        border-bottom: 1px solid var(--border);
+    }
+    #header .title {
+        font-size: 1.4vh; font-weight: 700; letter-spacing: 2px;
+        text-transform: uppercase; color: var(--accent);
+    }
+    #header .badge {
+        background: #1e3a5f; color: var(--accent);
+        padding: 2px 10px; border-radius: 3px;
+        font-size: 1.1vh; font-weight: 600; letter-spacing: 1px; margin-left: 10px;
+    }
+    #header .meta {
+        font-size: 1.1vh; color: var(--muted); text-align: right; line-height: 1.7;
+    }
+    #header .meta span { color: var(--text); font-weight: 600; }
+
+    /* ── KPI BAR ─────────────────────────────────────────── */
+    #kpi-bar {
+        width: 100vw; height: var(--kpi-h);
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 1px; background: var(--border);
+        border-bottom: 1px solid var(--border);
+    }
+    .kpi-card {
+        background: var(--surface);
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 0.4vh;
+    }
+    .kpi-label {
+        font-size: 1.1vh; font-weight: 600; letter-spacing: 1.5px;
+        text-transform: uppercase; color: var(--muted);
+    }
+    .kpi-value {
+        font-size: 3.2vh; font-weight: 700; color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+    .kpi-unit { font-size: 1.1vh; color: var(--muted); }
+
+    /* ── VESSELS / MBC SECTION ───────────────────────────── */
+    #vessels-section {
+        width: 100vw; height: var(--vessels-h);
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 1px; background: var(--border);
+        border-bottom: 1px solid var(--border);
+        overflow: hidden;
+    }
+    .vessel-panel {
+        background: var(--surface);
+        display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .panel-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.8vh 1.2vw;
+        background: #091829;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+    }
+    .panel-title {
+        font-size: 1.1vh; font-weight: 700; letter-spacing: 1.5px;
+        text-transform: uppercase; color: var(--accent);
+    }
+    .panel-count {
+        font-size: 1vh; color: var(--muted);
+    }
+    .panel-body {
+        flex: 1; overflow-y: auto; overflow-x: hidden;
+    }
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-track { background: transparent; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* vessel table */
+    .vtable {
+        width: 100%; border-collapse: collapse;
+    }
+    .vtable thead th {
+        position: sticky; top: 0; z-index: 1;
+        background: #091829;
+        font-size: 0.9vh; font-weight: 600; letter-spacing: 0.8px;
+        text-transform: uppercase; color: var(--muted);
+        padding: 0.5vh 0.8vw; text-align: left;
+        border-bottom: 1px solid var(--border);
+    }
+    .vtable thead th.right { text-align: right; }
+    .vtable tbody tr {
+        border-bottom: 1px solid rgba(26,48,80,0.6);
+        transition: background 0.2s;
+    }
+    .vtable tbody tr:last-child { border-bottom: none; }
+    .vtable tbody tr.exceeded { background: rgba(239,68,68,0.05); }
+    .vtable td {
+        padding: 0.55vh 0.8vw;
+        font-size: 1.05vh; color: var(--text);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .vtable td.right { text-align: right; font-variant-numeric: tabular-nums; }
+    .vtable td.muted { color: var(--muted); font-size: 0.9vh; }
+    .doc-chip {
+        display: inline-block;
+        background: #1e3a5f; color: var(--accent);
+        padding: 1px 6px; border-radius: 3px;
+        font-size: 0.85vh; font-weight: 700; letter-spacing: 0.5px;
+    }
+    .status-chip {
+        display: inline-block;
+        padding: 1px 6px; border-radius: 3px;
+        font-size: 0.8vh; font-weight: 700;
+    }
+    .status-chip.active  { background: rgba(34,197,94,0.15); color: var(--green); }
+    .status-chip.pending { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .status-chip.other   { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+    /* progress bar cell */
+    .prog-wrap {
+        display: flex; align-items: center; gap: 0.4vw;
+        min-width: 8vw;
+    }
+    .prog-bar-bg {
+        flex: 1; height: 0.8vh; border-radius: 2px;
+        background: rgba(255,255,255,0.07); overflow: hidden;
+    }
+    .prog-bar-fill {
+        height: 100%; border-radius: 2px;
+        transition: width 0.6s ease;
+    }
+    .prog-bar-fill.green { background: linear-gradient(90deg,#16a34a,#22c55e); }
+    .prog-bar-fill.amber { background: linear-gradient(90deg,#d97706,#f59e0b); }
+    .prog-bar-fill.red   { background: linear-gradient(90deg,#dc2626,#ef4444); }
+    .prog-pct {
+        font-size: 0.9vh; font-weight: 700; min-width: 2.5vw; text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    .prog-pct.green { color: var(--green); }
+    .prog-pct.amber { color: var(--amber); }
+    .prog-pct.red   { color: var(--red);   }
+    .remaining-neg  { color: var(--red); font-weight: 700; }
+    .remaining-pos  { color: var(--muted); }
+    .empty-msg {
+        padding: 3vh 2vw; text-align: center;
+        color: var(--muted); font-size: 1.1vh;
+    }
+
+    /* ── SHIFTS SECTION ──────────────────────────────────── */
+    #shifts-section {
+        width: 100vw; height: var(--shifts-h);
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 1px; background: var(--border);
+        overflow: hidden;
+    }
+    .shift-panel {
+        background: var(--surface);
+        display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .shift-table {
+        width: 100%; border-collapse: collapse;
+    }
+    .shift-table thead th {
+        position: sticky; top: 0; z-index: 1;
+        background: #091829;
+        font-size: 0.95vh; font-weight: 600; letter-spacing: 1px;
+        text-transform: uppercase; color: var(--muted);
+        padding: 0.6vh 1vw; text-align: left;
+        border-bottom: 1px solid var(--border);
+    }
+    .shift-table thead th.right { text-align: right; }
+    .shift-table tbody tr {
+        border-bottom: 1px solid rgba(26,48,80,0.5);
+    }
+    .shift-table tbody tr:last-child { border-bottom: none; }
+    .shift-table td {
+        padding: 0.7vh 1vw; font-size: 1.1vh;
+        font-variant-numeric: tabular-nums;
+    }
+    .shift-table td.right { text-align: right; }
+    .shift-letter {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 2.4vh; height: 2.4vh; border-radius: 50%;
+        font-size: 1vh; font-weight: 800;
+        background: #1e3a5f; color: var(--accent);
+    }
+    .shift-total-row td {
+        background: rgba(56,189,248,0.05);
+        border-top: 1px solid var(--border) !important;
+        color: var(--accent); font-weight: 700;
+    }
+
+    /* ── LOADING / ERROR ─────────────────────────────────── */
+    #loading-overlay {
+        position: fixed; inset: 0; z-index: 999;
+        background: var(--bg);
+        display: flex; align-items: center; justify-content: center;
+        flex-direction: column; gap: 2vh;
+    }
+    .spinner {
+        width: 4vh; height: 4vh;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 1.2vh; color: var(--muted); letter-spacing: 1px; }
+
+    /* pulse dot on header */
+    .live-dot {
+        display: inline-block; width: 0.8vh; height: 0.8vh;
+        border-radius: 50%; background: var(--green);
+        margin-right: 0.4vw;
+        animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.4; transform: scale(0.7); }
+    }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">LOADING DASHBOARD...</div>
+</div>
+
+<!-- HEADER -->
+<div id="header">
+    <div style="display:flex;align-items:center;gap:0.8vw;">
+        <span class="live-dot"></span>
+        <span class="title">Operations Dashboard</span>
+        <span class="badge">LUEU01</span>
+    </div>
+    <div class="meta">
+        Last updated: <span id="asOf">—</span><br>
+        Refreshing in <span id="countdown">60</span>s
+    </div>
+</div>
+
+<!-- KPI BAR -->
+<div id="kpi-bar">
+    <div class="kpi-card">
+        <div class="kpi-label">Year to Date</div>
+        <div class="kpi-value" id="kpi-ytd">—</div>
+        <div class="kpi-unit">Tonnes</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Month to Date</div>
+        <div class="kpi-value" id="kpi-mtd">—</div>
+        <div class="kpi-unit">Tonnes</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Yesterday</div>
+        <div class="kpi-value" id="kpi-yesterday">—</div>
+        <div class="kpi-unit">Tonnes</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Today</div>
+        <div class="kpi-value" id="kpi-today">—</div>
+        <div class="kpi-unit">Tonnes</div>
+    </div>
+</div>
+
+<!-- VESSELS + MBC -->
+<div id="vessels-section">
+    <!-- VCN panel -->
+    <div class="vessel-panel">
+        <div class="panel-header">
+            <span class="panel-title">Active Vessels (VCN)</span>
+            <span class="panel-count" id="vcn-count"></span>
+        </div>
+        <div class="panel-body" id="vcn-body"></div>
+    </div>
+    <!-- MBC panel -->
+    <div class="vessel-panel">
+        <div class="panel-header">
+            <span class="panel-title">Active Marine Bulk Cargo (MBC)</span>
+            <span class="panel-count" id="mbc-count"></span>
+        </div>
+        <div class="panel-body" id="mbc-body"></div>
+    </div>
+</div>
+
+<!-- SHIFTS -->
+<div id="shifts-section">
+    <!-- Yesterday shifts -->
+    <div class="shift-panel">
+        <div class="panel-header">
+            <span class="panel-title">Yesterday — Shift Summary</span>
+            <span class="panel-count" id="yest-date"></span>
+        </div>
+        <div class="panel-body" id="yest-body"></div>
+    </div>
+    <!-- Today shifts -->
+    <div class="shift-panel">
+        <div class="panel-header">
+            <span class="panel-title">Today — Shift Summary</span>
+            <span class="panel-count" id="today-date"></span>
+        </div>
+        <div class="panel-body" id="today-body"></div>
+    </div>
+</div>
+
+<script>
+    const REFRESH_INTERVAL = 60; // seconds
+    let countdown = REFRESH_INTERVAL;
+    let countdownTimer = null;
+    let refreshTimer = null;
+
+    function fmt(n) {
+        if (n === null || n === undefined || isNaN(n)) return '—';
+        return Number(n).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function pctColor(pct) {
+        if (pct >= 90) return 'green';
+        if (pct >= 50) return 'amber';
+        return 'red';
+    }
+
+    function statusChip(s) {
+        const cls = (!s || s === 'Active' || s === 'Open' || s === 'In Progress') ? 'active'
+                    : (s === 'Pending') ? 'pending' : 'other';
+        return `<span class="status-chip ${cls}">${s || 'Active'}</span>`;
+    }
+
+    function renderVCN(rows) {
+        const el = document.getElementById('vcn-body');
+        document.getElementById('vcn-count').textContent = rows.length + ' cargo row(s)';
+        if (!rows.length) {
+            el.innerHTML = '<div class="empty-msg">No active vessels</div>';
+            return;
+        }
+        let html = `<table class="vtable"><thead><tr>
+            <th>VCN #</th><th>Vessel</th><th>Cargo</th><th>Type</th><th>Status</th>
+            <th class="right">BL Qty</th><th class="right">Actual</th>
+            <th class="right">Remaining</th><th>Progress</th>
+        </tr></thead><tbody>`;
+        for (const r of rows) {
+            const cls = r.exceeded ? 'exceeded' : '';
+            const pct = Math.min(r.pct, 100);
+            const col = pctColor(r.pct);
+            const remCls = r.remaining < 0 ? 'remaining-neg' : 'remaining-pos';
+            html += `<tr class="${cls}">
+                <td><span class="doc-chip">${r.doc_num || '—'}</span></td>
+                <td title="${r.vessel_name || ''}">${(r.vessel_name || '—').substring(0,18)}</td>
+                <td title="${r.cargo_name || ''}">${(r.cargo_name || '—').substring(0,14)}</td>
+                <td class="muted">${r.decl_type || ''}</td>
+                <td>${statusChip(r.status)}</td>
+                <td class="right">${fmt(r.bl_quantity)} <span style="color:var(--muted);font-size:0.8vh">${r.uom||''}</span></td>
+                <td class="right">${fmt(r.actual)}</td>
+                <td class="right ${remCls}">${fmt(r.remaining)}</td>
+                <td>
+                    <div class="prog-wrap">
+                        <div class="prog-bar-bg">
+                            <div class="prog-bar-fill ${col}" style="width:${pct}%"></div>
+                        </div>
+                        <span class="prog-pct ${col}">${r.pct}%</span>
+                    </div>
+                </td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
+
+    function renderMBC(rows) {
+        const el = document.getElementById('mbc-body');
+        document.getElementById('mbc-count').textContent = rows.length + ' row(s)';
+        if (!rows.length) {
+            el.innerHTML = '<div class="empty-msg">No active MBCs</div>';
+            return;
+        }
+        let html = `<table class="vtable"><thead><tr>
+            <th>MBC #</th><th>Name</th><th>Cargo</th><th>Status</th>
+            <th class="right">BL Qty</th><th class="right">Actual</th>
+            <th class="right">Remaining</th><th>Progress</th>
+        </tr></thead><tbody>`;
+        for (const r of rows) {
+            const cls = r.exceeded ? 'exceeded' : '';
+            const pct = Math.min(r.pct, 100);
+            const col = pctColor(r.pct);
+            const remCls = r.remaining < 0 ? 'remaining-neg' : 'remaining-pos';
+            html += `<tr class="${cls}">
+                <td><span class="doc-chip">${r.doc_num || '—'}</span></td>
+                <td title="${r.mbc_name || ''}">${(r.mbc_name || '—').substring(0,18)}</td>
+                <td title="${r.cargo_name || ''}">${(r.cargo_name || '—').substring(0,14)}</td>
+                <td>${statusChip(r.status)}</td>
+                <td class="right">${fmt(r.bl_quantity)} <span style="color:var(--muted);font-size:0.8vh">${r.uom||''}</span></td>
+                <td class="right">${fmt(r.actual)}</td>
+                <td class="right ${remCls}">${fmt(r.remaining)}</td>
+                <td>
+                    <div class="prog-wrap">
+                        <div class="prog-bar-bg">
+                            <div class="prog-bar-fill ${col}" style="width:${pct}%"></div>
+                        </div>
+                        <span class="prog-pct ${col}">${r.pct}%</span>
+                    </div>
+                </td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
+
+    function renderShifts(shifts, dayKey, bodyId, dateId, dateLabel) {
+        document.getElementById(dateId).textContent = dateLabel;
+        const el = document.getElementById(bodyId);
+        const dayData = shifts[dayKey] || {};
+        const allShifts = ['A', 'B', 'C', 'D'];
+        let totalT = 0, totalH = 0;
+        let html = `<table class="shift-table"><thead><tr>
+            <th>Shift</th>
+            <th class="right">Tonnes Handled</th>
+            <th class="right">Hours Logged</th>
+        </tr></thead><tbody>`;
+        for (const s of allShifts) {
+            const d = dayData[s];
+            const t = d ? d.tonnes : 0;
+            const h = d ? d.hrs : 0;
+            totalT += t;
+            totalH += h;
+            const hasData = !!d;
+            html += `<tr style="${hasData ? '' : 'opacity:0.35'}">
+                <td><span class="shift-letter">${s}</span></td>
+                <td class="right">${hasData ? fmt(t) : '—'}</td>
+                <td class="right">${hasData ? Number(h).toFixed(2) : '—'}</td>
+            </tr>`;
+        }
+        // total row
+        html += `<tr class="shift-total-row">
+            <td style="font-size:0.9vh;letter-spacing:1px;">TOTAL</td>
+            <td class="right">${fmt(totalT)}</td>
+            <td class="right">${Number(totalH).toFixed(2)}</td>
+        </tr>`;
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
+
+    function fmtDateLabel(iso) {
+        if (!iso) return '';
+        const [y, m, d] = iso.split('-');
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return `${d} ${months[parseInt(m)-1]} ${y}`;
+    }
+
+    function render(data) {
+        // KPIs
+        document.getElementById('kpi-ytd').textContent       = fmt(data.kpis.ytd);
+        document.getElementById('kpi-mtd').textContent       = fmt(data.kpis.mtd);
+        document.getElementById('kpi-yesterday').textContent = fmt(data.kpis.yesterday);
+        document.getElementById('kpi-today').textContent     = fmt(data.kpis.today);
+        document.getElementById('asOf').textContent          = data.as_of;
+
+        renderVCN(data.vcn);
+        renderMBC(data.mbc);
+        renderShifts(data.shifts, 'yesterday', 'yest-body',  'yest-date',  fmtDateLabel(data.yesterday));
+        renderShifts(data.shifts, 'today',     'today-body', 'today-date', fmtDateLabel(data.today));
+    }
+
+    async function refresh() {
+        try {
+            const res = await fetch('/api/module/LUEU01/dashboard-data');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            render(data);
+            document.getElementById('loading-overlay').style.display = 'none';
+        } catch (e) {
+            console.error('Dashboard refresh error:', e);
+        }
+        resetCountdown();
+    }
+
+    function resetCountdown() {
+        if (countdownTimer) clearInterval(countdownTimer);
+        if (refreshTimer)   clearTimeout(refreshTimer);
+        countdown = REFRESH_INTERVAL;
+        document.getElementById('countdown').textContent = countdown;
+        countdownTimer = setInterval(() => {
+            countdown--;
+            document.getElementById('countdown').textContent = Math.max(countdown, 0);
+        }, 1000);
+        refreshTimer = setTimeout(() => {
+            clearInterval(countdownTimer);
+            refresh();
+        }, REFRESH_INTERVAL * 1000);
+    }
+
+    // Boot
+    refresh();
+</script>
+</body>
+</html>
