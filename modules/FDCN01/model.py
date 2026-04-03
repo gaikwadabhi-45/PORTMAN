@@ -567,8 +567,8 @@ def create_cancellation_cn(invoice_id, username=None):
          customer_id, customer_type, customer_name,
          customer_gstin, customer_gst_state_code, customer_gl_code,
          subtotal, cgst_amount, sgst_amount, igst_amount, total_amount,
-         doc_status, remarks, created_by, created_date)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+         doc_status, creation_type, remarks, created_by, created_date)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id''', [
         doc_number, 'CN', now, prefix, seq, fy,
         invoice_id, invoice.get('invoice_number'),
@@ -577,7 +577,8 @@ def create_cancellation_cn(invoice_id, username=None):
         invoice.get('customer_gstin'), invoice.get('customer_gst_state_code'),
         invoice.get('customer_gl_code'),
         subtotal, cgst_total, sgst_total, igst_total, total_amount,
-        'Approved', f'Full cancellation CN for invoice {invoice.get("invoice_number", "")}',
+        'Approved', 'cancellation',
+        f'Full cancellation CN for invoice {invoice.get("invoice_number", "")}',
         username, now
     ])
     fdcn_id = cur.fetchone()['id']

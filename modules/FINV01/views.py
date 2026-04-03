@@ -69,6 +69,17 @@ def invoices():
     status_filter = request.args.get('status')
     data, total = model.get_invoice_data(page, status_filter=status_filter)
 
+    now = datetime.now()
+    for row in data:
+        posted_dt = (
+            _parse_datetime(row.get('sap_posting_date')) or
+            _parse_datetime(row.get('posted_date')) or
+            _parse_datetime(row.get('created_date'))
+        )
+        row['within_cancel_window'] = bool(
+            posted_dt and (now - posted_dt) <= timedelta(hours=24)
+        )
+
     return render_template('finv01_invoices.html',
                          data=data,
                          page=page,
@@ -896,7 +907,7 @@ def cancel_invoice_sap():
         _parse_datetime(invoice.get('posted_date')) or
         _parse_datetime(invoice.get('created_date'))
     )
-    if posted_dt and datetime.now() - posted_dt > timedelta(hours=24):
+    if not posted_dt or datetime.now() - posted_dt > timedelta(hours=24):
         return jsonify({
             'success': False,
             'error': 'FB08 reversal window (24 hours) has expired.',

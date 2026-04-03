@@ -153,19 +153,11 @@ def _service_sale_flag(lines, svc_map):
 
 def _build_items(lines, company, amount_field='line_amount', config_defaults=None, svc_map=None):
     """
-    Build the Item list from service lines, including all staging table fields.
+    Build the Item list from service lines.
 
-    GL precedence for IGST/CGST/SGST:
-      1. line-level override (if ever set)
-      2. service-type sap_igst_gl / sap_cgst_gl / sap_sgst_gl
-      (No config-level default for tax GLs — must be set per service)
-
-    GL precedence for Plant / Business_Place / Section_Code:
-      1. line-level
-      2. config defaults
-      3. company code fallback
-
-    TDS/TCS GL: config defaults (tds_gl / tcs_gl / round_off_gl)
+    GL source for IGST/CGST/SGST: service master only (sap_igst_gl / sap_cgst_gl / sap_sgst_gl).
+    GL source for TDS/TCS:        service master → SAP config fallback (tds_gl / tcs_gl).
+    Plant / Business_Place / Section_Code: SAP config defaults only (never customer company_code).
     """
     config_defaults = config_defaults or {}
 
@@ -185,21 +177,21 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
         svc_code = line.get('service_code') or ''
         svc      = svc_map.get(svc_code, {})
 
-        plant = line.get('plant') or config_defaults.get('plant_code') or company
-        bp    = line.get('business_place') or config_defaults.get('business_place') or company
-        sc    = line.get('section_code')   or config_defaults.get('section_code')   or company
+        plant = line.get('plant') or config_defaults.get('plant_code') or ''
+        bp    = line.get('business_place') or config_defaults.get('business_place') or ''
+        sc    = line.get('section_code')   or config_defaults.get('section_code')   or ''
 
-        igst_gl = line.get('igst_gl') or svc.get('sap_igst_gl') or ''
-        cgst_gl = line.get('cgst_gl') or svc.get('sap_cgst_gl') or ''
-        sgst_gl = line.get('sgst_gl') or svc.get('sap_sgst_gl') or ''
+        igst_gl = svc.get('sap_igst_gl') or ''
+        cgst_gl = svc.get('sap_cgst_gl') or ''
+        sgst_gl = svc.get('sap_sgst_gl') or ''
 
         uom        = line.get('uom')        or svc.get('uom')        or ''
         unit_price = line.get('unit_price') or line.get('rate')       or ''
         quantity   = line.get('quantity')   or ''
 
-        # TDS/TCS GL: service-level overrides config default
-        tds_gl       = line.get('tds_gl') or svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or ''
-        tcs_gl       = line.get('tcs_gl') or svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or ''
+        # TDS/TCS GL: service master → SAP config fallback
+        tds_gl       = svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or ''
+        tcs_gl       = svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or ''
         round_off_gl = config_defaults.get('round_off_gl') or ''
 
         items.append({

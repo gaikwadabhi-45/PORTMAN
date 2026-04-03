@@ -1,8 +1,10 @@
 # SAP Integration - Payload Reference
 
+> **Status: Draft** — The SAP PI/PO interface is not yet developed. This document defines the agreed staging table structure and payload format for implementation. Field values and field names are subject to change pending SAP team confirmation.
+
 ## Overview
 
-Portbird communicates with SAP ECC via a SAP PI/PO REST adapter. All supported documents are posted as JSON to a single endpoint, and PI middleware transforms them into the appropriate SAP document type.
+Portbird will communicate with SAP ECC via a SAP PI/PO REST adapter. All supported documents will be posted as JSON to a single endpoint, and PI middleware will transform them into the appropriate SAP document type.
 
 **Endpoint:** `{base_url}/RESTAdapter/Portbirdinvoice`  
 **Method:** `POST`  
@@ -56,7 +58,7 @@ Debit Note uses `DR` — same as a regular invoice. Credit Note uses `DG`. Invoi
 | `Ack_No` | 20 | | GST acknowledgement number (auto) |
 | `IRN_Date` | 10 | `DD.MM.YYYY` | IRN acknowledgement date (auto) |
 | `Nature_of_transaction` | | `"B2B"` / `"B2C"` | `B2B` if customer has GSTIN, else `B2C` |
-| `Original_Invoice_No` | | | Present on FDCN01 debit and credit notes |
+| `Original_Invoice_No` | | | Present on FDCN01 DN/CN. Value is either the SAP document number or Portbird invoice number — to be confirmed with SAP team |
 | `TDS_Amount` | 13 | `"500.00"` / `""` | Header-level total TDS; empty string if zero |
 | `TCS_Amount` | 13 | `"100.00"` / `""` | Header-level total TCS; empty string if zero |
 | `Item` | | array | One entry per service line |
@@ -72,41 +74,49 @@ Debit Note uses `DR` — same as a regular invoice. Credit Note uses `DG`. Invoi
 | `Amount` | 13 | Taxable base amount ± sign; always populated (`"0.00"` if zero) |
 | `Plant` | | Line → SAP config `plant_code` → company code |
 | `Text` | 25 | Service name, truncated to 25 chars |
-| `IGST_GL` | 10 | IGST GL account from service master `sap_igst_gl` |
-| `IGST_AMT` | | IGST amount; empty if zero |
-| `CGST_GL` | 10 | CGST GL account from service master `sap_cgst_gl` |
-| `CGST_AMT` | | CGST amount; empty if zero |
-| `SGST_GL` | 10 | SGST GL account from service master `sap_sgst_gl` |
-| `SGST_AMT` | | SGST amount; empty if zero |
+| `IGST_GL` | 10 | FSTM01 `sap_igst_gl` for this service; blank if not configured |
+| `IGST_AMT` | | IGST amount; blank if zero (inter-state only) |
+| `CGST_GL` | 10 | FSTM01 `sap_cgst_gl` for this service; blank if not configured |
+| `CGST_AMT` | | CGST amount; blank if zero (intra-state only) |
+| `SGST_GL` | 10 | FSTM01 `sap_sgst_gl` for this service; blank if not configured |
+| `SGST_AMT` | | SGST amount; blank if zero (intra-state only) |
 | `UOM` | | From EU01 line item `quantity_uom` → bill line → invoice line |
 | `Unit_Price` | | From customer agreement rate, stored in `bill_lines.rate` → invoice line |
 | `Quantity` | | From EU01 line item `quantity` (billed qty) → bill line → invoice line |
 | `HSN_SAC` | 16 | SAC / HSN code from line |
 | `Tax_Amount` | 13 | Total GST per line (CGST + SGST + IGST); to be confirmed total or bifurcated |
-| `TDS_GL` | | TDS GL account — service master `sap_tds_gl` → SAP config `tds_gl` |
-| `TDS_Amount` | 13 | Line-level TDS ± sign; empty if zero |
-| `TCS_GL` | | TCS GL account — service master `sap_tcs_gl` → SAP config `tcs_gl` |
-| `TCS_Amount` | 13 | Line-level TCS ± sign; empty if zero |
-| `Round_off_GL` | | Round-off GL account from SAP config `round_off_gl` |
+| `TDS_GL` | | FSTM01 `sap_tds_gl` for this service; falls back to SAP config `tds_gl` |
+| `TDS_Amount` | 13 | TDS deducted on this line; blank if not applicable |
+| `TCS_GL` | | FSTM01 `sap_tcs_gl` for this service; falls back to SAP config `tcs_gl` |
+| `TCS_Amount` | 13 | TCS collected on this line; blank if not applicable |
+| `Round_off_GL` | | From SAP config `round_off_gl`; same for all lines |
 | `Rounding_off` | 13 | Rounding adjustment ± sign; empty if zero |
 | `Business_Place` | | From line → SAP config `business_place` → company code |
 | `Section_Code` | | From line → SAP config `section_code` → company code |
 | `Tax_Code` | | Line `sap_tax_code` → SAP config `tax_code` |
 | `Profit_Center` | | Line `profit_center` → SAP config `profit_center` |
 
-### GL Account Precedence Summary
+### GL Account Sources
 
-| GL Field | Level 1 (highest) | Level 2 | Level 3 (fallback) |
-|---|---|---|---|
-| `IGST_GL` | line override | service master `sap_igst_gl` | — |
-| `CGST_GL` | line override | service master `sap_cgst_gl` | — |
-| `SGST_GL` | line override | service master `sap_sgst_gl` | — |
-| `TDS_GL` | line override | service master `sap_tds_gl` | SAP config `tds_gl` |
-| `TCS_GL` | line override | service master `sap_tcs_gl` | SAP config `tcs_gl` |
-| `Round_off_GL` | — | — | SAP config `round_off_gl` |
-| `Plant` | line | SAP config `plant_code` | company code |
-| `Business_Place` | line | SAP config `business_place` | company code |
-| `Section_Code` | line | SAP config `section_code` | company code |
+GL accounts are **not** on the invoice line. They come from two places:
+
+| GL Field | Primary Source | Fallback |
+|---|---|---|
+| `IGST_GL` | FSTM01 service master `sap_igst_gl` | — (blank if not set) |
+| `CGST_GL` | FSTM01 service master `sap_cgst_gl` | — (blank if not set) |
+| `SGST_GL` | FSTM01 service master `sap_sgst_gl` | — (blank if not set) |
+| `TDS_GL` | FSTM01 service master `sap_tds_gl` | SAP config `tds_gl` |
+| `TCS_GL` | FSTM01 service master `sap_tcs_gl` | SAP config `tcs_gl` |
+| `Round_off_GL` | SAP config `round_off_gl` | — |
+| `Plant` | SAP config `plant_code` | company code |
+| `Business_Place` | SAP config `business_place` | company code |
+| `Section_Code` | SAP config `section_code` | company code |
+
+**In plain terms:**
+- **GST GLs** (IGST/CGST/SGST): set once per service type in FSTM01. If a service has no GL configured, that tax GL is sent blank.
+- **TDS/TCS GL**: set per service type in FSTM01 (because different services fall under different Income Tax sections — 194C, 194J, etc.). If not set on the service, the SAP config default is used as a fallback.
+- **Round-off GL**: single GL from SAP config, applied to all documents.
+- **Plant / Business Place / Section Code**: from SAP config; fall back to company code if not configured.
 
 ### Invoice_Amount Calculation
 
@@ -236,7 +246,7 @@ SAP processes `Cancellation_Flag = X` and posts a reversal entry.
     "Ack_No": "",
     "IRN_Date": "",
     "Nature_of_transaction": "B2B",
-    "Original_Invoice_No": "dppl/25-26/0001",
+    "Original_Invoice_No": "<SAP doc number or Portbird invoice number>",
     "TDS_Amount": "",
     "TCS_Amount": "",
     "Item": [{ "...": "same structure as Invoice item" }]
@@ -268,7 +278,7 @@ SAP processes `Cancellation_Flag = X` and posts a reversal entry.
     "Document_Type": "DG",
     "Reference_Text": "CN/25-26/0001",
     "Cancellation_Flag": "",
-    "Original_Invoice_No": "dppl/25-26/0001",
+    "Original_Invoice_No": "<SAP doc number or Portbird invoice number>",
     "Item": [{ "...": "same structure as Invoice item" }]
   }
 }
@@ -281,30 +291,48 @@ SAP processes `Cancellation_Flag = X` and posts a reversal entry.
 | Document | Module | `doc_type` | `creation_type` | `Invoice_Type` | SAP `Document_Type` | `Cancellation_Flag` | `Original_Invoice_No` |
 |----------|--------|------------|-----------------|----------------|---------------------|---------------------|-----------------------|
 | Invoice | FINV01 | — | — | `I` | `DR` | `""` | not sent |
-| Invoice Reversal | FINV01 | — | — | `I` | `DR` | `"X"` | not sent |
+| Invoice Reversal *(within 24 hrs)* | FINV01 | — | — | `I` | `DR` | `"X"` | not sent |
+| Cancellation CN *(after 24 hrs)* | FDCN01 | `CN` | `cancellation` | `C` | `DG` | `""` | yes |
 | Debit Note | FDCN01 | `DN` | `rate_revision` | `I` | `DR` | `""` | yes |
 | Debit Note | FDCN01 | `DN` | `manual` | `I` | `DR` | `""` | yes, optional |
 | Credit Note | FDCN01 | `CN` | `rate_revision` | `C` | `DG` | `""` | yes |
 | Credit Note | FDCN01 | `CN` | `manual` | `C` | `DG` | `""` | yes, optional |
 | Credit Note | FDCN01 | `CN` | `eu_deletion` | `C` | `DG` | `""` | yes |
 
+### 24-Hour Cancellation Rule (FB08)
+
+SAP only allows direct reversal (`Cancellation_Flag = "X"`) within **24 hours** of the original SAP posting date. This is the FB08 rule in SAP.
+
+| Time since posting | What happens in Portbird |
+|---|---|
+| ≤ 24 hours | **Cancel** button shown → posts reversal payload with `Cancellation_Flag = "X"` |
+| > 24 hours | **Cancel** button replaced with **Create CN** → creates a full Cancellation Credit Note in FDCN01 which must then be posted to SAP separately |
+
+### What is `Original_Invoice_No`?
+
+`Original_Invoice_No` is the reference of the **invoice being adjusted or reversed**. SAP uses it to link the DN/CN back to the source document in the customer's account.
+
+The exact value to send — SAP document number (e.g. `1800000123`) or Portbird invoice number — **needs to be confirmed with the SAP team** when the PI/PO interface is developed.
+
+| Document | `Original_Invoice_No` contains |
+|---|---|
+| Debit Note | SAP doc number or Portbird invoice number of the undercharged invoice |
+| Credit Note (rate revision) | SAP doc number or Portbird invoice number of the overcharged invoice |
+| Cancellation CN | SAP doc number or Portbird invoice number of the invoice being fully reversed |
+| Invoice Reversal | Not sent — SAP FB08 uses `Reference_Text` (the SAP doc number) directly |
+
 ---
 
 ## Company Code Logic
 
 ```text
-If customer has company_code set (inter-company):
-    Company_Code     = customer.company_code
-    Plant            = customer.company_code
-    Business_Place   = customer.company_code
-    Section_Code     = customer.company_code
+Company_Code:
+    If customer has company_code set (inter-company) → customer.company_code
+    Else                                              → sap_api_config.company_code
 
-Else:
-    Company_Code     = sap_api_config.company_code
-    Plant / Business_Place / Section_Code:
-        1. Line-level value (if set)
-        2. SAP config default (plant_code / business_place / section_code)
-        3. Company code fallback
+Plant / Business_Place / Section_Code (always our details, never from customer):
+    1. Line-level value (if set)
+    2. SAP config default (plant_code / business_place / section_code)
 ```
 
 Customer types checked: `Customer`, `Agent`, `ImporterExporter`.
@@ -337,10 +365,9 @@ TDS and TCS GL accounts follow a 3-level precedence because different services f
 | 194J | Professional / Technical fees | `2400002000` |
 | 194I | Rent | `2400003000` |
 
-**Precedence:**
-1. Line-level override (if set directly on the invoice line)
-2. Service master `sap_tds_gl` / `sap_tcs_gl` ← primary configuration point
-3. SAP config `tds_gl` / `tcs_gl` ← fallback default
+**Source (in order):**
+1. FSTM01 service master `sap_tds_gl` / `sap_tcs_gl` ← set this per service type
+2. SAP config `tds_gl` / `tcs_gl` ← fallback if not set on the service
 
 ---
 

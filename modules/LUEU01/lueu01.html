@@ -238,6 +238,7 @@
         <span id="currentEquipLabel" style="font-weight:bold;font-size:1.1rem;margin:0 12px;"></span>
         {% if permissions.can_add %}<button class="btn btn-add" onclick="addRow()">+ Add Row</button>{% endif %}
         {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll()">Save (Ctrl+S)</button>{% endif %}
+        {% if permissions.can_delete %}<button class="btn" id="btnDeleteSelected" onclick="deleteSelected()" style="background:#c53030;color:#fff;display:none;">&#128465; Delete Selected</button>{% endif %}
         <button class="btn" style="font-size:12px;padding:4px 12px;" onclick="toggleFilterPanel()">&#9881; Filters <span id="filterBadge" style="display:none;background:#3182ce;color:white;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span></button>
         <div class="row-info">Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span></div>
     </div>
@@ -840,6 +841,19 @@
             selectable: true
         });
 
+        // Show/hide Delete Selected button based on row selection
+        if (permissions.can_delete) {
+            const btnDel = document.getElementById('btnDeleteSelected');
+            function updateDeleteBtn() {
+                if (!btnDel) return;
+                const sel = table.getSelectedRows().filter(r => !r.getData().is_deleted && r.getData().id);
+                btnDel.style.display = sel.length ? '' : 'none';
+            }
+            table.on("rowSelected", updateDeleteBtn);
+            table.on("rowDeselected", updateDeleteBtn);
+            table.on("dataLoaded", updateDeleteBtn);
+        }
+
         // Recompute Diff (Hrs) when from_time or to_time is edited; schedule autosave
         table.on("cellEdited", function(cell) {
             const id = cell.getRow().getData().id;
@@ -942,14 +956,18 @@
     }
 
     let _pendingDeleteCheckbox = null;
-    let _pendingDeleteId = null;
+    let _pendingDeleteIds = [];  // supports single (checkbox) and multi (toolbar button)
 
-    function handleSoftDelete(checkbox) {
-        _pendingDeleteCheckbox = checkbox;
-        _pendingDeleteId = checkbox.getAttribute('data-id');
+    function _openDeleteModal(ids, checkbox) {
+        _pendingDeleteIds = ids;
+        _pendingDeleteCheckbox = checkbox || null;
         const modal = document.getElementById('delPasswordModal');
         const input = document.getElementById('delPasswordInput');
         const err = document.getElementById('delPasswordError');
+        const label = modal.querySelector('p');
+        if (label) label.textContent = ids.length > 1
+            ? `This will soft-delete ${ids.length} EU lines. Enter your login password to confirm.`
+            : 'This will soft-delete the EU line. Enter your login password to confirm.';
         input.value = '';
         document.getElementById('delPasswordConfirm').value = '';
         err.style.display = 'none';
@@ -957,11 +975,23 @@
         setTimeout(() => input.focus(), 50);
     }
 
+    function handleSoftDelete(checkbox) {
+        const id = parseInt(checkbox.getAttribute('data-id'));
+        _openDeleteModal([id], checkbox);
+    }
+
+    function deleteSelected() {
+        const selected = table.getSelectedRows().filter(r => !r.getData().is_deleted && r.getData().id);
+        if (!selected.length) { alert('Select one or more rows to delete.'); return; }
+        const ids = selected.map(r => r.getData().id);
+        _openDeleteModal(ids, null);
+    }
+
     function cancelDelModal() {
         document.getElementById('delPasswordModal').style.display = 'none';
         if (_pendingDeleteCheckbox) _pendingDeleteCheckbox.checked = false;
         _pendingDeleteCheckbox = null;
-        _pendingDeleteId = null;
+        _pendingDeleteIds = [];
     }
 
     function confirmDelModal() {
@@ -993,7 +1023,7 @@
         fetch('/api/module/LUEU01/delete', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ids: [parseInt(_pendingDeleteId)], password: password})
+            body: JSON.stringify({ids: _pendingDeleteIds, password: password})
         })
         .then(r => r.json())
         .then(result => {
@@ -1007,11 +1037,11 @@
             }
             document.getElementById('delPasswordModal').style.display = 'none';
             _pendingDeleteCheckbox = null;
-            _pendingDeleteId = null;
+            _pendingDeleteIds = [];
             table.replaceData();
             if (result.auto_cn_created && result.auto_cn_created.length > 0) {
                 const cnNums = result.auto_cn_created.map(cn => cn.doc_number).join(', ');
-                alert('EU line deleted.\n\nCredit Note(s) automatically created in FDCN01:\n' + cnNums + '\n\nThese require approver sign-off before posting to SAP.');
+                alert('EU line(s) deleted.\n\nCredit Note(s) automatically created in FDCN01:\n' + cnNums + '\n\nThese require approver sign-off before posting to SAP.');
             }
         })
         .catch(() => {
