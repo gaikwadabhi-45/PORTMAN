@@ -365,6 +365,7 @@ def save_sap_config():
             company_code=%s, default_payment_term=%s, payment_term=%s,
             plant_code=%s, business_place=%s, section_code=%s,
             profit_center=%s, tax_code=%s, currency=%s,
+            tds_gl=%s, tcs_gl=%s, round_off_gl=%s,
             is_active=%s, updated_by=%s, updated_date=%s
             WHERE id=%s''', [
             data.get('environment', 'production'),
@@ -380,6 +381,9 @@ def save_sap_config():
             data.get('profit_center', ''),
             data.get('tax_code', ''),
             data.get('currency', 'INR'),
+            data.get('tds_gl', ''),
+            data.get('tcs_gl', ''),
+            data.get('round_off_gl', ''),
             data.get('is_active', 1),
             username, now, existing['id']
         ])
@@ -389,8 +393,9 @@ def save_sap_config():
              company_code, default_payment_term, payment_term,
              plant_code, business_place, section_code,
              profit_center, tax_code, currency,
+             tds_gl, tcs_gl, round_off_gl,
              is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
             data.get('client_id', ''),
@@ -404,6 +409,9 @@ def save_sap_config():
             data.get('profit_center', ''),
             data.get('tax_code', ''),
             data.get('currency', 'INR'),
+            data.get('tds_gl', ''),
+            data.get('tcs_gl', ''),
+            data.get('round_off_gl', ''),
             data.get('is_active', 1),
             username, now
         ])

@@ -63,6 +63,12 @@
             <th>SAP Tax Code</th>
             <th>SAP Profit Center</th>
             <th>SAP Cost Center</th>
+            <th title="IGST GL Account for SAP staging">IGST GL</th>
+            <th title="CGST GL Account for SAP staging">CGST GL</th>
+            <th title="SGST GL Account for SAP staging">SGST GL</th>
+            <th title="Checked = Sale (A), Unchecked = Service (S)">Is Sale</th>
+            <th title="TDS GL Account for this service (overrides config default)">TDS GL</th>
+            <th title="TCS GL Account for this service (overrides config default)">TCS GL</th>
             <th>SAC Code</th>
             <th>GST Rate</th>
             <th>UOM</th>
@@ -92,6 +98,12 @@
             <td><input type="text" name="sap_tax_code[]" value="{{ row.sap_tax_code or '' }}" placeholder="e.g. 50" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_profit_center[]" value="{{ row.sap_profit_center or '' }}" placeholder="e.g. 5171000000" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_cost_center[]" value="{{ row.sap_cost_center or '' }}" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_igst_gl[]" value="{{ row.sap_igst_gl or '' }}" placeholder="IGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_cgst_gl[]" value="{{ row.sap_cgst_gl or '' }}" placeholder="CGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_sgst_gl[]" value="{{ row.sap_sgst_gl or '' }}" placeholder="SGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
+            <td style="text-align:center;"><input type="checkbox" name="is_sale[]" {% if row.service_sale_flag == 'A' %}checked{% endif %} {% if locked %}disabled{% endif %} title="Is Sale?"></td>
+            <td><input type="text" name="sap_tds_gl[]" value="{{ row.sap_tds_gl or '' }}" placeholder="e.g. 2400001000" style="width:100px;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_tcs_gl[]" value="{{ row.sap_tcs_gl or '' }}" placeholder="e.g. 2400007000" style="width:100px;" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sac_code[]" value="{{ row.sac_code }}" {% if locked %}readonly{% endif %}></td>
             <td><select name="gst_rate_id[]" {% if locked %}disabled{% endif %}>
                 <option value="">--Select--</option>
@@ -249,6 +261,12 @@ function addRow() {
         <td><input type="text" name="sap_tax_code[]" placeholder="e.g. 50"></td>
         <td><input type="text" name="sap_profit_center[]" placeholder="e.g. 5171000000"></td>
         <td><input type="text" name="sap_cost_center[]"></td>
+        <td><input type="text" name="sap_igst_gl[]" placeholder="IGST GL" style="width:90px;"></td>
+        <td><input type="text" name="sap_cgst_gl[]" placeholder="CGST GL" style="width:90px;"></td>
+        <td><input type="text" name="sap_sgst_gl[]" placeholder="SGST GL" style="width:90px;"></td>
+        <td style="text-align:center;"><input type="checkbox" name="is_sale[]" title="Is Sale?"></td>
+        <td><input type="text" name="sap_tds_gl[]" placeholder="e.g. 2400001000" style="width:100px;"></td>
+        <td><input type="text" name="sap_tcs_gl[]" placeholder="e.g. 2400007000" style="width:100px;"></td>
         <td><input type="text" name="sac_code[]"></td>
         <td><select name="gst_rate_id[]">
             <option value="">--Select--</option>
@@ -307,6 +325,12 @@ async function saveAll() {
             sap_tax_code: row.querySelector('[name="sap_tax_code[]"]').value,
             sap_profit_center: row.querySelector('[name="sap_profit_center[]"]').value,
             sap_cost_center: row.querySelector('[name="sap_cost_center[]"]').value,
+            sap_igst_gl: row.querySelector('[name="sap_igst_gl[]"]').value,
+            sap_cgst_gl: row.querySelector('[name="sap_cgst_gl[]"]').value,
+            sap_sgst_gl: row.querySelector('[name="sap_sgst_gl[]"]').value,
+            service_sale_flag: row.querySelector('[name="is_sale[]"]').checked ? 'A' : 'S',
+            sap_tds_gl: row.querySelector('[name="sap_tds_gl[]"]').value,
+            sap_tcs_gl: row.querySelector('[name="sap_tcs_gl[]"]').value,
             sac_code: row.querySelector('[name="sac_code[]"]').value,
             gst_rate_id: row.querySelector('[name="gst_rate_id[]"]').value,
             uom: row.querySelector('[name="uom[]"]').value,

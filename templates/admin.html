@@ -230,6 +230,15 @@
                     </label>
                 </div>
             </div>
+            <div class="config-group">
+                <h4>Default GL Accounts</h4>
+                <p style="font-size:11px;color:#718096;margin:0 0 10px;">Used in SAP staging payload when not overridden at service level.</p>
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                    <label>TDS GL:<br><input type="text" id="sapTdsGl" placeholder="e.g. 2400006000" style="width:100%;padding:6px;"></label>
+                    <label>TCS GL:<br><input type="text" id="sapTcsGl" placeholder="e.g. 2400007000" style="width:100%;padding:6px;"></label>
+                    <label>Round-off GL:<br><input type="text" id="sapRoundOffGl" placeholder="e.g. 4200000001" style="width:100%;padding:6px;"></label>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -972,6 +981,9 @@ async function loadSapConfig() {
     document.getElementById('sapTaxCode').value = cfg.tax_code || '';
     document.getElementById('sapCurrency').value = cfg.currency || 'INR';
     document.getElementById('sapIsActive').value = cfg.is_active ? '1' : '0';
+    document.getElementById('sapTdsGl').value = cfg.tds_gl || '';
+    document.getElementById('sapTcsGl').value = cfg.tcs_gl || '';
+    document.getElementById('sapRoundOffGl').value = cfg.round_off_gl || '';
     document.getElementById('sapStatus').textContent = cfg.id ? 'Config loaded' : 'No config found — fill in to create';
     document.getElementById('sapStatus').style.color = cfg.id ? '#38a169' : '#e53e3e';
 }
@@ -990,7 +1002,10 @@ async function saveSapConfig() {
         profit_center: document.getElementById('sapProfitCenter').value.trim(),
         tax_code: document.getElementById('sapTaxCode').value.trim(),
         currency: document.getElementById('sapCurrency').value.trim() || 'INR',
-        is_active: document.getElementById('sapIsActive').value
+        is_active: document.getElementById('sapIsActive').value,
+        tds_gl: document.getElementById('sapTdsGl').value.trim(),
+        tcs_gl: document.getElementById('sapTcsGl').value.trim(),
+        round_off_gl: document.getElementById('sapRoundOffGl').value.trim()
     };
     if (!data.company_code) { alert('Company Code is required'); return; }
     const res = await fetch('/admin/api/sap-config/save', {
