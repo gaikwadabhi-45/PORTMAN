@@ -29,9 +29,9 @@
         --red-bdr:    #fecaca;
         --header-h:   7vh;
         --kpi-h:      11vh;
-        --equip-h:    24vh;
-        --vessels-h:  32vh;
-        --shifts-h:   calc(100vh - 7vh - 11vh - 24vh - 32vh - 5px);
+        --equip-h:    19vh;
+        --vessels-h:  34vh;
+        --shifts-h:   calc(100vh - 7vh - 11vh - 19vh - 34vh - 5px);
     }
 
     html, body {
@@ -146,63 +146,73 @@
 
     #equip-grid {
         flex: 1;
-        display: flex; flex-wrap: nowrap; gap: 0.8vw;
-        padding: 0.8vh 1.2vw;
-        overflow-x: auto; overflow-y: hidden;
-        align-items: stretch;
+        display: flex; flex-wrap: wrap; gap: 0.5vw;
+        padding: 0.5vh 1vw;
+        overflow-y: auto; overflow-x: hidden;
+        align-content: flex-start;
     }
-    #equip-grid::-webkit-scrollbar { height: 3px; }
+    #equip-grid::-webkit-scrollbar { width: 3px; }
     #equip-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
     .eq-card {
-        flex-shrink: 0;
-        width: 14vw; min-width: 180px;
-        border-radius: 6px; border: 1.5px solid var(--border2);
+        flex: 1 1 12vw;
+        min-width: 160px; max-width: 18vw;
+        border-radius: 5px; border: 1.5px solid var(--border2);
         background: var(--surface);
-        display: flex; flex-direction: column;
+        display: flex; flex-direction: row;
+        align-items: center;
         overflow: hidden;
-        transition: box-shadow 0.2s;
+        gap: 0;
     }
     .eq-card.active  { border-color: var(--green-bdr); background: #fafffe; }
     .eq-card.idle    { border-color: var(--amber-bdr); background: #fffef8; }
     .eq-card.no_data { border-color: var(--red-bdr);   background: #fffafa; }
 
-    .eq-card-top {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 0.5vh 0.7vw 0.3vh;
-        border-bottom: 1px solid var(--border2);
+    /* left colour strip */
+    .eq-strip {
+        width: 4px; align-self: stretch; flex-shrink: 0;
     }
-    .eq-name { font-size: 1.05vh; font-weight: 800; color: var(--text); }
+    .eq-card.active  .eq-strip { background: var(--green); }
+    .eq-card.idle    .eq-strip { background: var(--amber); }
+    .eq-card.no_data .eq-strip { background: var(--red);   }
+
+    .eq-card-inner {
+        flex: 1; display: flex; flex-direction: column;
+        padding: 0.45vh 0.6vw; gap: 0.2vh; min-width: 0;
+    }
+
+    .eq-card-top {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.3vw;
+    }
+    .eq-name { font-size: 0.95vh; font-weight: 800; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .eq-status-pill {
-        font-size: 0.75vh; font-weight: 700; letter-spacing: 0.8px;
-        padding: 1px 6px; border-radius: 8px; text-transform: uppercase;
+        font-size: 0.7vh; font-weight: 700; letter-spacing: 0.5px;
+        padding: 1px 5px; border-radius: 8px; text-transform: uppercase; flex-shrink: 0;
     }
     .eq-status-pill.active  { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
     .eq-status-pill.idle    { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bdr); }
     .eq-status-pill.no_data { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-bdr); }
 
-    .eq-card-body { flex: 1; padding: 0.4vh 0.7vw; display: flex; flex-direction: column; gap: 0.3vh; }
-
-    .eq-row { display: flex; align-items: baseline; gap: 0.3vw; }
-    .eq-row-label { font-size: 0.7vh; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); min-width: 4vw; flex-shrink: 0; }
-    .eq-row-val { font-size: 0.9vh; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .eq-detail-row {
+        display: flex; align-items: baseline; gap: 0.25vw; overflow: hidden;
+    }
+    .eq-row-label { font-size: 0.65vh; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); flex-shrink: 0; }
+    .eq-row-val { font-size: 0.82vh; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .eq-row-val.nodata { color: var(--muted); font-weight: 400; font-style: italic; }
 
     .eq-card-foot {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 0.3vh 0.7vw;
-        background: var(--surface2);
-        border-top: 1px solid var(--border2);
+        display: flex; align-items: center; justify-content: space-between; gap: 0.3vw;
+        border-top: 1px solid var(--border2); padding-top: 0.2vh; margin-top: 0.1vh;
     }
-    .eq-qty { font-size: 1.1vh; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+    .eq-qty { font-size: 0.95vh; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .eq-qty.active  { color: var(--green); }
     .eq-qty.no_data { color: var(--muted); }
-    .eq-last-time { font-size: 0.8vh; color: var(--muted); }
+    .eq-last-time { font-size: 0.72vh; color: var(--muted); white-space: nowrap; }
 
     .delay-tag {
-        font-size: 0.7vh; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+        font-size: 0.65vh; font-weight: 700; padding: 1px 4px; border-radius: 3px;
         background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bdr);
-        white-space: nowrap;
+        white-space: nowrap; flex-shrink: 0;
     }
 
     /* ── VESSELS + MBC ───────────────────────────────────── */
@@ -326,7 +336,6 @@
     <div class="hdr-left">
         <img src="/static/img/logo31.png" class="logo" alt="JSW Dharamtar Port">
         <div class="hdivider"></div>
-        <span class="page-title">Operations Dashboard</span>
         <span class="mod-badge">LUEU01</span>
         <span class="live-dot" style="margin-left:0.3vw;"></span>
     </div>
@@ -487,28 +496,25 @@
                 ? `<span class="delay-tag">&#9888; ${eq.delay_name}</span>`
                 : '';
             html += `<div class="eq-card ${st}">
-                <div class="eq-card-top">
-                    <span class="eq-name">${eq.name}</span>
-                    <span class="eq-status-pill ${st}">${pillLabel}</span>
-                </div>
-                <div class="eq-card-body">
-                    <div class="eq-row">
-                        <span class="eq-row-label">Source</span>
+                <div class="eq-strip"></div>
+                <div class="eq-card-inner">
+                    <div class="eq-card-top">
+                        <span class="eq-name">${eq.name}</span>
+                        <span class="eq-status-pill ${st}">${pillLabel}</span>
+                    </div>
+                    <div class="eq-detail-row">
+                        <span class="eq-row-label">SRC</span>
                         <span class="eq-row-val ${hasData ? '' : 'nodata'}">${hasData && assignment ? assignment : 'Not assigned'}</span>
                     </div>
-                    <div class="eq-row">
-                        <span class="eq-row-label">Cargo</span>
+                    <div class="eq-detail-row">
+                        <span class="eq-row-label">CARGO</span>
                         <span class="eq-row-val ${hasData ? '' : 'nodata'}">${hasData && eq.cargo_name ? eq.cargo_name : '—'}</span>
+                        ${delayTag}
                     </div>
-                    <div class="eq-row">
-                        <span class="eq-row-label">Incharge</span>
-                        <span class="eq-row-val ${hasData ? '' : 'nodata'}">${hasData && eq.shift_incharge ? eq.shift_incharge : '—'}</span>
+                    <div class="eq-card-foot">
+                        <span class="eq-qty ${st}">${hasData ? fmt(eq.today_qty) : '—'} <span style="font-size:0.65vh;font-weight:400;color:var(--muted)">${eq.uom||''}</span></span>
+                        <span class="eq-last-time">${hasData && eq.last_to_time ? eq.last_to_time : 'No entries'}</span>
                     </div>
-                    ${delayTag ? `<div class="eq-row" style="margin-top:0.2vh">${delayTag}</div>` : ''}
-                </div>
-                <div class="eq-card-foot">
-                    <span class="eq-qty ${st}">${hasData ? fmt(eq.today_qty) : '—'} <span style="font-size:0.7vh;font-weight:400;color:var(--muted)">${eq.uom||''}</span></span>
-                    <span class="eq-last-time">${hasData && eq.last_to_time ? 'Last: ' + eq.last_to_time : 'No entries'}</span>
                 </div>
             </div>`;
         }
