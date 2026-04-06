@@ -57,6 +57,7 @@ Debit Note uses `DR` — same as a regular invoice. Credit Note uses `DG`. Invoi
 | `IRN_No` | 64 | | e-Invoice IRN — empty until fetched from SAP (auto) |
 | `Ack_No` | 20 | | GST acknowledgement number (auto) |
 | `IRN_Date` | 10 | `DD.MM.YYYY` | IRN acknowledgement date (auto) |
+| `QR_Code` | | | QR code data string returned by SAP/IRP alongside the IRN; empty until IRN is fetched |
 | `Nature_of_transaction` | | `"B2B"` / `"B2C"` | `B2B` if customer has GSTIN, else `B2C` |
 | `Original_Invoice_No` | | | Present on FDCN01 DN/CN. Value is either the SAP document number or Portbird invoice number — to be confirmed with SAP team |
 | `TDS_Amount` | 13 | `"500.00"` / `""` | Header-level total TDS; empty string if zero |
@@ -64,7 +65,7 @@ Debit Note uses `DR` — same as a regular invoice. Credit Note uses `DG`. Invoi
 | `Item` | | array | One entry per service line |
 
 > **Auto fields** (SAP fills on response): `Processing_Status`, `Fiscal_Year`, `Fiscal_Period`,
-> `Push_Date`, `Push_Time`, `Document_Number`, `Message`, `IRN_No`, `Ack_No`, `IRN_Date`.
+> `Push_Date`, `Push_Time`, `Document_Number`, `Message`, `IRN_No`, `Ack_No`, `IRN_Date`, `QR_Code`.
 
 ### Item (Line) Fields
 

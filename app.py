@@ -1,10 +1,36 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from functools import wraps
 from database import get_db, get_cursor
-from config import SECRET_KEY, FLASK_ENV, SERVER_HOST, SERVER_PORT, SSL_CERT, SSL_KEY
+from config import SECRET_KEY, FLASK_ENV, SERVER_HOST, SERVER_PORT
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+# ── App-level logging ─────────────────────────────────────────────────────────
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(_log_dir, exist_ok=True)
+_log_file = os.path.join(_log_dir, 'app.log')
+
+_file_handler = RotatingFileHandler(
+    _log_file,
+    maxBytes=10 * 1024 * 1024,  # 10 MB per file
+    backupCount=10,
+    encoding='utf-8',
+)
+_file_handler.setLevel(logging.WARNING)
+_file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s %(module)s:%(lineno)d — %(message)s'
+))
+
+# Attach to Flask app logger and root logger (catches all libraries)
+app.logger.setLevel(logging.WARNING)
+app.logger.addHandler(_file_handler)
+logging.getLogger().addHandler(_file_handler)
+logging.getLogger().setLevel(logging.WARNING)
 
 # Module registry
 MODULES = {}
@@ -137,6 +163,35 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
+
+# ── Error handlers ────────────────────────────────────────────────────────────
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch all unhandled exceptions, log them, return a clean 500."""
+    import traceback
+    app.logger.error(
+        'Unhandled exception on %s %s\n%s',
+        request.method, request.path,
+        traceback.format_exc()
+    )
+    # Don't swallow HTTP errors (404, 403 etc.) — let Flask handle them normally
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    return (
+        '<h2>Internal Server Error</h2>'
+        '<p>The error has been logged. Please contact the administrator.</p>',
+        500,
+    )
+
+@app.errorhandler(500)
+def internal_error(e):
+    app.logger.error('500 error on %s %s: %s', request.method, request.path, str(e))
+    return (
+        '<h2>Internal Server Error</h2>'
+        '<p>The error has been logged. Please contact the administrator.</p>',
+        500,
+    )
 
 @app.after_request
 def no_cache(response):
@@ -345,14 +400,28 @@ _mail_scheduler.start()
 if __name__ == '__main__':
     is_production = FLASK_ENV == 'production'
 
-    ssl_context = None
-    if is_production and SSL_CERT and SSL_KEY:
-        ssl_context = (SSL_CERT, SSL_KEY)
-
-    app.run(
-        host=SERVER_HOST,
-        port=SERVER_PORT,
-        debug=not is_production,
-        threaded=True,
-        ssl_context=ssl_context,
-    )
+    if is_production:
+        # Waitress is the production WSGI server for Windows.
+        # It is multi-threaded, stable, and does not crash under load like Werkzeug.
+        from waitress import serve
+        import logging as _logging
+        _logging.getLogger('waitress').addHandler(_file_handler)
+        _logging.getLogger('waitress').setLevel(_logging.WARNING)
+        print(f'Starting Waitress on {SERVER_HOST}:{SERVER_PORT} ...')
+        serve(
+            app,
+            host=SERVER_HOST,
+            port=SERVER_PORT,
+            threads=8,               # concurrent request threads
+            connection_limit=200,    # max open connections
+            channel_timeout=60,      # drop hung connections after 60s
+            log_socket_errors=True,
+        )
+    else:
+        # Development only — Werkzeug with reloader
+        app.run(
+            host=SERVER_HOST,
+            port=SERVER_PORT,
+            debug=True,
+            threaded=True,
+        )
