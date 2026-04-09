@@ -30,6 +30,64 @@ def queue_mail(to_email, to_name, subject, body_html, module_code=None, ref_id=N
     conn.close()
 
 
+def get_user_email_by_id(user_id):
+    """Return (email, username) for a user id."""
+    if not user_id:
+        return None, None
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT email, username FROM users WHERE id=%s', [user_id])
+    row = cur.fetchone()
+    conn.close()
+    return (row['email'], row['username']) if row else (None, None)
+
+
+def get_module_approver_info(module_code, fallback_module=None):
+    """Return approver config and contact details for a module."""
+    from database import get_module_config
+
+    cfg = get_module_config(module_code) or {}
+    approver_id = cfg.get('approver_id')
+    approval_add = cfg.get('approval_add')
+
+    if fallback_module:
+        fallback_cfg = get_module_config(fallback_module) or {}
+        if not approver_id:
+            approver_id = fallback_cfg.get('approver_id')
+        if approval_add is None:
+            approval_add = fallback_cfg.get('approval_add')
+
+    email, username = get_user_email_by_id(approver_id)
+    return {
+        'approver_id': approver_id,
+        'approval_add': bool(approval_add),
+        'email': email,
+        'username': username,
+    }
+
+
+def trigger_mail_processing():
+    """Kick off an asynchronous mail send attempt."""
+    threading.Thread(target=process_mail_queue, daemon=True).start()
+
+
+def notify_module_approver(module_code, subject, body_html, ref_id=None, fallback_module=None):
+    """Queue an approval mail to the configured approver and trigger processing."""
+    info = get_module_approver_info(module_code, fallback_module=fallback_module)
+    if not info.get('email'):
+        return False
+    queue_mail(
+        info['email'],
+        info.get('username'),
+        subject,
+        body_html,
+        module_code,
+        ref_id
+    )
+    trigger_mail_processing()
+    return True
+
+
 def process_mail_queue():
     """Called by scheduler. Reads smtp_config, sends all pending mails."""
     cfg = get_smtp_config()

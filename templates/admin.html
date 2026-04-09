@@ -13,6 +13,7 @@
     <button class="tab-btn" onclick="showTab('permissions')">Module Permissions</button>
     <button class="tab-btn" onclick="showTab('config')">Module Config</button>
     <button class="tab-btn" onclick="showTab('vessels')">Vessel Closure</button>
+    <button class="tab-btn" onclick="showTab('mbc')">MBC Approval</button>
     <button class="tab-btn" onclick="showTab('gst')">GST Config</button>
     <button class="tab-btn" onclick="showTab('sap')">SAP Config</button>
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
@@ -143,6 +144,31 @@
                 </tr>
             </thead>
             <tbody id="ldudVesselsBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MBC Approval Tab -->
+<div id="mbc-tab" class="tab-content">
+    <div class="admin-section">
+        <h3>MBC Approval Reset</h3>
+        <p style="font-size:13px;color:#718096;margin:0 0 12px;">Shows all Approved MBC records from MBC01. Use "Reset Approval" to move a record back to Draft.</p>
+        <div class="toolbar">
+            <button class="btn btn-save" onclick="loadMbcApprovals()">↻ Refresh</button>
+        </div>
+        <table class="admin-table" id="mbcApprovalsTable">
+            <thead>
+                <tr>
+                    <th>Doc Num</th>
+                    <th>MBC Name</th>
+                    <th>Operation</th>
+                    <th>Cargo Name</th>
+                    <th>Status</th>
+                    <th>Created By</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="mbcApprovalsBody"></tbody>
         </table>
     </div>
 </div>
@@ -526,6 +552,7 @@ function showTab(tab) {
     document.querySelector(`[onclick*="showTab('${tab}')"]`).classList.add('active');
     document.getElementById(`${tab}-tab`).classList.add('active');
     if (tab === 'vessels') loadLdudVessels();
+    if (tab === 'mbc') loadMbcApprovals();
     if (tab === 'gst') loadGstConfig();
     if (tab === 'sap') loadSapConfig();
     if (tab === 'banks') loadBankAccounts();
@@ -1055,6 +1082,39 @@ async function openVessel(id, docNum) {
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
     loadLdudVessels();
+}
+
+async function loadMbcApprovals() {
+    const res = await fetch('/admin/api/mbc/approvals');
+    const rows = await res.json();
+    const tbody = document.getElementById('mbcApprovalsBody');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#718096;padding:16px;">No approved MBC records found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td>${r.doc_num || ''}</td>
+            <td>${r.mbc_name || ''}</td>
+            <td>${r.operation_type || ''}</td>
+            <td>${r.cargo_name || ''}</td>
+            <td><span style="background:#c6f6d5;color:#276749;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${r.doc_status || 'Approved'}</span></td>
+            <td>${r.created_by || ''}</td>
+            <td><button class="btn btn-danger" onclick="resetMbcApproval(${r.id}, '${(r.doc_num||'').replace(/'/g,\"\\\\'\")}')">Reset Approval</button></td>
+        </tr>
+    `).join('');
+}
+
+async function resetMbcApproval(id, docNum) {
+    if (!confirm(`Reset "${docNum}" back to Draft? This will remove its approved status.`)) return;
+    const res = await fetch('/admin/api/mbc/reset_approval', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id})
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    loadMbcApprovals();
 }
 
 // ── Mail Tab ─────────────────────────────────────────────────────────────────

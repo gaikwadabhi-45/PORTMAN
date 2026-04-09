@@ -3,7 +3,10 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_module_config
-from mail_service import queue_mail as _queue_mail
+from mail_service import (
+    queue_mail as _queue_mail,
+    trigger_mail_processing as _trigger_mail_processing,
+)
 
 bp = Blueprint('LDUD01', __name__, template_folder='.')
 MODULE_CODE = 'LDUD01'
@@ -180,6 +183,7 @@ def close():
                 module_code='LDUD01',
                 ref_id=record_id,
             )
+            _trigger_mail_processing()
     except Exception:
         pass
     return jsonify({'doc_status': close_type})
@@ -217,6 +221,7 @@ by <strong>{session.get('username')}</strong>.</p>
                 module_code='LDUD01',
                 ref_id=record_id,
             )
+            _trigger_mail_processing()
     except Exception:
         pass
     return jsonify({'doc_status': 'Draft'})

@@ -2,6 +2,28 @@ from flask import render_template, request, redirect, url_for, session, jsonify
 from . import bp
 from . import model
 from database import get_user_permissions, get_db, get_cursor, get_module_config
+from mail_service import notify_module_approver, get_module_approver_info
+
+
+def _queue_bill_approval_request(bill_id, bill_number, customer_name, total_amount):
+    info = get_module_approver_info('FIN01')
+    if not info.get('approval_add'):
+        return
+    if session.get('is_admin') or str(info.get('approver_id') or '') == str(session.get('user_id')):
+        return
+    bill_url = request.host_url.rstrip('/') + url_for('FIN01.view_bill', bill_id=bill_id)
+    notify_module_approver(
+        module_code='FIN01',
+        ref_id=bill_id,
+        subject=f"[PORTMAN] FIN01 Bill {bill_number} - Pending Approval",
+        body_html=f"""<p>Hello Approver,</p>
+<p>A FIN01 bill has been submitted for approval by <strong>{session.get('username')}</strong>.</p>
+<p><strong>Bill No:</strong> {bill_number}<br>
+<strong>Customer:</strong> {customer_name or ''}<br>
+<strong>Total Amount:</strong> {float(total_amount or 0):.2f}</p>
+<p><a href="{bill_url}">Open bill in PORTMAN</a></p>
+<hr><p style="color:#888;font-size:11px;">Automated approval notification from PORTMAN.</p>""",
+    )
 
 @bp.route('/module/FIN01/')
 def index():
@@ -180,6 +202,9 @@ def save_bill():
     conn.commit()
     conn.close()
 
+    if data.get('bill_status') == 'Pending Approval':
+        _queue_bill_approval_request(row_id, bill_number, data.get('customer_name'), total_amount)
+
     return jsonify({'success': True, 'id': row_id, 'bill_number': bill_number})
 
 
@@ -222,8 +247,18 @@ def submit_bill():
     cur.execute('''UPDATE bill_header
         SET bill_status='Pending Approval'
         WHERE id=%s''', [bill_id])
+    cur.execute('SELECT bill_number, customer_name, total_amount FROM bill_header WHERE id=%s', [bill_id])
+    bill = cur.fetchone()
     conn.commit()
     conn.close()
+
+    if bill:
+        _queue_bill_approval_request(
+            bill_id,
+            bill.get('bill_number'),
+            bill.get('customer_name'),
+            bill.get('total_amount'),
+        )
 
     return jsonify({'success': True})
 
