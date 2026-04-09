@@ -284,27 +284,6 @@ def get_bill_lines_api(bill_id):
     return jsonify({'lines': lines})
 
 
-@bp.route('/api/module/FIN01/eu-lines/<source_type>/<int:source_id>')
-def get_lueu_lines(source_type, source_id):
-    """Get all EU lines for a specific source (both billed and unbilled)"""
-    if 'user_id' not in session:
-        return jsonify({'error': 'Not logged in'}), 401
-
-    conn = get_db()
-    cur = get_cursor(conn)
-    cur.execute('''
-        SELECT el.*, st.service_name
-        FROM lueu_lines el
-        LEFT JOIN finance_service_types st ON el.service_type_id = st.id
-        WHERE el.source_type = %s AND el.source_id = %s
-          AND (el.is_deleted IS NOT TRUE)
-        ORDER BY el.is_billed ASC, el.id
-    ''', [source_type, source_id])
-    rows = cur.fetchall()
-    conn.close()
-
-    return jsonify({'data': [dict(r) for r in rows]})
-
 
 @bp.route('/api/module/FIN01/service-types')
 def get_service_types():
@@ -534,150 +513,154 @@ def get_customer_billables(customer_type, customer_id):
     cust_row = cur.fetchone()
     customer_name = cust_row['name'] if cust_row else ''
 
-    # --- A. Cargo Handling: unbilled lueu_lines for this customer's VCNs/MBCs ---
-    # Get CARGO_LOAD and CARGO_UNLOAD service type IDs
+    # --- A. Cargo Handling: direct from cargo declaration tables ---
+    # Service types are HARDCODED by source:
+    #   vcn_cargo_declaration        → CHGU01 (Cargo Handling Unloading)
+    #   vcn_export_cargo_declaration → CHGL01 (Cargo Handling Loading)
+    #   mbc_customer_details         → CHGU01 (Cargo Handling Unloading)
+
     cur.execute("""
-        SELECT id, service_code, service_name, sac_code, uom, is_tds, tds_percent, is_tcs, tcs_percent
+        SELECT id, service_code, service_name, sac_code, uom,
+               is_tds, tds_percent, is_tcs, tcs_percent
         FROM finance_service_types
-        WHERE service_code IN ('CHGL01', 'CHGU01')
+        WHERE service_code IN ('CHGL01', 'CHGU01') AND is_active = 1
     """)
     cargo_st_map = {r['service_code']: dict(r) for r in cur.fetchall()}
 
-    # Find VCN IDs where this customer appears in cargo declarations
-    cur.execute("""
-        SELECT DISTINCT vcn_id, cargo_name FROM vcn_cargo_declaration
-        WHERE customer_name = %s
-        UNION
-        SELECT DISTINCT vcn_id, cargo_name FROM vcn_export_cargo_declaration
-        WHERE customer_name = %s
-    """, [customer_name, customer_name])
-    vcn_cargo_map = {}
-    for r in cur.fetchall():
-        vcn_cargo_map.setdefault(r['vcn_id'], set()).add(r['cargo_name'])
-
-    # Find MBC IDs where this customer appears in customer details
-    cur.execute("""
-        SELECT DISTINCT mbc_id, cargo_name FROM mbc_customer_details
-        WHERE customer_name = %s
-    """, [customer_name])
-    mbc_cargo_map = {}
-    for r in cur.fetchall():
-        mbc_cargo_map.setdefault(r['mbc_id'], set())
-        if r['cargo_name']:
-            mbc_cargo_map[r['mbc_id']].add(r['cargo_name'])
-
-    # Build list of allowed (source_type, source_id) pairs
-    allowed_sources = set()
-    for vid in vcn_cargo_map:
-        allowed_sources.add(('VCN', vid))
-    for mid in mbc_cargo_map:
-        allowed_sources.add(('MBC', mid))
-
-    cur.execute("""
-        SELECT el.*
-        FROM lueu_lines el
-        WHERE ((el.is_billed = 0 OR el.is_billed IS NULL)
-            OR (COALESCE(el.billed_quantity, 0) < el.quantity))
-          AND (el.is_deleted IS NOT TRUE)
-        ORDER BY el.source_type, el.source_id, el.operation_type, el.id
-    """)
-    eu_rows = [dict(r) for r in cur.fetchall()]
-
-    # Group by (source_type, source_id), filtering to allowed sources only
-    from collections import defaultdict
-    eu_groups = defaultdict(list)
-    for r in eu_rows:
-        key = (r['source_type'], r['source_id'])
-        if key not in allowed_sources:
-            continue
-        # For VCN sources, filter by customer's cargo names
-        if r['source_type'] == 'VCN' and r['source_id'] in vcn_cargo_map:
-            if r.get('cargo_name') not in vcn_cargo_map[r['source_id']]:
-                continue
-        # For MBC sources with cargo-level filtering
-        if r['source_type'] == 'MBC' and r['source_id'] in mbc_cargo_map:
-            mbc_cargos = mbc_cargo_map[r['source_id']]
-            if mbc_cargos and r.get('cargo_name') not in mbc_cargos:
-                continue
-        eu_groups[key].append(r)
-
     cargo_handling = []
-    for (src_type, src_id), lines in eu_groups.items():
-        # Determine LDUD closure status
-        is_billable = False
-        doc_label = ''
-        doc_status = ''
 
-        material_po = ''
-        material_po_options = []
+    # A1. VCN Import declarations → CHGU01 (Unloading)
+    cur.execute("""
+        SELECT cd.id, cd.vcn_id, cd.cargo_name, cd.bl_no, cd.bl_date,
+               cd.bl_quantity, cd.quantity_uom,
+               COALESCE(cd.is_billed, 0) AS is_billed,
+               COALESCE(cd.billed_quantity, 0) AS billed_quantity,
+               vh.vcn_doc_num, vh.vessel_name
+        FROM vcn_cargo_declaration cd
+        JOIN vcn_header vh ON cd.vcn_id = vh.id
+        WHERE cd.customer_name = %s
+          AND (COALESCE(cd.is_billed, 0) = 0
+               OR COALESCE(cd.billed_quantity, 0) < cd.bl_quantity)
+        ORDER BY vh.vcn_doc_num DESC, cd.id
+    """, [customer_name])
+    import_decls = [dict(r) for r in cur.fetchall()]
 
-        if src_type == 'VCN' and src_id:
-            cur.execute("""
-                SELECT lh.doc_status, lh.material_po_number, h.vcn_doc_num, h.vessel_name
-                FROM ldud_header lh
-                JOIN vcn_header h ON lh.vcn_id = h.id
-                WHERE lh.vcn_id = %s
-                ORDER BY lh.id DESC LIMIT 1
-            """, [src_id])
-            row = cur.fetchone()
-            if row:
-                doc_status = row['doc_status'] or ''
-                is_billable = doc_status in ('Closed', 'Partial Close')
-                doc_label = f"{row['vcn_doc_num']} / {row['vessel_name']}"
-                material_po = row.get('material_po_number') or ''
-            else:
-                cur.execute("SELECT vcn_doc_num, vessel_name FROM vcn_header WHERE id=%s", [src_id])
-                vcn = cur.fetchone()
-                doc_label = f"{vcn['vcn_doc_num']} / {vcn['vessel_name']}" if vcn else f"VCN-{src_id}"
+    # A2. VCN Export declarations → CHGL01 (Loading)
+    cur.execute("""
+        SELECT cd.id, cd.vcn_id, cd.cargo_name, cd.bl_no, cd.bl_date,
+               cd.bl_quantity, cd.quantity_uom,
+               COALESCE(cd.is_billed, 0) AS is_billed,
+               COALESCE(cd.billed_quantity, 0) AS billed_quantity,
+               vh.vcn_doc_num, vh.vessel_name
+        FROM vcn_export_cargo_declaration cd
+        JOIN vcn_header vh ON cd.vcn_id = vh.id
+        WHERE cd.customer_name = %s
+          AND (COALESCE(cd.is_billed, 0) = 0
+               OR COALESCE(cd.billed_quantity, 0) < cd.bl_quantity)
+        ORDER BY vh.vcn_doc_num DESC, cd.id
+    """, [customer_name])
+    export_decls = [dict(r) for r in cur.fetchall()]
 
-        elif src_type == 'MBC' and src_id:
-            cur.execute("SELECT doc_num, mbc_name, doc_status FROM mbc_header WHERE id=%s", [src_id])
-            row = cur.fetchone()
-            if row:
-                doc_status = row['doc_status'] or ''
-                is_billable = doc_status in ('Approved', 'Closed', 'Partial Close')
-                doc_label = f"{row['doc_num']} / {row['mbc_name']}"
-            # Get material PO from customer details
-            cur.execute("""
-                SELECT customer_name, material_po FROM mbc_customer_details
-                WHERE mbc_id = %s AND customer_name = %s AND material_po IS NOT NULL AND material_po != ''
-            """, [src_id, customer_name])
-            mbc_pos = cur.fetchall()
-            if len(mbc_pos) == 1:
-                material_po = mbc_pos[0]['material_po'] or ''
-            elif len(mbc_pos) > 1:
-                material_po_options = [{'value': p['material_po'], 'label': p['material_po']} for p in mbc_pos]
-                material_po = mbc_pos[0]['material_po'] or ''
+    # A3. MBC customer details → CHGU01 (Unloading)
+    cur.execute("""
+        SELECT cd.id, cd.mbc_id, cd.cargo_name, cd.bill_of_coastal_goods_no,
+               cd.quantity, cd.material_po,
+               COALESCE(cd.is_billed, 0) AS is_billed,
+               COALESCE(cd.billed_quantity, 0) AS billed_quantity,
+               mh.doc_num, mh.mbc_name, mh.doc_status AS mbc_status
+        FROM mbc_customer_details cd
+        JOIN mbc_header mh ON cd.mbc_id = mh.id
+        WHERE cd.customer_name = %s
+          AND (COALESCE(cd.is_billed, 0) = 0
+               OR COALESCE(cd.billed_quantity, 0) < cd.quantity)
+        ORDER BY mh.doc_num DESC, cd.id
+    """, [customer_name])
+    mbc_decls = [dict(r) for r in cur.fetchall()]
 
-        # Split lines by operation_type → service type
-        load_lines = [l for l in lines if l.get('operation_type') in ('Loading', 'Export', 'Load')]
-        unload_lines = [l for l in lines if l not in load_lines]
+    # Batch-fetch LDUD closure status for all VCN sources
+    vcn_ids_needed = set(r['vcn_id'] for r in import_decls + export_decls)
+    ldud_by_vcn = {}
+    for vcn_id in vcn_ids_needed:
+        cur.execute("""
+            SELECT lh.doc_status, lh.material_po_number, h.vcn_doc_num, h.vessel_name
+            FROM ldud_header lh
+            JOIN vcn_header h ON lh.vcn_id = h.id
+            WHERE lh.vcn_id = %s
+            ORDER BY lh.id DESC LIMIT 1
+        """, [vcn_id])
+        row = cur.fetchone()
+        if row:
+            ldud_by_vcn[vcn_id] = {
+                'doc_status':         row['doc_status'] or '',
+                'material_po_number': row['material_po_number'] or '',
+                'doc_label':          f"{row['vcn_doc_num']} / {row['vessel_name']}"
+            }
 
-        for grp_lines, svc_code in [(load_lines, 'CHGL01'), (unload_lines, 'CHGU01')]:
-            if not grp_lines:
-                continue
-            total_qty = sum(float(l.get('quantity') or 0) for l in grp_lines)
-            st = cargo_st_map.get(svc_code, {})
-            cargo_handling.append({
-                'source_type': src_type,
-                'source_id': src_id,
-                'doc_label': doc_label,
-                'doc_status': doc_status,
-                'is_billable': is_billable,
-                'service_code': svc_code,
-                'service_type_id': st.get('id'),
-                'service_name': st.get('service_name', svc_code),
-                'sac_code': st.get('sac_code', ''),
-                'is_tds': st.get('is_tds', 0),
-                'tds_percent': float(st.get('tds_percent') or 0),
-                'is_tcs': st.get('is_tcs', 0),
-                'tcs_percent': float(st.get('tcs_percent') or 0),
-                'total_quantity': total_qty,
-                'uom': grp_lines[0].get('quantity_uom', 'MT'),
-                'lines': grp_lines,
-                'material_po': material_po,
-                'material_po_options': material_po_options
-            })
+    def _build_cargo_item(decl, cargo_source_type, svc_code,
+                          bl_quantity_field='bl_quantity',
+                          source_type='VCN', source_id_field='vcn_id',
+                          ldud_info=None, mbc_status=None):
+        st = cargo_st_map.get(svc_code, {})
+        total_qty   = float(decl.get(bl_quantity_field) or 0)
+        billed_qty  = float(decl.get('billed_quantity') or 0)
+        billable_qty = max(round(total_qty - billed_qty, 3), 0)
+        if ldud_info:
+            doc_status  = ldud_info.get('doc_status', '')
+            is_billable = doc_status in ('Closed', 'Partial Close')
+            doc_label   = ldud_info.get('doc_label', '')
+            material_po = ldud_info.get('material_po_number', '')
+        else:
+            doc_status  = mbc_status or ''
+            is_billable = doc_status in ('Approved', 'Closed', 'Partial Close')
+            doc_label   = f"{decl.get('doc_num', '')} / {decl.get('mbc_name', '')}"
+            material_po = decl.get('material_po') or ''
+        return {
+            'source_type':        source_type,
+            'source_id':          decl.get(source_id_field),
+            'cargo_source_type':  cargo_source_type,
+            'cargo_source_id':    decl['id'],
+            'doc_label':          doc_label,
+            'doc_status':         doc_status,
+            'is_billable':        is_billable,
+            'service_code':       svc_code,
+            'service_type_id':    st.get('id'),
+            'service_name':       st.get('service_name', ''),
+            'sac_code':           st.get('sac_code', ''),
+            'is_tds':             st.get('is_tds', 0),
+            'tds_percent':        float(st.get('tds_percent') or 0),
+            'is_tcs':             st.get('is_tcs', 0),
+            'tcs_percent':        float(st.get('tcs_percent') or 0),
+            'total_quantity':     total_qty,
+            'billed_quantity':    billed_qty,
+            'billable_quantity':  billable_qty,
+            'uom':                decl.get('quantity_uom') or st.get('uom') or 'MT',
+            'cargo_name':         decl.get('cargo_name') or '',
+            'bl_no':              decl.get('bl_no') or decl.get('bill_of_coastal_goods_no') or '',
+            'bl_date':            str(decl.get('bl_date') or ''),
+            'material_po':        material_po,
+            'material_po_options': []
+        }
+
+    for r in import_decls:
+        cargo_handling.append(_build_cargo_item(
+            r, 'VCN_IMPORT', 'CHGU01',
+            bl_quantity_field='bl_quantity', source_type='VCN', source_id_field='vcn_id',
+            ldud_info=ldud_by_vcn.get(r['vcn_id'])
+        ))
+
+    for r in export_decls:
+        cargo_handling.append(_build_cargo_item(
+            r, 'VCN_EXPORT', 'CHGL01',
+            bl_quantity_field='bl_quantity', source_type='VCN', source_id_field='vcn_id',
+            ldud_info=ldud_by_vcn.get(r['vcn_id'])
+        ))
+
+    for r in mbc_decls:
+        cargo_handling.append(_build_cargo_item(
+            r, 'MBC', 'CHGU01',
+            bl_quantity_field='quantity', source_type='MBC', source_id_field='mbc_id',
+            mbc_status=r.get('mbc_status')
+        ))
 
     # --- B. Other Services: approved unbilled service records for this customer ---
     cur.execute("""
