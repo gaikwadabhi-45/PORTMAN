@@ -2,6 +2,76 @@ from database import get_db, get_cursor
 from datetime import datetime
 
 
+# ===== CARGO BILLING HELPERS =====
+
+def _mark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty, bill_id):
+    """Increment billed_quantity on the correct declaration row."""
+    if not cargo_source_type or not cargo_source_id:
+        return
+    bill_qty = float(bill_qty or 0)
+    if cargo_source_type == 'VCN_IMPORT':
+        cur.execute('''
+            UPDATE vcn_cargo_declaration
+            SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
+                bill_id = %s,
+                is_billed = CASE
+                    WHEN COALESCE(billed_quantity, 0) + %s >= bl_quantity THEN 1
+                    ELSE is_billed
+                END
+            WHERE id = %s
+        ''', [bill_qty, bill_id, bill_qty, cargo_source_id])
+    elif cargo_source_type == 'VCN_EXPORT':
+        cur.execute('''
+            UPDATE vcn_export_cargo_declaration
+            SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
+                bill_id = %s,
+                is_billed = CASE
+                    WHEN COALESCE(billed_quantity, 0) + %s >= bl_quantity THEN 1
+                    ELSE is_billed
+                END
+            WHERE id = %s
+        ''', [bill_qty, bill_id, bill_qty, cargo_source_id])
+    elif cargo_source_type == 'MBC':
+        cur.execute('''
+            UPDATE mbc_customer_details
+            SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
+                bill_id = %s,
+                is_billed = CASE
+                    WHEN COALESCE(billed_quantity, 0) + %s >= quantity THEN 1
+                    ELSE is_billed
+                END
+            WHERE id = %s
+        ''', [bill_qty, bill_id, bill_qty, cargo_source_id])
+
+
+def _unmark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty):
+    """Decrement billed_quantity on the correct declaration row (bill delete/reversal)."""
+    if not cargo_source_type or not cargo_source_id:
+        return
+    bill_qty = float(bill_qty or 0)
+    table_map = {
+        'VCN_IMPORT': 'vcn_cargo_declaration',
+        'VCN_EXPORT': 'vcn_export_cargo_declaration',
+        'MBC':        'mbc_customer_details',
+    }
+    table = table_map.get(cargo_source_type)
+    if not table:
+        return
+    cur.execute(f'''
+        UPDATE {table}
+        SET billed_quantity = GREATEST(COALESCE(billed_quantity, 0) - %s, 0),
+            is_billed = CASE
+                WHEN GREATEST(COALESCE(billed_quantity, 0) - %s, 0) <= 0 THEN 0
+                ELSE is_billed
+            END,
+            bill_id = CASE
+                WHEN GREATEST(COALESCE(billed_quantity, 0) - %s, 0) <= 0 THEN NULL
+                ELSE bill_id
+            END
+        WHERE id = %s
+    ''', [bill_qty, bill_qty, bill_qty, cargo_source_id])
+
+
 # ===== BILL FUNCTIONS =====
 
 def get_next_bill_number():
