@@ -159,7 +159,7 @@ def close():
     if not eligibility['eligible']:
         return jsonify({'error': 'Record not eligible for closure', 'missing': eligibility['missing']}), 400
     if close_type == 'Closed' and not eligibility['can_full_close']:
-        return jsonify({'error': f"LUEU total ({eligibility['lueu_total']}) does not match BL total ({eligibility['bl_total']}) — use Partial Close instead"}), 400
+        return jsonify({'error': f"Operations total ({eligibility['ops_total']}) does not match BL total ({eligibility['bl_total']}) — use Partial Close instead"}), 400
 
     model.close_record(record_id, close_type, session.get('username'))
     # Queue notification to approver

@@ -2320,11 +2320,11 @@
             list.innerHTML = check.missing.map(m => `<li>${m}</li>`).join('');
             document.getElementById('closureMissingSection').style.display = 'block';
         } else {
-            const diff = (check.lueu_total - check.bl_total).toFixed(2);
+            const diff = (check.ops_total - check.bl_total).toFixed(2);
             const qty = document.getElementById('closureQtyInfo');
             qty.innerHTML = check.can_full_close
-                ? `<strong>✓ Quantities match</strong> — LUEU total: <strong>${check.lueu_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong><br><small>Full Close Vessel available.</small>`
-                : `<strong>⚡ Partial quantities</strong> — LUEU total: <strong>${check.lueu_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong> | Remaining: <strong>${Math.abs(diff)}</strong><br><small>Only Partial Close available for billing cut-off.</small>`;
+                ? `<strong>✓ Quantities match</strong> — Operations total: <strong>${check.ops_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong><br><small>Full Close Vessel available.</small>`
+                : `<strong>⚡ Partial quantities</strong> — Operations total: <strong>${check.ops_total.toFixed(2)}</strong> | BL total: <strong>${check.bl_total.toFixed(2)}</strong> | Remaining: <strong>${Math.abs(diff)}</strong><br><small>Only Partial Close available for billing cut-off.</small>`;
             document.getElementById('btnCloseVessel').style.display = check.can_full_close ? 'block' : 'none';
             document.getElementById('btnPartialClose').style.display = check.can_full_close ? 'none' : 'block';
             document.getElementById('closureEligibleSection').style.display = 'block';
@@ -2335,7 +2335,7 @@
         const res = await fetch(`/api/module/LDUD01/closure_check/${id}`);
         const check = await res.json();
         if (check.eligible) {
-            const msg = `✓ All requirements met.\nLUEU total: ${check.lueu_total.toFixed(2)} | BL total: ${check.bl_total.toFixed(2)}\n${check.can_full_close ? 'Full close available.' : 'Partial close available (quantities differ).'}`;
+            const msg = `✓ All requirements met.\nOperations total: ${check.ops_total.toFixed(2)} | BL total: ${check.bl_total.toFixed(2)}\n${check.can_full_close ? 'Full close available.' : 'Partial close available (quantities differ).'}`;
             alert(msg);
         } else {
             alert('Requirements not yet met:\n\n• ' + check.missing.join('\n• '));

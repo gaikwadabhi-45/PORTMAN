@@ -576,7 +576,7 @@ def get_closure_eligibility(ldud_id):
     header = cur.fetchone()
     if not header:
         conn.close()
-        return {'eligible': False, 'missing': ['Record not found'], 'lueu_total': 0, 'bl_total': 0, 'can_full_close': False}
+        return {'eligible': False, 'missing': ['Record not found'], 'ops_total': 0, 'bl_total': 0, 'can_full_close': False}
 
     if not header['vessel_name']:
         missing.append('Vessel Name (select a VCN to populate)')
@@ -615,15 +615,15 @@ def get_closure_eligibility(ldud_id):
         if hc_incomplete > 0:
             missing.append(f'Hold Completion — {hc_incomplete} hold(s) missing Commenced/Completed dates')
 
-    # LUEU total vs BL total
+    # Vessel operations total vs BL total
     vcn_id = header['vcn_id']
     op_type = header['operation_type']
 
-    lueu_total = 0.0
-    if vcn_id:
-        cur.execute('SELECT COALESCE(SUM(quantity), 0) AS total FROM lueu_lines WHERE source_type=%s AND source_id=%s',
-                     ('VCN', vcn_id))
-        lueu_total = float(cur.fetchone()['total'])
+    cur.execute(
+        'SELECT COALESCE(SUM(quantity), 0) AS total FROM ldud_vessel_operations WHERE ldud_id = %s',
+        (ldud_id,)
+    )
+    ops_total = float(cur.fetchone()['total'])
 
     bl_total = 0.0
     if vcn_id:
@@ -635,12 +635,12 @@ def get_closure_eligibility(ldud_id):
 
     conn.close()
     eligible = len(missing) == 0
-    can_full_close = eligible and bl_total > 0 and abs(lueu_total - bl_total) < 0.01
+    can_full_close = eligible and bl_total > 0 and abs(ops_total - bl_total) < 0.01
 
     return {
         'eligible': eligible,
         'missing': missing,
-        'lueu_total': lueu_total,
+        'ops_total': ops_total,
         'bl_total': bl_total,
         'can_full_close': can_full_close
     }
