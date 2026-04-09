@@ -475,7 +475,7 @@ def get_cargo_rates(customer_type, customer_id, service_type_id):
 def get_customer_billables(customer_type, customer_id):
     """Get all billable items for a customer/agent.
     Returns:
-      cargo_handling: lueu_lines grouped by source doc with LDUD closure status
+      cargo_handling: cargo declaration rows (VCN import/export + MBC) with LDUD closure status
       other_services: approved unbilled service records for this customer
       billed: already billed bill_lines for reference
     """
