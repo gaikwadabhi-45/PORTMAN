@@ -279,7 +279,7 @@ def save_bill_line(data):
 
     if data.get('id'):
         cur.execute('''UPDATE bill_lines
-            SET eu_line_id=%s, service_record_id=%s, service_type_id=%s, service_name=%s,
+            SET cargo_source_type=%s, cargo_source_id=%s, service_record_id=%s, service_type_id=%s, service_name=%s,
                 service_description=%s, quantity=%s, uom=%s, rate=%s, line_amount=%s,
                 gst_rate_id=%s, cgst_rate=%s, sgst_rate=%s, igst_rate=%s,
                 cgst_amount=%s, sgst_amount=%s, igst_amount=%s,
@@ -287,7 +287,7 @@ def save_bill_line(data):
                 service_code=%s, tds_applicable=%s, tds_percent=%s, tds_amount=%s,
                 tcs_applicable=%s, tcs_percent=%s, tcs_amount=%s
             WHERE id=%s''',
-            [data.get('eu_line_id'), data.get('service_record_id'),
+            [data.get('cargo_source_type'), data.get('cargo_source_id'), data.get('service_record_id'),
              data.get('service_type_id'), data.get('service_name'),
              data.get('service_description'), data.get('quantity'), data.get('uom'),
              data.get('rate'), data.get('line_amount'), data.get('gst_rate_id'),
@@ -300,15 +300,15 @@ def save_bill_line(data):
         row_id = data['id']
     else:
         cur.execute('''INSERT INTO bill_lines
-            (bill_id, eu_line_id, service_record_id, service_type_id, service_name,
+            (bill_id, cargo_source_type, cargo_source_id, service_record_id, service_type_id, service_name,
              service_description, quantity, uom, rate, line_amount, gst_rate_id,
              cgst_rate, sgst_rate, igst_rate, cgst_amount, sgst_amount, igst_amount,
              line_total, gl_code, sac_code, remarks,
              service_code, tds_applicable, tds_percent, tds_amount,
              tcs_applicable, tcs_percent, tcs_amount)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id''',
-            [data['bill_id'], data.get('eu_line_id'), data.get('service_record_id'),
+            [data['bill_id'], data.get('cargo_source_type'), data.get('cargo_source_id'), data.get('service_record_id'),
              data.get('service_type_id'), data.get('service_name'),
              data.get('service_description'),
              data.get('quantity'), data.get('uom'), data.get('rate'), data.get('line_amount'),
@@ -320,18 +320,14 @@ def save_bill_line(data):
              tcs_applicable, tcs_percent, tcs_amount])
         row_id = cur.fetchone()['id']
 
-    # Mark the EU line as billed (partial billing support)
-    if data.get('eu_line_id'):
-        bill_qty = float(data.get('quantity') or 0)
-        cur.execute('''UPDATE lueu_lines
-            SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
-                bill_id = %s,
-                is_billed = CASE
-                    WHEN COALESCE(billed_quantity, 0) + %s >= quantity THEN 1
-                    ELSE is_billed
-                END
-            WHERE id = %s''',
-            [bill_qty, data.get('bill_id'), bill_qty, data.get('eu_line_id')])
+    # Mark cargo declaration source as billed
+    _mark_cargo_source_billed(
+        cur,
+        data.get('cargo_source_type'),
+        data.get('cargo_source_id'),
+        float(data.get('quantity') or 0),
+        data.get('bill_id')
+    )
 
     # Mark the service record as billed if service_record_id is provided
     if data.get('service_record_id'):
