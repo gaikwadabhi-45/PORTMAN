@@ -337,7 +337,7 @@ def _get_cargo_handling_details(invoice_id):
                 table = 'vcn_cargo_declaration' if cstype == 'VCN_IMPORT' else 'vcn_export_cargo_declaration'
                 cur.execute(f'''
                     SELECT cd.vcn_id, cd.cargo_name, cd.bl_no, cd.bl_date,
-                           cd.bl_quantity, cd.quantity_uom,
+                           cd.bl_quantity, cd.quantity_uom, cd.customer_name,
                            vh.vcn_doc_num, vh.vessel_name
                     FROM {table} cd
                     JOIN vcn_header vh ON cd.vcn_id = vh.id
@@ -362,25 +362,29 @@ def _get_cargo_handling_details(invoice_id):
                 start_dt = timing['start_dt'] if timing else None
                 end_dt   = timing['end_dt']   if timing else None
 
+                start_str = (str(start_dt)[:10] + ' ' + str(start_dt)[11:16]).strip() if start_dt else ''
+                end_str   = (str(end_dt)[:10]   + ' ' + str(end_dt)[11:16]).strip()   if end_dt   else ''
+
                 rows.append({
-                    'source_type':  'VCN',
-                    'source_id':    vcn_id,
-                    'vessel_name':  decl['vessel_name'] or '',
-                    'vcn_doc_num':  decl['vcn_doc_num'] or '',
-                    'cargo_name':   decl['cargo_name'] or '',
-                    'bl_no':        decl['bl_no'] or '',
-                    'bl_date':      str(decl['bl_date'] or ''),
-                    'billed_qty':   billed_qty,
-                    'uom':          decl['quantity_uom'] or 'MT',
-                    'start_date':   str(start_dt)[:10]   if start_dt else '',
-                    'start_time':   str(start_dt)[11:16] if start_dt else '',
-                    'end_date':     str(end_dt)[:10]     if end_dt   else '',
-                    'end_time':     str(end_dt)[11:16]   if end_dt   else '',
+                    'source_type':       'VCN',
+                    'source_id':         vcn_id,
+                    'vessel_name':       decl['vessel_name'] or '',
+                    'vcn_doc_num':       decl['vcn_doc_num'] or '',
+                    'consignee':         decl['customer_name'] or '',
+                    'cargo':             decl['cargo_name'] or '',
+                    'bl_no':             decl['bl_no'] or '',
+                    'bl_date':           str(decl['bl_date'] or '')[:10],
+                    'quantity':          billed_qty,
+                    'uom':               decl['quantity_uom'] or 'MT',
+                    'source_type_label': 'MV',
+                    'start':             start_str,
+                    'end':               end_str,
                 })
 
             elif cstype == 'MBC':
                 cur.execute('''
-                    SELECT cd.mbc_id, cd.cargo_name, cd.bill_of_coastal_goods_no, cd.quantity,
+                    SELECT cd.mbc_id, cd.cargo_name, cd.bill_of_coastal_goods_no,
+                           cd.quantity, cd.customer_name,
                            mh.doc_num, mh.mbc_name, mh.doc_date
                     FROM mbc_customer_details cd
                     JOIN mbc_header mh ON cd.mbc_id = mh.id
@@ -391,19 +395,19 @@ def _get_cargo_handling_details(invoice_id):
                     continue
 
                 rows.append({
-                    'source_type':  'MBC',
-                    'source_id':    decl['mbc_id'],
-                    'vessel_name':  decl['mbc_name'] or '',
-                    'vcn_doc_num':  decl['doc_num'] or '',
-                    'cargo_name':   decl['cargo_name'] or '',
-                    'bl_no':        decl['bill_of_coastal_goods_no'] or '',
-                    'bl_date':      str(decl['doc_date'] or ''),
-                    'billed_qty':   billed_qty,
-                    'uom':          'MT',
-                    'start_date':   '',
-                    'start_time':   '',
-                    'end_date':     '',
-                    'end_time':     '',
+                    'source_type':       'MBC',
+                    'source_id':         decl['mbc_id'],
+                    'vessel_name':       decl['mbc_name'] or '',
+                    'vcn_doc_num':       decl['doc_num'] or '',
+                    'consignee':         decl['customer_name'] or '',
+                    'cargo':             decl['cargo_name'] or '',
+                    'bl_no':             decl['bill_of_coastal_goods_no'] or '',
+                    'bl_date':           str(decl['doc_date'] or '')[:10],
+                    'quantity':          billed_qty,
+                    'uom':               'MT',
+                    'source_type_label': 'MBC',
+                    'start':             '',
+                    'end':               '',
                 })
 
         return rows
