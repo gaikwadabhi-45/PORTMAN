@@ -340,9 +340,26 @@ def save_bill_line(data):
 
 
 def delete_bill_line(row_id):
-    """Delete bill line"""
+    """Delete bill line and reverse billed tracking on cargo source."""
     conn = get_db()
     cur = get_cursor(conn)
+    cur.execute(
+        'SELECT cargo_source_type, cargo_source_id, quantity, service_record_id FROM bill_lines WHERE id=%s',
+        (row_id,)
+    )
+    bl = cur.fetchone()
+    if bl:
+        _unmark_cargo_source_billed(
+            cur,
+            bl['cargo_source_type'],
+            bl['cargo_source_id'],
+            float(bl['quantity'] or 0)
+        )
+        if bl.get('service_record_id'):
+            cur.execute(
+                'UPDATE service_records SET is_billed=0, bill_id=NULL WHERE id=%s',
+                [bl['service_record_id']]
+            )
     cur.execute('DELETE FROM bill_lines WHERE id=%s', (row_id,))
     conn.commit()
     conn.close()
@@ -352,19 +369,19 @@ def delete_bill(bill_id):
     """Delete bill header and all lines"""
     conn = get_db()
     cur = get_cursor(conn)
-    # Reverse partial billing: decrement billed_quantity by the bill_line quantity
-    cur.execute('''UPDATE lueu_lines el
-        SET billed_quantity = GREATEST(COALESCE(el.billed_quantity, 0) - COALESCE(bl.quantity, 0), 0),
-            is_billed = CASE
-                WHEN COALESCE(el.billed_quantity, 0) - COALESCE(bl.quantity, 0) <= 0 THEN 0
-                ELSE el.is_billed
-            END,
-            bill_id = CASE
-                WHEN COALESCE(el.billed_quantity, 0) - COALESCE(bl.quantity, 0) <= 0 THEN NULL
-                ELSE el.bill_id
-            END
-        FROM bill_lines bl
-        WHERE bl.bill_id = %s AND bl.eu_line_id = el.id''', (bill_id,))
+    # Reverse billed tracking on cargo declaration tables
+    cur.execute('''
+        SELECT cargo_source_type, cargo_source_id, quantity
+        FROM bill_lines
+        WHERE bill_id = %s AND cargo_source_type IS NOT NULL AND cargo_source_id IS NOT NULL
+    ''', (bill_id,))
+    for row in cur.fetchall():
+        _unmark_cargo_source_billed(
+            cur,
+            row['cargo_source_type'],
+            row['cargo_source_id'],
+            float(row['quantity'] or 0)
+        )
     # Unmark service records as billed
     cur.execute('''UPDATE service_records SET is_billed=0, bill_id=NULL
         WHERE bill_id IN (SELECT id FROM bill_header WHERE id=%s)''', (bill_id,))
