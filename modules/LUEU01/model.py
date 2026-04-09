@@ -149,53 +149,19 @@ def save_line(data):
 
 
 def soft_delete_lines(ids, username=None):
-    """Soft-delete EU lines. Returns list of dicts for lines that were billed+invoiced,
-    so the caller can trigger auto-CN creation.
-    Each dict: {eu_line_id, eu_line (full row), bill_line_id, bill_id, invoice_id, invoice_number}
-    """
+    """Soft-delete lueu lines. Returns empty list (billing no longer tracked via lueu_lines)."""
     conn = get_db()
     cur = get_cursor(conn)
     today = datetime.now().strftime('%Y-%m-%d')
-
-    invoiced_lines = []
-
     for line_id in ids:
-        # Fetch the line first to check billing status
-        cur.execute('SELECT * FROM lueu_lines WHERE id = %s AND (is_deleted IS NOT TRUE)', [line_id])
-        line = cur.fetchone()
-        if not line:
-            continue
-
-        # Check if this line is referenced by any bill_lines that are in an invoice
-        cur.execute('''
-            SELECT
-                bl.id AS bill_line_id,
-                bl.bill_id,
-                ibm.invoice_id,
-                ih.invoice_number
-            FROM bill_lines bl
-            JOIN invoice_bill_mapping ibm ON ibm.bill_id = bl.bill_id
-            JOIN invoice_header ih ON ih.id = ibm.invoice_id
-            WHERE bl.eu_line_id = %s
-              AND ih.invoice_status NOT IN ('Cancelled')
-        ''', [line_id])
-        invoice_refs = [dict(r) for r in cur.fetchall()]
-
-        for ref in invoice_refs:
-            ref['eu_line_id'] = line_id
-            ref['eu_line'] = dict(line)
-            invoiced_lines.append(ref)
-
-        # Soft-delete regardless
         cur.execute('''
             UPDATE lueu_lines
             SET is_deleted = TRUE, deleted_by = %s, deleted_date = %s
-            WHERE id = %s
+            WHERE id = %s AND (is_deleted IS NOT TRUE)
         ''', [username, today, line_id])
-
     conn.commit()
     conn.close()
-    return invoiced_lines
+    return []   # caller checks for invoiced_lines to trigger auto-CN; none here
 
 
 def split_line(line_id, split_qty, split_remark, created_by=None):
