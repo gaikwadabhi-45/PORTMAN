@@ -139,18 +139,18 @@
 
     <!-- Section A: Cargo Handling -->
     <div class="form-section">
-        <h3>A. Cargo Handling (from Equipment Utilization)</h3>
+        <h3>A. Cargo Handling (from Cargo Declarations)</h3>
         <table class="data-table" id="cargoLinesTable">
             <thead>
                 <tr>
                     <th style="width:30px;"><input type="checkbox" id="selectAllCargo" onclick="toggleAllCargo(this)"></th>
                     <th>Source</th>
                     <th>Status</th>
-                    <th>Material PO</th>
+                    <th>Service</th>
                     <th>Cargo</th>
-                    <th>Barge</th>
-                    <th>Equipment</th>
-                    <th>Total Qty</th>
+                    <th>BL No</th>
+                    <th>BL Date</th>
+                    <th>BL Qty</th>
                     <th>Billed</th>
                     <th>Balance</th>
                     <th>Bill Qty</th>
@@ -350,29 +350,18 @@ async function loadBillables() {
 
 function renderCargoCards(cards) {
     const tbody = document.getElementById('cargoLinesBody');
-    // Flatten all lines from all cards into a single list, skip zero-quantity lines
-    const allLines = [];
-    cards.forEach(card => {
-        (card.lines || []).forEach(line => {
-            if (parseFloat(line.quantity || 0) > 0) {
-                allLines.push({...line, _card: card});
-            }
-        });
-    });
 
-    if (allLines.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No cargo handling lines found for this customer</td></tr>';
+    if (!cards || cards.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No cargo handling lines found for this customer</td></tr>';
         return;
     }
 
-    // Store flat lines for billing
-    billableData._cargoLines = allLines;
-
     tbody.innerHTML = '';
-    allLines.forEach((line, idx) => {
-        const card = line._card;
+    cards.forEach((card, idx) => {
         const isBillable = card.is_billable;
-        const qty = parseFloat(line.quantity || 0);
+        const totalQty   = parseFloat(card.total_quantity || 0);
+        const billedQty  = parseFloat(card.billed_quantity || 0);
+        const balance    = parseFloat(card.billable_quantity || 0);
         const statusColor = isBillable
             ? (card.doc_status === 'Closed' ? '#27ae60' : '#f39c12')
             : '#e74c3c';
@@ -380,30 +369,18 @@ function renderCargoCards(cards) {
 
         const tr = document.createElement('tr');
         if (!isBillable) tr.style.opacity = '0.6';
-        // Material PO cell
-        let poCell = card.material_po || '-';
-        if (card.material_po_options && card.material_po_options.length > 1) {
-            poCell = `<select class="cargo-po-select" data-idx="${idx}" style="padding:2px 4px;font-size:11px;">`;
-            card.material_po_options.forEach(opt => {
-                poCell += `<option value="${opt.value}">${opt.label}</option>`;
-            });
-            poCell += `</select>`;
-        }
-
-        const billedQty = parseFloat(line.billed_quantity || 0);
-        const balance = Math.max(qty - billedQty, 0);
 
         tr.innerHTML = `
             <td>${isBillable ? `<input type="checkbox" class="cargo-line-check" data-idx="${idx}" onchange="recalcTotals()">` : '🔒'}</td>
             <td style="font-size:10px;">${card.doc_label || card.source_type + '-' + card.source_id}</td>
             <td><span style="background:${statusColor};color:white;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;">${statusLabel}</span></td>
-            <td style="font-size:10px;">${poCell}</td>
-            <td>${line.cargo_name || '-'}</td>
-            <td>${line.barge_name || '-'}</td>
-            <td>${line.equipment_name || '-'}</td>
-            <td style="text-align:right;">${qty.toFixed(2)}</td>
+            <td style="font-size:10px;">${card.service_name || '-'}</td>
+            <td>${card.cargo_name || '-'}</td>
+            <td style="font-size:10px;">${card.bl_no || '-'}</td>
+            <td style="font-size:10px;">${card.bl_date ? card.bl_date.substring(0, 10) : '-'}</td>
+            <td style="text-align:right;">${totalQty.toFixed(2)}</td>
             <td style="text-align:right; color:${billedQty > 0 ? '#e67e22' : '#95a5a6'}; font-size:10px;">${billedQty > 0 ? billedQty.toFixed(2) : '-'}</td>
-            <td style="text-align:right; font-weight:600; color:${billedQty > 0 ? '#2980b9' : 'inherit'};">${balance.toFixed(2)} ${line.quantity_uom || ''}</td>
+            <td style="text-align:right; font-weight:600; color:${billedQty > 0 ? '#2980b9' : 'inherit'};">${balance.toFixed(2)} ${card.uom || ''}</td>
             <td>${isBillable ? `<input type="number" step="0.01" min="0.01" max="${balance.toFixed(2)}" id="cargo_line_billqty_${idx}" value="${balance.toFixed(2)}" data-balance="${balance.toFixed(2)}" onchange="validateBillQty(this); recalcTotals()" style="width:80px;padding:3px 5px;font-size:11px;">` : '-'}</td>
             <td>${isBillable ? `<input type="number" step="0.01" id="cargo_line_rate_${idx}" placeholder="0.00" onchange="recalcTotals()" style="width:80px;padding:3px 5px;font-size:11px;">` : '-'}</td>
             <td style="text-align:right;font-weight:600;" id="cargo_line_amt_${idx}">-</td>
@@ -412,7 +389,7 @@ function renderCargoCards(cards) {
 
         // Auto-load rate from agreement
         if (isBillable && card.service_type_id) {
-            loadCargoLineRate(idx, card.service_type_id, line.cargo_name);
+            loadCargoLineRate(idx, card.service_type_id, card.cargo_name);
         }
     });
 }
@@ -563,7 +540,6 @@ function recalcTotals() {
     let tdsTotal = 0;
     let tcsTotal = 0;
     let selectedCount = 0;
-    const cargoLines = billableData._cargoLines || [];
     const cargoHandling = billableData.cargo_handling || [];
 
     // Cargo line items — use bill qty (not total line qty)
@@ -579,7 +555,7 @@ function recalcTotals() {
         if (cb.checked) {
             subtotal += amount;
             selectedCount++;
-            const card = cargoHandling.find(c => c.service_type_id == cb.closest('.cargo-card')?.dataset?.stid);
+            const card = cargoHandling[idx];
             if (card) {
                 // TDS on basic amount only
                 if (card.is_tds && card.tds_percent > 0) {
@@ -660,13 +636,13 @@ async function generateBill() {
     }
 
     const lines = [];
-    const cargoLines = billableData._cargoLines || [];
+    const cargoHandling = billableData.cargo_handling || [];
 
-    // Collect selected cargo lines (each EU line individually, with user-specified bill qty)
+    // Collect selected cargo lines
     document.querySelectorAll('.cargo-line-check:checked').forEach(cb => {
         const idx = parseInt(cb.dataset.idx);
-        const line = cargoLines[idx];
-        const card = line._card;
+        const card = cargoHandling[idx];
+        if (!card) return;
         const billQtyInput = document.getElementById(`cargo_line_billqty_${idx}`);
         const qty = parseFloat(billQtyInput ? billQtyInput.value : 0) || 0;
         if (qty <= 0) return; // skip zero-qty selections
@@ -675,14 +651,14 @@ async function generateBill() {
         lines.push({
             line_type: 'cargo_handling',
             service_type_id: card.service_type_id,
-            description: (card.service_name || '') + ' — ' + (line.cargo_name || '') + ' — ' + (line.barge_name || '') + ' — ' + card.doc_label,
+            service_name: card.service_name || '',
+            description: (card.service_name || '') + ' — ' + (card.cargo_name || '') + ' — ' + card.doc_label,
             quantity: qty,
             rate: rate,
-            uom: line.quantity_uom || card.uom || 'MT',
+            uom: card.uom || 'MT',
             line_amount: qty * rate,
-            source_type: card.source_type,
-            source_id: card.source_id,
-            eu_line_ids: [line.id]
+            cargo_source_type: card.cargo_source_type,
+            cargo_source_id: card.cargo_source_id
         });
     });
 
