@@ -16,7 +16,7 @@ def _mark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty,
                 bill_id = %s,
                 is_billed = CASE
                     WHEN COALESCE(billed_quantity, 0) + %s >= bl_quantity THEN 1
-                    ELSE is_billed
+                    ELSE 0
                 END
             WHERE id = %s
         ''', [bill_qty, bill_id, bill_qty, cargo_source_id])
@@ -27,7 +27,7 @@ def _mark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty,
                 bill_id = %s,
                 is_billed = CASE
                     WHEN COALESCE(billed_quantity, 0) + %s >= bl_quantity THEN 1
-                    ELSE is_billed
+                    ELSE 0
                 END
             WHERE id = %s
         ''', [bill_qty, bill_id, bill_qty, cargo_source_id])
@@ -38,7 +38,7 @@ def _mark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty,
                 bill_id = %s,
                 is_billed = CASE
                     WHEN COALESCE(billed_quantity, 0) + %s >= quantity THEN 1
-                    ELSE is_billed
+                    ELSE 0
                 END
             WHERE id = %s
         ''', [bill_qty, bill_id, bill_qty, cargo_source_id])
@@ -50,19 +50,21 @@ def _unmark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qt
         return
     bill_qty = float(bill_qty or 0)
     table_map = {
-        'VCN_IMPORT': 'vcn_cargo_declaration',
-        'VCN_EXPORT': 'vcn_export_cargo_declaration',
-        'MBC':        'mbc_customer_details',
+        'VCN_IMPORT': ('vcn_cargo_declaration', 'bl_quantity'),
+        'VCN_EXPORT': ('vcn_export_cargo_declaration', 'bl_quantity'),
+        'MBC':        ('mbc_customer_details', 'quantity'),
     }
-    table = table_map.get(cargo_source_type)
-    if not table:
+    entry = table_map.get(cargo_source_type)
+    if not entry:
         return
+    table, total_col = entry
     cur.execute(f'''
         UPDATE {table}
         SET billed_quantity = GREATEST(COALESCE(billed_quantity, 0) - %s, 0),
             is_billed = CASE
-                WHEN GREATEST(COALESCE(billed_quantity, 0) - %s, 0) <= 0 THEN 0
-                ELSE is_billed
+                WHEN GREATEST(COALESCE(billed_quantity, 0) - %s, 0) >= COALESCE({total_col}, 0)
+                     AND COALESCE({total_col}, 0) > 0 THEN 1
+                ELSE 0
             END,
             bill_id = CASE
                 WHEN GREATEST(COALESCE(billed_quantity, 0) - %s, 0) <= 0 THEN NULL
@@ -195,6 +197,7 @@ def save_bill_line(data):
     """Save bill line (supports both EU lines and service records)"""
     conn = get_db()
     cur = get_cursor(conn)
+    existing_line = None
 
     # Look up TDS/TCS config from service master (FSTM01)
     tds_applicable = int(data.get('tds_applicable') or 0)
@@ -278,6 +281,18 @@ def save_bill_line(data):
         tcs_amount = round((la + ca + sa + ia) * tcs_percent / 100, 2)
 
     if data.get('id'):
+        cur.execute(
+            'SELECT cargo_source_type, cargo_source_id, quantity FROM bill_lines WHERE id=%s',
+            [data['id']]
+        )
+        existing_line = cur.fetchone()
+        if existing_line:
+            _unmark_cargo_source_billed(
+                cur,
+                existing_line.get('cargo_source_type'),
+                existing_line.get('cargo_source_id'),
+                float(existing_line.get('quantity') or 0)
+            )
         cur.execute('''UPDATE bill_lines
             SET cargo_source_type=%s, cargo_source_id=%s, service_record_id=%s, service_type_id=%s, service_name=%s,
                 service_description=%s, quantity=%s, uom=%s, rate=%s, line_amount=%s,

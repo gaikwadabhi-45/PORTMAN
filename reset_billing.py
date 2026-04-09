@@ -1,7 +1,7 @@
 """
 Reset all bills and invoices, and optionally delete all EU (LUEU01) lines permanently.
 
-By default (no flags): deletes all billing data and resets EU lines to unbilled state.
+By default (no flags): deletes all billing data and resets declaration tables to unbilled state.
 With --delete-eu:      also permanently deletes all lueu_lines rows after clearing billing.
 
 Usage: python reset_billing.py
@@ -41,13 +41,21 @@ def reset_billing(skip_confirm=False, delete_eu=False):
             conn.rollback()
             print(f'  {label:30s}: (table not found)')
 
-    # Count affected EU lines and service records
+    # Count billed declaration rows and service records
+    for tbl, label in [
+        ('vcn_cargo_declaration',        'VCN Import Decls (billed)'),
+        ('vcn_export_cargo_declaration', 'VCN Export Decls (billed)'),
+        ('mbc_customer_details',         'MBC Customer Details (billed)'),
+    ]:
+        try:
+            cur.execute(f'SELECT COUNT(*) as cnt FROM {tbl} WHERE COALESCE(is_billed, 0) = 1 OR bill_id IS NOT NULL OR COALESCE(billed_quantity, 0) > 0')
+            print(f'  {label:30s}: {cur.fetchone()["cnt"]}')
+        except Exception:
+            conn.rollback()
+            print(f'  {label:30s}: (table not found)')
+
     cur.execute('SELECT COUNT(*) as cnt FROM lueu_lines')
-    eu_total = cur.fetchone()['cnt']
-    cur.execute('SELECT COUNT(*) as cnt FROM lueu_lines WHERE is_billed = 1 OR bill_id IS NOT NULL OR COALESCE(billed_quantity, 0) > 0')
-    eu_billed = cur.fetchone()['cnt']
-    print(f'  {"EU Lines (total)":30s}: {eu_total}')
-    print(f'  {"EU Lines (billed)":30s}: {eu_billed}')
+    print(f'  {"EU Lines (total)":30s}: {cur.fetchone()["cnt"]}')
 
     try:
         cur.execute('SELECT COUNT(*) as cnt FROM service_records WHERE is_billed = 1 OR bill_id IS NOT NULL')
@@ -62,7 +70,7 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         if delete_eu:
             print('EU lines will be PERMANENTLY DELETED (cannot be undone).')
         else:
-            print('EU lines and service records will be reset to unbilled state.')
+            print('Declaration tables and service records will be reset to unbilled state.')
             print('Operations data (LUEU, VCN, LDUD, MBC) will NOT be touched.')
         resp = input('\nType YES to confirm: ')
         if resp.strip() != 'YES':
@@ -71,16 +79,20 @@ def reset_billing(skip_confirm=False, delete_eu=False):
 
     print('\n=== Resetting Billing Data ===')
 
-    # Step 1: Reset lueu_lines to unbilled (skipped if we're deleting them entirely)
-    if not delete_eu:
-        cur.execute('''
-            UPDATE lueu_lines
-            SET is_billed = 0,
-                bill_id = NULL,
-                billed_quantity = 0
-            WHERE is_billed = 1 OR bill_id IS NOT NULL OR COALESCE(billed_quantity, 0) > 0
-        ''')
-        print(f'  Reset {cur.rowcount} EU lines to unbilled')
+    # Step 1: Reset cargo declaration tables to unbilled
+    for tbl in ('vcn_cargo_declaration', 'vcn_export_cargo_declaration', 'mbc_customer_details'):
+        try:
+            cur.execute(f'''
+                UPDATE {tbl}
+                SET is_billed = 0,
+                    bill_id = NULL,
+                    billed_quantity = 0
+                WHERE COALESCE(is_billed, 0) = 1 OR bill_id IS NOT NULL OR COALESCE(billed_quantity, 0) > 0
+            ''')
+            print(f'  Reset {cur.rowcount} rows in {tbl} to unbilled')
+        except Exception as e:
+            conn.rollback()
+            print(f'  ({tbl} reset failed: {e})')
 
     # Step 2: Reset service_records to unbilled
     try:
@@ -122,7 +134,6 @@ def reset_billing(skip_confirm=False, delete_eu=False):
     print(f'  Deleted {cur.rowcount} rows from bill_header')
 
     # Step 5b: Permanently delete all EU lines (only when --delete-eu is passed)
-    # bill_lines.eu_line_id FK is now safe to clear since bill_lines were deleted above.
     if delete_eu:
         cur.execute('DELETE FROM lueu_lines')
         deleted_eu = cur.rowcount
@@ -160,7 +171,7 @@ def reset_billing(skip_confirm=False, delete_eu=False):
     if delete_eu:
         print('All bills, invoices, and EU lines permanently deleted.')
     else:
-        print('All bills and invoices deleted. EU lines and service records restored to unbilled state.')
+        print('All bills and invoices deleted. Declaration tables and service records restored to unbilled state.')
     print('Sequences reset - next bill/invoice will start from ID 1.')
 
 
