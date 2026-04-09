@@ -75,8 +75,8 @@
                 <input type="text" id="invoicePreview" readonly placeholder="Select series first">
             </div>
             <div class="form-field">
-                <label>Invoice Date *</label>
-                <input type="date" id="invoiceDate" value="{{ current_date }}" required onchange="updatePreview(); calculateTotals();">
+                <label>Invoice Date * <span style="font-weight:400;">(from FIN01 bill date)</span></label>
+                <input type="date" id="invoiceDate" value="{{ current_date }}" required readonly onchange="updatePreview(); calculateTotals();">
             </div>
             <div class="form-field">
                 <label>Payment Terms (Days)</label>
@@ -134,6 +134,7 @@
                     data-customer-id="{{ row.customer_id }}"
                     data-customer-type="{{ row.customer_type }}"
                     data-currency="{{ row.currency_code }}"
+                    data-bill-date="{{ row.bill_date or '' }}"
                     data-subtotal="{{ row.subtotal }}"
                     data-cgst="{{ row.cgst_amount }}"
                     data-sgst="{{ row.sgst_amount }}"
@@ -310,8 +311,11 @@ async function loadDocSeries() {
         sel.innerHTML = '<option value="">— No doc series configured —</option>';
         return;
     }
+    const seriesToUse = docSeriesList.some(s => s.is_default)
+        ? docSeriesList.filter(s => s.is_default)
+        : docSeriesList;
     let defaultIdx = 0;
-    docSeriesList.forEach((s, i) => {
+    seriesToUse.forEach((s, i) => {
         const opt = document.createElement('option');
         opt.value = s.prefix;
         opt.dataset.name = s.name;
@@ -319,6 +323,7 @@ async function loadDocSeries() {
         sel.appendChild(opt);
         if (s.is_default) defaultIdx = i;
     });
+    sel.disabled = seriesToUse.length === 1;
     sel.selectedIndex = defaultIdx;
     onSeriesChange();
 }
@@ -328,8 +333,8 @@ function getFinancialYear(dateStr) {
     const d = new Date(dateStr);
     const m = d.getMonth() + 1;
     const y = d.getFullYear();
-    if (m >= 4) return `${String(y).slice(2)}-${String(y+1).slice(2)}`;
-    return `${String(y-1).slice(2)}-${String(y).slice(2)}`;
+    if (m >= 4) return `${y}-${String(y+1).slice(2)}`;
+    return `${y-1}-${String(y).slice(2)}`;
 }
 
 function updatePreview() {
@@ -395,10 +400,16 @@ function toggleSelectAll() {
     validateSelection();
 }
 
+function syncInvoiceDate(firstRow) {
+    document.getElementById('invoiceDate').value = firstRow?.dataset?.billDate || '{{ current_date }}';
+    updatePreview();
+}
+
 async function validateSelection() {
     const selected = document.querySelectorAll('.bill-select:checked');
     if (selected.length === 0) {
         document.getElementById('customerDetails').style.display = 'none';
+        syncInvoiceDate(null);
         calculateTotals();
         return;
     }
@@ -425,6 +436,7 @@ async function validateSelection() {
     document.getElementById('gstin').value = firstRow.dataset.gstin || '';
     document.getElementById('gstStateCode').value = firstRow.dataset.gstState || '';
     document.getElementById('customerDetails').style.display = 'block';
+    syncInvoiceDate(firstRow);
 
     // Fetch full customer details from master (VAM01/VCUM01)
     const cid = parseInt(firstRow.dataset.customerId);
@@ -433,7 +445,10 @@ async function validateSelection() {
         const info = await res.json();
         // Populate virtual account dropdown
         const vaSelect = document.getElementById('virtualAccountSelect');
-        vaSelect.innerHTML = '<option value="">Default (Admin Bank Account)</option>';
+        const defaultVaLabel = info.virtual_account_number
+            ? `Default (Customer Virtual A/c ${info.virtual_account_number})`
+            : 'Default (Admin Bank Account)';
+        vaSelect.innerHTML = `<option value="">${defaultVaLabel}</option>`;
         const vas = info.virtual_accounts || [];
         vas.forEach(va => {
             const opt = document.createElement('option');

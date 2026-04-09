@@ -4,10 +4,10 @@ TABLE = 'vessel_agents'
 
 FIELDS = [
     'name', 'sap_customer_code', 'company_code', 'gl_code',
-    'gstin', 'gst_state_code', 'gst_state_name', 'pan',
+    'gstin', 'gst_state_code', 'gst_state_name', 'pan', 'cin',
     'billing_address', 'city', 'pincode',
     'contact_person', 'contact_email', 'contact_phone',
-    'default_currency', 'is_active'
+    'default_currency', 'is_active', 'virtual_account_number'
 ]
 
 def get_data(page=1, size=20):

@@ -13,6 +13,62 @@ log = logging.getLogger(__name__)
 MODULE_CODE = 'FINV01'
 
 
+def _get_default_invds_series(cur):
+    """Resolve the default invoice doc series from INVDS01 storage."""
+    try:
+        cur.execute('''
+            SELECT id, name, prefix, is_default
+            FROM invoice_doc_series
+            WHERE is_default = TRUE
+            ORDER BY id
+            LIMIT 1
+        ''')
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        cur.execute('''
+            SELECT id, name, prefix, is_default
+            FROM invoice_doc_series
+            ORDER BY id
+            LIMIT 1
+        ''')
+        row = cur.fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def _get_customer_master_snapshot(cur, customer_type, customer_id):
+    """Fetch billing master data used for invoice header/print fallbacks."""
+    if not customer_id:
+        return {}
+
+    table = 'vessel_agents' if str(customer_type or '').lower() == 'agent' else 'vessel_customers'
+    try:
+        cur.execute(f'''
+            SELECT name, gstin, gst_state_code, gst_state_name, pan, cin,
+                   billing_address, city, pincode, contact_email, contact_phone,
+                   virtual_account_number
+            FROM {table}
+            WHERE id = %s
+        ''', [customer_id])
+        row = cur.fetchone()
+        return dict(row) if row else {}
+    except Exception:
+        cur.connection.rollback()
+        cur.execute(f'''
+            SELECT name, gstin, gst_state_code, gst_state_name, pan,
+                   billing_address, city, pincode, contact_email, contact_phone,
+                   virtual_account_number
+            FROM {table}
+            WHERE id = %s
+        ''', [customer_id])
+        row = cur.fetchone()
+        result = dict(row) if row else {}
+        result.setdefault('cin', '')
+        return result
+
+
 def _queue_invoice_review_request(invoice_id, invoice_number, customer_name, total_amount, invoice_status):
     info = get_module_approver_info(MODULE_CODE, fallback_module='FIN01')
     if not info.get('approval_add'):
@@ -195,21 +251,33 @@ def create_invoice():
     if not perms.get('can_add'):
         return jsonify({'success': False, 'error': 'No permission'})
 
-    data = request.json
+    data = request.json or {}
     bill_ids = data.get('bill_ids', [])
+    if not bill_ids:
+        return jsonify({'success': False, 'error': 'No bills selected'})
 
-    # Resolve invoice number from doc series
-    doc_series_id = data.get('doc_series_id')
-    doc_series_prefix = data.get('doc_series_prefix', 'INV')
-    doc_series_name = data.get('doc_series_name', '')
-
-    invoice_date = data.get('invoice_date', '')
-    # Determine financial year suffix e.g. 25-26
-    fy_suffix = model.get_financial_year(invoice_date) if invoice_date else ''
-    # Compute next sequence for this prefix/FY
     conn_seq = get_db()
     cur_seq = get_cursor(conn_seq)
-    like_pat = f'{doc_series_prefix}/{fy_suffix}/%'
+    default_series = _get_default_invds_series(cur_seq) or {}
+
+    cur_seq.execute('SELECT bill_date, customer_type, customer_id FROM bill_header WHERE id=%s', [bill_ids[0]])
+    first_bill = cur_seq.fetchone()
+
+    customer_type = data.get('customer_type') or (first_bill['customer_type'] if first_bill else '')
+    customer_id = data.get('customer_id') or (first_bill['customer_id'] if first_bill else None)
+    customer_master = _get_customer_master_snapshot(cur_seq, customer_type, customer_id)
+
+    doc_series_prefix = (
+        default_series.get('prefix') or
+        (data.get('doc_series_prefix') or 'INV')
+    ).strip().upper()
+    doc_series_name = default_series.get('name') or data.get('doc_series_name', '')
+
+    invoice_date = data.get('invoice_date', '')
+    if first_bill and first_bill.get('bill_date'):
+        invoice_date = str(first_bill['bill_date'])[:10]
+
+    fy_suffix = model.get_financial_year(invoice_date) if invoice_date else ''
     cur_seq.execute(
         'SELECT MAX(doc_series_seq) FROM invoice_header WHERE doc_series=%s AND financial_year=%s',
         [doc_series_prefix, fy_suffix]
@@ -230,12 +298,13 @@ def create_invoice():
         'customer_gstin': data.get('customer_gstin'),
         'customer_gst_state_code': data.get('customer_gst_state_code'),
         'customer_gl_code': data.get('customer_gl_code'),
-        'customer_pan': data.get('customer_pan'),
-        'billing_address': data.get('billing_address'),
-        'customer_city': data.get('customer_city'),
-        'customer_pincode': data.get('customer_pincode'),
-        'customer_phone': data.get('customer_phone'),
-        'customer_email': data.get('customer_email'),
+        'customer_pan': data.get('customer_pan') or customer_master.get('pan'),
+        'customer_cin': data.get('customer_cin') or customer_master.get('cin'),
+        'billing_address': data.get('billing_address') or customer_master.get('billing_address'),
+        'customer_city': data.get('customer_city') or customer_master.get('city'),
+        'customer_pincode': data.get('customer_pincode') or customer_master.get('pincode'),
+        'customer_phone': data.get('customer_phone') or customer_master.get('contact_phone'),
+        'customer_email': data.get('customer_email') or customer_master.get('contact_email'),
         'ship_to_name': data.get('ship_to_name'),
         'ship_to_address': data.get('ship_to_address'),
         'ship_to_gstin': data.get('ship_to_gstin'),
@@ -507,33 +576,63 @@ def print_invoice(invoice_id):
         'seller_legal_name': config.get('seller_legal_name', 'JSW Dharamtar Port Pvt. Ltd.'),
     }
 
-    # Payment bank: use selected virtual account if set, else admin port bank account
+    invoice = dict(invoice)
+
+    # Payment bank: use selected virtual account if set, else fall back to legacy VA / admin bank.
     payment_bank = None
+    invoice_display_date = str(invoice.get('invoice_date') or '')[:10]
     conn_b = get_db()
     cur_b = get_cursor(conn_b)
     try:
+        customer_master = _get_customer_master_snapshot(
+            cur_b,
+            invoice.get('customer_type'),
+            invoice.get('customer_id')
+        )
+        if customer_master:
+            invoice['customer_pan'] = invoice.get('customer_pan') or customer_master.get('pan') or ''
+            invoice['customer_cin'] = invoice.get('customer_cin') or customer_master.get('cin') or ''
+
+        cur_b.execute('''
+            SELECT b.bill_date
+            FROM invoice_bill_mapping ibm
+            JOIN bill_header b ON b.id = ibm.bill_id
+            WHERE ibm.invoice_id = %s
+            ORDER BY ibm.id
+            LIMIT 1
+        ''', [invoice_id])
+        bill_row = cur_b.fetchone()
+        if bill_row and bill_row.get('bill_date'):
+            invoice_display_date = str(bill_row['bill_date'])[:10]
+
+        cur_b.execute('SELECT * FROM port_bank_accounts ORDER BY id LIMIT 1')
+        base_row = cur_b.fetchone()
+        base_bank = dict(base_row) if base_row else None
+
         va_id = invoice.get('virtual_account_id')
         if va_id:
-            # Use the selected virtual bank account from customer_virtual_accounts
             cur_b.execute('SELECT * FROM customer_virtual_accounts WHERE id=%s', [va_id])
             va_row = cur_b.fetchone()
             if va_row:
-                payment_bank = {
-                    'account_holder_name': va_row['account_holder_name'] or '',
-                    'account_number': va_row['account_number'] or '',
-                    'ifsc_code': va_row['ifsc_code'] or '',
-                    'bank_name': va_row['bank_name'] or '',
-                    'branch_name': va_row['branch_name'] or '',
-                    'pan': '', 'cin': '',
-                }
+                payment_bank = dict(base_bank) if base_bank else {}
+                payment_bank.update({
+                    'account_holder_name': va_row['account_holder_name'] or payment_bank.get('account_holder_name') or '',
+                    'account_number': va_row['account_number'] or payment_bank.get('account_number') or '',
+                    'ifsc_code': va_row['ifsc_code'] or payment_bank.get('ifsc_code') or '',
+                    'bank_name': va_row['bank_name'] or payment_bank.get('bank_name') or '',
+                    'branch_name': va_row['branch_name'] or payment_bank.get('branch_name') or '',
+                })
         if not payment_bank:
-            # Fallback to admin port bank account
-            cur_b.execute('SELECT * FROM port_bank_accounts ORDER BY id LIMIT 1')
-            row = cur_b.fetchone()
-            payment_bank = dict(row) if row else None
+            legacy_va = (customer_master.get('virtual_account_number') or '').strip() if customer_master else ''
+            if legacy_va:
+                payment_bank = dict(base_bank) if base_bank else {}
+                payment_bank['account_number'] = legacy_va
+            else:
+                payment_bank = base_bank
     except Exception:
         payment_bank = None
     conn_b.close()
+    invoice['invoice_date'] = invoice_display_date
 
     current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -948,20 +1047,7 @@ def get_customer_bank(customer_type, customer_id):
     conn = get_db()
     cur = get_cursor(conn)
     try:
-        if customer_type.lower() == 'agent':
-            cur.execute('''
-                SELECT name, gstin, gst_state_code, gst_state_name, pan,
-                       billing_address, city, pincode
-                FROM vessel_agents WHERE id=%s
-            ''', [customer_id])
-        else:
-            cur.execute('''
-                SELECT name, gstin, gst_state_code, gst_state_name, pan,
-                       billing_address, city, pincode
-                FROM vessel_customers WHERE id=%s
-            ''', [customer_id])
-        row = cur.fetchone()
-        result = dict(row) if row else {}
+        result = _get_customer_master_snapshot(cur, customer_type, customer_id)
 
         # Get virtual bank accounts from customer_virtual_accounts table
         party_type = 'Agent' if customer_type.lower() == 'agent' else 'Customer'

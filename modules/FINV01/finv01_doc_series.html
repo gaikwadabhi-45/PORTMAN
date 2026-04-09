@@ -48,7 +48,7 @@
 </div>
 
 <div class="info-box">
-    Invoice numbers are generated as <strong>PREFIX/YY-YY/SEQUENCE</strong> — e.g. <strong>DPPL/25-26/1</strong>.
+    Invoice numbers are generated as <strong>PREFIX/YYYY-YY/SEQUENCE</strong> — e.g. <strong>DPPL/2025-26/1</strong>.
     Set one series as default to auto-select it in the generate invoice form.
 </div>
 
@@ -109,7 +109,7 @@ addToRecent('FINV01', 'Invoicing');
 const now = new Date();
 const m = now.getMonth() + 1;
 const y = now.getFullYear();
-const fy = m >= 4 ? `${String(y).slice(2)}-${String(y+1).slice(2)}` : `${String(y-1).slice(2)}-${String(y).slice(2)}`;
+const fy = m >= 4 ? `${y}-${String(y+1).slice(2)}` : `${y-1}-${String(y).slice(2)}`;
 
 async function loadSeries() {
     const res = await fetch('/api/module/FINV01/doc-series');
