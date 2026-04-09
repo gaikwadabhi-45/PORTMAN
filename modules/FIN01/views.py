@@ -156,10 +156,6 @@ def save_bill():
             line['service_name'] = line['description']
         if not line.get('service_description'):
             line['service_description'] = line.get('description', '')
-        # Extract eu_line_id from eu_line_ids array sent by frontend
-        eu_ids = line.get('eu_line_ids') or []
-        if eu_ids and not line.get('eu_line_id'):
-            line['eu_line_id'] = eu_ids[0]
         model.save_bill_line(line)
         subtotal += float(line.get('line_amount') or 0)
         cgst_total += float(line.get('cgst_amount') or 0)
@@ -174,22 +170,6 @@ def save_bill():
         SET subtotal=%s, cgst_amount=%s, sgst_amount=%s, igst_amount=%s, total_amount=%s
         WHERE id=%s''',
         [subtotal, cgst_total, sgst_total, igst_total, total_amount, row_id])
-
-    # Mark EU lines as billed (partial billing support)
-    for line in lines:
-        if line.get('line_type') == 'cargo_handling':
-            eu_ids = line.get('eu_line_ids') or []
-            bill_qty = float(line.get('quantity') or 0)
-            for eu_id in eu_ids:
-                cur.execute('''UPDATE lueu_lines
-                    SET billed_quantity = COALESCE(billed_quantity, 0) + %s,
-                        bill_id = %s,
-                        is_billed = CASE
-                            WHEN COALESCE(billed_quantity, 0) + %s >= quantity THEN 1
-                            ELSE is_billed
-                        END
-                    WHERE id = %s''',
-                    [bill_qty, row_id, bill_qty, eu_id])
 
     # Mark service records as billed
     for line in lines:
