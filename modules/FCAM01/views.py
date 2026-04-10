@@ -14,8 +14,6 @@ def _queue_agreement_approval_request(agreement_id, agreement_code, customer_nam
     info = get_module_approver_info('FCAM01')
     if not info.get('approval_add'):
         return
-    if session.get('is_admin') or str(info.get('approver_id') or '') == str(session.get('user_id')):
-        return
     agreement_url = request.host_url.rstrip('/') + url_for('FCAM01.entry', agreement_id=agreement_id)
     notify_module_approver(
         module_code='FCAM01',
@@ -113,11 +111,7 @@ def save_header():
     is_admin = session.get('is_admin')
 
     if not data.get('id'):  # New agreement
-        if is_approver or is_admin:
-            data['agreement_status'] = 'Approved'
-            data['approved_by'] = session.get('username')
-            data['approved_date'] = data['created_date']
-        elif config.get('approval_add'):
+        if config.get('approval_add'):
             data['agreement_status'] = 'Pending'
         else:
             data['agreement_status'] = 'Draft'

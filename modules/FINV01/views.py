@@ -73,8 +73,6 @@ def _queue_invoice_review_request(invoice_id, invoice_number, customer_name, tot
     info = get_module_approver_info(MODULE_CODE, fallback_module='FIN01')
     if not info.get('approval_add'):
         return
-    if session.get('is_admin') or str(info.get('approver_id') or '') == str(session.get('user_id')):
-        return
     invoice_url = request.host_url.rstrip('/') + url_for('FINV01.print_invoice', invoice_id=invoice_id)
     notify_module_approver(
         module_code=MODULE_CODE,

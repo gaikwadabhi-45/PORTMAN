@@ -49,7 +49,9 @@
       "Bash(find /d/PORTMAN/alembic/versions -name \"*.py\" -exec grep -l \"vcn_\" {})",
       "Bash(find /d/PORTMAN -type d -name *schema* -o -name *migration*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git -C d:/PORTMAN ls-files)"
     ]
   }
 }

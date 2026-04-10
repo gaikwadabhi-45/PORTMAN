@@ -9,8 +9,6 @@ def _queue_bill_approval_request(bill_id, bill_number, customer_name, total_amou
     info = get_module_approver_info('FIN01')
     if not info.get('approval_add'):
         return
-    if session.get('is_admin') or str(info.get('approver_id') or '') == str(session.get('user_id')):
-        return
     bill_url = request.host_url.rstrip('/') + url_for('FIN01.view_bill', bill_id=bill_id)
     notify_module_approver(
         module_code='FIN01',
@@ -133,11 +131,7 @@ def save_bill():
     is_approver = str(config.get('approver_id', '')) == str(user_id)
     is_admin = session.get('is_admin')
 
-    if is_approver or is_admin:
-        data['bill_status'] = 'Approved'
-        data['approved_by'] = session.get('username')
-        data['approved_date'] = data['created_date']
-    elif config.get('approval_add'):
+    if config.get('approval_add'):
         data['bill_status'] = 'Pending Approval'
     else:
         data['bill_status'] = 'Draft'
