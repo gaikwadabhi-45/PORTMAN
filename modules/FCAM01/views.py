@@ -7,7 +7,7 @@ from modules.VCUM01 import model as vcum_model
 from modules.FSTM01 import model as fstm_model
 from modules.FCRM01 import model as fcrm_model
 from modules.VCG01 import model as vcg_model
-from mail_service import notify_module_approver, get_module_approver_info
+from mail_service import notify_module_approver, get_module_approver_info, build_approval_mail_html
 
 
 def _queue_agreement_approval_request(agreement_id, agreement_code, customer_name, agreement_name):
@@ -18,14 +18,21 @@ def _queue_agreement_approval_request(agreement_id, agreement_code, customer_nam
     notify_module_approver(
         module_code='FCAM01',
         ref_id=agreement_id,
-        subject=f"[PORTMAN] FCAM01 Agreement {agreement_code} - Pending Approval",
-        body_html=f"""<p>Hello Approver,</p>
-<p>A customer agreement has been submitted for approval by <strong>{session.get('username')}</strong>.</p>
-<p><strong>Agreement Code:</strong> {agreement_code}<br>
-<strong>Customer:</strong> {customer_name or ''}<br>
-<strong>Agreement Name:</strong> {agreement_name or ''}</p>
-<p><a href="{agreement_url}">Open agreement in PORTMAN</a></p>
-<hr><p style="color:#888;font-size:11px;">Automated approval notification from PORTMAN.</p>""",
+        subject=f"[Portbird DPPL] Agreement {agreement_code} — Pending Approval",
+        body_html=build_approval_mail_html(
+            approver_name=info.get('username'),
+            action_label='Pending Approval',
+            subtitle='Customer Agreement — Approval Required',
+            details=[
+                ('Agreement Code', agreement_code or '—'),
+                ('Customer',       customer_name or '—'),
+                ('Agreement Name', agreement_name or '—'),
+            ],
+            action_url=agreement_url,
+            action_btn_label='Review &amp; Approve Agreement',
+            submitted_by=session.get('username'),
+            badge_color='#d97706',
+        ),
     )
 
 @bp.route('/module/FCAM01/')

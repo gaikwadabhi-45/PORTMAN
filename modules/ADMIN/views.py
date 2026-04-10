@@ -327,8 +327,9 @@ def get_config(module_code):
 @bp.route('/api/config/<module_code>/save', methods=['POST'])
 @admin_required
 def save_config(module_code):
-    config = request.json
-    save_module_config(module_code, config)
+    existing = get_module_config(module_code) or {}
+    existing.update(request.json or {})
+    save_module_config(module_code, existing)
     return jsonify({'success': True})
 
 

@@ -6,6 +6,7 @@ from database import get_user_permissions, get_module_config
 from mail_service import (
     queue_mail as _queue_mail,
     trigger_mail_processing as _trigger_mail_processing,
+    build_approval_mail_html as _build_approval_mail_html,
 )
 
 bp = Blueprint('LDUD01', __name__, template_folder='.')
@@ -167,19 +168,41 @@ def close():
     model.close_record(record_id, close_type, session.get('username'))
     # Queue notification to approver
     try:
-        from database import get_module_config
+        from database import get_module_config, get_db, get_cursor
         cfg = get_module_config('LDUD01')
         approver_email, approver_name = _get_user_email_by_id(cfg.get('approver_id'))
         if approver_email:
+            # Fetch doc_num and vessel name for the notification
+            _conn = get_db()
+            _cur = get_cursor(_conn)
+            _cur.execute(
+                'SELECT lh.doc_num, vh.vessel_name FROM ldud_header lh LEFT JOIN vcn_header vh ON vh.id = lh.vcn_id WHERE lh.id=%s',
+                [record_id]
+            )
+            _row = _cur.fetchone()
+            _conn.close()
+            doc_num = _row['doc_num'] if _row else f'#{record_id}'
+            vessel_name = (_row['vessel_name'] or '—') if _row else '—'
+            badge_color = '#059669' if close_type == 'Closed' else '#d97706'
+            ldud_url = request.host_url.rstrip('/') + f'/module/LDUD01/'
             _queue_mail(
                 to_email=approver_email,
                 to_name=approver_name,
-                subject=f"[PORTMAN] LDUD01 Record #{record_id} — {close_type}",
-                body_html=f"""<p>Hello {approver_name or 'Approver'},</p>
-<p>LDUD01 record <strong>#{record_id}</strong> has been marked as
-<strong>{close_type}</strong> by <strong>{session.get('username')}</strong>.</p>
-<p>Please review in PORTMAN.</p>
-<hr><p style="color:#888;font-size:11px;">Automated notification from PORTMAN.</p>""",
+                subject=f"[Portbird DPPL] LDUD {doc_num} — {close_type}",
+                body_html=_build_approval_mail_html(
+                    approver_name=approver_name,
+                    action_label=close_type,
+                    subtitle='Lay / Despatch — Closure Notification',
+                    details=[
+                        ('Document No', doc_num),
+                        ('Vessel',      vessel_name),
+                        ('Status',      close_type),
+                    ],
+                    action_url=ldud_url,
+                    action_btn_label='View in Portbird',
+                    submitted_by=session.get('username'),
+                    badge_color=badge_color,
+                ),
                 module_code='LDUD01',
                 ref_id=record_id,
             )

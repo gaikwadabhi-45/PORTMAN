@@ -2,7 +2,7 @@ from flask import render_template, request, redirect, url_for, session, jsonify
 from . import bp
 from . import model
 from database import get_user_permissions, get_db, get_cursor, get_module_config
-from mail_service import notify_module_approver, get_module_approver_info
+from mail_service import notify_module_approver, get_module_approver_info, build_approval_mail_html
 
 
 def _queue_bill_approval_request(bill_id, bill_number, customer_name, total_amount):
@@ -13,14 +13,21 @@ def _queue_bill_approval_request(bill_id, bill_number, customer_name, total_amou
     notify_module_approver(
         module_code='FIN01',
         ref_id=bill_id,
-        subject=f"[PORTMAN] FIN01 Bill {bill_number} - Pending Approval",
-        body_html=f"""<p>Hello Approver,</p>
-<p>A FIN01 bill has been submitted for approval by <strong>{session.get('username')}</strong>.</p>
-<p><strong>Bill No:</strong> {bill_number}<br>
-<strong>Customer:</strong> {customer_name or ''}<br>
-<strong>Total Amount:</strong> {float(total_amount or 0):.2f}</p>
-<p><a href="{bill_url}">Open bill in PORTMAN</a></p>
-<hr><p style="color:#888;font-size:11px;">Automated approval notification from PORTMAN.</p>""",
+        subject=f"[Portbird DPPL] Bill {bill_number} — Pending Approval",
+        body_html=build_approval_mail_html(
+            approver_name=info.get('username'),
+            action_label='Pending Approval',
+            subtitle='Billing — Approval Required',
+            details=[
+                ('Bill No',       bill_number or '—'),
+                ('Customer',      customer_name or '—'),
+                ('Total Amount',  f'₹ {float(total_amount or 0):,.2f}'),
+            ],
+            action_url=bill_url,
+            action_btn_label='Review &amp; Approve Bill',
+            submitted_by=session.get('username'),
+            badge_color='#d97706',
+        ),
     )
 
 @bp.route('/module/FIN01/')
