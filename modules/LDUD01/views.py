@@ -2,7 +2,7 @@ import json as _json
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from functools import wraps
 from . import model
-from database import get_user_permissions, get_module_config
+from database import get_user_permissions, get_module_config, get_db, get_cursor
 from mail_service import (
     queue_mail as _queue_mail,
     trigger_mail_processing as _trigger_mail_processing,
@@ -149,7 +149,6 @@ def close():
         return jsonify({'error': 'Password is required'}), 400
 
     # Verify password server-side
-    from database import get_db, get_cursor
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute('SELECT id FROM users WHERE id=%s AND password=%s', [session.get('user_id'), password])
@@ -168,7 +167,6 @@ def close():
     model.close_record(record_id, close_type, session.get('username'))
     # Queue notification to approver
     try:
-        from database import get_module_config, get_db, get_cursor
         cfg = get_module_config('LDUD01')
         approver_email, approver_name = _get_user_email_by_id(cfg.get('approver_id'))
         if approver_email:

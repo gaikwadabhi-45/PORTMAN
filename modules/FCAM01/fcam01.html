@@ -15,8 +15,9 @@
     .data-table th, .data-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ecf0f1; }
     .data-table th { background: #34495e; color: white; font-weight: 600; font-size: 10px; text-transform: uppercase; }
     .data-table tr:hover { background: #f8f9fa; }
-    .status-draft { background: #95a5a6; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+    .status-draft    { background: #95a5a6; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
     .status-approved { background: #27ae60; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+    .status-pending  { background: #f39c12; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
     .status-rejected { background: #e74c3c; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
     .pagination { margin-top: 15px; display: flex; gap: 5px; justify-content: center; font-size: 11px; }
 </style>
@@ -57,19 +58,21 @@
             <td>{{ row.valid_from }}</td>
             <td>{{ row.valid_to or 'Ongoing' }}</td>
             <td>
-                {% if row.agreement_status == 'Draft' %}
-                <span class="status-draft">Draft</span>
-                {% elif row.agreement_status == 'Approved' %}
+                {% if row.agreement_status == 'Approved' %}
                 <span class="status-approved">Approved</span>
+                {% elif row.agreement_status == 'Pending' %}
+                <span class="status-pending">Pending Approval</span>
+                {% elif row.agreement_status == 'Draft' %}
+                <span class="status-draft">Draft</span>
                 {% else %}
-                <span class="status-rejected">Rejected</span>
+                <span class="status-rejected">{{ row.agreement_status or 'Unknown' }}</span>
                 {% endif %}
             </td>
             <td>
                 {% if perms.can_edit %}
                 <button class="btn btn-primary" onclick="location.href='/module/FCAM01/entry/{{ row.id }}'">Edit</button>
                 {% endif %}
-                {% if row.agreement_status == 'Draft' %}
+                {% if row.agreement_status in ('Draft', 'Pending') %}
                 <button class="btn btn-success" onclick="approveAgreement({{ row.id }})">Approve</button>
                 {% endif %}
                 {% if perms.can_delete %}
