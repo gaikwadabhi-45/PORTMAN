@@ -703,6 +703,7 @@
 
 </div><!-- /.invoice-copy -->
 
+{% if cargo_details %}
 <div class="cargo-appendix">
     <div class="cargo-appendix-header">
         Cargo Handling Details- {{ port_config.seller_legal_name or 'JSW Dharamtar Port Private Limited' }}
@@ -746,6 +747,7 @@
         </tfoot>
     </table>
 </div>
+{% endif %}
 </div><!-- /.invoice-set -->
 
 {% endmacro %}
