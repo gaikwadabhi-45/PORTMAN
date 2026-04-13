@@ -74,7 +74,7 @@
 
         /* ══ Header: Logo left | Copy type + rule + QR right ══ */
         .inv-header {
-            border: 1px solid #000;
+            border-bottom: 1px solid #000;
             display: flex;
         }
         .header-logo {
@@ -136,10 +136,28 @@
             font-size: 6px; color: #999; text-align: center;
         }
 
+        /* ── Single outer border wrapper — all sections live inside this ── */
+        .inv-outer {
+            border: 1px solid #000;
+        }
+        /* All inner sections only need a bottom divider; left/right come from .inv-outer */
+        .inv-header,
+        .inv-title-row,
+        .irn-row,
+        .ack-row,
+        .parties-row,
+        .vessel-section,
+        .items-section,
+        .bottom-row,
+        .words-row,
+        .payment-row,
+        .corp-footer {
+            border-left: none !important;
+            border-right: none !important;
+        }
+
         /* ── TAX INVOICE title ── */
         .inv-title-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             text-align: center;
             padding: 4px;
@@ -150,8 +168,6 @@
 
         /* ── IRN row ── */
         .irn-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 3px 6px;
             font-size: 7.5px;
@@ -161,8 +177,6 @@
 
         /* ── ACK row (4 cells) ── */
         .ack-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
         }
         .ack-table { width: 100%; border-collapse: collapse; }
@@ -176,8 +190,6 @@
 
         /* ── Billed To / Ship To ── */
         .parties-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             display: flex;
         }
@@ -194,8 +206,6 @@
 
         /* ── Vessel / Invoice metadata grid (4 columns: label|value|label|value) ── */
         .vessel-section {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
         }
         .vessel-table { width: 100%; border-collapse: collapse; }
@@ -213,8 +223,6 @@
 
         /* ── Line items ── */
         .items-section {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
         }
         .items-table { width: 100%; border-collapse: collapse; }
@@ -247,8 +255,6 @@
 
         /* ── Bottom: Remarks (left) + Totals (right) ── */
         .bottom-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             display: flex;
             min-height: 60px;
@@ -283,8 +289,6 @@
 
         /* ── Amount in words ── */
         .words-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 4px 7px;
             font-size: 8.5px;
@@ -293,8 +297,6 @@
 
         /* ── Payment Details + Signatory ── */
         .payment-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             display: flex;
         }
@@ -332,8 +334,6 @@
 
         /* ── Corporate footer ── */
         .corp-footer {
-            border: 1px solid #000;
-            border-top: none;
             padding: 3px 7px;
             font-size: 7.5px;
             color: #333;
@@ -427,6 +427,7 @@
     <div class="cancelled-banner">*** CANCELLED INVOICE ***</div>
     {% endif %}
 
+    <div class="inv-outer">
     <div class="inv-body">
     <!-- ══ 1. Header: Logo | Copy type + Rule text + QR ══ -->
     <div class="inv-header">
@@ -700,6 +701,7 @@
         {% endif %}
     </div>
     </div><!-- /.inv-footer-block -->
+    </div><!-- /.inv-outer -->
 
 </div><!-- /.invoice-copy -->
 
