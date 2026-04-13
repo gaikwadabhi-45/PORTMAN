@@ -456,21 +456,20 @@ def _get_cargo_handling_details(invoice_id):
 
                 vcn_id = decl['vcn_id']
 
-                # Get timing from ldud_anchorage via ldud_header
+                # Discharge Commenced / Discharge Completed from ldud_header
                 cur.execute('''
-                    SELECT MIN(a.discharge_started) AS start_dt,
-                           MAX(a.discharge_commenced) AS end_dt
-                    FROM ldud_header lh
-                    JOIN ldud_anchorage a ON a.ldud_id = lh.id
-                    WHERE lh.vcn_id = %s
+                    SELECT MIN(discharge_commenced) AS start_dt,
+                           MAX(discharge_completed)  AS end_dt
+                    FROM ldud_header
+                    WHERE vcn_id = %s
                 ''', [vcn_id])
                 timing = cur.fetchone()
 
-                start_dt = timing['start_dt'] if timing else None
-                end_dt   = timing['end_dt']   if timing else None
-
-                start_str = (str(start_dt)[:10] + ' ' + str(start_dt)[11:16]).strip() if start_dt else ''
-                end_str   = (str(end_dt)[:10]   + ' ' + str(end_dt)[11:16]).strip()   if end_dt   else ''
+                def _ts(val):
+                    if not val:
+                        return ''
+                    s = str(val).strip()
+                    return (s[:10] + ' ' + s[11:16]).strip() if len(s) >= 16 else s[:10]
 
                 rows.append({
                     'source_type':       'VCN',
@@ -484,15 +483,16 @@ def _get_cargo_handling_details(invoice_id):
                     'quantity':          billed_qty,
                     'uom':               decl['quantity_uom'] or 'MT',
                     'source_type_label': 'MV',
-                    'start':             start_str,
-                    'end':               end_str,
+                    'start':             _ts(timing['start_dt'] if timing else None),
+                    'end':               _ts(timing['end_dt']   if timing else None),
                 })
 
             elif cstype == 'MBC':
                 cur.execute('''
                     SELECT cd.mbc_id, cd.cargo_name, cd.bill_of_coastal_goods_no,
                            cd.quantity, cd.customer_name,
-                           mh.doc_num, mh.mbc_name, mh.doc_date
+                           mh.doc_num, mh.mbc_name, mh.doc_date,
+                           mh.operation_type
                     FROM mbc_customer_details cd
                     JOIN mbc_header mh ON cd.mbc_id = mh.id
                     WHERE cd.id = %s
@@ -501,9 +501,37 @@ def _get_cargo_handling_details(invoice_id):
                 if not decl:
                     continue
 
+                mbc_id = decl['mbc_id']
+                op_type = (decl.get('operation_type') or '').lower()
+
+                def _ts(val):
+                    if not val:
+                        return ''
+                    s = str(val).strip()
+                    return (s[:10] + ' ' + s[11:16]).strip() if len(s) >= 16 else s[:10]
+
+                if 'export' in op_type:
+                    # Load port: loading_commenced → start, loading_completed → end
+                    cur.execute('''
+                        SELECT MIN(loading_commenced) AS start_dt,
+                               MAX(loading_completed)  AS end_dt
+                        FROM mbc_load_port_lines
+                        WHERE mbc_id = %s
+                    ''', [mbc_id])
+                else:
+                    # Discharge port: unloading_commenced → start, unloading_completed → end
+                    cur.execute('''
+                        SELECT MIN(unloading_commenced) AS start_dt,
+                               MAX(unloading_completed)  AS end_dt
+                        FROM mbc_discharge_port_lines
+                        WHERE mbc_id = %s
+                    ''', [mbc_id])
+
+                mbc_timing = cur.fetchone()
+
                 rows.append({
                     'source_type':       'MBC',
-                    'source_id':         decl['mbc_id'],
+                    'source_id':         mbc_id,
                     'vessel_name':       decl['mbc_name'] or '',
                     'vcn_doc_num':       decl['doc_num'] or '',
                     'consignee':         decl['customer_name'] or '',
@@ -513,8 +541,8 @@ def _get_cargo_handling_details(invoice_id):
                     'quantity':          billed_qty,
                     'uom':               'MT',
                     'source_type_label': 'MBC',
-                    'start':             '',
-                    'end':               '',
+                    'start':             _ts(mbc_timing['start_dt'] if mbc_timing else None),
+                    'end':               _ts(mbc_timing['end_dt']   if mbc_timing else None),
                 })
 
         return rows
