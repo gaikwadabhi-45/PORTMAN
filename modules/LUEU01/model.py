@@ -478,40 +478,36 @@ def get_dashboard_data():
         })
 
     # ── Active MBCs ──────────────────────────────────────────────────────────
+    # Aggregate customer_details quantities per MBC; fall back to mbc_header.bl_quantity
+    # if no customer rows exist yet.
     cur.execute('''
         SELECT
             m.id, m.doc_num, m.mbc_name, m.doc_status,
-            COALESCE(cd.cargo_name, m.cargo_name, '') AS cargo_name,
-            COALESCE(cd.quantity, m.bl_quantity, 0) AS bl_quantity,
-            COALESCE(m.quantity_uom, '') AS uom
+            COALESCE(m.cargo_name, '') AS cargo_name,
+            COALESCE(m.quantity_uom, '') AS uom,
+            CASE
+                WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                ELSE COALESCE(m.bl_quantity, 0)
+            END AS bl_quantity
         FROM mbc_header m
         LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
         WHERE m.doc_status != 'Closed'
+        GROUP BY m.id, m.doc_num, m.mbc_name, m.doc_status,
+                 m.cargo_name, m.quantity_uom, m.bl_quantity
         ORDER BY m.id DESC
     ''')
     mbc_declarations = cur.fetchall()
 
     cur.execute('''
-        SELECT source_id, COALESCE(cargo_name,'') AS cargo_name,
-               COALESCE(SUM(quantity),0) AS actual
+        SELECT source_id, COALESCE(SUM(quantity), 0) AS actual
         FROM lueu_lines
         WHERE source_type = 'MBC' AND (is_deleted IS NOT TRUE)
-        GROUP BY source_id, cargo_name
+        GROUP BY source_id
     ''')
-    mbc_actual_map = {}
-    for r in cur.fetchall():
-        k = r['source_id']
-        if k not in mbc_actual_map:
-            mbc_actual_map[k] = 0
-        mbc_actual_map[k] += float(r['actual'] or 0)
+    mbc_actual_map = {r['source_id']: float(r['actual'] or 0) for r in cur.fetchall()}
 
     mbc_rows = []
-    seen_mbc = {}
     for r in mbc_declarations:
-        key = (r['id'], r['cargo_name'])
-        if key in seen_mbc:
-            continue
-        seen_mbc[key] = True
         bl = float(r['bl_quantity'] or 0)
         actual = mbc_actual_map.get(r['id'], 0)
         pct = round((actual / bl * 100) if bl > 0 else 0, 1)
