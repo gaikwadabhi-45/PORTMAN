@@ -65,12 +65,16 @@ def bills():
     status_filter = request.args.get('status')
     data, total = model.get_bill_data(page, status_filter=status_filter)
 
+    config = get_module_config('FIN01')
+    is_approver = str(config.get('approver_id', '')) == str(session.get('user_id')) or bool(session.get('is_admin'))
+
     return render_template('bills.html',
                          data=data,
                          page=page,
                          last_page=(total + 19) // 20,
                          status_filter=status_filter,
                          perms=perms,
+                         is_approver=is_approver,
                          username=session.get('username'))
 
 

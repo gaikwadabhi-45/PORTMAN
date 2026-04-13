@@ -240,17 +240,21 @@ def save_bill_line(data):
                     # Determine CGST+SGST vs IGST
                     customer_gstin = data.get('customer_gstin') or ''
                     customer_state = data.get('customer_state_code') or ''
-                    # Get company state from gst_api_config or GSTIN
-                    cur.execute("SELECT gstin FROM gst_api_config LIMIT 1")
-                    port_cfg = cur.fetchone()
-                    port_gstin = (port_cfg['gstin'] if port_cfg else '') or ''
-                    # Compare state codes: use explicit state code first, then GSTIN prefix
-                    if customer_state and port_gstin:
-                        same_state = customer_state == port_gstin[:2]
-                    elif customer_gstin and port_gstin:
-                        same_state = customer_gstin[:2] == port_gstin[:2]
+                    # Get port state code from FIN01 module config (seller_gstin / port_gst_state_code)
+                    from database import get_module_config
+                    fin_cfg = get_module_config('FIN01')
+                    port_state_code = str(fin_cfg.get('port_gst_state_code') or '').strip()
+                    seller_gstin = str(fin_cfg.get('seller_gstin') or '').strip()
+                    # Derive port state from explicit config first, then GSTIN prefix
+                    if not port_state_code and seller_gstin:
+                        port_state_code = seller_gstin[:2]
+                    # Compare state codes
+                    if customer_state and port_state_code:
+                        same_state = customer_state.strip() == port_state_code
+                    elif customer_gstin and port_state_code:
+                        same_state = customer_gstin[:2] == port_state_code
                     else:
-                        # Default to same state (intra-state) if can't determine
+                        # Cannot determine — default to intra-state (safer: no IGST surprise)
                         same_state = True
                     if same_state:
                         # Intra-state: CGST + SGST
