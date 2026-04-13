@@ -48,10 +48,26 @@ def get_data(page=1, size=20, filters=None):
     try:
         cur.execute(f'SELECT COUNT(*) FROM mbc_header {where_sql}', params)
         total = cur.fetchone()['count']
-        cur.execute(f'SELECT * FROM mbc_header {where_sql} ORDER BY id DESC LIMIT %s OFFSET %s',
-                    params + [size, (page - 1) * size])
+        cur.execute(f'''
+            SELECT mh.*,
+                   (SELECT COUNT(*) FROM mbc_customer_details cd WHERE cd.mbc_id = mh.id) AS _customer_count
+            FROM mbc_header mh
+            {where_sql}
+            ORDER BY mh.id DESC LIMIT %s OFFSET %s
+        ''', params + [size, (page - 1) * size])
         rows = cur.fetchall()
-        return [dict(r) for r in rows], total
+        result = []
+        for r in rows:
+            d = dict(r)
+            d['_eligible'] = bool(
+                d.get('operation_type') and
+                d.get('mbc_name') and
+                d.get('cargo_name') and
+                d.get('bl_quantity') and
+                int(d.get('_customer_count') or 0) >= 1
+            )
+            result.append(d)
+        return result, total
     finally:
         conn.close()
 

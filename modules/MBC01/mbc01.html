@@ -675,7 +675,7 @@
             },
             {title: "Created By", field: "created_by", width: 90},
             {
-                title: "Approval", field: "_approval_actions", width: 160, headerSort: false,
+                title: "Approval", field: "_approval_actions", width: 170, headerSort: false,
                 formatter: function(cell) {
                     const data = cell.getRow().getData();
                     if (!data.id) return '';
@@ -684,6 +684,10 @@
                             return `<button class="btn-back-draft" onclick="openSendBackModal(${data.id})">↩ Draft</button>`;
                         }
                         return '';
+                    }
+                    if (data._eligible && isApprover) {
+                        return `<button class="btn-approve" onclick="quickApprove(${data.id}, event)" title="All requirements met — click to approve">✓ Approve</button>` +
+                               `<button class="btn-info-approval" style="margin-left:4px;" onclick="openApprovalInfoModal(${data.id})" title="View details">ℹ️</button>`;
                     }
                     return `<button class="btn-info-approval" onclick="openApprovalInfoModal(${data.id})">ℹ️ Info</button>`;
                 }
@@ -1313,6 +1317,19 @@
         const row = table.getRows().find(r => r.getData().id === approvalTargetId);
         if (row) { row.update({doc_status: 'Approved'}); row.reformat(); }
         closeApprovalInfoModal();
+    }
+
+    async function quickApprove(id, event) {
+        event.stopPropagation();
+        if (!confirm('Approve this MBC record?')) return;
+        const res = await fetch('/api/module/MBC01/approve', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: id})
+        });
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+        const row = table.getRows().find(r => r.getData().id === id);
+        if (row) { row.update({doc_status: 'Approved'}); row.reformat(); }
     }
 
     function openSendBackModal(id) {
