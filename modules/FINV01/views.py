@@ -275,7 +275,7 @@ def create_invoice():
     doc_series_prefix = (
         default_series.get('prefix') or
         (data.get('doc_series_prefix') or 'INV')
-    ).strip().upper()
+    ).strip().rstrip('/').upper()
     doc_series_name = default_series.get('name') or data.get('doc_series_name', '')
 
     invoice_date = data.get('invoice_date', '')
@@ -290,7 +290,7 @@ def create_invoice():
     row_seq = cur_seq.fetchone()
     next_seq = (row_seq['max'] or 0) + 1 if row_seq else 1
     conn_seq.close()
-    invoice_number_override = f'{doc_series_prefix}/{fy_suffix}/{next_seq}'
+    invoice_number_override = f'{doc_series_prefix}/{next_seq}'
 
     invoice_data = {
         'invoice_date': invoice_date,
