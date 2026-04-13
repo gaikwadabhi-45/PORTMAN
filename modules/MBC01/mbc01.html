@@ -1115,12 +1115,39 @@
     async function saveSubTable(type, mbcId, silent = false) {
         if (!subTables[mbcId] || !subTables[mbcId][type]) return;
 
-        if (type === 'customer_details' && currentBlQty != null && currentBlQty !== '') {
-            const rows = subTables[mbcId][type].getRows();
-            const total = rows.reduce((sum, r) => sum + (parseFloat(r.getData().quantity) || 0), 0);
-            if (total > parseFloat(currentBlQty)) {
-                alert(`Cannot save: Total quantity (${total.toFixed(2)}) exceeds BL quantity (${parseFloat(currentBlQty).toFixed(2)}).`);
-                return;
+        const allRows = subTables[mbcId][type].getRows();
+
+        // ── Validation: customer_details — customer name required ──
+        if (type === 'customer_details') {
+            for (let i = 0; i < allRows.length; i++) {
+                const d = allRows[i].getData();
+                if (!d.customer_name || d.customer_name.toString().trim() === '') {
+                    alert(`Row ${i + 1}: Customer is required. Please select a customer before saving.`);
+                    return;
+                }
+            }
+            // existing BL quantity check
+            if (currentBlQty != null && currentBlQty !== '') {
+                const total = allRows.reduce((sum, r) => sum + (parseFloat(r.getData().quantity) || 0), 0);
+                if (total > parseFloat(currentBlQty)) {
+                    alert(`Cannot save: Total quantity (${total.toFixed(2)}) exceeds BL quantity (${parseFloat(currentBlQty).toFixed(2)}).`);
+                    return;
+                }
+            }
+        }
+
+        // ── Validation: discharge_port — MBC Cast Off must be after Unloading Completed ──
+        if (type === 'discharge_port') {
+            for (let i = 0; i < allRows.length; i++) {
+                const d = allRows[i].getData();
+                if (d.unloading_completed && d.vessel_cast_off) {
+                    const completed = new Date(d.unloading_completed);
+                    const castOff   = new Date(d.vessel_cast_off);
+                    if (!isNaN(completed) && !isNaN(castOff) && castOff <= completed) {
+                        alert(`Row ${i + 1}: MBC Cast Off (${d.vessel_cast_off}) must be after Unloading Completed (${d.unloading_completed}).`);
+                        return;
+                    }
+                }
             }
         }
 
