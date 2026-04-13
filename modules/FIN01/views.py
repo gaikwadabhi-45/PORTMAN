@@ -90,10 +90,15 @@ def view_bill(bill_id):
     # Get bill lines
     bill_lines = model.get_bill_lines(bill_id)
 
+    config = get_module_config('FIN01')
+    user_id = session.get('user_id')
+    is_approver = str(config.get('approver_id', '')) == str(user_id) or bool(session.get('is_admin'))
+
     return render_template('bill_view.html',
                          bill=bill,
                          bill_lines=bill_lines,
                          perms=perms,
+                         is_approver=is_approver,
                          username=session.get('username'))
 
 

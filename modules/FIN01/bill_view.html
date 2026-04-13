@@ -24,7 +24,28 @@
     .status-pending { background: #f39c12; }
     .status-approved { background: #27ae60; }
     .status-rejected { background: #e74c3c; }
+    .btn-approve { background: #27ae60; color: white; }
+    .btn-reject  { background: #e74c3c; color: white; }
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center; }
+    .modal-overlay.show { display:flex; }
+    .modal-box { background:#fff; border-radius:6px; padding:24px; width:420px; max-width:95vw; box-shadow:0 4px 24px rgba(0,0,0,.2); }
+    .modal-box h4 { margin:0 0 14px 0; font-size:14px; }
+    .modal-box textarea { width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-size:12px; resize:vertical; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 </style>
+
+<!-- Reject reason modal -->
+<div class="modal-overlay" id="rejectModal">
+    <div class="modal-box">
+        <h4>Reject Bill — {{ bill.bill_number }}</h4>
+        <label style="font-size:12px;font-weight:600;color:#555;">Reason for rejection</label>
+        <textarea id="rejectReason" rows="4" placeholder="Enter rejection reason…"></textarea>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeRejectModal()">Cancel</button>
+            <button class="btn btn-reject"    onclick="confirmReject()">Confirm Reject</button>
+        </div>
+    </div>
+</div>
 
 <div class="bill-header">
     <div>
@@ -139,8 +160,47 @@
 </div>
 
 <div style="margin-top: 30px;">
-    <button class="btn btn-primary" onclick="window.print()">Print Bill</button>
+    {% if is_approver and bill.bill_status == 'Pending Approval' %}
+    <button class="btn btn-approve" onclick="approveBill()">✓ Approve</button>
+    <button class="btn btn-reject"  onclick="openRejectModal()">✗ Reject</button>
+    {% endif %}
     <button class="btn btn-secondary" onclick="location.href='/module/FIN01/bills'">Back to Bills</button>
 </div>
+
+<script>
+const BILL_ID = {{ bill.id }};
+
+function approveBill() {
+    if (!confirm('Approve Bill {{ bill.bill_number }}?')) return;
+    fetch('/api/module/FIN01/bill/approve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: BILL_ID})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) location.reload();
+        else alert('Error: ' + (d.error || 'Unknown error'));
+    });
+}
+
+function openRejectModal()  { document.getElementById('rejectModal').classList.add('show'); }
+function closeRejectModal() { document.getElementById('rejectModal').classList.remove('show'); }
+
+function confirmReject() {
+    const reason = document.getElementById('rejectReason').value.trim();
+    if (!reason) { alert('Please enter a rejection reason.'); return; }
+    fetch('/api/module/FIN01/bill/reject', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: BILL_ID, reason})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) location.reload();
+        else alert('Error: ' + (d.error || 'Unknown error'));
+    });
+}
+</script>
 
 {% endblock %}
