@@ -628,7 +628,12 @@ def get_customer_billables(customer_type, customer_id):
         else:
             doc_status  = mbc_status or ''
             is_billable = doc_status in ('Approved', 'Closed', 'Partial Close')
-            doc_label   = f"{decl.get('doc_num', '')} / {decl.get('mbc_name', '')}"
+            if decl.get('vcn_doc_num'):
+                # VCN declaration with no linked LDUD record yet
+                doc_label  = f"{decl.get('vcn_doc_num', '')} / {decl.get('vessel_name', '')}"
+                doc_status = doc_status or 'No LDUD'
+            else:
+                doc_label  = f"{decl.get('doc_num', '')} / {decl.get('mbc_name', '')}"
             material_po = decl.get('material_po') or ''
         return {
             'source_type':        source_type,
