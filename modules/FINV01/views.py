@@ -403,6 +403,45 @@ def _fmt_lueu_timestamp(date_val, time_val):
     return date_txt or time_txt
 
 
+_CH_CODES = ('CHGL01', 'CHGU01')
+
+
+def _build_display_lines(invoice_lines):
+    """
+    For the invoice print items table, merge cargo handling lines by rate:
+      - All cargo lines at the same rate  → one merged row (summed qty + amount)
+      - Cargo lines at different rates    → one row per distinct rate (summed within each)
+      - Non-cargo lines                   → passed through unchanged in original order
+
+    Non-cargo lines appear first (original order), then cargo row(s) sorted by rate.
+    `invoice_lines` itself is never modified — the caller still uses it for the
+    SAC summary and cargo appendix.
+    """
+    non_cargo = []
+    cargo_by_rate = {}   # {rate_key: accumulator dict}
+
+    for line in invoice_lines:
+        if line.get('service_code') in _CH_CODES:
+            rate_key = round(float(line.get('rate') or 0), 4)
+            if rate_key not in cargo_by_rate:
+                cargo_by_rate[rate_key] = {
+                    'service_code': line['service_code'],
+                    'service_name': 'Cargo Handling Services',
+                    'sac_code':     line.get('sac_code') or '',
+                    'rate':         rate_key,
+                    'quantity':     0.0,
+                    'line_amount':  0.0,
+                    'uom':          line.get('uom') or '',
+                }
+            cargo_by_rate[rate_key]['quantity']   += float(line.get('quantity')   or 0)
+            cargo_by_rate[rate_key]['line_amount'] += float(line.get('line_amount') or 0)
+        else:
+            non_cargo.append(line)
+
+    cargo_rows = sorted(cargo_by_rate.values(), key=lambda r: r['rate'])
+    return non_cargo + cargo_rows
+
+
 def _get_cargo_handling_details(invoice_id):
     """
     Build cargo appendix rows for invoice print.
@@ -669,6 +708,9 @@ def print_invoice(invoice_id):
 
     current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    # Build display lines: cargo handling grouped by rate for the print table
+    display_lines = _build_display_lines(invoice_lines)
+
     # Fetch cargo handling details by tracing bill chain
     cargo_details = _get_cargo_handling_details(invoice_id)
     log.info(f'[PRINT] Invoice {invoice_id}: {len(cargo_details)} cargo detail rows')
@@ -692,6 +734,7 @@ def print_invoice(invoice_id):
     return render_template('finv01_invoice_print.html',
                          invoice=invoice,
                          invoice_lines=invoice_lines,
+                         display_lines=display_lines,
                          sac_summary=sac_summary,
                          port_config=port_config,
                          payment_bank=payment_bank,
