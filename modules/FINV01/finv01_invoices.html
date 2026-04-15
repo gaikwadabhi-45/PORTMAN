@@ -133,6 +133,12 @@
                     {% endif %}
                 {% endif %}
                 <button class="btn btn-export" onclick="exportSAPJson({{ row.id }})" style="font-size:10px;padding:3px 8px;" title="Download SAP JSON payload">SAP JSON</button>
+                {% if row.invoice_status in ('Generated', 'SAP Failed') and not row.sap_document_number %}
+                <button class="btn" style="background:#7c3aed;color:white;font-size:10px;padding:3px 8px;" onclick="pushToStaging({{ row.id }})" title="Write to SAP staging table for adapter pickup">Push Staging</button>
+                {% endif %}
+                {% if row.invoice_status not in ('Posted to SAP',) and not row.sap_document_number %}
+                <button class="btn" style="background:#0891b2;color:white;font-size:10px;padding:3px 8px;" onclick="syncFromStaging({{ row.id }})" title="Read SAP response back from staging table">Sync SAP</button>
+                {% endif %}
             </td>
         </tr>
         {% endfor %}
@@ -378,6 +384,42 @@ async function createCancellationCN(id) {
 
 function exportSAPJson(id) {
     window.open('/api/module/FINV01/invoice/export-sap-json/' + id, '_blank');
+}
+
+async function pushToStaging(id) {
+    if (!confirm('Push this invoice to the SAP staging table?\nThe adapter will pick it up when active.')) return;
+    try {
+        const res = await fetch('/api/module/FSAP01/staging/push', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({invoice_id: id})
+        });
+        const result = await res.json();
+        if (result.ok) {
+            alert('Pushed to staging: ' + result.rows_inserted + ' line(s) written (status = N).');
+            location.reload();
+        } else {
+            alert('Staging push failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function syncFromStaging(id) {
+    if (!confirm('Read SAP response back from the staging table?')) return;
+    try {
+        const res = await fetch('/api/module/FSAP01/staging/sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({invoice_id: id})
+        });
+        const result = await res.json();
+        if (result.ok) {
+            alert('SAP Posted. Document: ' + (result.sap_document_number || '—'));
+            location.reload();
+        } else {
+            alert('Sync result (' + result.status + '): ' + (result.message || 'No update'));
+        }
+    } catch(e) { alert('Error: ' + e.message); }
 }
 </script>
 {% endblock %}

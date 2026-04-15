@@ -524,6 +524,21 @@
     </div>
 
     <!-- ══ 7. Line Items ══ -->
+    {#
+        Cargo handling lines (CHGL01 / CHGU01) are merged into a single
+        display row: units and amounts are summed; all other lines render
+        individually. The cargo details appendix is unaffected.
+    #}
+    {% set ch_codes = ('CHGL01', 'CHGU01') %}
+    {% set ch = namespace(has=false, qty=0.0, amt=0.0, sac='') %}
+    {% for line in invoice_lines %}
+        {% if line.service_code in ch_codes %}
+            {% set ch.has = true %}
+            {% set ch.qty = ch.qty + line.quantity|float %}
+            {% set ch.amt = ch.amt + line.line_amount|float %}
+            {% if not ch.sac %}{% set ch.sac = line.sac_code or '' %}{% endif %}
+        {% endif %}
+    {% endfor %}
     <div class="items-section">
         <table class="items-table">
             <thead>
@@ -537,22 +552,33 @@
                 </tr>
             </thead>
             <tbody>
+                {% set sl = namespace(n=0) %}
+                {# Non-cargo lines — rendered individually in original order #}
                 {% for line in invoice_lines %}
-                <tr>
-                    <td style="text-align:center;">{{ loop.index }}</td>
-                    <td>
-                        {% if line.service_code in ('CHGL01', 'CHGU01') %}
-                            Cargo Handling Services
-                        {% else %}
-                            {{ line.service_name }}
-                        {% endif %}
-                    </td>
-                    <td>{{ line.sac_code or '—' }}</td>
-                    <td class="num">{{ "%.2f"|format(line.quantity|float) }}</td>
-                    <td class="num">{{ "%.2f"|format(line.rate|float) }}</td>
-                    <td class="num">{{ "%.2f"|format(line.line_amount|float) }}</td>
-                </tr>
+                    {% if line.service_code not in ch_codes %}
+                        {% set sl.n = sl.n + 1 %}
+                        <tr>
+                            <td style="text-align:center;">{{ sl.n }}</td>
+                            <td>{{ line.service_name }}</td>
+                            <td>{{ line.sac_code or '—' }}</td>
+                            <td class="num">{{ "%.2f"|format(line.quantity|float) }}</td>
+                            <td class="num">{{ "%.2f"|format(line.rate|float) }}</td>
+                            <td class="num">{{ "%.2f"|format(line.line_amount|float) }}</td>
+                        </tr>
+                    {% endif %}
                 {% endfor %}
+                {# Merged cargo handling row #}
+                {% if ch.has %}
+                    {% set sl.n = sl.n + 1 %}
+                    <tr>
+                        <td style="text-align:center;">{{ sl.n }}</td>
+                        <td>Cargo Handling Services</td>
+                        <td>{{ ch.sac or '—' }}</td>
+                        <td class="num">{{ "%.2f"|format(ch.qty) }}</td>
+                        <td class="num">—</td>
+                        <td class="num">{{ "%.2f"|format(ch.amt) }}</td>
+                    </tr>
+                {% endif %}
             </tbody>
             <tfoot>
                 <tr class="subtotal-row">
