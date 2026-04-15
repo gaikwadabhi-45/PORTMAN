@@ -1588,6 +1588,7 @@
             layout: "fitDataFill",
             height: 200,
             ajaxURL: `/api/module/LDUD01/delays/${ldudId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('delays'),
             columns: [
                 {title: "Crane No", field: "crane_number", width: 110, editor: canEdit ? craneMultiSelectEditor : false,
@@ -1627,6 +1628,7 @@
             layout: "fitColumns",
             height: 200,
             ajaxURL: `/api/module/LDUD01/anchorage/${ldudId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('anchorage'),
             columns: [
                 {title: "Anchorage Name", field: "anchorage_name", widthGrow: 1, editor: canEdit ? "list" : false,
@@ -1737,6 +1739,7 @@
             layout: "fitDataFill",
             height: 250,
             ajaxURL: `/api/module/LDUD01/barge_lines/${ldudId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('barge_lines'),
             columns: bargeLinesColumns
         });
@@ -1852,6 +1855,7 @@
                 ajaxResponse: function(url, params, response) {
                     return buildVesselOpsRowsFromApi(ldudId, response);
                 },
+                columnDefaults: { headerSort: false },
                 columnHeaderVertAlign: "bottom",
                 cellEdited: () => markDirty('vessel_ops'),
                 columns: [
@@ -1889,6 +1893,7 @@
             layout: "fitDataFill",
             height: 200,
             ajaxURL: `/api/module/LDUD01/barge_cleaning/${ldudId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('barge_cleaning'),
             columns: [
                 {title: "Barge", field: "barge_name", width: 130, editor: canEdit ? "list" : false,
@@ -1988,6 +1993,7 @@
             layout: "fitColumns",
             height: 200,
             ajaxURL: `/api/module/LDUD01/hold_completion/${ldudId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('hold_completion'),
             ajaxResponse: function(url, params, response) {
                 // Sync holds asynchronously then update the table

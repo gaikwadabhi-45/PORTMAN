@@ -948,6 +948,7 @@
             layout: "fitColumns",
             height: 150,
             ajaxURL: `/api/module/VCN01/nominations/${vcnId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('nominations'),
             columns: [
                 {title: "ETA", field: "eta", widthGrow: 1, editor: canEdit ? datetimeEditor : false,
@@ -977,6 +978,7 @@
             layout: "fitColumns",
             height: 150,
             ajaxURL: `/api/module/VCN01/delays/${vcnId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('delays'),
             columns: [
                 {title: "Delay Name", field: "delay_name", widthGrow: 1, editor: canEdit ? "list" : false,
@@ -1028,6 +1030,7 @@
                 layout: "fitColumns",
                 height: 150,
                 ajaxURL: `/api/module/VCN01/export_cargo/${vcnId}`,
+                columnDefaults: { headerSort: false },
                 dataLoaded: function() { updateExportCargoBLQuantities(vcnId); },
                 cellEdited: () => markDirty('export_cargo'),
                 columns: [
@@ -1061,6 +1064,7 @@
                 layout: "fitColumns",
                 height: 150,
                 ajaxURL: `/api/module/VCN01/cargo/${vcnId}`,
+                columnDefaults: { headerSort: false },
                 cellEdited: () => markDirty('cargo'),
                 columns: [
                     {title: "IGM Manual No", field: "igm_manual_number", widthGrow: 1, editor: canEdit ? "input" : false},
@@ -1110,6 +1114,7 @@
                 layout: "fitColumns",
                 height: 150,
                 ajaxURL: `/api/module/VCN01/stowage/${vcnId}`,
+                columnDefaults: { headerSort: false },
                 cellEdited: () => markDirty('stowage'),
                 columns: [
                     {title: "Cargo Name", field: "cargo_name", widthGrow: 1, editor: canEdit ? "list" : false,
