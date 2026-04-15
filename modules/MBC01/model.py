@@ -81,6 +81,9 @@ def save_header(data):
     if not data.get('doc_date'):
         data['doc_date'] = datetime.now().strftime('%Y-%m-%d')
 
+    # Strip client-side computed fields (prefixed with _) before writing to DB
+    data = {k: v for k, v in data.items() if not k.startswith('_')}
+
     if row_id:
         cols = [k for k in data if k not in ['id', 'doc_num']]
         cur.execute(f"UPDATE mbc_header SET {', '.join([f'{c}=%s' for c in cols])} WHERE id=%s",
