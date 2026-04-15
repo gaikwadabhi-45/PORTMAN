@@ -952,6 +952,7 @@
                 layout: "fitDataFill",
                 height: 150,
                 ajaxURL: `/api/module/MBC01/export_load_port/${mbcId}`,
+                columnDefaults: { headerSort: false },
                 cellEdited: () => markDirty('export_load_port'),
                 columns: [
                     {title: "Arrived at Port", field: "arrived_at_port", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
@@ -976,6 +977,7 @@
                 layout: "fitDataFill",
                 height: 150,
                 ajaxURL: `/api/module/MBC01/load_port/${mbcId}`,
+                columnDefaults: { headerSort: false },
                 cellEdited: () => markDirty('load_port'),
                 columns: [
                     {title: "Arrived Load Port", field: "arrived_load_port", width: 150, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
@@ -994,6 +996,7 @@
                 layout: "fitDataFill",
                 height: 150,
                 ajaxURL: `/api/module/MBC01/discharge_port/${mbcId}`,
+                columnDefaults: { headerSort: false },
                 cellEdited: () => markDirty('discharge_port'),
                 columns: [
                     {title: "Arrival Gull Island", field: "arrival_gull_island", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
@@ -1026,6 +1029,7 @@
             layout: "fitDataFill",
             height: 150,
             ajaxURL: `/api/module/MBC01/cleaning/${mbcId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('cleaning'),
             columns: [
                 {title: "Payloader", field: "payloader_name", width: 130, editor: canEdit ? "list" : false,
@@ -1064,6 +1068,7 @@
             layout: "fitDataFill",
             height: 150,
             ajaxURL: `/api/module/MBC01/customer_details/${mbcId}`,
+            columnDefaults: { headerSort: false },
             cellEdited: () => markDirty('customer_details'),
             columns: [
                 {title: "Customer", field: "customer_name", width: 200, editor: canEdit ? "list" : false,

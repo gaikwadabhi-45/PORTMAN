@@ -193,14 +193,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-    <a href="/module/RP01/">Reports</a> &rsaquo; Barge Lines Report
-</div>
+
 
 <div class="page-header">
     <img src="{{ url_for('static', filename='img/barge.png') }}" style="height:36px;width:auto;" alt="Barge">
     <h2>Barge Lines Report</h2>
     <span class="module-badge">RP01</span>
+</div>
+
+<div class="breadcrumb">
+    <a href="/module/RP01/">Reports</a> &rsaquo; Barge Lines Report
 </div>
 
 <!-- Filter bar -->
@@ -226,6 +228,8 @@
     <!-- Action buttons -->
     <button class="filter-btn primary" onclick="loadData()">Load Report</button>
     <button class="filter-btn secondary" onclick="clearReport()">Clear</button>
+    <button class="filter-btn" id="export-btn" onclick="exportExcel()"
+            style="background:#27ae60;color:#fff;display:none;">&#8595; Export Excel</button>
 </div>
 
 <!-- Status -->
@@ -303,6 +307,7 @@ function renderTable(rows) {
 
     empty.style.display = 'none';
     area.style.display = '';
+    document.getElementById('export-btn').style.display = '';
 
     // Count barge lines (rows with a line_id)
     const lineCount = rows.filter(r => r.line_id != null).length;
@@ -315,27 +320,36 @@ function renderTable(rows) {
         ...opts,
     });
 
+    const qtyFmt = cell => {
+        const v = cell.getValue();
+        return v != null ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+    };
     const columns = [
-        colDef('Trip #',         'trip_number',        { width: 60,  hozAlign: 'center' }),
-        colDef('Hold',           'hold_name',          { width: 80 }),
-        colDef('Barge',          'barge_name',         { width: 130 }),
-        colDef('Contractor',     'contractor_name',    { width: 130 }),
-        colDef('Cargo',          'cargo_name',         { width: 130 }),
-        colDef('BPT/BFL',        'bpt_bfl',            { width: 80,  hozAlign: 'center' }),
-        colDef('Disch. Qty',     'discharge_quantity', { width: 90,  hozAlign: 'right',
-            formatter: cell => {
-                const v = cell.getValue();
-                return v != null ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
-            }
-        }),
-        colDef('Crane (MV)',     'crane_loaded_from',  { width: 90 }),
-        colDef('Port Crane',     'port_crane',         { width: 90 }),
-        colDef('Alongside MV',   'along_side_vessel',  { width: 130 }),
-        colDef('Loading Start',  'commenced_loading',  { width: 130 }),
-        colDef('Loading End',    'completed_loading',  { width: 130 }),
-        colDef('Cast Off MV',    'cast_off_mv',        { width: 130 }),
-        colDef('Cast Off Berth', 'cast_off_berth',     { width: 130 }),
-        colDef('Cast Off NT',    'cast_off_berth_nt',  { width: 130 }),
+        colDef('Trip #',                   'trip_number',              { width: 55,  hozAlign: 'center' }),
+        colDef('Hold',                     'hold_name',                { width: 80 }),
+        colDef('Barge',                    'barge_name',               { width: 120 }),
+        colDef('Stevedore',                'contractor_name',          { width: 120 }),
+        colDef('Cargo',                    'cargo_name',               { width: 110 }),
+        colDef('MBPT/PLA',                 'bpt_bfl',                  { width: 75,  hozAlign: 'center' }),
+        colDef('Qty (MT)',                 'discharge_quantity',       { width: 85,  hozAlign: 'right', formatter: qtyFmt }),
+        colDef('Crane (MV)',               'crane_loaded_from',        { width: 100 }),
+        colDef('Port Crane',               'port_crane',               { width: 90 }),
+        colDef('Trip Start',               'trip_start',               { width: 130 }),
+        colDef('Anch. Gull Island',        'anchored_gull_island',     { width: 130 }),
+        colDef('Aweigh Gull Island',       'aweigh_gull_island',       { width: 130 }),
+        colDef('AMF at Port',              'amf_at_port',              { width: 130 }),
+        colDef('Alongside MV',             'along_side_vessel',        { width: 130 }),
+        colDef('Alongside Berth',          'along_side_berth',         { width: 130 }),
+        colDef('Loading Start',            'commenced_loading',        { width: 130 }),
+        colDef('Loading End',              'completed_loading',        { width: 130 }),
+        colDef('Cast Off MV',              'cast_off_mv',              { width: 130 }),
+        colDef('Cast Off Berth',           'cast_off_berth',           { width: 130 }),
+        colDef('Cast Off NT',              'cast_off_berth_nt',        { width: 130 }),
+        colDef('Cast Off Port',            'cast_off_port',            { width: 130 }),
+        colDef('Discharge Start (Berth)',  'commence_discharge_berth', { width: 150 }),
+        colDef('Discharge End (Berth)',    'completed_discharge_berth',{ width: 150 }),
+        colDef('Anch. Gull (Loaded)',      'anchored_gull_island_empty',{ width: 140 }),
+        colDef('Aweigh Gull (Loaded)',     'aweigh_gull_island_empty', { width: 140 }),
     ];
 
     if (_table) {
@@ -419,11 +433,20 @@ function renderTable(rows) {
     });
 }
 
+/* ── Excel export ────────────────────────────────────────────────────── */
+function exportExcel() {
+    const sel = document.getElementById('vessel-sel');
+    const chosen = Array.from(sel.selectedOptions).map(o => o.value);
+    if (!chosen.length) return;
+    window.location.href = `/api/module/RP01/barge-report/download?ldud_ids=${chosen.join(',')}`;
+}
+
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 function clearReport() {
     clearTable();
     setStatus('');
     document.getElementById('vessel-sel').selectedIndex = -1;
+    document.getElementById('export-btn').style.display = 'none';
 }
 
 function clearTable() {

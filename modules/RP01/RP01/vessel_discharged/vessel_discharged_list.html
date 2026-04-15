@@ -160,6 +160,14 @@
 <!-- Filter bar -->
 <div class="filter-bar">
     <div class="filter-group">
+        <label for="filter-date-field">Filter By Date</label>
+        <select id="filter-date-field" style="height:30px;padding:5px 9px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);min-width:180px;">
+            <option value="discharge_commenced">Discharge Commenced</option>
+            <option value="discharge_completed">Discharge Completed</option>
+            <option value="nor_tendered">NOR Tendered</option>
+        </select>
+    </div>
+    <div class="filter-group">
         <label for="filter-from">From Date</label>
         <input type="date" id="filter-from" title="From Date" value="">
     </div>
@@ -313,12 +321,14 @@ function updateCount(n) {
 
 /* ── Filters ─────────────────────────────────────────── */
 function applyFilters() {
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
+    const fromDate  = document.getElementById('filter-from').value;
+    const toDate    = document.getElementById('filter-to').value;
+    const dateField = document.getElementById('filter-date-field').value;
 
     const params = new URLSearchParams();
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date',   toDate);
+    if (fromDate)  params.set('from_date',  fromDate);
+    if (toDate)    params.set('to_date',    toDate);
+    if (dateField) params.set('date_field', dateField);
 
     document.getElementById('row-count').textContent = 'Loading…';
 
@@ -376,15 +386,17 @@ function downloadExcel(ldudId, vesselName) {
 
 /* ── Download All (multi-sheet) ──────────────────────── */
 function downloadAll() {
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
+    const fromDate  = document.getElementById('filter-from').value;
+    const toDate    = document.getElementById('filter-to').value;
+    const dateField = document.getElementById('filter-date-field').value;
     const btn = document.getElementById('dl-all-btn');
     btn.disabled = true;
     btn.textContent = 'Preparing…';
 
     const params = new URLSearchParams();
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date',   toDate);
+    if (fromDate)  params.set('from_date',  fromDate);
+    if (toDate)    params.set('to_date',    toDate);
+    if (dateField) params.set('date_field', dateField);
 
     fetch('/api/module/RP01/vessel-discharged/download-all?' + params.toString())
         .then(res => {

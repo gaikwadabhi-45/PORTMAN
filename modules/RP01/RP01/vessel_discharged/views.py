@@ -93,10 +93,21 @@ def login_required(f):
 
 # ── Data fetch ──────────────────────────────────────────────────────────────
 
-def _fetch_list(from_date, to_date):
+_DATE_FIELDS = {
+    'discharge_commenced': 'h.discharge_commenced',
+    'discharge_completed': 'h.discharge_completed',
+    'nor_tendered':        'h.nor_tendered',
+}
+_DATE_FIELD_DEFAULT = 'discharge_commenced'
+
+
+def _fetch_list(from_date, to_date, date_field=None):
+    date_col = _DATE_FIELDS.get(date_field or _DATE_FIELD_DEFAULT,
+                                _DATE_FIELDS[_DATE_FIELD_DEFAULT])
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute("""
+    # Build WHERE: date range applies only when the chosen field is not NULL
+    cur.execute(f"""
         SELECT
             h.id,
             h.doc_num,
@@ -104,6 +115,7 @@ def _fetch_list(from_date, to_date):
             h.vessel_name,
             h.discharge_commenced,
             h.discharge_completed,
+            h.nor_tendered,
             h.doc_status,
             v.vessel_agent_name,
             v.operation_type,
@@ -112,13 +124,13 @@ def _fetch_list(from_date, to_date):
         FROM ldud_header h
         LEFT JOIN vcn_header v ON v.id = h.vcn_id
         LEFT JOIN vcn_cargo_declaration cd ON cd.vcn_id = h.vcn_id
-        WHERE h.operation_type = 'Import'
-          AND DATE(h.discharge_commenced) >= %s
-          AND DATE(h.discharge_commenced) <= %s
+        WHERE LOWER(h.operation_type) = 'import'
+          AND ({date_col} IS NULL
+               OR (DATE({date_col}) >= %s AND DATE({date_col}) <= %s))
         GROUP BY h.id, h.doc_num, h.vcn_doc_num, h.vessel_name,
-                 h.discharge_commenced, h.discharge_completed,
+                 h.discharge_commenced, h.discharge_completed, h.nor_tendered,
                  h.doc_status, v.vessel_agent_name, v.operation_type
-        ORDER BY h.discharge_commenced DESC
+        ORDER BY {date_col} DESC NULLS LAST
     """, (from_date, to_date))
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
@@ -640,9 +652,10 @@ def vessel_discharged_index():
 @bp.route('/api/module/RP01/vessel-discharged/data')
 @login_required
 def vessel_discharged_data():
-    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
-    to_date   = request.args.get('to_date',   date.today().strftime('%Y-%m-%d'))
-    rows = _fetch_list(from_date, to_date)
+    from_date  = request.args.get('from_date',  date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date    = request.args.get('to_date',    date.today().strftime('%Y-%m-%d'))
+    date_field = request.args.get('date_field', _DATE_FIELD_DEFAULT)
+    rows = _fetch_list(from_date, to_date, date_field)
     for row in rows:
         for k, v in row.items():
             if hasattr(v, 'isoformat'):
@@ -653,9 +666,10 @@ def vessel_discharged_data():
 @bp.route('/api/module/RP01/vessel-discharged/download-all')
 @login_required
 def vessel_discharged_download_all():
-    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
-    to_date   = request.args.get('to_date',   date.today().strftime('%Y-%m-%d'))
-    rows = _fetch_list(from_date, to_date)
+    from_date  = request.args.get('from_date',  date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date    = request.args.get('to_date',    date.today().strftime('%Y-%m-%d'))
+    date_field = request.args.get('date_field', _DATE_FIELD_DEFAULT)
+    rows = _fetch_list(from_date, to_date, date_field)
     if not rows:
         return Response('No records in selected range', status=404)
     vessels_data = [_fetch_vessel_data(r['id']) for r in rows]
