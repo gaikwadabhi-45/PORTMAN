@@ -701,6 +701,7 @@
             pagination: true,
             paginationMode: "remote",
             paginationSize: 20,
+            paginationSizeSelector: [20, 50, 75, 100, true],
             ajaxURL: "/api/module/MBC01/data",
             ajaxParams: function() { return currentFilters.length ? { filters: JSON.stringify(currentFilters) } : {}; },
             ajaxResponse: function(url, params, response) {

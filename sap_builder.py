@@ -114,7 +114,7 @@ def _nature_of_transaction(customer_gstin):
 
 def _get_service_gl_map(service_codes):
     """
-    Batch-fetch service GL accounts from finance_service_types by service_code.
+    Batch-fetch all SAP-relevant fields from finance_service_types by service_code.
     Returns dict keyed by service_code.
     """
     if not service_codes:
@@ -126,6 +126,7 @@ def _get_service_gl_map(service_codes):
         SELECT service_code, sap_gl_account,
                sap_igst_gl, sap_cgst_gl, sap_sgst_gl,
                sap_tds_gl, sap_tcs_gl,
+               sap_tax_code, sap_profit_center, sap_cost_center,
                service_sale_flag, uom
         FROM finance_service_types
         WHERE service_code IN ({placeholders})
@@ -137,7 +138,7 @@ def _get_service_gl_map(service_codes):
 
 def _get_service_type_map_by_ids(type_ids):
     """
-    Batch-fetch service data from finance_service_types by integer id.
+    Batch-fetch all SAP-relevant fields from finance_service_types by integer id.
     Used to enrich fdcn_lines (which store service_type_id, not service_code).
     Returns dict keyed by id.
     """
@@ -150,6 +151,7 @@ def _get_service_type_map_by_ids(type_ids):
         SELECT id, service_code, sap_gl_account,
                sap_igst_gl, sap_cgst_gl, sap_sgst_gl,
                sap_tds_gl, sap_tcs_gl,
+               sap_tax_code, sap_profit_center, sap_cost_center,
                service_sale_flag, uom
         FROM finance_service_types
         WHERE id IN ({placeholders})
@@ -220,13 +222,28 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
         tcs_gl       = svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or ''
         round_off_gl = config_defaults.get('round_off_gl') or ''
 
+        # Tax_Code: line override → service master → SAP config default
+        tax_code = (
+            line.get('sap_tax_code')
+            or svc.get('sap_tax_code')
+            or config_defaults.get('tax_code')
+            or ''
+        )
+        # Profit_Center: line override → service master → SAP config default
+        profit_center = (
+            line.get('profit_center')
+            or svc.get('sap_profit_center')
+            or config_defaults.get('profit_center')
+            or ''
+        )
+
         items.append({
             'GL_Account':       gl_account[:10],
             'GL_Amount':        _fmt_amount_required(taxable),
             'Plant':            plant,
-            'Profit_Center':    line.get('profit_center') or config_defaults.get('profit_center') or '',
+            'Profit_Center':    profit_center,
             'Text_Description': (line.get('service_name') or '')[:25],
-            'Tax_Code':         line.get('sap_tax_code') or config_defaults.get('tax_code') or '',
+            'Tax_Code':         tax_code,
             'IGST_GL':          igst_gl[:10] if igst_gl else '',
             'IGST_Amount':      _fmt_amount(igst),
             'SGST_GL':          sgst_gl[:10] if sgst_gl else '',
@@ -404,7 +421,5 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
     payload['Record']['Header_Text']       = f"REV {original_ref}"[:25]
     payload['Record']['Cancellation_Flag'] = 'X'
     # Invoice_Type stays 'I' — it's a reversal of an invoice, not a credit note
-    # Spec: reversals send header fields only — no Item array
-    payload['Record'].pop('Item', None)
 
     return payload

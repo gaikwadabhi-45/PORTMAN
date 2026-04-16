@@ -1028,8 +1028,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
     gstin = invoice.get('customer_gstin') or ''
 
     items = []
-    if not cancel:
-        for l in lines:
+    for l in lines:
             cgst = float(l.get('cgst_amount') or 0)
             sgst = float(l.get('sgst_amount') or 0)
             igst = float(l.get('igst_amount') or 0)
@@ -1078,8 +1077,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
         'Baseline_Date':         inv_date,
         'Header_Text':           (f"REV {inv_num}" if cancel else inv_num)[:25],
     }
-    if not cancel:
-        record['Item'] = items
+    record['Item'] = items
     return {'Record': record}
 
 
