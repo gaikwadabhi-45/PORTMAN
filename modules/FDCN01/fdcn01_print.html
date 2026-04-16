@@ -5,19 +5,20 @@
     <title>{{ 'Debit Note' if header.doc_type == 'DN' else 'Credit Note' }} {{ header.doc_number }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        @page { size: A4; margin: 8mm; }
+        @page { size: A4; margin: 6mm; }
         @media print {
             .no-print { display: none !important; }
             body { background: #fff; }
-            .invoice-copy { page-break-after: always; }
-            .invoice-copy:last-child { page-break-after: avoid; }
+            .invoice-set { page-break-after: always; }
+            .invoice-set:last-child { page-break-after: avoid; }
+            .invoice-copy { page-break-after: auto; margin: 0 !important; border: none !important; }
         }
 
         body {
             font-family: Arial, sans-serif;
             font-size: 9px;
             color: #000;
-            background: #ddd;
+            background: #fff;
         }
 
         .no-print {
@@ -38,15 +39,14 @@
         .btn-print { background: #3498db; color: #fff; }
         .btn-back  { background: #95a5a6; color: #fff; }
 
-        /* -- Invoice copy wrapper -- */
+        /* ── Invoice copy wrapper ── */
         .invoice-copy {
-            width: 210mm;
+            width: 100%;
             min-height: 281mm;
-            margin: 8px auto;
+            margin: 0;
             background: #fff;
             display: flex;
             flex-direction: column;
-            border: 2px solid #000;
         }
         .inv-body {
             flex: 1;
@@ -57,7 +57,7 @@
             margin-top: auto;
         }
 
-        /* -- Cancelled banner -- */
+        /* ── Cancelled banner ── */
         .cancelled-banner {
             border: 2px solid #c0392b;
             background: #fdf0f0;
@@ -71,9 +71,28 @@
             margin-bottom: 2px;
         }
 
-        /* -- Header: Logo left | Copy type + rule + QR right -- */
-        .inv-header {
+        /* ── Single outer border — all sections inside ── */
+        .inv-outer {
             border: 1px solid #000;
+        }
+        .inv-header,
+        .inv-title-row,
+        .irn-row,
+        .ack-row,
+        .parties-row,
+        .vessel-section,
+        .items-section,
+        .bottom-row,
+        .words-row,
+        .payment-row,
+        .corp-footer {
+            border-left: none !important;
+            border-right: none !important;
+        }
+
+        /* ── Header: Logo | Copy type + Rule text + QR ── */
+        .inv-header {
+            border-bottom: 1px solid #000;
             display: flex;
         }
         .header-logo {
@@ -87,16 +106,10 @@
             text-align: center;
         }
         .header-logo img {
-            max-height: 42px;
+            max-height: 52px;
             width: auto;
             display: block;
-            margin-bottom: 3px;
-        }
-        .company-address {
-            font-size: 7.5px;
-            line-height: 1.45;
-            color: #000;
-            text-align: center;
+            margin: 0 auto;
         }
         .header-right {
             width: 155px;
@@ -127,10 +140,8 @@
             font-size: 6px; color: #999; text-align: center;
         }
 
-        /* -- Title row -- */
+        /* ── Title row ── */
         .inv-title-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             text-align: center;
             padding: 4px;
@@ -139,10 +150,8 @@
             letter-spacing: 2px;
         }
 
-        /* -- IRN row -- */
+        /* ── IRN row ── */
         .irn-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 3px 6px;
             font-size: 7.5px;
@@ -150,10 +159,8 @@
         }
         .irn-row strong { font-weight: 700; }
 
-        /* -- ACK row -- */
+        /* ── ACK row ── */
         .ack-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
         }
         .ack-table { width: 100%; border-collapse: collapse; }
@@ -165,10 +172,8 @@
         .ack-table td:last-child { border-right: none; }
         .ack-label { font-weight: 700; }
 
-        /* -- Billed To / Issued By -- */
+        /* ── Billed To / Issued By ── */
         .parties-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             display: flex;
         }
@@ -183,10 +188,8 @@
         .party-kv      { display: flex; font-size: 8px; line-height: 1.6; }
         .party-kv .pk  { font-weight: 700; min-width: 90px; }
 
-        /* -- Document metadata grid (4 columns) -- */
+        /* ── Document metadata grid ── */
         .vessel-section {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
         }
         .vessel-table { width: 100%; border-collapse: collapse; }
@@ -202,10 +205,8 @@
         .vl { font-weight: 700; white-space: nowrap; }
         .vv { font-size: 8.5px; }
 
-        /* -- Line items -- */
+        /* ── Line items ── */
         .items-section {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
         }
         .items-table { width: 100%; border-collapse: collapse; }
@@ -236,10 +237,8 @@
         }
         .num { text-align: right; font-variant-numeric: tabular-nums; }
 
-        /* -- Bottom: Remarks (left) + Totals (right) -- */
+        /* ── Bottom: Remarks (left) + Totals (right) ── */
         .bottom-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             display: flex;
             min-height: 60px;
@@ -272,20 +271,16 @@
             background: #f0f0f0;
         }
 
-        /* -- Amount in words -- */
+        /* ── Amount in words ── */
         .words-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             padding: 4px 7px;
             font-size: 8.5px;
         }
         .words-label { font-weight: 700; display: block; margin-bottom: 1px; }
 
-        /* -- Payment Details + Signatory -- */
+        /* ── Payment Details + Signatory ── */
         .payment-row {
-            border-left: 1px solid #000;
-            border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             display: flex;
         }
@@ -313,7 +308,7 @@
             flex-direction: column;
             justify-content: space-between;
         }
-        .sig-company { font-size: 8px; font-weight: 700; }
+        .sig-company { font-size: 8px; font-weight: 700; white-space: nowrap; }
         .sig-line {
             border-top: 1px solid #000;
             padding-top: 3px;
@@ -321,17 +316,15 @@
             text-align: center;
         }
 
-        /* -- Corporate footer -- */
+        /* ── Corporate footer ── */
         .corp-footer {
-            border: 1px solid #000;
-            border-top: none;
             padding: 3px 7px;
             font-size: 7.5px;
             color: #333;
             text-align: center;
         }
 
-        /* -- SAC summary mini-table -- */
+        /* ── SAC summary mini-table ── */
         .sac-table { width: 100%; border-collapse: collapse; font-size: 7.5px; margin-top: 5px; }
         .sac-table th, .sac-table td { padding: 2px 4px; border: 1px solid #ccc; }
         .sac-table th { background: #f0f0f0; }
@@ -345,10 +338,16 @@
     <button class="btn-back" onclick="location.href='/module/FDCN01/list'">Back to List</button>
 </div>
 
-{% set doc_label = 'DEBIT NOTE' if header.doc_type == 'DN' else 'CREDIT NOTE' %}
+{% set doc_label       = 'DEBIT NOTE' if header.doc_type == 'DN' else 'CREDIT NOTE' %}
 {% set doc_label_short = 'Debit Note' if header.doc_type == 'DN' else 'Credit Note' %}
+{% set reason_map = {
+    'rate_revision': 'Rate revision against agreement',
+    'cancellation':  'Full invoice cancellation',
+    'eu_deletion':   'EU line deletion — credit for removed cargo',
+    'manual':        'Manual adjustment'
+} %}
 
-{# -- MACRO: one full copy -- #}
+{# ── MACRO: one full copy ── #}
 {% macro render_copy(copy_label) %}
 
 {% set sub     = header.subtotal|float %}
@@ -360,23 +359,26 @@
 {% set sgst_pct = ((sgst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 {% set igst_pct = ((igst_a / sub * 100) if sub > 0 else 0)|round(0)|int %}
 
+<div class="invoice-set">
 <div class="invoice-copy">
 
     {% if header.doc_status == 'Cancelled' %}
     <div class="cancelled-banner">*** CANCELLED {{ doc_label }} ***</div>
     {% endif %}
 
+    <div class="inv-outer">
     <div class="inv-body">
-    <!-- 1. Header: Logo | Copy type + Rule text + QR -->
+
+    <!-- 1. Header: Logo | Copy type + Rule + QR -->
     <div class="inv-header">
         <div class="header-logo">
-            <img src="/static/img/logo31.png" alt="JSW Dharamtar Port Pvt. Ltd.">
-            <div class="company-address">
+            <img src="/static/img/invoice_header.png" alt="JSW Dharamtar Port Pvt. Ltd.">
+            <div style="font-size:7.5px;color:#2d3748;line-height:1.55;margin-top:4px;text-align:center;">
                 At:Dharamtar, Post:Dolvi, Tal: Pen, Dist:Raigad,<br>
                 Mumbai, Maharashtra, India - 402107<br>
                 Phone: 02143-277620 &nbsp;&nbsp; Fax: 02143-277800<br>
                 Email: jetty.accounts@jsw.in &nbsp;&nbsp; Website: www.jsw.in<br>
-                GSTIN: 27AACCJ9361Q1ZS
+                <strong>GSTIN: 27AACCJ9361Q1ZS</strong>
             </div>
         </div>
         <div class="header-right">
@@ -430,7 +432,7 @@
         </div>
     </div>
 
-    <!-- 6. Document metadata grid -->
+    <!-- 6. Document metadata (4-column grid) -->
     <div class="vessel-section">
         <table class="vessel-table">
             <tr>
@@ -507,11 +509,11 @@
         </table>
     </div>
 
-    <!-- 8. Remarks (left) + Totals grid (right) -->
+    <!-- 8. Remarks (left) + Totals (right) -->
     <div class="bottom-row">
         <div class="remarks-col">
             <div class="rem-label">Reason for {{ doc_label_short }}:</div>
-            <div>Rate revision against agreement</div>
+            <div>{{ reason_map.get(header.creation_type, 'Rate revision against agreement') }}</div>
             {% if header.remarks %}
             <div class="rem-label" style="margin-top:6px;">Remarks :</div>
             <div>{{ header.remarks }}</div>
@@ -582,34 +584,13 @@
         <div class="payment-col">
             {% if payment_bank %}
             <div class="pay-intro">Payment should be made through RTGS or Demand Draft as per below details :</div>
-            <div class="pay-line">
-                <span class="pl">Beneficary Name</span>
-                <span>: {{ payment_bank.account_holder_name or port_config.seller_legal_name or '—' }}</span>
-            </div>
-            <div class="pay-line">
-                <span class="pl">Account Number</span>
-                <span>: {{ payment_bank.account_number or '—' }}</span>
-            </div>
-            <div class="pay-line">
-                <span class="pl">IFSC Code</span>
-                <span>: {{ payment_bank.ifsc_code or '—' }}</span>
-            </div>
-            <div class="pay-line">
-                <span class="pl">Bank Name</span>
-                <span>: {{ payment_bank.bank_name or '—' }}</span>
-            </div>
-            <div class="pay-line">
-                <span class="pl">Bank Branch</span>
-                <span>: {{ payment_bank.branch_name or '—' }}</span>
-            </div>
-            <div class="pay-line">
-                <span class="pl">PAN</span>
-                <span>: {{ payment_bank.pan or '—' }}</span>
-            </div>
-            <div class="pay-line">
-                <span class="pl">CIN</span>
-                <span>: {{ payment_bank.cin or '—' }}</span>
-            </div>
+            <div class="pay-line"><span class="pl">Beneficary Name</span><span>: {{ payment_bank.account_holder_name or port_config.seller_legal_name or '—' }}</span></div>
+            <div class="pay-line"><span class="pl">Account Number</span><span>: {{ payment_bank.account_number or '—' }}</span></div>
+            <div class="pay-line"><span class="pl">IFSC Code</span><span>: {{ payment_bank.ifsc_code or '—' }}</span></div>
+            <div class="pay-line"><span class="pl">Bank Name</span><span>: {{ payment_bank.bank_name or '—' }}</span></div>
+            <div class="pay-line"><span class="pl">Bank Branch</span><span>: {{ payment_bank.branch_name or '—' }}</span></div>
+            <div class="pay-line"><span class="pl">PAN</span><span>: {{ payment_bank.pan or '—' }}</span></div>
+            <div class="pay-line"><span class="pl">CIN</span><span>: {{ payment_bank.cin or '—' }}</span></div>
             {% else %}
             <div style="font-size:8px;color:#999;font-style:italic;">
                 No bank account configured. Please set up details in Admin &rarr; Port Bank Accounts.
@@ -627,15 +608,17 @@
         {% if payment_bank and payment_bank.corporate_office_address %}
         Corporate Off: {{ payment_bank.corporate_office_address }}
         {% else %}
-        Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), MUMBAI, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
+        Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), Mumbai, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
         {% endif %}
     </div>
     </div><!-- /.inv-footer-block -->
+    </div><!-- /.inv-outer -->
 
 </div><!-- /.invoice-copy -->
+</div><!-- /.invoice-set -->
 {% endmacro %}
 
-{# -- Render both copies -- #}
+{# ── Render both copies ── #}
 {{ render_copy("ORIGINAL FOR RECEIPIENT") }}
 {{ render_copy("DUPLICATE FOR SUPPLIER") }}
 

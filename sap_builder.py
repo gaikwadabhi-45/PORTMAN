@@ -134,6 +134,30 @@ def _get_service_gl_map(service_codes):
     return {r['service_code']: dict(r) for r in rows if r['service_code']}
 
 
+def _get_service_type_map_by_ids(type_ids):
+    """
+    Batch-fetch service data from finance_service_types by integer id.
+    Used to enrich fdcn_lines (which store service_type_id, not service_code).
+    Returns dict keyed by id.
+    """
+    if not type_ids:
+        return {}
+    conn = get_db()
+    cur = get_cursor(conn)
+    placeholders = ','.join(['%s'] * len(type_ids))
+    cur.execute(f'''
+        SELECT id, service_code, sap_gl_account,
+               sap_igst_gl, sap_cgst_gl, sap_sgst_gl,
+               sap_tds_gl, sap_tcs_gl,
+               service_sale_flag, uom
+        FROM finance_service_types
+        WHERE id IN ({placeholders})
+    ''', list(type_ids))
+    rows = cur.fetchall()
+    conn.close()
+    return {r['id']: dict(r) for r in rows}
+
+
 def _service_sale_flag(lines, svc_map):
     """Derive header-level SERVICE_SALE from the first line that has a service master entry."""
     for line in lines:
@@ -327,7 +351,21 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
 
     irn_date_raw = fdcn_header.get('gst_ack_date') or fdcn_header.get('irn_date')
 
-    svc_codes = {l.get('service_code') for l in fdcn_lines if l.get('service_code')}
+    # fdcn_lines store service_type_id (integer FK), not service_code (string).
+    # Enrich each line with service_code by looking up finance_service_types by id.
+    type_ids = {l.get('service_type_id') for l in fdcn_lines if l.get('service_type_id')}
+    type_map = _get_service_type_map_by_ids(type_ids)
+    enriched_lines = []
+    for line in fdcn_lines:
+        l = dict(line)
+        if not l.get('service_code'):
+            tid = l.get('service_type_id')
+            svc_type = type_map.get(tid, {})
+            # Fall back to gl_code if service_code not found in master
+            l['service_code'] = svc_type.get('service_code') or l.get('gl_code') or ''
+        enriched_lines.append(l)
+
+    svc_codes = {l.get('service_code') for l in enriched_lines if l.get('service_code')}
     svc_map   = _get_service_gl_map(svc_codes)
 
     record = {
@@ -340,7 +378,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Cancellation_Flag':     '',
         'Customer_Code':         (fdcn_header.get('customer_gl_code') or '')[:10],
         'Invoice_Amount':        _fmt_amount_required(
-                                     _total_invoice_amount(fdcn_header, fdcn_lines)
+                                     _total_invoice_amount(fdcn_header, enriched_lines)
                                  ),
         'Currency':              'INR',
         'Business_Place':        business_place,
@@ -348,7 +386,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Payment_Term':          payment_term,
         'Baseline_Date':         doc_date,
         'Doc_Header_Text':       (fdcn_header.get('doc_number') or '')[:25],
-        'SERVICE_SALE':          _service_sale_flag(fdcn_lines, svc_map),
+        'SERVICE_SALE':          _service_sale_flag(enriched_lines, svc_map),
         'IRN_No':                fdcn_header.get('gst_irn') or '',
         'Ack_No':                str(fdcn_header.get('gst_ack_number') or ''),
         'IRN_Date':              _fmt_date(irn_date_raw) if irn_date_raw else '',
@@ -356,7 +394,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
         'TDS_Amount':            _fmt_amount(fdcn_header.get('tds_amount')),
         'TCS_Amount':            _fmt_amount(fdcn_header.get('tcs_amount')),
-        'Item':                  _build_items(fdcn_lines, company, config_defaults=config, svc_map=svc_map),
+        'Item':                  _build_items(enriched_lines, company, config_defaults=config, svc_map=svc_map),
     }
 
     return {'Record': record}

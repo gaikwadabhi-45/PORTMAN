@@ -270,18 +270,19 @@
             onEntryTypeChange();
             document.getElementById('docTypeSel').value = h.doc_type || 'CN';
             for (const line of data.lines) {
-                await addManualLine();
+                addManualLine();
                 const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
                 const lastRow = rows[rows.length - 1];
-                const serviceSel = lastRow.querySelector('.ml-service');
-                if (serviceSel && line.service_type_id) {
-                    serviceSel.value = line.service_type_id;
-                    onManualServiceChange(serviceSel, lastRow.id);
-                }
-                if (line.service_description) lastRow.querySelector('.ml-desc').value = line.service_description;
-                if (line.quantity != null) lastRow.querySelector('.ml-qty').value = line.quantity;
-                if (line.uom) lastRow.querySelector('.ml-uom').value = line.uom;
-                if (line.revised_rate != null) lastRow.querySelector('.ml-rate').value = line.revised_rate;
+                lastRow.querySelector('.ml-desc').value   = line.service_name || '';
+                lastRow.querySelector('.ml-sac').value    = line.sac_code || '';
+                lastRow.querySelector('.ml-gl').value     = line.gl_code || '';
+                lastRow.querySelector('.ml-amount').value = line.line_amount || 0;
+                // Reconstruct GST % from stored rates
+                const cgstR = parseFloat(line.cgst_rate || 0);
+                const sgstR = parseFloat(line.sgst_rate || 0);
+                const igstR = parseFloat(line.igst_rate || 0);
+                const totalGst = cgstR + sgstR + igstR;
+                lastRow.querySelector('.ml-gstpct').value = totalGst;
                 recalcManualLine(lastRow.id);
             }
         } else {
@@ -698,41 +699,46 @@
             // Collect manual line rows
             const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
             const lines = [];
+            const intra = _isIntraState();
             rows.forEach(tr => {
-                const sel = tr.querySelector('.ml-service');
-                const opt = sel ? sel.options[sel.selectedIndex] : null;
-                if (!opt || !opt.value) return;
+                const desc = tr.querySelector('.ml-desc').value.trim();
+                if (!desc) return;
+                const amount  = round2(parseFloat(tr.querySelector('.ml-amount').value) || 0);
+                if (amount === 0) return;
+                const gstPct  = parseFloat(tr.querySelector('.ml-gstpct').value) || 0;
+                const sacCode = tr.querySelector('.ml-sac').value.trim();
+                const glCode  = tr.querySelector('.ml-gl').value.trim();
 
-                const qty  = parseFloat(tr.querySelector('.ml-qty').value)||0;
-                const rate = parseFloat(tr.querySelector('.ml-rate').value)||0;
-                const la   = round2(qty * rate);
-                const gst  = getManualLineGst(tr);
-                const cgst = round2(la * gst.cgst / 100);
-                const sgst = round2(la * gst.sgst / 100);
-                const igst = round2(la * gst.igst / 100);
-                const lt   = round2(la + cgst + sgst + igst);
+                let cgstRate = 0, sgstRate = 0, igstRate = 0;
+                if (intra) { cgstRate = gstPct / 2; sgstRate = gstPct / 2; }
+                else       { igstRate = gstPct; }
+
+                const cgst = round2(amount * cgstRate / 100);
+                const sgst = round2(amount * sgstRate / 100);
+                const igst = round2(amount * igstRate / 100);
+                const lt   = round2(amount + cgst + sgst + igst);
 
                 lines.push({
                     invoice_line_id:     null,
-                    service_type_id:     parseInt(opt.value),
-                    service_name:        opt.text,
-                    service_description: tr.querySelector('.ml-desc').value.trim(),
-                    quantity:            qty,
-                    uom:                 tr.querySelector('.ml-uom').value.trim(),
+                    service_type_id:     null,
+                    service_name:        desc,
+                    service_description: '',
+                    quantity:            1,
+                    uom:                 '',
                     original_rate:       0,
-                    revised_rate:        rate,
-                    rate_difference:     rate,
-                    line_amount:         la,
-                    gst_rate_id:         gst.gstRateId || null,
-                    cgst_rate:           gst.cgst,
-                    sgst_rate:           gst.sgst,
-                    igst_rate:           gst.igst,
+                    revised_rate:        amount,
+                    rate_difference:     amount,
+                    line_amount:         amount,
+                    gst_rate_id:         null,
+                    cgst_rate:           cgstRate,
+                    sgst_rate:           sgstRate,
+                    igst_rate:           igstRate,
                     cgst_amount:         cgst,
                     sgst_amount:         sgst,
                     igst_amount:         igst,
                     line_total:          lt,
-                    gl_code:             gst.glCode,
-                    sac_code:            gst.sacCode,
+                    gl_code:             glCode,
+                    sac_code:            sacCode,
                     remarks:             '',
                 });
             });
@@ -912,12 +918,10 @@
             if (sectionSubtitle) sectionSubtitle.textContent = 'Add line items manually. Doc type (DN/CN) is set above.';
             thead.innerHTML = `<tr>
                 <th></th>
-                <th>Service Type</th>
                 <th>Description</th>
-                <th style="width:70px">Qty</th>
-                <th style="width:50px">UOM</th>
-                <th style="width:90px">Rate</th>
-                <th style="width:100px">Amount</th>
+                <th style="width:65px">SAC Code</th>
+                <th style="width:65px">GL Code</th>
+                <th style="width:110px">Taxable Amount</th>
                 <th style="width:60px">GST %</th>
                 <th style="width:80px">CGST</th>
                 <th style="width:80px">SGST</th>
@@ -951,43 +955,29 @@
         }
     }
 
-    let serviceTypesList = [];
-    async function getServiceTypes() {
-        if (serviceTypesList.length) return serviceTypesList;
-        const res = await fetch('/api/module/FIN01/service-types');
-        const data = await res.json();
-        serviceTypesList = data.data || data;
-        return serviceTypesList;
-    }
+    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 
-    async function addManualLine() {
-        const services = await getServiceTypes();
+    function addManualLine() {
         const tbody = document.getElementById('linesBody');
         const rowId = 'ml_' + Date.now();
-
-        const opts = services.map(s =>
-            `<option value="${s.id}"
-                data-cgst="${s.cgst_rate||0}"
-                data-sgst="${s.sgst_rate||0}"
-                data-igst="${s.igst_rate||0}"
-                data-gst-rate-id="${s.gst_rate_id||''}"
-                data-gl="${s.gl_code||''}"
-                data-sac="${s.sac_code||''}"
-                data-uom="${s.uom||''}">${esc(s.service_name)}</option>`
-        ).join('');
-
         const tr = document.createElement('tr');
         tr.id = rowId;
         tr.innerHTML = `
             <td></td>
-            <td><select class="ml-service" style="width:100%;font-size:11px;" onchange="onManualServiceChange(this,'${rowId}')">
-                <option value="">-- Select --</option>${opts}</select></td>
             <td><input class="ml-desc" type="text" style="width:100%;font-size:11px;" placeholder="Description"></td>
-            <td><input class="ml-qty" type="number" step="0.01" min="0" style="width:100%;font-size:11px;text-align:right;" oninput="recalcManualLine('${rowId}')" value="0"></td>
-            <td><input class="ml-uom" type="text" style="width:100%;font-size:11px;" placeholder="UOM"></td>
-            <td><input class="ml-rate" type="number" step="0.01" min="0" style="width:100%;font-size:11px;text-align:right;" oninput="recalcManualLine('${rowId}')" value="0"></td>
-            <td class="ml-amount" style="text-align:right;font-weight:600">0.00</td>
-            <td class="ml-gstpct" style="text-align:right">0%</td>
+            <td><input class="ml-sac" type="text" style="width:100%;font-size:11px;" placeholder="SAC Code"></td>
+            <td><input class="ml-gl" type="text" style="width:100%;font-size:11px;" placeholder="GL Code"></td>
+            <td><input class="ml-amount" type="number" step="0.01" min="0" style="width:100%;font-size:11px;text-align:right;" oninput="recalcManualLine('${rowId}')" value="0"></td>
+            <td>
+                <select class="ml-gstpct" style="width:100%;font-size:11px;" onchange="recalcManualLine('${rowId}')">
+                    <option value="0">0%</option>
+                    <option value="5">5%</option>
+                    <option value="9">9%</option>
+                    <option value="12">12%</option>
+                    <option value="18" selected>18%</option>
+                    <option value="28">28%</option>
+                </select>
+            </td>
             <td class="ml-cgst" style="text-align:right">0.00</td>
             <td class="ml-sgst" style="text-align:right">0.00</td>
             <td class="ml-igst" style="text-align:right">0.00</td>
@@ -997,44 +987,27 @@
         tbody.appendChild(tr);
     }
 
-    function onManualServiceChange(sel, rowId) {
-        const opt = sel.options[sel.selectedIndex];
-        const tr = document.getElementById(rowId);
-        if (tr) tr.querySelector('.ml-uom').value = opt.getAttribute('data-uom') || '';
-        recalcManualLine(rowId);
+    function _isIntraState() {
+        const sc = (document.getElementById('customerGstStateCode')?.value || '').trim();
+        return !sc || sc === '27';
     }
-
-    function getManualLineGst(tr) {
-        const sel = tr.querySelector('.ml-service');
-        if (!sel) return {cgst:0,sgst:0,igst:0,gstRateId:'',glCode:'',sacCode:''};
-        const opt = sel.options[sel.selectedIndex];
-        return {
-            cgst:      parseFloat(opt.getAttribute('data-cgst')||0),
-            sgst:      parseFloat(opt.getAttribute('data-sgst')||0),
-            igst:      parseFloat(opt.getAttribute('data-igst')||0),
-            gstRateId: opt.getAttribute('data-gst-rate-id')||'',
-            glCode:    opt.getAttribute('data-gl')||'',
-            sacCode:   opt.getAttribute('data-sac')||'',
-        };
-    }
-
-    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 
     function recalcManualLine(rowId) {
         const tr = document.getElementById(rowId);
         if (!tr) return;
-        const qty  = parseFloat(tr.querySelector('.ml-qty').value)||0;
-        const rate = parseFloat(tr.querySelector('.ml-rate').value)||0;
-        const la   = round2(qty * rate);
-        const gst  = getManualLineGst(tr);
-        const cgst = round2(la * gst.cgst / 100);
-        const sgst = round2(la * gst.sgst / 100);
-        const igst = round2(la * gst.igst / 100);
-        const lt   = round2(la + cgst + sgst + igst);
-        const pct  = gst.cgst + gst.sgst + gst.igst;
+        const amount  = parseFloat(tr.querySelector('.ml-amount').value) || 0;
+        const gstPct  = parseFloat(tr.querySelector('.ml-gstpct').value) || 0;
+        const intra   = _isIntraState();
 
-        tr.querySelector('.ml-amount').textContent    = la.toFixed(2);
-        tr.querySelector('.ml-gstpct').textContent    = pct + '%';
+        let cgst = 0, sgst = 0, igst = 0;
+        if (intra) {
+            cgst = round2(amount * (gstPct / 2) / 100);
+            sgst = round2(amount * (gstPct / 2) / 100);
+        } else {
+            igst = round2(amount * gstPct / 100);
+        }
+        const lt = round2(amount + cgst + sgst + igst);
+
         tr.querySelector('.ml-cgst').textContent      = cgst.toFixed(2);
         tr.querySelector('.ml-sgst').textContent      = sgst.toFixed(2);
         tr.querySelector('.ml-igst').textContent      = igst.toFixed(2);
@@ -1047,10 +1020,10 @@
         if (entryType === 'manual') {
             let subtotal=0, cgst=0, sgst=0, igst=0;
             document.querySelectorAll('#linesBody tr[id^="ml_"]').forEach(tr => {
-                subtotal += parseFloat(tr.querySelector('.ml-amount')?.textContent)||0;
-                cgst     += parseFloat(tr.querySelector('.ml-cgst')?.textContent)||0;
-                sgst     += parseFloat(tr.querySelector('.ml-sgst')?.textContent)||0;
-                igst     += parseFloat(tr.querySelector('.ml-igst')?.textContent)||0;
+                subtotal += parseFloat(tr.querySelector('.ml-amount')?.value)    || 0;
+                cgst     += parseFloat(tr.querySelector('.ml-cgst')?.textContent)|| 0;
+                sgst     += parseFloat(tr.querySelector('.ml-sgst')?.textContent)|| 0;
+                igst     += parseFloat(tr.querySelector('.ml-igst')?.textContent)|| 0;
             });
             document.getElementById('totalSubtotal').textContent = subtotal.toFixed(2);
             document.getElementById('totalCGST').textContent = cgst.toFixed(2);
