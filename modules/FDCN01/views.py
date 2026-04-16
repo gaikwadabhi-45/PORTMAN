@@ -87,6 +87,10 @@ def print_view(fdcn_id):
     header = model.get_fdcn_by_id(fdcn_id)
     if not header:
         return 'Document not found', 404
+    # Convert date objects to ISO strings so templates can subscript/slice them
+    for _field in ('doc_date', 'original_invoice_date'):
+        if header.get(_field) and not isinstance(header[_field], str):
+            header[_field] = header[_field].strftime('%Y-%m-%d')
     lines = model.get_fdcn_lines(fdcn_id)
     sac_summary = model.get_fdcn_sac_summary(fdcn_id)
 
