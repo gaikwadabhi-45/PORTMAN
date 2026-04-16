@@ -468,6 +468,14 @@
     <div class="items-section">
         <table class="items-table">
             <thead>
+                {% if header.creation_type == 'manual' %}
+                <tr>
+                    <th style="width:28px; text-align:center;">Sl.No</th>
+                    <th>Description Of Service</th>
+                    <th style="width:56px;">SAC Code</th>
+                    <th style="width:90px;" class="num">Amount(Rs)</th>
+                </tr>
+                {% else %}
                 <tr>
                     <th style="width:28px; text-align:center;">Sl.No</th>
                     <th>Description Of Service</th>
@@ -479,9 +487,23 @@
                     <th style="width:58px;" class="num">Diff</th>
                     <th style="width:78px;" class="num">Amount(Rs)</th>
                 </tr>
+                {% endif %}
             </thead>
             <tbody>
                 {% for line in lines %}
+                {% if header.creation_type == 'manual' %}
+                <tr>
+                    <td style="text-align:center;">{{ loop.index }}</td>
+                    <td>
+                        {{ line.service_name }}
+                        {% if line.service_description and line.service_description != line.service_name %}
+                        <br><span style="font-size:7px;color:#555;">{{ line.service_description }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ line.sac_code or '—' }}</td>
+                    <td class="num">{{ "%.2f"|format(line.line_amount|float) }}</td>
+                </tr>
+                {% else %}
                 <tr>
                     <td style="text-align:center;">{{ loop.index }}</td>
                     <td>
@@ -498,11 +520,16 @@
                     <td class="num">{{ "%.2f"|format(line.rate_difference|float) }}</td>
                     <td class="num">{{ "%.2f"|format(line.line_amount|float) }}</td>
                 </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr class="subtotal-row">
+                    {% if header.creation_type == 'manual' %}
+                    <td colspan="3" style="text-align:right; border-right:1px solid #000;">Sub Total</td>
+                    {% else %}
                     <td colspan="8" style="text-align:right; border-right:1px solid #000;">Sub Total</td>
+                    {% endif %}
                     <td class="num">{{ "%.2f"|format(sub) }}</td>
                 </tr>
             </tfoot>
