@@ -54,8 +54,12 @@ def reset_billing(skip_confirm=False, delete_eu=False):
             conn.rollback()
             print(f'  {label:30s}: (table not found)')
 
-    cur.execute('SELECT COUNT(*) as cnt FROM lueu_lines')
-    print(f'  {"EU Lines (total)":30s}: {cur.fetchone()["cnt"]}')
+    try:
+        cur.execute('SELECT COUNT(*) as cnt FROM lueu_lines')
+        print(f'  {"EU Lines (total)":30s}: {cur.fetchone()["cnt"]}')
+    except Exception:
+        conn.rollback()
+        print(f'  {"EU Lines (total)":30s}: (table not found)')
 
     try:
         cur.execute('SELECT COUNT(*) as cnt FROM service_records WHERE is_billed = 1 OR bill_id IS NOT NULL')
@@ -80,8 +84,10 @@ def reset_billing(skip_confirm=False, delete_eu=False):
     print('\n=== Resetting Billing Data ===')
 
     # Step 1: Reset cargo declaration tables to unbilled
+    # Each table uses a savepoint so a failure on one doesn't roll back the others.
     for tbl in ('vcn_cargo_declaration', 'vcn_export_cargo_declaration', 'mbc_customer_details'):
         try:
+            cur.execute(f'SAVEPOINT sp_{tbl}')
             cur.execute(f'''
                 UPDATE {tbl}
                 SET is_billed = 0,
@@ -91,11 +97,12 @@ def reset_billing(skip_confirm=False, delete_eu=False):
             ''')
             print(f'  Reset {cur.rowcount} rows in {tbl} to unbilled')
         except Exception as e:
-            conn.rollback()
+            cur.execute(f'ROLLBACK TO SAVEPOINT sp_{tbl}')
             print(f'  ({tbl} reset failed: {e})')
 
     # Step 2: Reset service_records to unbilled
     try:
+        cur.execute('SAVEPOINT sp_service_records')
         cur.execute('''
             UPDATE service_records
             SET is_billed = 0,
@@ -104,7 +111,7 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         ''')
         print(f'  Reset {cur.rowcount} service records to unbilled')
     except Exception:
-        conn.rollback()
+        cur.execute('ROLLBACK TO SAVEPOINT sp_service_records')
         print('  (service_records table not found, skipping)')
 
     # Step 3: Delete debit/credit notes (child tables cascade)

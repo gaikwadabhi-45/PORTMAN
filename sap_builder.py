@@ -1,52 +1,53 @@
 """
-SAP DynaportInvoice JSON Payload Builder.
+SAP Inbound Interface JSON Payload Builder.
+Spec: docs/plans/2026-04-08-sap-inbound-interface-requirements.md  (v1.0)
 
-Staging table structure (as per spec):
-
-Header:
-  Invoice_Type       I=Invoice/DN, C=Credit Note
+Header fields (Portbird sends):
+  Invoice_Type           I=Invoice/DN/Reversal-of-Invoice, C=Credit Note/Reversal-of-CN
   Company_Code
-  Document_Date      (Invoice Date)
-  Posting_Date
-  Reference_Text     16 char — unique primary field
-  Document_Type      Y1 / Y2 — unique primary field
-  Cancellation_Flag  'X' for reversal — unique primary field
-  Customer_Code      10 char
-  Invoice_Amount     13 curr
-  Currency           INR
+  Invoice_Date           DD.MM.YYYY
+  Posting_Date           DD.MM.YYYY (= Invoice_Date)
+  Reference_Text         16 char — PMS doc number; for reversals: original SAP Document_Number
+  Document_Type          DR (Invoice/DN) / DG (Credit Note)
+  Cancellation_Flag      'X' for reversals, blank otherwise
+  Nature_of_transaction  B2B / B2C
+  Service_Sale           S=Service, A=Sale
+  Customer_Code          10 char
+  Invoice_Amount         13 curr (taxable + GST - TDS + TCS, always positive)
+  Currency               INR
   Business_Place
   Section_Code
-  Payment_Term       4 char
-  Baseline_Date
-  Doc_Header_Text    25 char
+  Payment_Term           4 char
+  Baseline_Date          DD.MM.YYYY
+  Header_Text            25 char
 
-Line Item:
-  Service_Code       GL Account 10 char
-  Amount             GL Amount ±13 curr (taxable)
+Line Item fields (not sent for reversals):
+  GL_Account         SAP GL account 10 char
+  GL_Amount          taxable line amount, always positive 13 curr
   Plant
-  Text               Text Description 25 char
-  IGST_GL            IGST GL account 10 char
-  IGST_AMT
-  CGST_GL            CGST GL account 10 char
-  CGST_AMT
-  SGST_GL            SGST GL account 10 char
-  SGST_AMT
+  Profit_Center
+  Text_Description   25 char
+  Tax_Code
+  IGST_GL            10 char (blank if zero)
+  IGST_Amount        blank if zero
+  SGST_GL            10 char (blank if zero)
+  SGST_Amount        blank if zero
+  CGST_GL            10 char (blank if zero)
+  CGST_Amount        blank if zero
+  HSN_or_SAC_code    16 char
   UOM
   Unit_Price
   Quantity
-  SERVICE_SALE       S=Service, A=Sale
-  HSN_SAC            16 char
-  Tax_Amount         total GST (CGST+SGST+IGST)
   TDS_GL
-  TDS_Amount         ±13 curr
+  TDS_Amount         blank if zero
   TCS_GL
-  TCS_Amount         ±13 curr
+  TCS_Amount         blank if zero
   Round_off_GL
-  Rounding_off       ±13 curr
+  Round_off_Value    ±13 curr (only signed field; blank if zero)
 
-Auto (SAP fills):
+Auto (SAP fills — Portbird does NOT send):
   Processing_Status, Fiscal_Year, Fiscal_Period, Push_Date, Push_Time,
-  Document_Number, Message, IRN_No, Ack_No, IRN_Date
+  Document_Number, Message, IRN_Number, Acknowledgement_Number, IRN_Date, QR_Code
 """
 from datetime import datetime
 from database import get_db, get_cursor
@@ -181,7 +182,8 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
 
     GL source for IGST/CGST/SGST: service master only (sap_igst_gl / sap_cgst_gl / sap_sgst_gl).
     GL source for TDS/TCS:        service master → SAP config fallback (tds_gl / tcs_gl).
-    Plant / Business_Place / Section_Code: SAP config defaults only (never customer company_code).
+    Plant / Section_Code / Business_Place are header-level only in the new spec;
+    Plant is still sent per line as required by SAP PI.
     """
     config_defaults = config_defaults or {}
 
@@ -196,14 +198,14 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
         cgst    = float(line.get('cgst_amount') or 0)
         sgst    = float(line.get('sgst_amount') or 0)
         igst    = float(line.get('igst_amount') or 0)
-        tax_total = cgst + sgst + igst
 
         svc_code = line.get('service_code') or ''
         svc      = svc_map.get(svc_code, {})
 
+        # GL_Account: use sap_gl_account from service master, fall back to service_code
+        gl_account = svc.get('sap_gl_account') or svc_code
+
         plant = line.get('plant') or config_defaults.get('plant_code') or ''
-        bp    = line.get('business_place') or config_defaults.get('business_place') or ''
-        sc    = line.get('section_code')   or config_defaults.get('section_code')   or ''
 
         igst_gl = svc.get('sap_igst_gl') or ''
         cgst_gl = svc.get('sap_cgst_gl') or ''
@@ -219,32 +221,28 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
         round_off_gl = config_defaults.get('round_off_gl') or ''
 
         items.append({
-            'Service_Code':   svc_code[:10],
-            'Amount':         _fmt_amount_required(taxable),
-            'Plant':          plant,
-            'Text':           (line.get('service_name') or '')[:25],
-            'IGST_GL':        igst_gl[:10] if igst_gl else '',
-            'IGST_AMT':       _fmt_amount(igst),
-            'CGST_GL':        cgst_gl[:10] if cgst_gl else '',
-            'CGST_AMT':       _fmt_amount(cgst),
-            'SGST_GL':        sgst_gl[:10] if sgst_gl else '',
-            'SGST_AMT':       _fmt_amount(sgst),
-            'UOM':            uom,
-            'Unit_Price':     _fmt_amount(float(unit_price)) if unit_price else '',
-            'Quantity':       str(quantity) if quantity else '',
-            'HSN_SAC':        (line.get('sac_code') or line.get('hsn_sac') or '')[:16],
-            'Tax_Amount':     _fmt_amount(tax_total),
-            'TDS_GL':         tds_gl,
-            'TDS_Amount':     _fmt_amount(line.get('tds_amount')),
-            'TCS_GL':         tcs_gl,
-            'TCS_Amount':     _fmt_amount(line.get('tcs_amount')),
-            'Round_off_GL':   round_off_gl,
-            'Rounding_off':   _fmt_amount(line.get('rounding_off')),
-            # SAP FB70 posting extras (kept for PI interface compatibility)
-            'Business_Place': bp,
-            'Section_Code':   sc,
-            'Tax_Code':       line.get('sap_tax_code') or config_defaults.get('tax_code') or '',
-            'Profit_Center':  line.get('profit_center') or config_defaults.get('profit_center') or '',
+            'GL_Account':       gl_account[:10],
+            'GL_Amount':        _fmt_amount_required(taxable),
+            'Plant':            plant,
+            'Profit_Center':    line.get('profit_center') or config_defaults.get('profit_center') or '',
+            'Text_Description': (line.get('service_name') or '')[:25],
+            'Tax_Code':         line.get('sap_tax_code') or config_defaults.get('tax_code') or '',
+            'IGST_GL':          igst_gl[:10] if igst_gl else '',
+            'IGST_Amount':      _fmt_amount(igst),
+            'SGST_GL':          sgst_gl[:10] if sgst_gl else '',
+            'SGST_Amount':      _fmt_amount(sgst),
+            'CGST_GL':          cgst_gl[:10] if cgst_gl else '',
+            'CGST_Amount':      _fmt_amount(cgst),
+            'HSN_or_SAC_code':  (line.get('sac_code') or line.get('hsn_sac') or '')[:16],
+            'UOM':              uom,
+            'Unit_Price':       _fmt_amount(float(unit_price)) if unit_price else '',
+            'Quantity':         str(quantity) if quantity else '',
+            'TDS_GL':           tds_gl,
+            'TDS_Amount':       _fmt_amount(line.get('tds_amount')),
+            'TCS_GL':           tcs_gl,
+            'TCS_Amount':       _fmt_amount(line.get('tcs_amount')),
+            'Round_off_GL':     round_off_gl,
+            'Round_off_Value':  _fmt_amount(line.get('rounding_off')),
         })
     return items
 
@@ -295,11 +293,13 @@ def build_invoice_payload(invoice_header, invoice_lines):
     record = {
         'Invoice_Type':          'I',
         'Company_Code':          company,
-        'Document_Date':         inv_date,
+        'Invoice_Date':          inv_date,
         'Posting_Date':          inv_date,
-        'Document_Type':         'DR',
         'Reference_Text':        (invoice_header.get('invoice_number') or '')[:16],
+        'Document_Type':         'DR',
         'Cancellation_Flag':     '',
+        'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
+        'Service_Sale':          _service_sale_flag(invoice_lines, svc_map),
         'Customer_Code':         (invoice_header.get('customer_gl_code') or '')[:10],
         'Invoice_Amount':        _fmt_amount_required(
                                      _total_invoice_amount(invoice_header, invoice_lines)
@@ -309,14 +309,7 @@ def build_invoice_payload(invoice_header, invoice_lines):
         'Section_Code':          section_code,
         'Payment_Term':          payment_term,
         'Baseline_Date':         inv_date,
-        'Doc_Header_Text':       (invoice_header.get('invoice_number') or '')[:25],
-        'SERVICE_SALE':          _service_sale_flag(invoice_lines, svc_map),
-        'IRN_No':                invoice_header.get('irn') or '',
-        'Ack_No':                str(invoice_header.get('ack_number') or ''),
-        'IRN_Date':              _fmt_date(invoice_header.get('irn_date')) if invoice_header.get('irn_date') else '',
-        'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
-        'TDS_Amount':            _fmt_amount(invoice_header.get('tds_amount')),
-        'TCS_Amount':            _fmt_amount(invoice_header.get('tcs_amount')),
+        'Header_Text':           (invoice_header.get('invoice_number') or '')[:25],
         'Item':                  _build_items(invoice_lines, company, config_defaults=config, svc_map=svc_map),
     }
 
@@ -371,11 +364,13 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     record = {
         'Invoice_Type':          invoice_type,
         'Company_Code':          company,
-        'Document_Date':         doc_date,
+        'Invoice_Date':          doc_date,
         'Posting_Date':          doc_date,
-        'Document_Type':         sap_doc_type,
         'Reference_Text':        (fdcn_header.get('doc_number') or '')[:16],
+        'Document_Type':         sap_doc_type,
         'Cancellation_Flag':     '',
+        'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
+        'Service_Sale':          _service_sale_flag(enriched_lines, svc_map),
         'Customer_Code':         (fdcn_header.get('customer_gl_code') or '')[:10],
         'Invoice_Amount':        _fmt_amount_required(
                                      _total_invoice_amount(fdcn_header, enriched_lines)
@@ -385,15 +380,8 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Section_Code':          section_code,
         'Payment_Term':          payment_term,
         'Baseline_Date':         doc_date,
-        'Doc_Header_Text':       (fdcn_header.get('doc_number') or '')[:25],
-        'SERVICE_SALE':          _service_sale_flag(enriched_lines, svc_map),
-        'IRN_No':                fdcn_header.get('gst_irn') or '',
-        'Ack_No':                str(fdcn_header.get('gst_ack_number') or ''),
-        'IRN_Date':              _fmt_date(irn_date_raw) if irn_date_raw else '',
-        'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
+        'Header_Text':           (fdcn_header.get('doc_number') or '')[:25],
         'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
-        'TDS_Amount':            _fmt_amount(fdcn_header.get('tds_amount')),
-        'TCS_Amount':            _fmt_amount(fdcn_header.get('tcs_amount')),
         'Item':                  _build_items(enriched_lines, company, config_defaults=config, svc_map=svc_map),
     }
 
@@ -413,8 +401,10 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
         or ''
     )
     payload['Record']['Reference_Text']    = original_ref[:16]
-    payload['Record']['Doc_Header_Text']   = f"REV {original_ref}"[:25]
+    payload['Record']['Header_Text']       = f"REV {original_ref}"[:25]
     payload['Record']['Cancellation_Flag'] = 'X'
     # Invoice_Type stays 'I' — it's a reversal of an invoice, not a credit note
+    # Spec: reversals send header fields only — no Item array
+    payload['Record'].pop('Item', None)
 
     return payload

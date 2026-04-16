@@ -1025,49 +1025,61 @@ def _build_sample_payload(invoice, lines, cancel=False):
             pass
 
     total = float(invoice.get('total_amount') or 0)
-    items = []
-    for l in lines:
-        cgst = float(l.get('cgst_amount') or 0)
-        sgst = float(l.get('sgst_amount') or 0)
-        igst = float(l.get('igst_amount') or 0)
-        items.append({
-            'Service_Code': l.get('service_code') or l.get('gl_code') or '',
-            'CGST_AMT': f'{cgst:.2f}' if cgst else '',
-            'SGST_AMT': f'{sgst:.2f}' if sgst else '',
-            'IGST_AMT': f'{igst:.2f}' if igst else '',
-            'Amount': f'{float(l.get("line_amount") or 0):.2f}',
-            'Text': (l.get('service_name') or '')[:50],
-            'Plant': '5130',
-            'Business_Place': '5130',
-            'Section_Code': '5130',
-            'Tax_Code': l.get('sap_tax_code') or '',
-            'Profit_Center': '',
-            'HSN_SAC': l.get('sac_code') or l.get('hsn_sac') or '',
-            'TDS_Amount': f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
-            'TCS_Amount': f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
-            'Rounding_off': '',
-        })
-
     gstin = invoice.get('customer_gstin') or ''
+
+    items = []
+    if not cancel:
+        for l in lines:
+            cgst = float(l.get('cgst_amount') or 0)
+            sgst = float(l.get('sgst_amount') or 0)
+            igst = float(l.get('igst_amount') or 0)
+            items.append({
+                'GL_Account':       l.get('service_code') or l.get('gl_code') or '',
+                'GL_Amount':        f'{float(l.get("line_amount") or 0):.2f}',
+                'Plant':            '5130',
+                'Profit_Center':    '',
+                'Text_Description': (l.get('service_name') or '')[:25],
+                'Tax_Code':         l.get('sap_tax_code') or '',
+                'IGST_GL':          '',
+                'IGST_Amount':      f'{igst:.2f}' if igst else '',
+                'SGST_GL':          '',
+                'SGST_Amount':      f'{sgst:.2f}' if sgst else '',
+                'CGST_GL':          '',
+                'CGST_Amount':      f'{cgst:.2f}' if cgst else '',
+                'HSN_or_SAC_code':  l.get('sac_code') or l.get('hsn_sac') or '',
+                'UOM':              '',
+                'Unit_Price':       '',
+                'Quantity':         '',
+                'TDS_GL':           '',
+                'TDS_Amount':       f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
+                'TCS_GL':           '',
+                'TCS_Amount':       f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
+                'Round_off_GL':     '',
+                'Round_off_Value':  '',
+            })
+
+    inv_num = invoice.get('invoice_number') or ''
     record = {
-        'Company_Code': '5130',
-        'Document_Date': inv_date,
-        'Posting_Date': inv_date,
-        'Document_Type': 'Y1',
-        'Reference_Text': (invoice.get('invoice_number') or '')[:16],
-        'Doc_Header_Text': (f"REV {invoice.get('invoice_number', '')}" if cancel else invoice.get('invoice_number', ''))[:25],
-        'Currency': invoice.get('currency_code') or 'INR',
-        'Customer_Code': invoice.get('customer_gl_code') or '',
-        'Payment_Term': '',
-        'Baseline_Date': inv_date,
-        'Invoice_Amount': f'{total:.2f}',
-        'IRN_No': invoice.get('gst_irn') or '',
-        'Ack_No': str(invoice.get('gst_ack_number') or ''),
-        'IRN_Date': '',
+        'Invoice_Type':          'I',
+        'Company_Code':          '5130',
+        'Invoice_Date':          inv_date,
+        'Posting_Date':          inv_date,
+        'Reference_Text':        inv_num[:16],
+        'Document_Type':         'DR',
+        'Cancellation_Flag':     'X' if cancel else '',
         'Nature_of_transaction': 'B2B' if gstin else 'B2C',
-        'Cancellation_Flag': 'X' if cancel else '',
-        'Item': items,
+        'Service_Sale':          'S',
+        'Customer_Code':         invoice.get('customer_gl_code') or '',
+        'Invoice_Amount':        f'{total:.2f}',
+        'Currency':              invoice.get('currency_code') or 'INR',
+        'Business_Place':        '5130',
+        'Section_Code':          '5130',
+        'Payment_Term':          '',
+        'Baseline_Date':         inv_date,
+        'Header_Text':           (f"REV {inv_num}" if cancel else inv_num)[:25],
     }
+    if not cancel:
+        record['Item'] = items
     return {'Record': record}
 
 
