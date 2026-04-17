@@ -1073,7 +1073,7 @@ async function loadLdudVessels() {
 }
 
 async function openVessel(id, docNum) {
-    if (!confirm(`Reset "${docNum}" back to Draft? This will allow editing again.`)) return;
+    if (!confirm(`Reset "${docNum}" back to Draft?\n\nThis will also permanently delete all Proof of Quantity documents uploaded for this vessel.`)) return;
     const res = await fetch('/admin/api/ldud/open_vessel', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -1081,6 +1081,8 @@ async function openVessel(id, docNum) {
     });
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
+    const removed = data.docs_removed || 0;
+    if (removed > 0) alert(`Vessel reset to Draft. ${removed} proof document(s) deleted.`);
     loadLdudVessels();
 }
 

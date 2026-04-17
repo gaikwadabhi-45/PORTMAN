@@ -28,23 +28,40 @@ def save_config(data, updated_by=None):
     if row_id:
         cur.execute('''UPDATE sap_api_config SET
             base_url=%s, token_url=%s, client_id=%s, client_secret=%s,
-            company_code=%s, payment_term=%s, is_active=%s,
-            updated_by=%s, updated_date=%s
+            company_code=%s, payment_term=%s,
+            business_place=%s, section_code=%s, plant_code=%s,
+            tax_code=%s, profit_center=%s,
+            tds_gl=%s, tcs_gl=%s, round_off_gl=%s,
+            is_active=%s, updated_by=%s, updated_date=%s
             WHERE id=%s''', [
             data.get('base_url'), data.get('token_url'),
             data.get('client_id'), data.get('client_secret'),
             data.get('company_code'), data.get('payment_term'),
+            data.get('business_place') or None, data.get('section_code') or None,
+            data.get('plant_code') or None,
+            data.get('tax_code') or None, data.get('profit_center') or None,
+            data.get('tds_gl') or None, data.get('tcs_gl') or None,
+            data.get('round_off_gl') or None,
             data.get('is_active', 0), updated_by, now, row_id
         ])
     else:
         cur.execute('''INSERT INTO sap_api_config
             (environment, base_url, token_url, client_id, client_secret,
-             company_code, payment_term, is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             company_code, payment_term,
+             business_place, section_code, plant_code,
+             tax_code, profit_center,
+             tds_gl, tcs_gl, round_off_gl,
+             is_active, created_by, created_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id''', [
             data.get('environment'), data.get('base_url'), data.get('token_url'),
             data.get('client_id'), data.get('client_secret'),
             data.get('company_code'), data.get('payment_term'),
+            data.get('business_place') or None, data.get('section_code') or None,
+            data.get('plant_code') or None,
+            data.get('tax_code') or None, data.get('profit_center') or None,
+            data.get('tds_gl') or None, data.get('tcs_gl') or None,
+            data.get('round_off_gl') or None,
             data.get('is_active', 0), updated_by, now
         ])
         row_id = cur.fetchone()['id']

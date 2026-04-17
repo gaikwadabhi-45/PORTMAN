@@ -1016,7 +1016,10 @@ def create_cancellation_cn():
 
 
 def _build_sample_payload(invoice, lines, cancel=False):
-    """Fallback sample payload when SAP config is not yet configured."""
+    """Fallback sample payload when SAP config is not yet configured.
+    Mirrors sap_builder field set exactly — pulls SAP customer code from the
+    customer master and service GL fields from FSTM01 so the exported JSON
+    reflects populated master data even without an active SAP API config."""
     inv_date = invoice.get('invoice_date') or ''
     if inv_date:
         try:
@@ -1027,31 +1030,43 @@ def _build_sample_payload(invoice, lines, cancel=False):
     total = float(invoice.get('total_amount') or 0)
     gstin = invoice.get('customer_gstin') or ''
 
+    cust_info = sap_builder._get_customer_sap_info(
+        invoice.get('customer_type'), invoice.get('customer_id')
+    )
+    company = cust_info.get('company_code') or '5130'
+    customer_code = cust_info.get('sap_customer_code') or invoice.get('customer_gl_code') or ''
+
+    svc_codes = {l.get('service_code') for l in lines if l.get('service_code')}
+    svc_map   = sap_builder._get_service_gl_map(svc_codes)
+
     items = []
     for l in lines:
+            svc = svc_map.get(l.get('service_code') or '', {})
             cgst = float(l.get('cgst_amount') or 0)
             sgst = float(l.get('sgst_amount') or 0)
             igst = float(l.get('igst_amount') or 0)
+            unit_price = l.get('unit_price') if l.get('unit_price') is not None else l.get('rate')
+            qty = l.get('quantity')
             items.append({
-                'GL_Account':       l.get('service_code') or l.get('gl_code') or '',
+                'GL_Account':       (svc.get('sap_gl_account') or l.get('service_code') or l.get('gl_code') or '')[:10],
                 'GL_Amount':        f'{float(l.get("line_amount") or 0):.2f}',
-                'Plant':            '5130',
-                'Profit_Center':    '',
+                'Plant':            company,
+                'Profit_Center':    l.get('profit_center') or svc.get('sap_profit_center') or '',
                 'Text_Description': (l.get('service_name') or '')[:25],
-                'Tax_Code':         l.get('sap_tax_code') or '',
-                'IGST_GL':          '',
+                'Tax_Code':         l.get('sap_tax_code') or svc.get('sap_tax_code') or '',
+                'IGST_GL':          (svc.get('sap_igst_gl') or '')[:10] if svc.get('sap_igst_gl') else '',
                 'IGST_Amount':      f'{igst:.2f}' if igst else '',
-                'SGST_GL':          '',
+                'SGST_GL':          (svc.get('sap_sgst_gl') or '')[:10] if svc.get('sap_sgst_gl') else '',
                 'SGST_Amount':      f'{sgst:.2f}' if sgst else '',
-                'CGST_GL':          '',
+                'CGST_GL':          (svc.get('sap_cgst_gl') or '')[:10] if svc.get('sap_cgst_gl') else '',
                 'CGST_Amount':      f'{cgst:.2f}' if cgst else '',
-                'HSN_or_SAC_code':  l.get('sac_code') or l.get('hsn_sac') or '',
-                'UOM':              '',
-                'Unit_Price':       '',
-                'Quantity':         '',
-                'TDS_GL':           '',
+                'HSN_or_SAC_code':  (l.get('sac_code') or l.get('hsn_sac') or '')[:16],
+                'UOM':              l.get('uom') or svc.get('uom') or '',
+                'Unit_Price':       f'{float(unit_price):.2f}' if unit_price is not None else '',
+                'Quantity':         f'{float(qty):.3f}' if qty is not None else '',
+                'TDS_GL':           svc.get('sap_tds_gl') or '',
                 'TDS_Amount':       f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
-                'TCS_GL':           '',
+                'TCS_GL':           svc.get('sap_tcs_gl') or '',
                 'TCS_Amount':       f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
                 'Round_off_GL':     '',
                 'Round_off_Value':  '',
@@ -1060,19 +1075,19 @@ def _build_sample_payload(invoice, lines, cancel=False):
     inv_num = invoice.get('invoice_number') or ''
     record = {
         'Invoice_Type':          'I',
-        'Company_Code':          '5130',
+        'Company_Code':          company,
         'Invoice_Date':          inv_date,
         'Posting_Date':          inv_date,
         'Reference_Text':        inv_num[:16],
         'Document_Type':         'DR',
         'Cancellation_Flag':     'X' if cancel else '',
         'Nature_of_transaction': 'B2B' if gstin else 'B2C',
-        'Service_Sale':          'S',
-        'Customer_Code':         invoice.get('customer_gl_code') or '',
+        'Service_Sale':          sap_builder._service_sale_flag(lines, svc_map),
+        'Customer_Code':         customer_code[:10],
         'Invoice_Amount':        f'{total:.2f}',
         'Currency':              invoice.get('currency_code') or 'INR',
-        'Business_Place':        '5130',
-        'Section_Code':          '5130',
+        'Business_Place':        company,
+        'Section_Code':          company,
         'Payment_Term':          '',
         'Baseline_Date':         inv_date,
         'Header_Text':           (f"REV {inv_num}" if cancel else inv_num)[:25],

@@ -67,8 +67,40 @@
             <input type="text" class="cfg-company-code" value="{{ cfg.company_code or '' }}" placeholder="e.g. 5171">
         </div>
         <div class="config-field">
-            <label>Payment Term</label>
-            <input type="text" class="cfg-payment-term" value="{{ cfg.payment_term or '' }}" placeholder="e.g. 51">
+            <label>Payment Term (4 char)</label>
+            <input type="text" class="cfg-payment-term" value="{{ cfg.payment_term or '' }}" placeholder="e.g. 0051" maxlength="4">
+        </div>
+        <div class="config-field">
+            <label>Business Place</label>
+            <input type="text" class="cfg-business-place" value="{{ cfg.business_place or '' }}" placeholder="defaults to Company Code">
+        </div>
+        <div class="config-field">
+            <label>Section Code</label>
+            <input type="text" class="cfg-section-code" value="{{ cfg.section_code or '' }}" placeholder="defaults to Company Code">
+        </div>
+        <div class="config-field">
+            <label>Plant Code</label>
+            <input type="text" class="cfg-plant-code" value="{{ cfg.plant_code or '' }}" placeholder="e.g. 5130">
+        </div>
+        <div class="config-field">
+            <label>Tax Code (default)</label>
+            <input type="text" class="cfg-tax-code" value="{{ cfg.tax_code or '' }}" placeholder="2-char MWSKZ fallback" maxlength="2">
+        </div>
+        <div class="config-field">
+            <label>Profit Center (default)</label>
+            <input type="text" class="cfg-profit-center" value="{{ cfg.profit_center or '' }}" placeholder="10-char PRCTR fallback">
+        </div>
+        <div class="config-field">
+            <label>TDS GL (default)</label>
+            <input type="text" class="cfg-tds-gl" value="{{ cfg.tds_gl or '' }}" placeholder="e.g. 2202000010">
+        </div>
+        <div class="config-field">
+            <label>TCS GL (default)</label>
+            <input type="text" class="cfg-tcs-gl" value="{{ cfg.tcs_gl or '' }}" placeholder="e.g. 2202000020">
+        </div>
+        <div class="config-field">
+            <label>Round-off GL</label>
+            <input type="text" class="cfg-round-off-gl" value="{{ cfg.round_off_gl or '' }}" placeholder="e.g. 4101090010">
         </div>
     </div>
     <div id="test-result-{{ cfg.environment }}" class="test-result"></div>
@@ -109,7 +141,15 @@
             client_id: panel.querySelector('.cfg-client-id').value,
             client_secret: panel.querySelector('.cfg-client-secret').value,
             company_code: panel.querySelector('.cfg-company-code').value,
-            payment_term: panel.querySelector('.cfg-payment-term').value
+            payment_term: panel.querySelector('.cfg-payment-term').value,
+            business_place: panel.querySelector('.cfg-business-place').value,
+            section_code: panel.querySelector('.cfg-section-code').value,
+            plant_code: panel.querySelector('.cfg-plant-code').value,
+            tax_code: panel.querySelector('.cfg-tax-code').value,
+            profit_center: panel.querySelector('.cfg-profit-center').value,
+            tds_gl: panel.querySelector('.cfg-tds-gl').value,
+            tcs_gl: panel.querySelector('.cfg-tcs-gl').value,
+            round_off_gl: panel.querySelector('.cfg-round-off-gl').value
         };
     }
 

@@ -90,22 +90,37 @@ def _fmt_amount_required(amount):
 # Lookup helpers
 # ---------------------------------------------------------------------------
 
-def _get_customer_company_code(customer_type, customer_id):
-    """Inter-company override: return customer's company_code if set."""
-    table_map = {
-        'Agent':            'vessel_agents',
-        'Customer':         'vessel_customers',
-        'ImporterExporter': 'vessel_importer_exporters',
-    }
-    table = table_map.get(customer_type)
-    if not table:
-        return None
+_CUSTOMER_TABLE_MAP = {
+    'Agent':            'vessel_agents',
+    'Customer':         'vessel_customers',
+    'ImporterExporter': 'vessel_importer_exporters',
+}
+
+
+def _get_customer_sap_info(customer_type, customer_id):
+    """
+    Fetch both sap_customer_code (for Customer_Code field) and company_code
+    (for inter-company override) in a single query.
+    Returns dict {sap_customer_code, company_code} or empty dict.
+    """
+    table = _CUSTOMER_TABLE_MAP.get(customer_type)
+    if not table or not customer_id:
+        return {}
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute(f'SELECT company_code FROM {table} WHERE id = %s', [customer_id])
+    cur.execute(
+        f'SELECT sap_customer_code, company_code FROM {table} WHERE id = %s',
+        [customer_id],
+    )
     row = cur.fetchone()
     conn.close()
-    return row['company_code'] if row and row.get('company_code') else None
+    return dict(row) if row else {}
+
+
+def _get_customer_company_code(customer_type, customer_id):
+    """Inter-company override: return customer's company_code if set."""
+    info = _get_customer_sap_info(customer_type, customer_id)
+    return info.get('company_code') or None
 
 
 def _nature_of_transaction(customer_gstin):
@@ -214,8 +229,8 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
         sgst_gl = svc.get('sap_sgst_gl') or ''
 
         uom        = line.get('uom')        or svc.get('uom')        or ''
-        unit_price = line.get('unit_price') or line.get('rate')       or ''
-        quantity   = line.get('quantity')   or ''
+        unit_price = line.get('unit_price') if line.get('unit_price') is not None else line.get('rate')
+        quantity   = line.get('quantity')
 
         # TDS/TCS GL: service master → SAP config fallback
         tds_gl       = svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or ''
@@ -252,8 +267,8 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
             'CGST_Amount':      _fmt_amount(cgst),
             'HSN_or_SAC_code':  (line.get('sac_code') or line.get('hsn_sac') or '')[:16],
             'UOM':              uom,
-            'Unit_Price':       _fmt_amount(float(unit_price)) if unit_price else '',
-            'Quantity':         str(quantity) if quantity else '',
+            'Unit_Price':       _fmt_amount_required(unit_price) if unit_price is not None else '',
+            'Quantity':         f'{float(quantity):.3f}' if quantity is not None else '',
             'TDS_GL':           tds_gl,
             'TDS_Amount':       _fmt_amount(line.get('tds_amount')),
             'TCS_GL':           tcs_gl,
@@ -297,11 +312,15 @@ def build_invoice_payload(invoice_header, invoice_lines):
     business_place  = config.get('business_place') or default_company
     section_code    = config.get('section_code')   or default_company
 
-    cust_company = _get_customer_company_code(
+    cust_info = _get_customer_sap_info(
         invoice_header.get('customer_type'),
         invoice_header.get('customer_id'),
     )
-    company  = cust_company or default_company
+    company  = cust_info.get('company_code') or default_company
+    # SAP Customer_Code must be the 10-char SAP customer number from the customer
+    # master (vessel_agents / vessel_customers / vessel_importer_exporters).
+    # Fall back to customer_gl_code only if master is not populated.
+    customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
     inv_date = _fmt_date(invoice_header.get('invoice_date'))
 
     svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
@@ -317,7 +336,7 @@ def build_invoice_payload(invoice_header, invoice_lines):
         'Cancellation_Flag':     '',
         'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
         'Service_Sale':          _service_sale_flag(invoice_lines, svc_map),
-        'Customer_Code':         (invoice_header.get('customer_gl_code') or '')[:10],
+        'Customer_Code':         customer_code[:10],
         'Invoice_Amount':        _fmt_amount_required(
                                      _total_invoice_amount(invoice_header, invoice_lines)
                                  ),
@@ -347,11 +366,12 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     business_place  = config.get('business_place') or default_company
     section_code    = config.get('section_code')   or default_company
 
-    cust_company = _get_customer_company_code(
+    cust_info = _get_customer_sap_info(
         fdcn_header.get('customer_type'),
         fdcn_header.get('customer_id'),
     )
-    company  = cust_company or default_company
+    company  = cust_info.get('company_code') or default_company
+    customer_code = cust_info.get('sap_customer_code') or fdcn_header.get('customer_gl_code') or ''
     doc_date = _fmt_date(fdcn_header.get('doc_date'))
     doc_type = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
 
@@ -388,7 +408,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Cancellation_Flag':     '',
         'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
         'Service_Sale':          _service_sale_flag(enriched_lines, svc_map),
-        'Customer_Code':         (fdcn_header.get('customer_gl_code') or '')[:10],
+        'Customer_Code':         customer_code[:10],
         'Invoice_Amount':        _fmt_amount_required(
                                      _total_invoice_amount(fdcn_header, enriched_lines)
                                  ),
