@@ -113,7 +113,7 @@
 </div>
 
 <script>
-addToRecent('FIN01', 'Billing & Invoicing');
+try { addToRecent('FIN01', 'Billing & Invoicing'); } catch(e) {}
 
 async function submitForApproval(id) {
     if (!confirm('Submit bill for approval?')) return;
