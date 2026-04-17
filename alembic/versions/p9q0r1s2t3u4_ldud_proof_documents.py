@@ -1,13 +1,13 @@
 """Add ldud_proof_documents table for Proof of Quantity uploads
 
-Revision ID: a1b2c3d4e5f6
-Revises: z6a7b8c9d0e1
+Revision ID: p9q0r1s2t3u4
+Revises: h3i4j5k6l7m8
 Create Date: 2026-04-17
 """
 from alembic import op
 
-revision = 'a1b2c3d4e5f6'
-down_revision = 'z6a7b8c9d0e1'
+revision = 'p9q0r1s2t3u4'
+down_revision = 'h3i4j5k6l7m8'
 branch_labels = None
 depends_on = None
 
