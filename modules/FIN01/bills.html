@@ -93,7 +93,7 @@
                     <button class="btn btn-primary" onclick="submitForApproval({{ row.id }})">Submit</button>
                     {% endif %}
                 {% elif row.bill_status == 'Pending Approval' and is_approver %}
-                    <button class="btn btn-success" onclick="approveBill({{ row.id }})">Approve</button>
+                    <button class="btn btn-success" onclick="openApproveModal({{ row.id }})">Approve</button>
                     <button class="btn status-rejected" onclick="rejectBill({{ row.id }})">Reject</button>
                 {% endif %}
             </td>
@@ -130,19 +130,51 @@ async function submitForApproval(id) {
     }
 }
 
-async function approveBill(id) {
-    if (!confirm('Approve this bill?')) return;
+let _approveBillId = null;
+
+async function openApproveModal(id) {
+    _approveBillId = id;
+    const modal    = document.getElementById('approveDocsModal');
+    const list     = document.getElementById('approveDocsList');
+    const checkbox = document.getElementById('approveDocsConfirm');
+    const btn      = document.getElementById('btnConfirmApprove');
+    list.innerHTML = '<span style="color:#718096;font-size:13px;">Loading documents…</span>';
+    checkbox.checked = false;
+    btn.disabled = true;
+    modal.style.display = 'flex';
+
+    const res  = await fetch(`/api/module/LDUD01/proof_docs/by_bill/${id}`);
+    const data = await res.json();
+    if (!data.docs || !data.docs.length) {
+        list.innerHTML = '<div style="color:#c05621;font-size:13px;padding:8px 0;">⚠ No Proof of Quantity documents found for this bill\'s cargo. You may still approve.</div>';
+        checkbox.checked = true;
+        btn.disabled = false;
+        return;
+    }
+    list.innerHTML = data.docs.map(d => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+            <span style="font-size:18px;">📄</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.original_filename}</div>
+                <div style="font-size:11px;color:#718096;">Uploaded by ${d.uploaded_by || '—'} · ${d.uploaded_at || ''}</div>
+            </div>
+            <a href="/api/module/LDUD01/proof_docs/file/${d.id}" target="_blank"
+               style="padding:4px 12px;background:#2b6cb0;color:white;border-radius:4px;font-size:12px;text-decoration:none;white-space:nowrap;">View</a>
+        </div>
+    `).join('');
+}
+
+async function confirmApprove() {
+    if (!document.getElementById('approveDocsConfirm').checked) return;
     const res = await fetch('/api/module/FIN01/bill/approve', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({id})
+        body: JSON.stringify({id: _approveBillId})
     });
     const result = await res.json();
-    if (result.success) {
-        location.reload();
-    } else {
-        alert('Error: ' + result.error);
-    }
+    document.getElementById('approveDocsModal').style.display = 'none';
+    if (result.success) { location.reload(); }
+    else { alert('Error: ' + result.error); }
 }
 
 async function rejectBill(id) {
@@ -161,4 +193,27 @@ async function rejectBill(id) {
     }
 }
 </script>
+
+<!-- Approve: Proof Docs Review Modal -->
+<div id="approveDocsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:8px;padding:24px;max-width:520px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.3);max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">📄 Review Proof of Quantity</h3>
+            <button onclick="document.getElementById('approveDocsModal').style.display='none'"
+                    style="background:#e53e3e;color:white;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:13px;">✕</button>
+        </div>
+        <p style="margin:0 0 12px;font-size:13px;color:#4a5568;">Please review the supporting documents before approving this bill.</p>
+        <div id="approveDocsList" style="margin-bottom:16px;"></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;margin-bottom:16px;cursor:pointer;">
+            <input type="checkbox" id="approveDocsConfirm" onchange="document.getElementById('btnConfirmApprove').disabled=!this.checked;">
+            I have reviewed the Proof of Quantity documents
+        </label>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button onclick="document.getElementById('approveDocsModal').style.display='none'"
+                    style="padding:8px 18px;border:1px solid #cbd5e0;background:white;border-radius:4px;cursor:pointer;font-size:13px;">Cancel</button>
+            <button id="btnConfirmApprove" onclick="confirmApprove()" disabled
+                    style="padding:8px 18px;background:#27ae60;color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;">✓ Approve Bill</button>
+        </div>
+    </div>
+</div>
 {% endblock %}

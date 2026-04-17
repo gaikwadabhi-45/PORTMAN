@@ -148,7 +148,7 @@
                     <th>Status</th>
                     <th>Service</th>
                     <th>Cargo</th>
-                    <th>BL No</th>
+                    <th>Proof Docs</th>
                     <th>BL Date</th>
                     <th>BL Qty</th>
                     <th>Billed</th>
@@ -376,7 +376,10 @@ function renderCargoCards(cards) {
             <td><span style="background:${statusColor};color:white;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;">${statusLabel}</span></td>
             <td style="font-size:10px;">${card.service_name || '-'}</td>
             <td>${card.cargo_name || '-'}</td>
-            <td style="font-size:10px;">${card.bl_no || '-'}</td>
+            <td>${card.ldud_id
+                ? `<button onclick="viewProofDocs(${card.ldud_id})" style="padding:2px 8px;background:#ebf8ff;border:1px solid #90cdf4;border-radius:4px;cursor:pointer;font-size:11px;color:#2b6cb0;font-weight:500;">📄 View Docs</button>`
+                : `<span style="font-size:10px;color:#a0aec0;">${card.bl_no || '-'}</span>`
+            }</td>
             <td style="font-size:10px;">${card.bl_date ? card.bl_date.substring(0, 10) : '-'}</td>
             <td style="text-align:right;">${totalQty.toFixed(2)}</td>
             <td style="text-align:right; color:${billedQty > 0 ? '#e67e22' : '#95a5a6'}; font-size:10px;">${billedQty > 0 ? billedQty.toFixed(2) : '-'}</td>
@@ -740,5 +743,42 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 try { addToRecent('FIN01', 'Finance Billing'); } catch(e) {}
+
+async function viewProofDocs(ldudId) {
+    const modal = document.getElementById('proofDocsModal');
+    const list  = document.getElementById('proofDocsList');
+    list.innerHTML = '<span style="color:#718096;font-size:13px;">Loading…</span>';
+    modal.style.display = 'flex';
+    const res  = await fetch(`/api/module/LDUD01/proof_docs/${ldudId}`);
+    const data = await res.json();
+    if (!data.docs || !data.docs.length) {
+        list.innerHTML = '<span style="color:#c05621;font-size:13px;">No Proof of Quantity documents uploaded yet.</span>';
+        return;
+    }
+    list.innerHTML = data.docs.map(d => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+            <span style="font-size:18px;">📄</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.original_filename}</div>
+                <div style="font-size:11px;color:#718096;">Uploaded by ${d.uploaded_by || '—'} · ${d.uploaded_at || ''}</div>
+            </div>
+            <a href="/api/module/LDUD01/proof_docs/file/${d.id}" target="_blank"
+               style="padding:4px 12px;background:#2b6cb0;color:white;border-radius:4px;font-size:12px;text-decoration:none;white-space:nowrap;">View</a>
+        </div>
+    `).join('');
+}
 </script>
+
+<!-- Proof Docs Viewer Modal -->
+<div id="proofDocsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:8px;padding:24px;max-width:520px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.3);max-height:80vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;font-size:16px;font-weight:600;">📄 Proof of Quantity Documents</h3>
+            <button onclick="document.getElementById('proofDocsModal').style.display='none'"
+                    style="background:#e53e3e;color:white;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:13px;">✕</button>
+        </div>
+        <div id="proofDocsList"></div>
+    </div>
+</div>
+
 {% endblock %}

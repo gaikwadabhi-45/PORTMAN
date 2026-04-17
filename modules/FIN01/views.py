@@ -607,7 +607,7 @@ def get_customer_billables(customer_type, customer_id):
     ldud_by_vcn = {}
     for vcn_id in vcn_ids_needed:
         cur.execute("""
-            SELECT lh.doc_status, lh.material_po_number, h.vcn_doc_num, h.vessel_name
+            SELECT lh.id AS ldud_id, lh.doc_status, lh.material_po_number, h.vcn_doc_num, h.vessel_name
             FROM ldud_header lh
             JOIN vcn_header h ON lh.vcn_id = h.id
             WHERE lh.vcn_id = %s
@@ -616,6 +616,8 @@ def get_customer_billables(customer_type, customer_id):
         row = cur.fetchone()
         if row:
             ldud_by_vcn[vcn_id] = {
+                'ldud_id':            row['ldud_id'],
+                'vcn_id':             vcn_id,
                 'doc_status':         row['doc_status'] or '',
                 'material_po_number': row['material_po_number'] or '',
                 'doc_label':          f"{row['vcn_doc_num']} / {row['vessel_name']}"
@@ -647,6 +649,8 @@ def get_customer_billables(customer_type, customer_id):
         return {
             'source_type':        source_type,
             'source_id':          decl.get(source_id_field),
+            'ldud_id':            ldud_info.get('ldud_id') if ldud_info else None,
+            'vcn_id':             ldud_info.get('vcn_id') if ldud_info else None,
             'cargo_source_type':  cargo_source_type,
             'cargo_source_id':    decl['id'],
             'doc_label':          doc_label,

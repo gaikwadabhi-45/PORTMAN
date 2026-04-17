@@ -416,6 +416,20 @@
         <!-- Eligible content -->
         <div id="closureEligibleSection" style="display:none;">
             <div id="closureQtyInfo" style="background:#f0fff4;border:1px solid #9ae6b4;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
+            <!-- Proof of Quantity (mandatory) -->
+            <div style="margin-bottom:14px;">
+                <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;">
+                    Proof of Quantity <span style="color:#e53e3e">*</span>
+                    <span style="font-size:11px;color:#718096;font-weight:400;">&nbsp;mandatory — multiple files allowed</span>
+                </label>
+                <div id="closureDocsList" style="margin-bottom:8px;display:flex;flex-direction:column;gap:4px;"></div>
+                <input type="file" id="closureDocsInput" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv,.doc,.docx" style="display:none;" onchange="uploadProofDocs()">
+                <button type="button" onclick="document.getElementById('closureDocsInput').click()"
+                        style="padding:6px 14px;background:#ebf8ff;border:1px dashed #3182ce;border-radius:4px;cursor:pointer;font-size:12px;color:#2b6cb0;font-weight:500;">
+                    + Upload Proof of Quantity
+                </button>
+                <div id="closureDocsUploading" style="display:none;font-size:12px;color:#718096;margin-top:4px;">Uploading…</div>
+            </div>
             <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:500;">Confirm your password <span style="color:#e53e3e">*</span></label>
             <input type="password" id="closurePassword" placeholder="Enter your login password…" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e0;border-radius:4px;font-size:13px;margin-bottom:14px;">
             <div style="display:flex;gap:8px;">
@@ -2310,10 +2324,15 @@
     // ── Closure functions ────────────────────────────────────────────────────
     let closureTargetId = null;
     let reopenTargetId = null;
+    let closureUploadedDocs = [];  // [{id, original_filename}]
 
     async function openClosureModal(id) {
         closureTargetId = id;
+        closureUploadedDocs = [];
         document.getElementById('closurePassword').value = '';
+        document.getElementById('closureDocsList').innerHTML = '';
+        document.getElementById('closureDocsInput').value = '';
+        document.getElementById('closureDocsUploading').style.display = 'none';
         document.getElementById('closureMissingSection').style.display = 'none';
         document.getElementById('closureEligibleSection').style.display = 'none';
         document.getElementById('closureModal').style.display = 'flex';
@@ -2353,7 +2372,42 @@
         closureTargetId = null;
     }
 
+    async function uploadProofDocs() {
+        const input = document.getElementById('closureDocsInput');
+        const files = input.files;
+        if (!files || !files.length) return;
+
+        document.getElementById('closureDocsUploading').style.display = 'block';
+        const fd = new FormData();
+        fd.append('ldud_id', closureTargetId);
+        for (const f of files) fd.append('files', f);
+
+        try {
+            const res = await fetch('/api/module/LDUD01/proof_docs/upload', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.error) { alert(data.error); return; }
+
+            const list = document.getElementById('closureDocsList');
+            for (const doc of data.docs) {
+                closureUploadedDocs.push(doc);
+                const item = document.createElement('div');
+                item.style.cssText = 'font-size:12px;color:#276749;background:#f0fff4;padding:3px 8px;border-radius:4px;display:flex;align-items:center;gap:6px;';
+                item.innerHTML = `<span>✓</span><span>${doc.original_filename}</span>`;
+                list.appendChild(item);
+            }
+        } catch(e) {
+            alert('Upload failed. Please try again.');
+        } finally {
+            document.getElementById('closureDocsUploading').style.display = 'none';
+            input.value = '';
+        }
+    }
+
     async function confirmClose(closeType) {
+        if (closureUploadedDocs.length === 0) {
+            alert('Please upload at least one Proof of Quantity document before closing.');
+            return;
+        }
         const password = document.getElementById('closurePassword').value.trim();
         if (!password) { alert('Please enter your password.'); return; }
         const res = await fetch('/api/module/LDUD01/close', {

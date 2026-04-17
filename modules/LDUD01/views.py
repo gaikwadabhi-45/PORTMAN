@@ -1,5 +1,7 @@
 import json as _json
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+import os
+import uuid
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, send_file
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_module_config, get_db, get_cursor
@@ -8,6 +10,8 @@ from mail_service import (
     trigger_mail_processing as _trigger_mail_processing,
     build_approval_mail_html as _build_approval_mail_html,
 )
+
+PROOF_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'ldud_proof')
 
 bp = Blueprint('LDUD01', __name__, template_folder='.')
 MODULE_CODE = 'LDUD01'
@@ -163,6 +167,15 @@ def close():
         return jsonify({'error': 'Record not eligible for closure', 'missing': eligibility['missing']}), 400
     if close_type == 'Closed' and not eligibility['can_full_close']:
         return jsonify({'error': f"Operations total ({eligibility['ops_total']}) does not match BL total ({eligibility['bl_total']}) — use Partial Close instead"}), 400
+
+    # Enforce: at least one Proof of Quantity document must be uploaded
+    conn_doc = get_db()
+    cur_doc = get_cursor(conn_doc)
+    cur_doc.execute('SELECT COUNT(*) FROM ldud_proof_documents WHERE ldud_id=%s', [record_id])
+    doc_count = cur_doc.fetchone()['count']
+    conn_doc.close()
+    if doc_count == 0:
+        return jsonify({'error': 'At least one Proof of Quantity document must be uploaded before closing'}), 400
 
     model.close_record(record_id, close_type, session.get('username'))
     # Queue notification to approver
@@ -433,3 +446,144 @@ def save_hold_cargo():
     data = request.json
     model.save_hold_cargo(data['ldud_id'], data['hold_name'], data.get('cargo_name', ''))
     return jsonify({'success': True})
+
+
+# ── Proof of Quantity Documents ───────────────────────────────────────────────
+
+ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.xlsx', '.xls', '.csv', '.doc', '.docx'}
+
+
+@bp.route('/api/module/LDUD01/proof_docs/upload', methods=['POST'])
+@login_required
+def upload_proof_docs():
+    ldud_id = request.form.get('ldud_id')
+    if not ldud_id:
+        return jsonify({'error': 'Missing ldud_id'}), 400
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files provided'}), 400
+
+    folder = os.path.join(PROOF_UPLOAD_DIR, str(ldud_id))
+    os.makedirs(folder, exist_ok=True)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    saved = []
+    for f in files:
+        original = f.filename or ''
+        ext = os.path.splitext(original)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            continue
+        stored = f'{uuid.uuid4().hex}{ext}'
+        f.save(os.path.join(folder, stored))
+        cur.execute('''
+            INSERT INTO ldud_proof_documents (ldud_id, original_filename, stored_filename, uploaded_by)
+            VALUES (%s, %s, %s, %s) RETURNING id, original_filename, uploaded_at
+        ''', [ldud_id, original, stored, session.get('username')])
+        row = cur.fetchone()
+        saved.append({'id': row['id'], 'original_filename': row['original_filename'],
+                      'uploaded_at': str(row['uploaded_at'])[:16]})
+    conn.commit()
+    conn.close()
+
+    if not saved:
+        return jsonify({'error': 'No valid files uploaded (allowed: pdf, jpg, png, xlsx, csv, doc)'}), 400
+    return jsonify({'success': True, 'docs': saved})
+
+
+@bp.route('/api/module/LDUD01/proof_docs/<int:ldud_id>')
+@login_required
+def list_proof_docs(ldud_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''
+        SELECT id, original_filename, uploaded_by, uploaded_at
+        FROM ldud_proof_documents WHERE ldud_id=%s ORDER BY uploaded_at
+    ''', [ldud_id])
+    docs = [{'id': r['id'], 'original_filename': r['original_filename'],
+              'uploaded_by': r['uploaded_by'], 'uploaded_at': str(r['uploaded_at'])[:16]}
+            for r in cur.fetchall()]
+    conn.close()
+    return jsonify({'docs': docs})
+
+
+@bp.route('/api/module/LDUD01/proof_docs/file/<int:doc_id>')
+@login_required
+def serve_proof_doc(doc_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT ldud_id, original_filename, stored_filename FROM ldud_proof_documents WHERE id=%s', [doc_id])
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return 'Not found', 404
+    path = os.path.join(PROOF_UPLOAD_DIR, str(row['ldud_id']), row['stored_filename'])
+    if not os.path.exists(path):
+        return 'File not found on disk', 404
+    ext = os.path.splitext(row['stored_filename'])[1].lower()
+    inline_types = {'.pdf', '.jpg', '.jpeg', '.png'}
+    as_attachment = ext not in inline_types
+    return send_file(path, download_name=row['original_filename'], as_attachment=as_attachment)
+
+
+@bp.route('/api/module/LDUD01/proof_docs/by_vcn/<int:vcn_id>')
+@login_required
+def proof_docs_by_vcn(vcn_id):
+    """Return proof docs for the LDUD linked to a VCN (used by FIN01 billing/approval pages)."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id FROM ldud_header WHERE vcn_id=%s ORDER BY id DESC LIMIT 1', [vcn_id])
+    ldud = cur.fetchone()
+    if not ldud:
+        conn.close()
+        return jsonify({'docs': [], 'ldud_id': None})
+    ldud_id = ldud['id']
+    cur.execute('''
+        SELECT id, original_filename, uploaded_by, uploaded_at
+        FROM ldud_proof_documents WHERE ldud_id=%s ORDER BY uploaded_at
+    ''', [ldud_id])
+    docs = [{'id': r['id'], 'original_filename': r['original_filename'],
+              'uploaded_by': r['uploaded_by'], 'uploaded_at': str(r['uploaded_at'])[:16]}
+            for r in cur.fetchall()]
+    conn.close()
+    return jsonify({'docs': docs, 'ldud_id': ldud_id})
+
+
+@bp.route('/api/module/LDUD01/proof_docs/by_bill/<int:bill_id>')
+@login_required
+def proof_docs_by_bill(bill_id):
+    """Return all proof docs for VCN cargo lines on a bill (used by FIN01 approval)."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    # Get VCN-type cargo source IDs from this bill's lines
+    cur.execute('''
+        SELECT DISTINCT cargo_source_type, cargo_source_id
+        FROM bill_lines
+        WHERE bill_id=%s AND cargo_source_type IN ('VCN_IMPORT', 'VCN_EXPORT')
+          AND cargo_source_id IS NOT NULL
+    ''', [bill_id])
+    sources = cur.fetchall()
+
+    all_docs = []
+    seen_ldud = set()
+    for src in sources:
+        table = 'vcn_cargo_declaration' if src['cargo_source_type'] == 'VCN_IMPORT' else 'vcn_export_cargo_declaration'
+        cur.execute(f'SELECT vcn_id FROM {table} WHERE id=%s', [src['cargo_source_id']])
+        decl = cur.fetchone()
+        if not decl:
+            continue
+        cur.execute('SELECT id FROM ldud_header WHERE vcn_id=%s ORDER BY id DESC LIMIT 1', [decl['vcn_id']])
+        ldud = cur.fetchone()
+        if not ldud or ldud['id'] in seen_ldud:
+            continue
+        seen_ldud.add(ldud['id'])
+        cur.execute('''
+            SELECT id, original_filename, uploaded_by, uploaded_at
+            FROM ldud_proof_documents WHERE ldud_id=%s ORDER BY uploaded_at
+        ''', [ldud['id']])
+        for r in cur.fetchall():
+            all_docs.append({'id': r['id'], 'original_filename': r['original_filename'],
+                             'uploaded_by': r['uploaded_by'], 'uploaded_at': str(r['uploaded_at'])[:16]})
+    conn.close()
+    return jsonify({'docs': all_docs})
