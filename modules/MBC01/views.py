@@ -1,12 +1,11 @@
+import io
 import json as _json
+import mimetypes
 import os
-import uuid
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, send_file
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_module_config, get_db, get_cursor
-
-PROOF_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'mbc_proof')
 
 bp = Blueprint('MBC01', __name__, template_folder='.')
 MODULE_CODE = 'MBC01'
@@ -283,7 +282,7 @@ def delete_customer_detail():
     return jsonify({'success': True})
 
 
-# ── Proof of Quantity Documents ───────────────────────────────────────────────
+# ── Proof of Quantity Documents (stored in DB as BYTEA) ──────────────────────
 
 ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.xlsx', '.xls', '.csv', '.doc', '.docx'}
 
@@ -299,9 +298,6 @@ def upload_proof_docs():
     if not files:
         return jsonify({'error': 'No files provided'}), 400
 
-    folder = os.path.join(PROOF_UPLOAD_DIR, str(mbc_id))
-    os.makedirs(folder, exist_ok=True)
-
     conn = get_db()
     cur = get_cursor(conn)
     saved = []
@@ -310,12 +306,14 @@ def upload_proof_docs():
         ext = os.path.splitext(original)[1].lower()
         if ext not in ALLOWED_EXTENSIONS:
             continue
-        stored = f'{uuid.uuid4().hex}{ext}'
-        f.save(os.path.join(folder, stored))
+        file_bytes = f.read()
+        if not file_bytes:
+            continue
+        mime_type = f.mimetype or mimetypes.guess_type(original)[0] or 'application/octet-stream'
         cur.execute('''
-            INSERT INTO mbc_proof_documents (mbc_id, original_filename, stored_filename, uploaded_by)
-            VALUES (%s, %s, %s, %s) RETURNING id, original_filename, uploaded_at
-        ''', [mbc_id, original, stored, session.get('username')])
+            INSERT INTO mbc_proof_documents (mbc_id, original_filename, file_bytes, mime_type, uploaded_by)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id, original_filename, uploaded_at
+        ''', [mbc_id, original, file_bytes, mime_type, session.get('username')])
         row = cur.fetchone()
         saved.append({'id': row['id'], 'original_filename': row['original_filename'],
                       'uploaded_at': str(row['uploaded_at'])[:16]})
@@ -330,6 +328,7 @@ def upload_proof_docs():
 @bp.route('/api/module/MBC01/proof_docs/<int:mbc_id>')
 @login_required
 def list_proof_docs(mbc_id):
+    # Metadata-only query — never select file_bytes here, keeps the list fast.
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute('''
@@ -348,15 +347,17 @@ def list_proof_docs(mbc_id):
 def serve_proof_doc(doc_id):
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT mbc_id, original_filename, stored_filename FROM mbc_proof_documents WHERE id=%s', [doc_id])
+    cur.execute('SELECT original_filename, file_bytes, mime_type FROM mbc_proof_documents WHERE id=%s', [doc_id])
     row = cur.fetchone()
     conn.close()
-    if not row:
+    if not row or row['file_bytes'] is None:
         return 'Not found', 404
-    path = os.path.join(PROOF_UPLOAD_DIR, str(row['mbc_id']), row['stored_filename'])
-    if not os.path.exists(path):
-        return 'File not found on disk', 404
-    ext = os.path.splitext(row['stored_filename'])[1].lower()
+    ext = os.path.splitext(row['original_filename'])[1].lower()
     inline_types = {'.pdf', '.jpg', '.jpeg', '.png'}
     as_attachment = ext not in inline_types
-    return send_file(path, download_name=row['original_filename'], as_attachment=as_attachment)
+    return send_file(
+        io.BytesIO(bytes(row['file_bytes'])),
+        download_name=row['original_filename'],
+        mimetype=row['mime_type'] or 'application/octet-stream',
+        as_attachment=as_attachment,
+    )

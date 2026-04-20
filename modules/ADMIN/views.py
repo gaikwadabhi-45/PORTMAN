@@ -2,11 +2,6 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from database import get_db, get_cursor, get_module_config, save_module_config
 import json
-import os
-import shutil
-
-LDUD_PROOF_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'ldud_proof')
-MBC_PROOF_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'mbc_proof')
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -607,21 +602,17 @@ def open_vessel():
     conn = get_db()
     cur = get_cursor(conn)
 
-    # Delete proof documents from DB and filesystem
-    cur.execute("SELECT stored_filename FROM ldud_proof_documents WHERE ldud_id=%s", (ldud_id,))
-    proof_docs = cur.fetchall()
+    cur.execute("SELECT COUNT(*) AS cnt FROM ldud_proof_documents WHERE ldud_id=%s", (ldud_id,))
+    doc_count = cur.fetchone()['cnt']
     cur.execute("DELETE FROM ldud_proof_documents WHERE ldud_id=%s", (ldud_id,))
-    folder = os.path.join(LDUD_PROOF_DIR, str(ldud_id))
-    if os.path.isdir(folder):
-        shutil.rmtree(folder)
 
     cur.execute("UPDATE ldud_header SET doc_status='Draft' WHERE id=%s", (ldud_id,))
     cur.execute("""INSERT INTO approval_log (module_code, record_id, action, comment, actioned_by)
                    VALUES ('LDUD01', %s, 'Reopened by Admin', 'Manually reopened via Admin panel; %s proof doc(s) removed', %s)""",
-                (ldud_id, len(proof_docs), session.get('username')))
+                (ldud_id, doc_count, session.get('username')))
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'docs_removed': len(proof_docs)})
+    return jsonify({'success': True, 'docs_removed': doc_count})
 
 
 @bp.route('/api/mbc/approvals')
@@ -650,18 +641,14 @@ def reset_mbc_approval():
     conn = get_db()
     cur = get_cursor(conn)
 
-    # Delete proof documents from DB and filesystem
-    cur.execute("SELECT stored_filename FROM mbc_proof_documents WHERE mbc_id=%s", (mbc_id,))
-    proof_docs = cur.fetchall()
+    cur.execute("SELECT COUNT(*) AS cnt FROM mbc_proof_documents WHERE mbc_id=%s", (mbc_id,))
+    doc_count = cur.fetchone()['cnt']
     cur.execute("DELETE FROM mbc_proof_documents WHERE mbc_id=%s", (mbc_id,))
-    folder = os.path.join(MBC_PROOF_DIR, str(mbc_id))
-    if os.path.isdir(folder):
-        shutil.rmtree(folder)
 
     cur.execute("UPDATE mbc_header SET doc_status='Draft' WHERE id=%s", (mbc_id,))
     cur.execute("""INSERT INTO approval_log (module_code, record_id, action, comment, actioned_by)
                    VALUES ('MBC01', %s, 'Reopened by Admin', 'Approval reset via Admin panel; %s proof doc(s) removed', %s)""",
-                (mbc_id, len(proof_docs), session.get('username')))
+                (mbc_id, doc_count, session.get('username')))
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'docs_removed': len(proof_docs)})
+    return jsonify({'success': True, 'docs_removed': doc_count})

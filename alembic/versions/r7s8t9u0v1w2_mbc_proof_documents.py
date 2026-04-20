@@ -1,4 +1,4 @@
-"""Add mbc_proof_documents table for MBC01 Proof of Quantity uploads
+"""Add mbc_proof_documents table for MBC01 Proof of Quantity uploads (bytes in DB)
 
 Revision ID: r7s8t9u0v1w2
 Revises: q1r2s3t4u5v6
@@ -18,7 +18,8 @@ def upgrade():
             id SERIAL PRIMARY KEY,
             mbc_id INTEGER NOT NULL REFERENCES mbc_header(id) ON DELETE CASCADE,
             original_filename TEXT NOT NULL,
-            stored_filename TEXT NOT NULL,
+            file_bytes BYTEA NOT NULL,
+            mime_type TEXT,
             uploaded_by TEXT,
             uploaded_at TIMESTAMP DEFAULT NOW()
         )
