@@ -151,7 +151,7 @@
                 <td>{{ rec.cargo_name or '—' }}</td>
                 <td>
                     {% if rec.bl_quantity %}
-                        {{ '{:,.3f}'.format(rec.bl_quantity | float) }} {{ rec.quantity_uom or 'MT' }}
+                        {{ rec.bl_quantity_display }} {{ rec.quantity_uom or 'MT' }}
                     {% else %}—{% endif %}
                 </td>
                 <td>{{ rec.doc_date_display }}</td>
@@ -200,7 +200,7 @@
                 <td>{{ rec.cargo_name or '—' }}</td>
                 <td>
                     {% if rec.bl_quantity %}
-                        {{ '{:,.3f}'.format(rec.bl_quantity | float) }} {{ rec.quantity_uom or 'MT' }}
+                        {{ rec.bl_quantity_display }} {{ rec.quantity_uom or 'MT' }}
                     {% else %}—{% endif %}
                 </td>
                 <td>{{ rec.doc_date_display }}</td>

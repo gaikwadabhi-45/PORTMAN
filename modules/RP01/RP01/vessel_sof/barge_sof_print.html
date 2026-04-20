@@ -196,7 +196,7 @@
         <!-- Banner row -->
         <tr class="banner-row">
             <td colspan="3">
-                Barge {{ barge_name }} &mdash; {{ op_type }} of {{ cargo_name }} &mdash; Vessel: {{ vessel_name }}
+                {% if barge_unique_no %}Barge No: {{ barge_unique_no }} &mdash; {% endif %}Barge {{ barge_name }} &mdash; {{ op_type }} of {{ cargo_name }} &mdash; Vessel: {{ vessel_name }}
                 {% if header.get('vcn_doc_num') %} ({{ header.vcn_doc_num }}){% endif %}
             </td>
         </tr>

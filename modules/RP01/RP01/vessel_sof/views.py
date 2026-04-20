@@ -58,6 +58,16 @@ def fmt_range(ts_from, ts_to):
     return from_str
 
 
+def fmt_qty(value):
+    if value is None or value == '':
+        return ''
+    try:
+        text = f'{float(value):,.3f}'
+    except (TypeError, ValueError):
+        return str(value)
+    return text[:-4] if text.endswith('.000') else text
+
+
 # ---------------------------------------------------------------------------
 # SOF row builder
 # ---------------------------------------------------------------------------
@@ -76,8 +86,8 @@ def build_sof_rows(header, anchorages, cargo_list):
         vessel_display = f"{vessel_display}"
 
     rows.append({'label': 'Name of Vessel',             'value': vessel_display})
+    rows.append({'label': 'Vessel No',                  'value': header.get('vessel_unique_no', '')})
     rows.append({'label': 'Flag',                        'value': header.get('nationality', '')})
-    rows.append({'label': 'Owners',                      'value': ''})
     rows.append({'label': 'Receivers',                   'value': header.get('importer_exporter_name', '')})
     rows.append({'label': 'Load Port',                   'value': header.get('load_port', '')})
     rows.append({'label': 'Discharge Port',              'value': header.get('discharge_port', '')})
@@ -143,7 +153,7 @@ def build_sof_rows(header, anchorages, cargo_list):
                  'value': fmt_range(header.get('final_draft_survey_from'),
                                     header.get('final_draft_survey_to'))})
     rows.append({'label': 'Manifested Cargo Quantity as Per B/L',
-                 'value': f'{bl_total:,.3f} {uom} {cargo_name} IN BULK' if bl_total else ''})
+                 'value': f'{fmt_qty(bl_total)} {uom} {cargo_name} IN BULK' if bl_total else ''})
     rows.append({'label': 'Agent / Custom / Survey On Board',
                  'value': fmt_dt(header.get('agent_stevedore_onboard'))})
     rows.append({'label': 'Customs Clearance',
@@ -158,10 +168,10 @@ def build_sof_rows(header, anchorages, cargo_list):
             anch_name  = anch.get('anchorage_name', '')
             anch_cargo = anch.get('cargo_name') or cargo_name
             rows.append({'label': f'Quantity Discharged at {anch_name}',
-                         'value': f'{qty:,.3f} {uom} {anch_cargo} IN BULK'})
+                         'value': f'{fmt_qty(qty)} {uom} {anch_cargo} IN BULK'})
 
     rows.append({'label': 'Total Quantity Discharged at B/L',
-                 'value': f'{total_discharged:,.3f} {uom} {cargo_name} IN BULK' if total_discharged else ''})
+                 'value': f'{fmt_qty(total_discharged)} {uom} {cargo_name} IN BULK' if total_discharged else ''})
 
     last_anch_name = anchorages[-1].get('anchorage_name', '') if anchorages else ''
     sailed_label   = f'Vessel Sailed from {last_anch_name}' if last_anch_name else 'Vessel Sailed from'
@@ -210,9 +220,11 @@ def _fetch_barge_sof_data(ldud_id, barge_name):
         SELECT
             h.*,
             vcn.vessel_name, vcn.operation_type, vcn.cargo_type,
-            vcn.load_port, vcn.discharge_port
+            vcn.load_port, vcn.discharge_port,
+            COALESCE(vs.doc_num, NULLIF(SPLIT_PART(vcn.vessel_master_doc, '/', 1), ''), '') AS vessel_unique_no
         FROM ldud_header h
         JOIN vcn_header vcn ON vcn.id = h.vcn_id
+        LEFT JOIN vessels vs ON vs.doc_num = SPLIT_PART(vcn.vessel_master_doc, '/', 1)
         WHERE h.id = %s
     """, (ldud_id,))
     header = dict(cur.fetchone() or {})
@@ -220,11 +232,19 @@ def _fetch_barge_sof_data(ldud_id, barge_name):
         conn.close()
         return None, []
     cur.execute("""
-        SELECT * FROM ldud_barge_lines
-        WHERE ldud_id = %s AND barge_name = %s
-        ORDER BY trip_number ASC
+        SELECT lbl.*, b.id AS barge_unique_no
+        FROM ldud_barge_lines lbl
+        LEFT JOIN barges b ON b.barge_name = lbl.barge_name
+        WHERE lbl.ldud_id = %s AND lbl.barge_name = %s
+        ORDER BY lbl.trip_number ASC
     """, (ldud_id, barge_name))
     trips = [dict(r) for r in cur.fetchall()]
+    barge_unique_no = trips[0].get('barge_unique_no') if trips else None
+    if not barge_unique_no:
+        cur.execute("SELECT id FROM barges WHERE barge_name = %s", (barge_name,))
+        barge_row = cur.fetchone()
+        barge_unique_no = barge_row['id'] if barge_row else ''
+    header['barge_unique_no'] = barge_unique_no or ''
     conn.close()
     return header, trips
 
@@ -283,7 +303,7 @@ def _build_barge_trip_rows(trip, op_type):
     qty = float(trip.get('discharge_quantity') or 0)
     if qty:
         verb = 'Loaded' if (op_type or '').lower() == 'export' else 'Discharged'
-        rows.append({'label': f'Quantity {verb}', 'value': f'{qty:,.3f} MT'})
+        rows.append({'label': f'Quantity {verb}', 'value': f'{fmt_qty(qty)} MT'})
 
     return rows
 
@@ -324,7 +344,8 @@ def _fetch_sof_data(ldud_id):
             vcn.vessel_name, vcn.vessel_agent_name, vcn.importer_exporter_name,
             vcn.operation_type, vcn.cargo_type,
             vcn.load_port, vcn.discharge_port,
-            vs.nationality
+            vs.nationality,
+            COALESCE(vs.doc_num, NULLIF(SPLIT_PART(vcn.vessel_master_doc, '/', 1), ''), '') AS vessel_unique_no
         FROM ldud_header h
         JOIN vcn_header vcn ON h.vcn_id = vcn.id
         LEFT JOIN vessels vs ON vs.doc_num = SPLIT_PART(vcn.vessel_master_doc, '/', 1)
@@ -467,10 +488,12 @@ def vessel_barge_sof_print(ldud_id, barge_name):
     ]
     cargo_name  = trips[0].get('cargo_name') if trips else (header.get('cargo_type') or '')
     vessel_name = header.get('vessel_name', '')
+    barge_unique_no = header.get('barge_unique_no', '')
 
     return render_template('vessel_sof/barge_sof_print.html',
                            header=header,
                            barge_name=barge_name,
+                           barge_unique_no=barge_unique_no,
                            op_type=op_type,
                            trips_with_rows=trips_with_rows,
                            cargo_name=cargo_name,
@@ -505,6 +528,7 @@ def vessel_sof_print(ldud_id):
     cargo_name = cargo_list[0]['cargo_name'] if cargo_list else (header.get('cargo_type') or '')
     uom        = cargo_list[0]['quantity_uom'] if cargo_list else 'MT'
     bl_total   = sum(float(c.get('bl_quantity') or 0) for c in cargo_list)
+    bl_qty_display = fmt_qty(bl_total)
     nor_dt     = _parse(header.get('nor_tendered'))
     nor_date   = nor_dt.strftime('%d.%m.%Y') if nor_dt else ''
     nor_time   = nor_dt.strftime('%H%M') if nor_dt else ''
@@ -513,7 +537,7 @@ def vessel_sof_print(ldud_id):
     discharge_port = header.get('discharge_port') or 'Discharge Port'
     banner = (
         f"{vessel_name} Arrived at {discharge_port} on {nor_date} AT {nor_time} Hrs. "
-        f"for {op_type} {bl_total:,.3f} {uom} {cargo_name} IN BULK "
+        f"for {op_type} {bl_qty_display} {uom} {cargo_name} IN BULK "
         f"as Per Terms, Conditions, and Exception of Relevant Charter Party"
     )
 

@@ -39,6 +39,16 @@ def fmt_dt(ts):
     return f"ON {dt.strftime('%d.%m.%Y')} AT {dt.strftime('%H%M')} HRS."
 
 
+def fmt_qty(value):
+    if value is None or value == '':
+        return ''
+    try:
+        text = f'{float(value):,.3f}'
+    except (TypeError, ValueError):
+        return str(value)
+    return text[:-4] if text.endswith('.000') else text
+
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -69,6 +79,7 @@ def _fetch_mbc_list():
                 r['doc_date_display'] = str(d)
         else:
             r['doc_date_display'] = '—'
+        r['bl_quantity_display'] = fmt_qty(r.get('bl_quantity')) if r.get('bl_quantity') else ''
     return rows
 
 
@@ -223,17 +234,23 @@ def mbc_sof_print(mbc_id):
         sections = _build_import_sections(load_port, discharge_port)
 
     mbc_name   = header.get('mbc_name', '')
+    mbc_no     = header.get('doc_num', '')
     cargo_name = header.get('cargo_name', '') or header.get('cargo_type', '')
     bl_qty     = header.get('bl_quantity') or 0
     uom        = header.get('quantity_uom', 'MT')
 
-    banner = f"{mbc_name} — {header.get('operation_type', '')} of {cargo_name}"
+    banner_parts = []
+    if mbc_no:
+        banner_parts.append(f"MBC No: {mbc_no}")
+    banner_parts.append(f"{mbc_name} - {header.get('operation_type', '')} of {cargo_name}")
     if bl_qty:
-        banner += f" — {float(bl_qty):,.3f} {uom}"
+        banner_parts.append(f"{fmt_qty(bl_qty)} {uom}")
+    banner = " - ".join(banner_parts)
 
     return render_template('mbc_sof/mbc_sof_print.html',
                            header=header,
                            mbc_name=mbc_name,
+                           mbc_no=mbc_no,
                            op_type=header.get('operation_type', ''),
                            sections=sections,
                            cargo_name=cargo_name,
