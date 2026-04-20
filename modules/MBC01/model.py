@@ -372,6 +372,16 @@ def get_approval_eligibility(mbc_id):
     cur.execute('SELECT COUNT(*) as cnt FROM mbc_customer_details WHERE mbc_id=%s', (mbc_id,))
     if cur.fetchone()['cnt'] < 1:
         missing.append('Customer Details (minimum 1 entry required)')
+    else:
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM mbc_customer_details WHERE mbc_id=%s AND (material_po IS NULL OR TRIM(material_po) = '')",
+            (mbc_id,)
+        )
+        if cur.fetchone()['cnt'] > 0:
+            missing.append('Material PO Number — required on every Customer Details row')
+    cur.execute('SELECT COUNT(*) FROM mbc_proof_documents WHERE mbc_id=%s', (mbc_id,))
+    if cur.fetchone()['count'] == 0:
+        missing.append('Proof of Quantity — at least one document must be uploaded')
     conn.close()
     return {'eligible': len(missing) == 0, 'missing': missing}
 

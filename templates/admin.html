@@ -1108,7 +1108,7 @@ async function loadMbcApprovals() {
 }
 
 async function resetMbcApproval(id, docNum) {
-    if (!confirm(`Reset "${docNum}" back to Draft? This will remove its approved status.`)) return;
+    if (!confirm(`Reset "${docNum}" back to Draft?\n\nThis will also permanently delete all Proof of Quantity documents uploaded for this MBC record.`)) return;
     const res = await fetch('/admin/api/mbc/reset_approval', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -1116,6 +1116,8 @@ async function resetMbcApproval(id, docNum) {
     });
     const data = await res.json();
     if (data.error) { alert(data.error); return; }
+    const removed = data.docs_removed || 0;
+    if (removed > 0) alert(`MBC reset to Draft. ${removed} proof document(s) deleted.`);
     loadMbcApprovals();
 }
 

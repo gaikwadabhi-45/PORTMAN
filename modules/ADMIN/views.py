@@ -6,6 +6,7 @@ import os
 import shutil
 
 LDUD_PROOF_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'ldud_proof')
+MBC_PROOF_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'mbc_proof')
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -648,10 +649,19 @@ def reset_mbc_approval():
         return jsonify({'error': 'Missing id'}), 400
     conn = get_db()
     cur = get_cursor(conn)
+
+    # Delete proof documents from DB and filesystem
+    cur.execute("SELECT stored_filename FROM mbc_proof_documents WHERE mbc_id=%s", (mbc_id,))
+    proof_docs = cur.fetchall()
+    cur.execute("DELETE FROM mbc_proof_documents WHERE mbc_id=%s", (mbc_id,))
+    folder = os.path.join(MBC_PROOF_DIR, str(mbc_id))
+    if os.path.isdir(folder):
+        shutil.rmtree(folder)
+
     cur.execute("UPDATE mbc_header SET doc_status='Draft' WHERE id=%s", (mbc_id,))
     cur.execute("""INSERT INTO approval_log (module_code, record_id, action, comment, actioned_by)
-                   VALUES ('MBC01', %s, 'Reopened by Admin', 'Approval reset via Admin panel', %s)""",
-                (mbc_id, session.get('username')))
+                   VALUES ('MBC01', %s, 'Reopened by Admin', 'Approval reset via Admin panel; %s proof doc(s) removed', %s)""",
+                (mbc_id, len(proof_docs), session.get('username')))
     conn.commit()
     conn.close()
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'docs_removed': len(proof_docs)})

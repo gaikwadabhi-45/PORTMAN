@@ -898,7 +898,8 @@
                     const data = row.getData();
                     if (!data.id) return;
                     openDetailsModal(data);
-                }
+                },
+                
             },
             {title: "VCN / Vessel / Doc", field: "vcn_display", editor: canEdit ? "list" : false,
                 editorParams: {values: vcnOptions, autocomplete: true, allowEmpty: true, listOnEmpty: true},

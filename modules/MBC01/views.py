@@ -1,8 +1,12 @@
 import json as _json
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+import os
+import uuid
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, send_file
 from functools import wraps
 from . import model
-from database import get_user_permissions, get_module_config
+from database import get_user_permissions, get_module_config, get_db, get_cursor
+
+PROOF_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'uploads', 'mbc_proof')
 
 bp = Blueprint('MBC01', __name__, template_folder='.')
 MODULE_CODE = 'MBC01'
@@ -86,12 +90,36 @@ def approve():
     is_approver = str(config.get('approver_id', '')) == str(session.get('user_id')) or session.get('is_admin')
     if not is_approver:
         return jsonify({'error': 'No permission to approve'}), 403
-    record_id = request.json.get('id')
+    data = request.json or {}
+    record_id = data.get('id')
+    password = (data.get('password') or '').strip()
     if not record_id:
         return jsonify({'error': 'Missing id'}), 400
+    if not password:
+        return jsonify({'error': 'Password is required'}), 400
+
+    # Verify password server-side
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id FROM users WHERE id=%s AND password=%s', [session.get('user_id'), password])
+    user = cur.fetchone()
+    conn.close()
+    if not user:
+        return jsonify({'error': 'Incorrect password'}), 403
+
     eligibility = model.get_approval_eligibility(record_id)
     if not eligibility['eligible']:
         return jsonify({'error': 'Record not eligible for approval', 'missing': eligibility['missing']}), 400
+
+    # Enforce: at least one Proof of Quantity document must be uploaded
+    conn_doc = get_db()
+    cur_doc = get_cursor(conn_doc)
+    cur_doc.execute('SELECT COUNT(*) FROM mbc_proof_documents WHERE mbc_id=%s', [record_id])
+    doc_count = cur_doc.fetchone()['count']
+    conn_doc.close()
+    if doc_count == 0:
+        return jsonify({'error': 'At least one Proof of Quantity document must be uploaded before approving'}), 400
+
     model.approve_record(record_id, session.get('username'))
     return jsonify({'doc_status': 'Approved'})
 
@@ -253,3 +281,82 @@ def delete_customer_detail():
         return jsonify({'error': 'No permission to delete'}), 403
     model.delete_customer_detail(request.json['id'])
     return jsonify({'success': True})
+
+
+# ── Proof of Quantity Documents ───────────────────────────────────────────────
+
+ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.xlsx', '.xls', '.csv', '.doc', '.docx'}
+
+
+@bp.route('/api/module/MBC01/proof_docs/upload', methods=['POST'])
+@login_required
+def upload_proof_docs():
+    mbc_id = request.form.get('mbc_id')
+    if not mbc_id:
+        return jsonify({'error': 'Missing mbc_id'}), 400
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files provided'}), 400
+
+    folder = os.path.join(PROOF_UPLOAD_DIR, str(mbc_id))
+    os.makedirs(folder, exist_ok=True)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    saved = []
+    for f in files:
+        original = f.filename or ''
+        ext = os.path.splitext(original)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            continue
+        stored = f'{uuid.uuid4().hex}{ext}'
+        f.save(os.path.join(folder, stored))
+        cur.execute('''
+            INSERT INTO mbc_proof_documents (mbc_id, original_filename, stored_filename, uploaded_by)
+            VALUES (%s, %s, %s, %s) RETURNING id, original_filename, uploaded_at
+        ''', [mbc_id, original, stored, session.get('username')])
+        row = cur.fetchone()
+        saved.append({'id': row['id'], 'original_filename': row['original_filename'],
+                      'uploaded_at': str(row['uploaded_at'])[:16]})
+    conn.commit()
+    conn.close()
+
+    if not saved:
+        return jsonify({'error': 'No valid files uploaded (allowed: pdf, jpg, png, xlsx, csv, doc)'}), 400
+    return jsonify({'success': True, 'docs': saved})
+
+
+@bp.route('/api/module/MBC01/proof_docs/<int:mbc_id>')
+@login_required
+def list_proof_docs(mbc_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''
+        SELECT id, original_filename, uploaded_by, uploaded_at
+        FROM mbc_proof_documents WHERE mbc_id=%s ORDER BY uploaded_at
+    ''', [mbc_id])
+    docs = [{'id': r['id'], 'original_filename': r['original_filename'],
+              'uploaded_by': r['uploaded_by'], 'uploaded_at': str(r['uploaded_at'])[:16]}
+            for r in cur.fetchall()]
+    conn.close()
+    return jsonify({'docs': docs})
+
+
+@bp.route('/api/module/MBC01/proof_docs/file/<int:doc_id>')
+@login_required
+def serve_proof_doc(doc_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT mbc_id, original_filename, stored_filename FROM mbc_proof_documents WHERE id=%s', [doc_id])
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return 'Not found', 404
+    path = os.path.join(PROOF_UPLOAD_DIR, str(row['mbc_id']), row['stored_filename'])
+    if not os.path.exists(path):
+        return 'File not found on disk', 404
+    ext = os.path.splitext(row['stored_filename'])[1].lower()
+    inline_types = {'.pdf', '.jpg', '.jpeg', '.png'}
+    as_attachment = ext not in inline_types
+    return send_file(path, download_name=row['original_filename'], as_attachment=as_attachment)

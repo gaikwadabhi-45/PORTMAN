@@ -21,7 +21,7 @@ Header fields (Portbird sends):
   Baseline_Date          DD.MM.YYYY
   Header_Text            25 char
 
-Line Item fields (not sent for reversals):
+Line Item fields (sent for reversals too — reversal payload mirrors the original):
   GL_Account         SAP GL account 10 char
   GL_Amount          taxable line amount, always positive 13 curr
   Plant
@@ -438,7 +438,7 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
         or ''
     )
     payload['Record']['Reference_Text']    = original_ref[:16]
-    payload['Record']['Header_Text']       = f"REV {original_ref}"[:25]
+    payload['Record']['Header_Text']       = original_ref[:25]
     payload['Record']['Cancellation_Flag'] = 'X'
     # Invoice_Type stays 'I' — it's a reversal of an invoice, not a credit note
 

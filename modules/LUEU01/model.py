@@ -101,6 +101,15 @@ def save_line(data):
     conn = get_db()
     cur = get_cursor(conn)
 
+    # Coerce blank strings to None for numeric columns — Postgres rejects '' on real/integer.
+    def _num(key):
+        v = data.get(key)
+        if v is None or (isinstance(v, str) and v.strip() == ''):
+            return None
+        return v
+    data['quantity']  = _num('quantity')
+    data['source_id'] = _num('source_id')
+
     line_id = data.get('id')
 
     if line_id:
