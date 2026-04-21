@@ -225,7 +225,7 @@ def split_line(line_id, split_qty, split_remark, created_by=None):
 
 
 def get_vcn_options():
-    """Get VCN entries with vessel name and anchored time for dropdown"""
+    """Get VCN entries with vessel name and anchored time for dropdown."""
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute('''
@@ -240,34 +240,79 @@ def get_vcn_options():
 
 
 def get_mbc_options():
-    """Get MBC entries for dropdown with doc_date and cargo_name"""
+    """Get MBC entries for dropdown — excludes MBCs where LUEU handled qty >= BL qty."""
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT id, doc_num, mbc_name, doc_date, cargo_name FROM mbc_header ORDER BY doc_num DESC')
-    rows = cur.fetchall()
+
+    # BL quantity per MBC (customer_details sum if rows exist, else header bl_quantity)
+    cur.execute('''
+        SELECT m.id, m.doc_num, m.mbc_name, m.doc_date, m.cargo_name,
+               CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                    ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
+        FROM mbc_header m
+        LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+        GROUP BY m.id, m.doc_num, m.mbc_name, m.doc_date, m.cargo_name, m.bl_quantity
+        ORDER BY m.doc_num DESC
+    ''')
+    mbcs = cur.fetchall()
+
+    # LUEU handled quantity per MBC
+    cur.execute('''
+        SELECT source_id, COALESCE(SUM(quantity), 0) AS handled_qty
+        FROM lueu_lines
+        WHERE source_type = 'MBC' AND (is_deleted IS NOT TRUE)
+        GROUP BY source_id
+    ''')
+    handled_map = {r['source_id']: float(r['handled_qty'] or 0) for r in cur.fetchall()}
+
     conn.close()
-    return [dict(r) for r in rows]
+
+    result = []
+    for m in mbcs:
+        bl = float(m['bl_qty'] or 0)
+        handled = handled_map.get(m['id'], 0)
+        if bl > 0 and handled >= bl:
+            continue
+        result.append(dict(m))
+    return result
 
 
 def get_vcn_barges(vcn_id):
-    """Get barges from a specific VCN's LDUD barge lines as 'barge_name / trip_number'"""
+    """Get barge trips for a VCN — excludes trips where handled qty >= discharge_quantity."""
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s', [vcn_id])
     ldud = cur.fetchone()
     if ldud:
+        ldud_id = ldud['id']
         cur.execute('''
-            SELECT barge_name, trip_number FROM ldud_barge_lines
+            SELECT barge_name, trip_number, COALESCE(discharge_quantity, 0) AS expected_qty
+            FROM ldud_barge_lines
             WHERE ldud_id = %s AND barge_name IS NOT NULL AND barge_name != ''
             ORDER BY trip_number, barge_name
-        ''', [ldud['id']])
-        rows = cur.fetchall()
+        ''', [ldud_id])
+        trip_rows = cur.fetchall()
+
+        # Handled quantity per barge/trip display label in LUEU
+        cur.execute('''
+            SELECT barge_name, COALESCE(SUM(quantity), 0) AS handled_qty
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id = %s AND (is_deleted IS NOT TRUE)
+              AND barge_name IS NOT NULL
+            GROUP BY barge_name
+        ''', [vcn_id])
+        handled_map = {r['barge_name']: float(r['handled_qty'] or 0) for r in cur.fetchall()}
+
         conn.close()
         seen = set()
         result = []
-        for r in rows:
+        for r in trip_rows:
             trip = r['trip_number'] or ''
             display = f"{r['barge_name']} / {trip}" if trip else r['barge_name']
+            expected = float(r['expected_qty'] or 0)
+            handled = handled_map.get(display, 0)
+            if expected > 0 and handled >= expected:
+                continue
             if display not in seen:
                 seen.add(display)
                 result.append(display)

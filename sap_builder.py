@@ -193,7 +193,7 @@ def _service_sale_flag(lines, svc_map):
 # Item builder (shared by all document types)
 # ---------------------------------------------------------------------------
 
-def _build_items(lines, company, amount_field='line_amount', config_defaults=None, svc_map=None):
+def _build_items(lines, company, amount_field='line_amount', config_defaults=None, svc_map=None, doc_type='DR'):
     """
     Build the Item list from service lines.
 
@@ -274,7 +274,9 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
             'TCS_GL':           tcs_gl,
             'TCS_Amount':       _fmt_amount(line.get('tcs_amount')),
             'Round_off_GL':     round_off_gl,
-            'Round_off_Value':  _fmt_amount(line.get('rounding_off')),
+            # DR: round-off GL is in "rest" (Credit group) → negate so SAP posts CR under + = Debit convention.
+            # DG: round-off GL is in "rest" (Debit group) → keep sign as-is.
+            'Round_off_Value':  _fmt_amount(-(line.get('rounding_off') or 0) if doc_type == 'DR' and line.get('rounding_off') else line.get('rounding_off')),
         })
     return items
 
@@ -346,7 +348,7 @@ def build_invoice_payload(invoice_header, invoice_lines):
         'Payment_Term':          payment_term,
         'Baseline_Date':         inv_date,
         'Header_Text':           (invoice_header.get('invoice_number') or '')[:25],
-        'Item':                  _build_items(invoice_lines, company, config_defaults=config, svc_map=svc_map),
+        'Item':                  _build_items(invoice_lines, company, config_defaults=config, svc_map=svc_map, doc_type='DR'),
     }
 
     return {'Record': record}
@@ -419,7 +421,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         'Baseline_Date':         doc_date,
         'Header_Text':           (fdcn_header.get('doc_number') or '')[:25],
         'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
-        'Item':                  _build_items(enriched_lines, company, config_defaults=config, svc_map=svc_map),
+        'Item':                  _build_items(enriched_lines, company, config_defaults=config, svc_map=svc_map, doc_type=sap_doc_type),
     }
 
     return {'Record': record}

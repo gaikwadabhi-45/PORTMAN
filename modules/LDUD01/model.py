@@ -103,9 +103,9 @@ def get_data(page=1, size=20, filters=None):
 
         if vcn_ids:
             # Fetch doc_date for display
-            cur.execute('SELECT id, doc_date FROM vcn_header WHERE id = ANY(%s)', (vcn_ids,))
+            cur.execute('SELECT id, doc_date, doc_status FROM vcn_header WHERE id = ANY(%s)', (vcn_ids,))
             for v in cur.fetchall():
-                vcn_meta[v['id']] = {'doc_date': v['doc_date'] or ''}
+                vcn_meta[v['id']] = {'doc_date': v['doc_date'] or '', 'doc_status': v['doc_status'] or ''}
 
             # Cargo names, BL quantities and UOM from VCN cargo declarations (Import + Export)
             cur.execute('''SELECT vcn_id, cargo_name, bl_quantity, quantity_uom FROM vcn_cargo_declaration
@@ -196,6 +196,7 @@ def get_data(page=1, size=20, filters=None):
             # VCN doc date for display
             vm = vcn_meta.get(vid, {})
             r['vcn_doc_date'] = vm.get('doc_date', '')
+            r['vcn_doc_status'] = vm.get('doc_status', '')
 
             # Agent and Stevedore
             ai = vcn_agents.get(vid, {})
@@ -222,7 +223,7 @@ def save_header(data):
             data[k] = None
 
     if row_id:
-        _computed = {'id', 'doc_num', 'vcn_display', 'vcn_doc_date', 'cargo_names_display', 'bl_quantities_display',
+        _computed = {'id', 'doc_num', 'vcn_display', 'vcn_doc_date', 'vcn_doc_status', 'cargo_names_display', 'bl_quantities_display',
                      'balance_display', 'agent_name', 'stevedore_name', 'ops_started', 'ops_completed'}
         cols = [k for k in data if k not in _computed]
         cur.execute(f"UPDATE ldud_header SET {', '.join([f'{c}=%s' for c in cols])} WHERE id=%s",

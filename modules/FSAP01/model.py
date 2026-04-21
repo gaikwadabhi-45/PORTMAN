@@ -186,8 +186,9 @@ def push_invoice_to_staging(invoice_id, pushed_by=None):
         tds_amt  = float(line.get('tds_amount')  or 0)
         tcs_amt  = float(line.get('tcs_amount')  or 0)
 
-        # Round-off only on the last line
-        rnd_val = round_off if idx == len(lines) - 1 else 0.0
+        # Round-off only on the last line.
+        # DR: round-off GL is in the "rest" (Credit) group — negate so SAP posts CR under + = Debit convention.
+        rnd_val = -round_off if idx == len(lines) - 1 else 0.0
 
         cur.execute('''
             INSERT INTO invoice_sap_staging (

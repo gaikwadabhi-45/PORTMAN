@@ -728,7 +728,7 @@
                     if (data._multi_customer && data.customer_name) {
                         html += ' <span style="background:#805ad5;color:white;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:600;margin-left:4px;">' + data.customer_name + '</span>';
                     }
-                    if (data.source_type && data.source_id) {
+                    if (val && data.source_type && data.source_id) {
                         html += ' <span class="bl-info-icon" data-src-type="' + data.source_type + '" data-src-id="' + data.source_id + '" data-label="' + val.replace(/"/g, '&quot;') + '" title="View BL vs Handled">i</span>';
                     }
                     return html;
