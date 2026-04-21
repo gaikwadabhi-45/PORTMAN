@@ -600,26 +600,22 @@
         let html = `<table class="shift-table"><thead><tr>
             <th>Shift</th><th>Time</th>
             <th class="right">Qty Handled</th>
-            <th class="right">Hrs Logged</th>
         </tr></thead><tbody>`;
         for (const s of allShifts) {
             const d = dayData[s];
             const t = d ? d.tonnes : 0;
-            const h = d ? d.hrs : 0;
-            totalT += t; totalH += h;
+            totalT += t;
             const isCurrent = (dayKey === 'today' && s === _currentShift);
             const letterCls = isCurrent ? 'shift-letter current-shift' : 'shift-letter';
             html += `<tr style="${d ? '' : 'opacity:0.4'}">
                 <td><span class="${letterCls}">${s}</span>${isCurrent ? ' <span style="font-size:0.75vh;color:var(--accent);font-weight:700;">NOW</span>' : ''}</td>
                 <td class="muted" style="font-size:0.8vh">${SHIFT_RANGES[s]||''}</td>
                 <td class="right">${d ? fmt(t) : '—'}</td>
-                <td class="right">${d ? Number(h).toFixed(2) : '—'}</td>
             </tr>`;
         }
         html += `<tr class="shift-total-row">
             <td colspan="2" style="font-size:0.85vh;letter-spacing:1px;">TOTAL</td>
             <td class="right">${fmt(totalT)}</td>
-            <td class="right">${Number(totalH).toFixed(2)}</td>
         </tr>`;
         html += '</tbody></table>';
         el.innerHTML = html;

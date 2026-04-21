@@ -564,6 +564,8 @@ def get_dashboard_data():
     for r in mbc_declarations:
         bl = float(r['bl_quantity'] or 0)
         actual = mbc_actual_map.get(r['id'], 0)
+        if bl > 0 and actual >= bl:
+            continue
         pct = round((actual / bl * 100) if bl > 0 else 0, 1)
         mbc_rows.append({
             'id': r['id'],
