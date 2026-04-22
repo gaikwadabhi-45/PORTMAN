@@ -180,7 +180,7 @@ async function openApproveModal() {
     btn.disabled = true;
     modal.style.display = 'flex';
 
-    const res  = await fetch(`/api/module/LDUD01/proof_docs/by_bill/${BILL_ID}`);
+    const res  = await fetch(`/api/module/FIN01/proof_docs/by_bill/${BILL_ID}`);
     const data = await res.json();
     if (!data.docs || !data.docs.length) {
         list.innerHTML = '<div style="color:#c05621;font-size:13px;padding:8px 0;">⚠ No Proof of Quantity documents found for this bill\'s cargo. You may still approve.</div>';
@@ -195,7 +195,7 @@ async function openApproveModal() {
                 <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.original_filename}</div>
                 <div style="font-size:11px;color:#718096;">Uploaded by ${d.uploaded_by || '—'} · ${d.uploaded_at || ''}</div>
             </div>
-            <a href="/api/module/LDUD01/proof_docs/file/${d.id}" target="_blank"
+            <a href="${d.file_url}" target="_blank"
                style="padding:4px 12px;background:#2b6cb0;color:white;border-radius:4px;font-size:12px;text-decoration:none;white-space:nowrap;">View</a>
         </div>
     `).join('');

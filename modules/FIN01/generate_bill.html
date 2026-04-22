@@ -366,6 +366,11 @@ function renderCargoCards(cards) {
             ? (card.doc_status === 'Closed' ? '#27ae60' : '#f39c12')
             : '#e74c3c';
         const statusLabel = card.doc_status || 'Not Closed';
+        const proofModule = card.ldud_id ? 'LDUD01' : (card.source_type === 'MBC' && card.source_id ? 'MBC01' : '');
+        const proofSourceId = card.ldud_id || (proofModule === 'MBC01' ? card.source_id : null);
+        const proofCell = proofSourceId
+            ? `<button onclick="viewProofDocs('${proofModule}', ${proofSourceId})" style="padding:2px 8px;background:#ebf8ff;border:1px solid #90cdf4;border-radius:4px;cursor:pointer;font-size:11px;color:#2b6cb0;font-weight:500;">View Docs</button>`
+            : `<span style="font-size:10px;color:#a0aec0;">${card.bl_no || '-'}</span>`;
 
         const tr = document.createElement('tr');
         if (!isBillable) tr.style.opacity = '0.6';
@@ -376,10 +381,7 @@ function renderCargoCards(cards) {
             <td><span style="background:${statusColor};color:white;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;">${statusLabel}</span></td>
             <td style="font-size:10px;">${card.service_name || '-'}</td>
             <td>${card.cargo_name || '-'}</td>
-            <td>${card.ldud_id
-                ? `<button onclick="viewProofDocs(${card.ldud_id})" style="padding:2px 8px;background:#ebf8ff;border:1px solid #90cdf4;border-radius:4px;cursor:pointer;font-size:11px;color:#2b6cb0;font-weight:500;">📄 View Docs</button>`
-                : `<span style="font-size:10px;color:#a0aec0;">${card.bl_no || '-'}</span>`
-            }</td>
+            <td>${proofCell}</td>
             <td style="font-size:10px;">${card.bl_date ? card.bl_date.substring(0, 10) : '-'}</td>
             <td style="text-align:right;">${totalQty.toFixed(2)}</td>
             <td style="text-align:right; color:${billedQty > 0 ? '#e67e22' : '#95a5a6'}; font-size:10px;">${billedQty > 0 ? billedQty.toFixed(2) : '-'}</td>
@@ -744,12 +746,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 try { addToRecent('FIN01', 'Finance Billing'); } catch(e) {}
 
-async function viewProofDocs(ldudId) {
+async function viewProofDocs(sourceModule, sourceId) {
     const modal = document.getElementById('proofDocsModal');
     const list  = document.getElementById('proofDocsList');
     list.innerHTML = '<span style="color:#718096;font-size:13px;">Loading…</span>';
     modal.style.display = 'flex';
-    const res  = await fetch(`/api/module/LDUD01/proof_docs/${ldudId}`);
+    const res  = await fetch(`/api/module/FIN01/proof_docs/by_source/${sourceModule}/${sourceId}`);
     const data = await res.json();
     if (!data.docs || !data.docs.length) {
         list.innerHTML = '<span style="color:#c05621;font-size:13px;">No Proof of Quantity documents uploaded yet.</span>';
@@ -762,7 +764,7 @@ async function viewProofDocs(ldudId) {
                 <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.original_filename}</div>
                 <div style="font-size:11px;color:#718096;">Uploaded by ${d.uploaded_by || '—'} · ${d.uploaded_at || ''}</div>
             </div>
-            <a href="/api/module/LDUD01/proof_docs/file/${d.id}" target="_blank"
+            <a href="${d.file_url}" target="_blank"
                style="padding:4px 12px;background:#2b6cb0;color:white;border-radius:4px;font-size:12px;text-decoration:none;white-space:nowrap;">View</a>
         </div>
     `).join('');

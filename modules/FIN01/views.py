@@ -123,6 +123,116 @@ def generate_bill():
                          username=session.get('username'))
 
 
+def _proof_doc_payload(row, module_code, source_id):
+    return {
+        'id': row['id'],
+        'original_filename': row['original_filename'],
+        'uploaded_by': row['uploaded_by'],
+        'uploaded_at': str(row['uploaded_at'])[:16],
+        'source_module': module_code,
+        'source_id': source_id,
+        'file_url': f'/api/module/{module_code}/proof_docs/file/{row["id"]}',
+    }
+
+
+def _fetch_source_proof_docs(cur, module_code, source_id):
+    if module_code == 'LDUD01':
+        cur.execute('''
+            SELECT id, original_filename, uploaded_by, uploaded_at
+            FROM ldud_proof_documents
+            WHERE ldud_id = %s
+            ORDER BY uploaded_at
+        ''', [source_id])
+    elif module_code == 'MBC01':
+        cur.execute('''
+            SELECT id, original_filename, uploaded_by, uploaded_at
+            FROM mbc_proof_documents
+            WHERE mbc_id = %s
+            ORDER BY uploaded_at
+        ''', [source_id])
+    else:
+        return []
+    return [_proof_doc_payload(r, module_code, source_id) for r in cur.fetchall()]
+
+
+@bp.route('/api/module/FIN01/proof_docs/by_source/<source_module>/<int:source_id>')
+def proof_docs_by_source(source_module, source_id):
+    """Return proof documents for one LDUD or MBC source."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    module_code = {'LDUD': 'LDUD01', 'LDUD01': 'LDUD01',
+                   'MBC': 'MBC01', 'MBC01': 'MBC01'}.get(source_module.upper())
+    if not module_code:
+        return jsonify({'error': 'Invalid proof document source'}), 400
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    docs = _fetch_source_proof_docs(cur, module_code, source_id)
+    conn.close()
+    return jsonify({'docs': docs, 'source_module': module_code, 'source_id': source_id})
+
+
+@bp.route('/api/module/FIN01/proof_docs/by_bill/<int:bill_id>')
+def proof_docs_by_bill(bill_id):
+    """Return LDUD and MBC proof documents attached to cargo lines on a bill."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''
+        SELECT DISTINCT cargo_source_type, cargo_source_id
+        FROM bill_lines
+        WHERE bill_id = %s
+          AND cargo_source_type IN ('VCN_IMPORT', 'VCN_EXPORT', 'MBC')
+          AND cargo_source_id IS NOT NULL
+    ''', [bill_id])
+    sources = cur.fetchall()
+
+    docs = []
+    seen_sources = set()
+    seen_docs = set()
+
+    for src in sources:
+        module_code = None
+        source_id = None
+
+        if src['cargo_source_type'] in ('VCN_IMPORT', 'VCN_EXPORT'):
+            table = 'vcn_cargo_declaration' if src['cargo_source_type'] == 'VCN_IMPORT' else 'vcn_export_cargo_declaration'
+            cur.execute(f'SELECT vcn_id FROM {table} WHERE id = %s', [src['cargo_source_id']])
+            decl = cur.fetchone()
+            if not decl:
+                continue
+            cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s ORDER BY id DESC LIMIT 1', [decl['vcn_id']])
+            source = cur.fetchone()
+            if source:
+                module_code = 'LDUD01'
+                source_id = source['id']
+
+        elif src['cargo_source_type'] == 'MBC':
+            cur.execute('SELECT mbc_id FROM mbc_customer_details WHERE id = %s', [src['cargo_source_id']])
+            source = cur.fetchone()
+            if source:
+                module_code = 'MBC01'
+                source_id = source['mbc_id']
+
+        source_key = (module_code, source_id)
+        if not module_code or not source_id or source_key in seen_sources:
+            continue
+        seen_sources.add(source_key)
+
+        for doc in _fetch_source_proof_docs(cur, module_code, source_id):
+            doc_key = (doc['source_module'], doc['id'])
+            if doc_key in seen_docs:
+                continue
+            seen_docs.add(doc_key)
+            docs.append(doc)
+
+    conn.close()
+    return jsonify({'docs': docs})
+
+
 @bp.route('/api/module/FIN01/bill/save', methods=['POST'])
 def save_bill():
     """Save bill header"""
