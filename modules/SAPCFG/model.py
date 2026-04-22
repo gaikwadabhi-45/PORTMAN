@@ -86,7 +86,24 @@ def set_active_env(environment):
 def get_active_config():
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT * FROM sap_api_config WHERE is_active=1 LIMIT 1')
+    cur.execute('''
+        SELECT * FROM sap_api_config
+        WHERE COALESCE(is_active, 0) = 1
+        ORDER BY id
+        LIMIT 1
+    ''')
     row = cur.fetchone()
+    if not row:
+        cur.execute('''
+            SELECT * FROM sap_api_config
+            WHERE COALESCE(base_url, '') <> ''
+              AND COALESCE(client_id, '') <> ''
+              AND COALESCE(client_secret, '') <> ''
+            ORDER BY updated_date DESC NULLS LAST,
+                     created_date DESC NULLS LAST,
+                     id DESC
+            LIMIT 1
+        ''')
+        row = cur.fetchone()
     conn.close()
     return dict(row) if row else None
