@@ -2170,6 +2170,23 @@
         }
     }
 
+    function validateDateSequence(rows, pairs) {
+        for (let i = 0; i < rows.length; i++) {
+            const d = rows[i].getData();
+            for (const [fieldA, labelA, fieldB, labelB] of pairs) {
+                if (d[fieldA] && d[fieldB]) {
+                    const dateA = new Date(d[fieldA]);
+                    const dateB = new Date(d[fieldB]);
+                    if (!isNaN(dateA) && !isNaN(dateB) && dateB <= dateA) {
+                        alert(`Row ${i + 1}: "${labelB}" (${d[fieldB]}) must be after "${labelA}" (${d[fieldA]}).`);
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     async function saveSubTable(type, ldudId, silent = false) {
         if (type === 'vessel_ops') {
             await saveVesselOpsTable(ldudId, silent);
@@ -2179,6 +2196,48 @@
         if (!subTables[ldudId] || !subTables[ldudId][type]) return;
 
         const rows = subTables[ldudId][type].getRows();
+
+        // ── Validation: barge_lines — date fields must be in chronological order ──
+        if (type === 'barge_lines') {
+            const isExport = currentOperationTypes[ldudId] === 'Export';
+            let pairs;
+            if (isExport) {
+                pairs = [
+                    ['trip_start',               'Trip Start',                   'amf_at_port',               'AMF at Port'],
+                    ['amf_at_port',              'AMF at Port',                  'along_side_berth',          'Alongside At Loading Berth'],
+                    ['along_side_berth',         'Alongside At Loading Berth',   'commenced_loading',         'Loading Start'],
+                    ['commenced_loading',        'Loading Start',                'completed_loading',         'Loading End'],
+                    ['completed_loading',        'Loading End',                  'cast_off_loading_berth',    'Cast Off from Berth'],
+                    ['cast_off_loading_berth',   'Cast Off from Berth',          'cast_off_port',             'Cast Off from Port'],
+                    ['cast_off_port',            'Cast Off from Port',           'anchored_gull_island',      'Anch Gull Island (Loaded)'],
+                    ['anchored_gull_island',     'Anch Gull Island (Loaded)',    'aweigh_gull_island',        'Aweigh Gull Island (Loaded)'],
+                    ['aweigh_gull_island',       'Aweigh Gull Island (Loaded)',  'along_side_vessel',         'Alongside Vessel'],
+                    ['along_side_vessel',        'Alongside Vessel',             'commence_discharge_berth',  'Unload Start'],
+                    ['commence_discharge_berth', 'Unload Start',                 'completed_discharge_berth', 'Unload End'],
+                    ['completed_discharge_berth','Unload End',                   'cast_off_berth',            'Cast Off Vessel'],
+                    ['cast_off_berth',           'Cast Off Vessel',              'anchored_gull_island_empty','Anch Gull Island (Empty)'],
+                    ['anchored_gull_island_empty','Anch Gull Island (Empty)',    'aweigh_gull_island_empty',  'Aweigh Gull Island (Empty)'],
+                ];
+            } else {
+                pairs = [
+                    ['trip_start',               'Trip Start',                   'anchored_gull_island',      'Anch Gull Island'],
+                    ['anchored_gull_island',     'Anch Gull Island',             'aweigh_gull_island',        'Aweigh Gull Island'],
+                    ['aweigh_gull_island',       'Aweigh Gull Island',           'along_side_vessel',         'Alongside Vessel'],
+                    ['along_side_vessel',        'Alongside Vessel',             'commenced_loading',         'Loading Start'],
+                    ['commenced_loading',        'Loading Start',                'completed_loading',         'Loading End'],
+                    ['completed_loading',        'Loading End',                  'cast_off_mv',               'Cast Off MV'],
+                    ['cast_off_mv',              'Cast Off MV',                  'anchored_gull_island_empty','Anch Gull Island (Loaded)'],
+                    ['anchored_gull_island_empty','Anch Gull Island (Loaded)',   'aweigh_gull_island_empty',  'Aweigh Gull Island (Loaded)'],
+                    ['aweigh_gull_island_empty', 'Aweigh Gull Island (Loaded)', 'amf_at_port',               'AMF at Port'],
+                    ['amf_at_port',              'AMF at Port',                  'along_side_berth',          'Alongside Berth'],
+                    ['along_side_berth',         'Alongside Berth',              'commence_discharge_berth',  'Discharge Start'],
+                    ['commence_discharge_berth', 'Discharge Start',              'completed_discharge_berth', 'Discharge End'],
+                    ['completed_discharge_berth','Discharge End',                'cast_off_berth',            'Cast Off Berth'],
+                    ['cast_off_berth',           'Cast Off Berth',               'cast_off_port',             'Cast Off Port'],
+                ];
+            }
+            if (!validateDateSequence(rows, pairs)) return;
+        }
 
         // Validate hold_completion: completed must be after commenced
         if (type === 'hold_completion') {

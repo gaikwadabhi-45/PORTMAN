@@ -1139,6 +1139,23 @@
         }
     }
 
+    function validateDateSequence(rows, pairs) {
+        for (let i = 0; i < rows.length; i++) {
+            const d = rows[i].getData();
+            for (const [fieldA, labelA, fieldB, labelB] of pairs) {
+                if (d[fieldA] && d[fieldB]) {
+                    const dateA = new Date(d[fieldA]);
+                    const dateB = new Date(d[fieldB]);
+                    if (!isNaN(dateA) && !isNaN(dateB) && dateB <= dateA) {
+                        alert(`Row ${i + 1}: "${labelB}" (${d[fieldB]}) must be after "${labelA}" (${d[fieldA]}).`);
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     async function saveSubTable(type, mbcId, silent = false) {
         if (!subTables[mbcId] || !subTables[mbcId][type]) return;
 
@@ -1163,19 +1180,46 @@
             }
         }
 
-        // ── Validation: discharge_port — MBC Cast Off must be after Unloading Completed ──
+        // ── Validation: export_load_port — date fields must be in chronological order ──
+        if (type === 'export_load_port') {
+            const pairs = [
+                ['arrived_at_port',     'Arrived at Port',         'alongside_at_berth',    'Alongside at Berth'],
+                ['alongside_at_berth',  'Alongside at Berth',      'loading_commenced',     'Loading Commenced'],
+                ['loading_commenced',   'Loading Commenced',       'loading_completed',     'Loading Completed'],
+                ['loading_completed',   'Loading Completed',       'cast_off_from_berth',   'Cast off From Berth'],
+                ['cast_off_from_berth', 'Cast off From Berth',     'sailed_out_from_port',  'Sailed Out From Port'],
+                ['sailed_out_from_port','Sailed Out From Port',    'eta_at_gull_island',    'ETA at Gull Island'],
+            ];
+            if (!validateDateSequence(allRows, pairs)) return;
+        }
+
+        // ── Validation: load_port — date fields must be in chronological order ──
+        if (type === 'load_port') {
+            const pairs = [
+                ['arrived_load_port',  'Arrived Load Port',   'alongside_berth',     'Alongside Berth'],
+                ['alongside_berth',    'Alongside Berth',     'loading_commenced',   'Loading Commenced'],
+                ['loading_commenced',  'Loading Commenced',   'loading_completed',   'Loading Completed'],
+                ['loading_completed',  'Loading Completed',   'cast_off_load_port',  'Cast Off Load Port'],
+                ['cast_off_load_port', 'Cast Off Load Port',  'eta',                 'ETA at Gull Island'],
+            ];
+            if (!validateDateSequence(allRows, pairs)) return;
+        }
+
+        // ── Validation: discharge_port — date fields must be in chronological order ──
         if (type === 'discharge_port') {
-            for (let i = 0; i < allRows.length; i++) {
-                const d = allRows[i].getData();
-                if (d.unloading_completed && d.vessel_cast_off) {
-                    const completed = new Date(d.unloading_completed);
-                    const castOff   = new Date(d.vessel_cast_off);
-                    if (!isNaN(completed) && !isNaN(castOff) && castOff <= completed) {
-                        alert(`Row ${i + 1}: MBC Cast Off (${d.vessel_cast_off}) must be after Unloading Completed (${d.unloading_completed}).`);
-                        return;
-                    }
-                }
-            }
+            const pairs = [
+                ['arrival_gull_island',   'Arrival Gull Island',         'departure_gull_island',  'Departure Gull Island'],
+                ['departure_gull_island', 'Departure Gull Island',       'arrived_yellow_crane',   'Arrived Yellow Crane'],
+                ['arrived_yellow_crane',  'Arrived Yellow Crane',        'vessel_arrival_port',    'MBC Arrival Port'],
+                ['vessel_arrival_port',   'MBC Arrival Port',            'vessel_all_made_fast',   'MBC AMF at Unloading Berth'],
+                ['vessel_all_made_fast',  'MBC AMF at Unloading Berth',  'unloading_commenced',    'Unloading Commenced'],
+                ['unloading_commenced',   'Unloading Commenced',         'cleaning_commenced',     'Cleaning Commenced'],
+                ['cleaning_commenced',    'Cleaning Commenced',          'unloading_completed',    'Unloading Completed'],
+                ['unloading_completed',   'Unloading Completed',         'vessel_cast_off',        'MBC Cast Off'],
+                ['vessel_cast_off',       'MBC Cast Off',                'sailed_out_load_port',   'Sailed Out From Discharge Port'],
+                ['discharge_stop_shifting','Discharge Stop Shifting',    'discharge_start_shifting','Discharge Start Shifting'],
+            ];
+            if (!validateDateSequence(allRows, pairs)) return;
         }
 
         const rows = subTables[mbcId][type].getRows();
