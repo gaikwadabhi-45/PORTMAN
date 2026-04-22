@@ -119,8 +119,8 @@
             </td>
             <td>
                 <button class="btn btn-primary" onclick="printInvoice({{ row.id }})" style="font-size:10px;padding:3px 8px;">Print</button>
-                {% if row.invoice_status == 'SAP Failed' or (row.invoice_status == 'Generated' and not row.sap_document_number) %}
-                <button class="btn btn-retry" onclick="retrySAP({{ row.id }})" style="font-size:10px;padding:3px 8px;">Retry SAP</button>
+                {% if row.invoice_status in ('Generated', 'SAP Failed') and not row.sap_document_number %}
+                <button class="btn btn-success" onclick="pushToSAP({{ row.id }}, this)" style="font-size:10px;padding:3px 8px;">Push To SAP</button>
                 {% endif %}
                 {% if row.sap_document_number and not row.gst_irn %}
                 <button class="btn btn-success" onclick="fetchIRN({{ row.id }})" style="font-size:10px;padding:3px 8px;">Fetch IRN</button>
@@ -133,12 +133,6 @@
                     {% endif %}
                 {% endif %}
                 <button class="btn btn-export" onclick="exportSAPJson({{ row.id }})" style="font-size:10px;padding:3px 8px;" title="Download SAP JSON payload">SAP JSON</button>
-                {% if row.invoice_status in ('Generated', 'SAP Failed') and not row.sap_document_number %}
-                <button class="btn" style="background:#7c3aed;color:white;font-size:10px;padding:3px 8px;" onclick="pushToStaging({{ row.id }})" title="Write to SAP staging table for adapter pickup">Push Staging</button>
-                {% endif %}
-                {% if row.invoice_status not in ('Posted to SAP',) and not row.sap_document_number %}
-                <button class="btn" style="background:#0891b2;color:white;font-size:10px;padding:3px 8px;" onclick="syncFromStaging({{ row.id }})" title="Read SAP response back from staging table">Sync SAP</button>
-                {% endif %}
             </td>
         </tr>
         {% endfor %}
@@ -321,8 +315,11 @@ async function fetchIRN(id) {
     } catch(e) { alert('Error: ' + e.message); }
 }
 
-async function retrySAP(id) {
-    if (!confirm('Retry posting this invoice to SAP?')) return;
+async function pushToSAP(id, btn) {
+    if (!confirm('Push this invoice to SAP?')) return;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Posting...';
     try {
         const res = await fetch('/api/module/FINV01/invoice/retry-sap', {
             method: 'POST',
@@ -334,9 +331,15 @@ async function retrySAP(id) {
             alert('Posted to SAP. Document: ' + (result.sap_document_number || 'Success'));
             location.reload();
         } else {
-            alert('SAP Error: ' + (result.message || 'Failed'));
+            alert('SAP Error: ' + (result.message || result.error || 'Failed'));
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
-    } catch(e) { alert('Error: ' + e.message); }
+    } catch(e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
 }
 
 async function cancelInSAP(id) {
@@ -386,40 +389,5 @@ function exportSAPJson(id) {
     window.open('/api/module/FINV01/invoice/export-sap-json/' + id, '_blank');
 }
 
-async function pushToStaging(id) {
-    if (!confirm('Push this invoice to the SAP staging table?\nThe adapter will pick it up when active.')) return;
-    try {
-        const res = await fetch('/api/module/FSAP01/staging/push', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({invoice_id: id})
-        });
-        const result = await res.json();
-        if (result.ok) {
-            alert('Pushed to staging: ' + result.rows_inserted + ' line(s) written (status = N).');
-            location.reload();
-        } else {
-            alert('Staging push failed: ' + (result.error || 'Unknown error'));
-        }
-    } catch(e) { alert('Error: ' + e.message); }
-}
-
-async function syncFromStaging(id) {
-    if (!confirm('Read SAP response back from the staging table?')) return;
-    try {
-        const res = await fetch('/api/module/FSAP01/staging/sync', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({invoice_id: id})
-        });
-        const result = await res.json();
-        if (result.ok) {
-            alert('SAP Posted. Document: ' + (result.sap_document_number || '—'));
-            location.reload();
-        } else {
-            alert('Sync result (' + result.status + '): ' + (result.message || 'No update'));
-        }
-    } catch(e) { alert('Error: ' + e.message); }
-}
 </script>
 {% endblock %}

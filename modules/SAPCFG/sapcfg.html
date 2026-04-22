@@ -83,6 +83,10 @@
             <input type="text" class="cfg-plant-code" value="{{ cfg.plant_code or '' }}" placeholder="e.g. 5130">
         </div>
         <div class="config-field">
+            <label>Credit Control Area</label>
+            <input type="text" class="cfg-credit-control-area" value="{{ cfg.credit_control_area or '' }}" placeholder="e.g. 5123">
+        </div>
+        <div class="config-field">
             <label>Tax Code (default)</label>
             <input type="text" class="cfg-tax-code" value="{{ cfg.tax_code or '' }}" placeholder="2-char MWSKZ fallback" maxlength="2">
         </div>
@@ -145,6 +149,7 @@
             business_place: panel.querySelector('.cfg-business-place').value,
             section_code: panel.querySelector('.cfg-section-code').value,
             plant_code: panel.querySelector('.cfg-plant-code').value,
+            credit_control_area: panel.querySelector('.cfg-credit-control-area').value,
             tax_code: panel.querySelector('.cfg-tax-code').value,
             profit_center: panel.querySelector('.cfg-profit-center').value,
             tds_gl: panel.querySelector('.cfg-tds-gl').value,

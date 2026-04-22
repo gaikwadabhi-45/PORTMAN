@@ -1,53 +1,60 @@
 """
-SAP Inbound Interface JSON Payload Builder.
-Spec: docs/plans/2026-04-08-sap-inbound-interface-requirements.md  (v1.0)
+SAP / PORTBIRD DynaportInvoice JSON Payload Builder.
 
-Header fields (Portbird sends):
-  Invoice_Type           I=Invoice/DN/Reversal-of-Invoice, C=Credit Note/Reversal-of-CN
-  Company_Code
-  Invoice_Date           DD.MM.YYYY
-  Posting_Date           DD.MM.YYYY (= Invoice_Date)
-  Reference_Text         16 char — PMS doc number; for reversals: original SAP Document_Number
-  Document_Type          DR (Invoice/DN) / DG (Credit Note)
-  Cancellation_Flag      'X' for reversals, blank otherwise
-  Nature_of_transaction  B2B / B2C
-  Service_Sale           S=Service, A=Sale
+Spec: PORTBIRD API document (adapter doc from SAP team).
+
+Payload envelope:  { "Record_Header": [ { ...header..., "ITEM": [...] } ] }
+
+Header fields (PORTBIRD spec):
+  Invoice_Credit         I=Invoice/DN/Reversal-of-Invoice, C=Credit Note/Reversal-of-CN
+  Company_code
+  Invoice_date           DD.MM.YYYY
+  Posting_Date           DD.MM.YYYY (= Invoice_date)
+  Reference              16 char — PMS doc number; for reversals: original SAP Document_Number
+  Document_type          INV / CRN / DN (mapped from doc_type)
   Customer_Code          10 char
   Invoice_Amount         13 curr (taxable + GST - TDS + TCS, always positive)
-  Currency               INR
-  Business_Place
-  Section_Code
+  Business_place
+  Section_code
+  Text                   short narration (25 char)
+  Document_Header_Text   25 char
   Payment_Term           4 char
+  Credit_Control_Area    from sap_api_config.credit_control_area
+  Cancellation_Flag      'F' for reversals, blank otherwise
+  Nature_of_transaction  B2B / B2C
+  Service_Sale           S=Service, A=Sale
+  Currency               INR
+  Payment_term           duplicate per spec (kept for compatibility)
   Baseline_Date          DD.MM.YYYY
-  Header_Text            25 char
 
-Line Item fields (sent for reversals too — reversal payload mirrors the original):
-  GL_Account         SAP GL account 10 char
-  GL_Amount          taxable line amount, always positive 13 curr
-  Plant
-  Profit_Center
-  Text_Description   25 char
+Line Item fields (per spec — ITEM array; omitted entirely for reversals):
+  Reference           same as header Reference (per-item)
+  GL_account          SAP GL account 10 char
+  Amount              taxable line amount 13 curr
   Tax_Code
-  IGST_GL            10 char (blank if zero)
-  IGST_Amount        blank if zero
-  SGST_GL            10 char (blank if zero)
-  SGST_Amount        blank if zero
-  CGST_GL            10 char (blank if zero)
-  CGST_Amount        blank if zero
-  HSN_or_SAC_code    16 char
+  Cost_Center
+  Plant
+  Text                25 char description
+  Profit_Center
+  HSN_SAC             16 char
+  CGST_AMT            blank if zero
+  SGST_AMT            blank if zero
+  IGST_AMT            blank if zero
+  IGST_GL             10 char (blank if zero)
+  SGST_GL             10 char (blank if zero)
+  CGST_GL             10 char (blank if zero)
   UOM
   Unit_Price
   Quantity
   TDS_GL
-  TDS_Amount         blank if zero
+  TDS_amount          blank if zero
   TCS_GL
-  TCS_Amount         blank if zero
+  TCS_amount          blank if zero
   Round_off_GL
-  Round_off_Value    ±13 curr (only signed field; blank if zero)
+  Round_off_Value     ±13 curr (only signed field; blank if zero)
 
-Auto (SAP fills — Portbird does NOT send):
-  Processing_Status, Fiscal_Year, Fiscal_Period, Push_Date, Push_Time,
-  Document_Number, Message, IRN_Number, Acknowledgement_Number, IRN_Date, QR_Code
+Reversal rule: For reversals, Portbird sends ONLY the header fields.
+No ITEM array is included in the payload.
 """
 from datetime import datetime
 from database import get_db, get_cursor
@@ -101,7 +108,6 @@ def _get_customer_sap_info(customer_type, customer_id):
     """
     Fetch both sap_customer_code (for Customer_Code field) and company_code
     (for inter-company override) in a single query.
-    Returns dict {sap_customer_code, company_code} or empty dict.
     """
     table = _CUSTOMER_TABLE_MAP.get(customer_type)
     if not table or not customer_id:
@@ -117,21 +123,12 @@ def _get_customer_sap_info(customer_type, customer_id):
     return dict(row) if row else {}
 
 
-def _get_customer_company_code(customer_type, customer_id):
-    """Inter-company override: return customer's company_code if set."""
-    info = _get_customer_sap_info(customer_type, customer_id)
-    return info.get('company_code') or None
-
-
 def _nature_of_transaction(customer_gstin):
     return 'B2B' if customer_gstin and customer_gstin.strip() else 'B2C'
 
 
 def _get_service_gl_map(service_codes):
-    """
-    Batch-fetch all SAP-relevant fields from finance_service_types by service_code.
-    Returns dict keyed by service_code.
-    """
+    """Batch-fetch SAP-relevant fields from finance_service_types by service_code."""
     if not service_codes:
         return {}
     conn = get_db()
@@ -152,11 +149,7 @@ def _get_service_gl_map(service_codes):
 
 
 def _get_service_type_map_by_ids(type_ids):
-    """
-    Batch-fetch all SAP-relevant fields from finance_service_types by integer id.
-    Used to enrich fdcn_lines (which store service_type_id, not service_code).
-    Returns dict keyed by id.
-    """
+    """Batch-fetch SAP-relevant fields from finance_service_types by integer id."""
     if not type_ids:
         return {}
     conn = get_db()
@@ -177,7 +170,7 @@ def _get_service_type_map_by_ids(type_ids):
 
 
 def _service_sale_flag(lines, svc_map):
-    """Derive header-level SERVICE_SALE from the first line that has a service master entry."""
+    """Derive header-level Service_Sale from the first line that has a service master entry."""
     for line in lines:
         svc_code = line.get('service_code') or ''
         flag = (
@@ -190,21 +183,21 @@ def _service_sale_flag(lines, svc_map):
 
 
 # ---------------------------------------------------------------------------
-# Item builder (shared by all document types)
+# Item builder (shared by all non-reversal document types)
 # ---------------------------------------------------------------------------
 
-def _build_items(lines, company, amount_field='line_amount', config_defaults=None, svc_map=None, doc_type='DR'):
+def _build_items(lines, reference, amount_field='line_amount',
+                 config_defaults=None, svc_map=None, doc_type='INV'):
     """
-    Build the Item list from service lines.
+    Build the ITEM list per PORTBIRD spec.
 
-    GL source for IGST/CGST/SGST: service master only (sap_igst_gl / sap_cgst_gl / sap_sgst_gl).
-    GL source for TDS/TCS:        service master → SAP config fallback (tds_gl / tcs_gl).
-    Plant / Section_Code / Business_Place are header-level only in the new spec;
-    Plant is still sent per line as required by SAP PI.
+    Reference     — per-line, mirrors header Reference (PMS doc number)
+    GL sources    — service master (sap_gl_account, sap_igst_gl, sap_cgst_gl,
+                    sap_sgst_gl, sap_tds_gl, sap_tcs_gl) with SAP config fallback
+                    for TDS/TCS/round-off.
     """
     config_defaults = config_defaults or {}
 
-    # Use pre-fetched svc_map if provided (avoids duplicate DB query from builders)
     if svc_map is None:
         service_codes = {l.get('service_code') for l in lines if l.get('service_code')}
         svc_map = _get_service_gl_map(service_codes)
@@ -219,64 +212,69 @@ def _build_items(lines, company, amount_field='line_amount', config_defaults=Non
         svc_code = line.get('service_code') or ''
         svc      = svc_map.get(svc_code, {})
 
-        # GL_Account: use sap_gl_account from service master, fall back to service_code
         gl_account = svc.get('sap_gl_account') or svc_code
-
-        plant = line.get('plant') or config_defaults.get('plant_code') or ''
+        plant      = line.get('plant') or config_defaults.get('plant_code') or ''
 
         igst_gl = svc.get('sap_igst_gl') or ''
         cgst_gl = svc.get('sap_cgst_gl') or ''
         sgst_gl = svc.get('sap_sgst_gl') or ''
 
-        uom        = line.get('uom')        or svc.get('uom')        or ''
+        uom        = line.get('uom') or svc.get('uom') or ''
         unit_price = line.get('unit_price') if line.get('unit_price') is not None else line.get('rate')
         quantity   = line.get('quantity')
 
-        # TDS/TCS GL: service master → SAP config fallback
         tds_gl       = svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or ''
         tcs_gl       = svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or ''
         round_off_gl = config_defaults.get('round_off_gl') or ''
 
-        # Tax_Code: line override → service master → SAP config default
         tax_code = (
             line.get('sap_tax_code')
             or svc.get('sap_tax_code')
             or config_defaults.get('tax_code')
             or ''
         )
-        # Profit_Center: line override → service master → SAP config default
         profit_center = (
             line.get('profit_center')
             or svc.get('sap_profit_center')
             or config_defaults.get('profit_center')
             or ''
         )
+        cost_center = (
+            line.get('cost_center')
+            or svc.get('sap_cost_center')
+            or ''
+        )
+
+        # Round-off sign: INV/DN (Debit-side doc) → negate; CRN → keep sign.
+        rounding = line.get('rounding_off')
+        if rounding and doc_type in ('INV', 'DN'):
+            rounding = -float(rounding)
 
         items.append({
-            'GL_Account':       gl_account[:10],
-            'GL_Amount':        _fmt_amount_required(taxable),
-            'Plant':            plant,
-            'Profit_Center':    profit_center,
-            'Text_Description': (line.get('service_name') or '')[:25],
+            'Reference':        (reference or '')[:16],
+            'GL_account':       gl_account[:10],
+            'Amount':           _fmt_amount_required(taxable),
             'Tax_Code':         tax_code,
+            'Cost_Center':      cost_center,
+            'Plant':            plant,
+            'Text':             (line.get('service_name') or '')[:25],
+            'Profit_Center':    profit_center,
+            'HSN_SAC':          (line.get('sac_code') or line.get('hsn_sac') or '')[:16],
+            'CGST_AMT':         _fmt_amount(cgst),
+            'SGST_AMT':         _fmt_amount(sgst),
+            'IGST_AMT':         _fmt_amount(igst),
             'IGST_GL':          igst_gl[:10] if igst_gl else '',
-            'IGST_Amount':      _fmt_amount(igst),
             'SGST_GL':          sgst_gl[:10] if sgst_gl else '',
-            'SGST_Amount':      _fmt_amount(sgst),
             'CGST_GL':          cgst_gl[:10] if cgst_gl else '',
-            'CGST_Amount':      _fmt_amount(cgst),
-            'HSN_or_SAC_code':  (line.get('sac_code') or line.get('hsn_sac') or '')[:16],
             'UOM':              uom,
             'Unit_Price':       _fmt_amount_required(unit_price) if unit_price is not None else '',
             'Quantity':         f'{float(quantity):.3f}' if quantity is not None else '',
             'TDS_GL':           tds_gl,
-            'TDS_Amount':       _fmt_amount(line.get('tds_amount')),
+            'TDS_amount':       _fmt_amount(line.get('tds_amount')),
             'TCS_GL':           tcs_gl,
-            'TCS_Amount':       _fmt_amount(line.get('tcs_amount')),
+            'TCS_amount':       _fmt_amount(line.get('tcs_amount')),
             'Round_off_GL':     round_off_gl,
-            # DR: round-off GL is in "rest" (Credit group) → negate so SAP posts CR under + = Debit convention.
-            # DG: round-off GL is in "rest" (Debit group) → keep sign as-is.
-            'Round_off_Value':  _fmt_amount(-(line.get('rounding_off') or 0) if doc_type == 'DR' and line.get('rounding_off') else line.get('rounding_off')),
+            'Round_off_Value':  _fmt_amount(rounding),
         })
     return items
 
@@ -301,7 +299,45 @@ def _total_invoice_amount(header, lines, amount_field='line_amount'):
 
 
 # ---------------------------------------------------------------------------
-# Invoice builder  (Invoice_Type = I, Document_Type = Y1)
+# Common header builder
+# ---------------------------------------------------------------------------
+
+def _build_header_base(config, customer_code, company, inv_date,
+                       reference, header_text, short_text, currency,
+                       invoice_credit, document_type, customer_gstin,
+                       service_sale, invoice_amount):
+    """Construct the PORTBIRD header dict (shared by invoice/DN/CN/reversal)."""
+    payment_term         = (config.get('default_payment_term') or config.get('payment_term') or '')[:4]
+    business_place       = config.get('business_place') or company
+    section_code         = config.get('section_code')   or company
+    credit_control_area  = config.get('credit_control_area') or company
+
+    return {
+        'Invoice_Credit':        invoice_credit,
+        'Company_code':          company,
+        'Invoice_date':          inv_date,
+        'Posting_Date':          inv_date,
+        'Reference':             (reference or '')[:16],
+        'Document_type':         document_type,
+        'Customer_Code':         (customer_code or '')[:10],
+        'Invoice_Amount':        _fmt_amount_required(invoice_amount),
+        'Business_place':        business_place,
+        'Section_code':          section_code,
+        'Text':                  (short_text or '')[:25],
+        'Document_Header_Text':  (header_text or '')[:25],
+        'Payment_Term':          payment_term,
+        'Credit_Control_Area':   credit_control_area,
+        'Cancellation_Flag':     '',
+        'Nature_of_transaction': _nature_of_transaction(customer_gstin),
+        'Service_Sale':          service_sale,
+        'Currency':              currency or 'INR',
+        'Payment_term':          payment_term,
+        'Baseline_Date':         inv_date,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Invoice builder  (Invoice_Credit = I, Document_type = INV)
 # ---------------------------------------------------------------------------
 
 def build_invoice_payload(invoice_header, invoice_lines):
@@ -310,48 +346,39 @@ def build_invoice_payload(invoice_header, invoice_lines):
         raise ValueError('No active SAP configuration found')
 
     default_company = config.get('company_code', '5171')
-    payment_term    = (config.get('default_payment_term') or config.get('payment_term') or '')[:4]
-    business_place  = config.get('business_place') or default_company
-    section_code    = config.get('section_code')   or default_company
 
     cust_info = _get_customer_sap_info(
         invoice_header.get('customer_type'),
         invoice_header.get('customer_id'),
     )
-    company  = cust_info.get('company_code') or default_company
-    # SAP Customer_Code must be the 10-char SAP customer number from the customer
-    # master (vessel_agents / vessel_customers / vessel_importer_exporters).
-    # Fall back to customer_gl_code only if master is not populated.
+    company       = cust_info.get('company_code') or default_company
     customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
-    inv_date = _fmt_date(invoice_header.get('invoice_date'))
+    inv_date      = _fmt_date(invoice_header.get('invoice_date'))
+    invoice_no    = invoice_header.get('invoice_number') or ''
 
     svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
     svc_map   = _get_service_gl_map(svc_codes)
 
-    record = {
-        'Invoice_Type':          'I',
-        'Company_Code':          company,
-        'Invoice_Date':          inv_date,
-        'Posting_Date':          inv_date,
-        'Reference_Text':        (invoice_header.get('invoice_number') or '')[:16],
-        'Document_Type':         'DR',
-        'Cancellation_Flag':     '',
-        'Nature_of_transaction': _nature_of_transaction(invoice_header.get('customer_gstin')),
-        'Service_Sale':          _service_sale_flag(invoice_lines, svc_map),
-        'Customer_Code':         customer_code[:10],
-        'Invoice_Amount':        _fmt_amount_required(
-                                     _total_invoice_amount(invoice_header, invoice_lines)
-                                 ),
-        'Currency':              invoice_header.get('currency_code') or 'INR',
-        'Business_Place':        business_place,
-        'Section_Code':          section_code,
-        'Payment_Term':          payment_term,
-        'Baseline_Date':         inv_date,
-        'Header_Text':           (invoice_header.get('invoice_number') or '')[:25],
-        'Item':                  _build_items(invoice_lines, company, config_defaults=config, svc_map=svc_map, doc_type='DR'),
-    }
-
-    return {'Record': record}
+    record = _build_header_base(
+        config=config,
+        customer_code=customer_code,
+        company=company,
+        inv_date=inv_date,
+        reference=invoice_no,
+        header_text=invoice_no,
+        short_text=invoice_no,
+        currency=invoice_header.get('currency_code'),
+        invoice_credit='I',
+        document_type='INV',
+        customer_gstin=invoice_header.get('customer_gstin'),
+        service_sale=_service_sale_flag(invoice_lines, svc_map),
+        invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
+    )
+    record['ITEM'] = _build_items(
+        invoice_lines, invoice_no,
+        config_defaults=config, svc_map=svc_map, doc_type='INV',
+    )
+    return {'Record_Header': [record]}
 
 
 # ---------------------------------------------------------------------------
@@ -364,27 +391,23 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         raise ValueError('No active SAP configuration found')
 
     default_company = config.get('company_code', '5171')
-    payment_term    = (config.get('default_payment_term') or config.get('payment_term') or '')[:4]
-    business_place  = config.get('business_place') or default_company
-    section_code    = config.get('section_code')   or default_company
 
     cust_info = _get_customer_sap_info(
         fdcn_header.get('customer_type'),
         fdcn_header.get('customer_id'),
     )
-    company  = cust_info.get('company_code') or default_company
+    company       = cust_info.get('company_code') or default_company
     customer_code = cust_info.get('sap_customer_code') or fdcn_header.get('customer_gl_code') or ''
-    doc_date = _fmt_date(fdcn_header.get('doc_date'))
-    doc_type = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
+    doc_date      = _fmt_date(fdcn_header.get('doc_date'))
+    doc_number    = fdcn_header.get('doc_number') or ''
+    doc_type      = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
 
-    # DN uses DR (same as invoice); CN uses DG
-    sap_doc_type = 'DR' if doc_type == 'DN' else 'DG'
-    invoice_type = 'I' if doc_type == 'DN' else 'C'
-
-    irn_date_raw = fdcn_header.get('gst_ack_date') or fdcn_header.get('irn_date')
+    # PORTBIRD Document_type: DN → 'DN', CN → 'CRN'
+    # Invoice_Credit: DN → 'I' (adds to receivable), CN → 'C' (reduces receivable)
+    document_type  = 'DN' if doc_type == 'DN' else 'CRN'
+    invoice_credit = 'I' if doc_type == 'DN' else 'C'
 
     # fdcn_lines store service_type_id (integer FK), not service_code (string).
-    # Enrich each line with service_code by looking up finance_service_types by id.
     type_ids = {l.get('service_type_id') for l in fdcn_lines if l.get('service_type_id')}
     type_map = _get_service_type_map_by_ids(type_ids)
     enriched_lines = []
@@ -393,55 +416,81 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         if not l.get('service_code'):
             tid = l.get('service_type_id')
             svc_type = type_map.get(tid, {})
-            # Fall back to gl_code if service_code not found in master
             l['service_code'] = svc_type.get('service_code') or l.get('gl_code') or ''
         enriched_lines.append(l)
 
     svc_codes = {l.get('service_code') for l in enriched_lines if l.get('service_code')}
     svc_map   = _get_service_gl_map(svc_codes)
 
-    record = {
-        'Invoice_Type':          invoice_type,
-        'Company_Code':          company,
-        'Invoice_Date':          doc_date,
-        'Posting_Date':          doc_date,
-        'Reference_Text':        (fdcn_header.get('doc_number') or '')[:16],
-        'Document_Type':         sap_doc_type,
-        'Cancellation_Flag':     '',
-        'Nature_of_transaction': _nature_of_transaction(fdcn_header.get('customer_gstin')),
-        'Service_Sale':          _service_sale_flag(enriched_lines, svc_map),
-        'Customer_Code':         customer_code[:10],
-        'Invoice_Amount':        _fmt_amount_required(
-                                     _total_invoice_amount(fdcn_header, enriched_lines)
-                                 ),
-        'Currency':              'INR',
-        'Business_Place':        business_place,
-        'Section_Code':          section_code,
-        'Payment_Term':          payment_term,
-        'Baseline_Date':         doc_date,
-        'Header_Text':           (fdcn_header.get('doc_number') or '')[:25],
-        'Original_Invoice_No':   fdcn_header.get('original_invoice_number') or '',
-        'Item':                  _build_items(enriched_lines, company, config_defaults=config, svc_map=svc_map, doc_type=sap_doc_type),
-    }
-
-    return {'Record': record}
+    record = _build_header_base(
+        config=config,
+        customer_code=customer_code,
+        company=company,
+        inv_date=doc_date,
+        reference=doc_number,
+        header_text=doc_number,
+        short_text=doc_number,
+        currency='INR',
+        invoice_credit=invoice_credit,
+        document_type=document_type,
+        customer_gstin=fdcn_header.get('customer_gstin'),
+        service_sale=_service_sale_flag(enriched_lines, svc_map),
+        invoice_amount=_total_invoice_amount(fdcn_header, enriched_lines),
+    )
+    record['ITEM'] = _build_items(
+        enriched_lines, doc_number,
+        config_defaults=config, svc_map=svc_map, doc_type=doc_type,
+    )
+    return {'Record_Header': [record]}
 
 
 # ---------------------------------------------------------------------------
-# Invoice reversal builder  (Invoice_Type = I, Cancellation_Flag = 'X')
+# Invoice reversal builder  (Cancellation_Flag = 'F', no ITEM array)
 # ---------------------------------------------------------------------------
 
 def build_invoice_reversal_payload(invoice_header, invoice_lines):
-    payload = build_invoice_payload(invoice_header, invoice_lines)
+    """
+    Per PORTBIRD spec: reversals send ONLY header fields — no ITEM array.
+    Reference is the original SAP Document_Number (not the PMS invoice number).
+    """
+    config = get_active_config()
+    if not config:
+        raise ValueError('No active SAP configuration found')
+
+    default_company = config.get('company_code', '5171')
+
+    cust_info = _get_customer_sap_info(
+        invoice_header.get('customer_type'),
+        invoice_header.get('customer_id'),
+    )
+    company       = cust_info.get('company_code') or default_company
+    customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
+    inv_date      = _fmt_date(invoice_header.get('invoice_date'))
 
     original_ref = (
         invoice_header.get('sap_document_number')
         or invoice_header.get('invoice_number')
         or ''
     )
-    payload['Record']['Reference_Text']    = original_ref[:16]
-    payload['Record']['Header_Text']       = original_ref[:25]
-    payload['Record']['Cancellation_Flag'] = 'X'
-    # Invoice_Type stays 'I' — it's a reversal of an invoice, not a credit note
 
-    return payload
+    svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
+    svc_map   = _get_service_gl_map(svc_codes)
+
+    record = _build_header_base(
+        config=config,
+        customer_code=customer_code,
+        company=company,
+        inv_date=inv_date,
+        reference=original_ref,
+        header_text=original_ref,
+        short_text=original_ref,
+        currency=invoice_header.get('currency_code'),
+        invoice_credit='I',
+        document_type='INV',
+        customer_gstin=invoice_header.get('customer_gstin'),
+        service_sale=_service_sale_flag(invoice_lines, svc_map),
+        invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
+    )
+    record['Cancellation_Flag'] = 'F'
+    # NOTE: no ITEM array for reversals per PORTBIRD spec
+    return {'Record_Header': [record]}

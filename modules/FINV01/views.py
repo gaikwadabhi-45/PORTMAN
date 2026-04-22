@@ -1039,8 +1039,12 @@ def _build_sample_payload(invoice, lines, cancel=False):
     svc_codes = {l.get('service_code') for l in lines if l.get('service_code')}
     svc_map   = sap_builder._get_service_gl_map(svc_codes)
 
+    inv_num = invoice.get('invoice_number') or ''
+    reference = inv_num
+
     items = []
-    for l in lines:
+    if not cancel:
+        for l in lines:
             svc = svc_map.get(l.get('service_code') or '', {})
             cgst = float(l.get('cgst_amount') or 0)
             sgst = float(l.get('sgst_amount') or 0)
@@ -1048,52 +1052,57 @@ def _build_sample_payload(invoice, lines, cancel=False):
             unit_price = l.get('unit_price') if l.get('unit_price') is not None else l.get('rate')
             qty = l.get('quantity')
             items.append({
-                'GL_Account':       (svc.get('sap_gl_account') or l.get('service_code') or l.get('gl_code') or '')[:10],
-                'GL_Amount':        f'{float(l.get("line_amount") or 0):.2f}',
-                'Plant':            company,
-                'Profit_Center':    l.get('profit_center') or svc.get('sap_profit_center') or '',
-                'Text_Description': (l.get('service_name') or '')[:25],
+                'Reference':        reference[:16],
+                'GL_account':       (svc.get('sap_gl_account') or l.get('service_code') or l.get('gl_code') or '')[:10],
+                'Amount':           f'{float(l.get("line_amount") or 0):.2f}',
                 'Tax_Code':         l.get('sap_tax_code') or svc.get('sap_tax_code') or '',
+                'Cost_Center':      l.get('cost_center') or svc.get('sap_cost_center') or '',
+                'Plant':            company,
+                'Text':             (l.get('service_name') or '')[:25],
+                'Profit_Center':    l.get('profit_center') or svc.get('sap_profit_center') or '',
+                'HSN_SAC':          (l.get('sac_code') or l.get('hsn_sac') or '')[:16],
+                'CGST_AMT':         f'{cgst:.2f}' if cgst else '',
+                'SGST_AMT':         f'{sgst:.2f}' if sgst else '',
+                'IGST_AMT':         f'{igst:.2f}' if igst else '',
                 'IGST_GL':          (svc.get('sap_igst_gl') or '')[:10] if svc.get('sap_igst_gl') else '',
-                'IGST_Amount':      f'{igst:.2f}' if igst else '',
                 'SGST_GL':          (svc.get('sap_sgst_gl') or '')[:10] if svc.get('sap_sgst_gl') else '',
-                'SGST_Amount':      f'{sgst:.2f}' if sgst else '',
                 'CGST_GL':          (svc.get('sap_cgst_gl') or '')[:10] if svc.get('sap_cgst_gl') else '',
-                'CGST_Amount':      f'{cgst:.2f}' if cgst else '',
-                'HSN_or_SAC_code':  (l.get('sac_code') or l.get('hsn_sac') or '')[:16],
                 'UOM':              l.get('uom') or svc.get('uom') or '',
                 'Unit_Price':       f'{float(unit_price):.2f}' if unit_price is not None else '',
                 'Quantity':         f'{float(qty):.3f}' if qty is not None else '',
                 'TDS_GL':           svc.get('sap_tds_gl') or '',
-                'TDS_Amount':       f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
+                'TDS_amount':       f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
                 'TCS_GL':           svc.get('sap_tcs_gl') or '',
-                'TCS_Amount':       f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
+                'TCS_amount':       f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
                 'Round_off_GL':     '',
                 'Round_off_Value':  '',
             })
 
-    inv_num = invoice.get('invoice_number') or ''
     record = {
-        'Invoice_Type':          'I',
-        'Company_Code':          company,
-        'Invoice_Date':          inv_date,
+        'Invoice_Credit':        'I',
+        'Company_code':          company,
+        'Invoice_date':          inv_date,
         'Posting_Date':          inv_date,
-        'Reference_Text':        inv_num[:16],
-        'Document_Type':         'DR',
-        'Cancellation_Flag':     'X' if cancel else '',
-        'Nature_of_transaction': 'B2B' if gstin else 'B2C',
-        'Service_Sale':          sap_builder._service_sale_flag(lines, svc_map),
+        'Reference':             (reference if not cancel else reference)[:16],
+        'Document_type':         'INV',
         'Customer_Code':         customer_code[:10],
         'Invoice_Amount':        f'{total:.2f}',
-        'Currency':              invoice.get('currency_code') or 'INR',
-        'Business_Place':        company,
-        'Section_Code':          company,
+        'Business_place':        company,
+        'Section_code':          company,
+        'Text':                  reference[:25],
+        'Document_Header_Text':  (f"REV {inv_num}" if cancel else inv_num)[:25],
         'Payment_Term':          '',
+        'Credit_Control_Area':   company,
+        'Cancellation_Flag':     'F' if cancel else '',
+        'Nature_of_transaction': 'B2B' if gstin else 'B2C',
+        'Service_Sale':          sap_builder._service_sale_flag(lines, svc_map),
+        'Currency':              invoice.get('currency_code') or 'INR',
+        'Payment_term':          '',
         'Baseline_Date':         inv_date,
-        'Header_Text':           (f"REV {inv_num}" if cancel else inv_num)[:25],
     }
-    record['Item'] = items
-    return {'Record': record}
+    if not cancel:
+        record['ITEM'] = items
+    return {'Record_Header': [record]}
 
 
 # ===== SAP JSON Export (temporary — for SAP team review) =====

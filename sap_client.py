@@ -19,20 +19,22 @@ _token_cache = {'access_token': None, 'expires_at': 0}
 
 
 def _get_oauth_token(config, force_refresh=False):
-    """Obtain or reuse a Bearer token via client_credentials grant."""
+    """
+    Obtain or reuse a Bearer token via client_credentials grant.
+    PORTBIRD spec: credentials are passed as URL query parameters, not form body.
+    """
     global _token_cache
     now = time.time()
 
     if not force_refresh and _token_cache['access_token'] and now < _token_cache['expires_at']:
         return _token_cache['access_token']
 
-    # token URL = base_url + /oauth2/api/v1/generateToken
     base = config['base_url'].rstrip('/')
-    token_url = config.get('token_url') or f"{base}/oauth2/api/v1/generateToken"
-    resp = requests.post(token_url, data={
-        'grant_type': 'client_credentials',
-        'client_id': config['client_id'],
+    token_url = config.get('token_url') or f"{base}/RESTAdapter/OAuthServer"
+    resp = requests.post(token_url, params={
+        'client_id':     config['client_id'],
         'client_secret': config['client_secret'],
+        'grant_type':    'client_credentials',
     }, timeout=30)
     resp.raise_for_status()
     body = resp.json()

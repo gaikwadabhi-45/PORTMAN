@@ -32,6 +32,7 @@ def save_config(data, updated_by=None):
             business_place=%s, section_code=%s, plant_code=%s,
             tax_code=%s, profit_center=%s,
             tds_gl=%s, tcs_gl=%s, round_off_gl=%s,
+            credit_control_area=%s,
             is_active=%s, updated_by=%s, updated_date=%s
             WHERE id=%s''', [
             data.get('base_url'), data.get('token_url'),
@@ -42,6 +43,7 @@ def save_config(data, updated_by=None):
             data.get('tax_code') or None, data.get('profit_center') or None,
             data.get('tds_gl') or None, data.get('tcs_gl') or None,
             data.get('round_off_gl') or None,
+            data.get('credit_control_area') or None,
             data.get('is_active', 0), updated_by, now, row_id
         ])
     else:
@@ -51,8 +53,9 @@ def save_config(data, updated_by=None):
              business_place, section_code, plant_code,
              tax_code, profit_center,
              tds_gl, tcs_gl, round_off_gl,
+             credit_control_area,
              is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id''', [
             data.get('environment'), data.get('base_url'), data.get('token_url'),
             data.get('client_id'), data.get('client_secret'),
@@ -62,6 +65,7 @@ def save_config(data, updated_by=None):
             data.get('tax_code') or None, data.get('profit_center') or None,
             data.get('tds_gl') or None, data.get('tcs_gl') or None,
             data.get('round_off_gl') or None,
+            data.get('credit_control_area') or None,
             data.get('is_active', 0), updated_by, now
         ])
         row_id = cur.fetchone()['id']

@@ -50,10 +50,10 @@ def test_connection():
         client_secret = data.get('client_secret')
         if not all([token_url, client_id, client_secret]):
             return jsonify({'success': False, 'message': 'Missing token URL, client ID or secret'})
-        resp = req.post(token_url, data={
-            'grant_type': 'client_credentials',
+        resp = req.post(token_url, params={
             'client_id': client_id,
-            'client_secret': client_secret
+            'client_secret': client_secret,
+            'grant_type': 'client_credentials'
         }, timeout=15)
         if resp.status_code == 200 and resp.json().get('access_token'):
             return jsonify({'success': True, 'message': f'Connected! Token expires in {resp.json().get("expires_in", "?")}s'})
