@@ -16,6 +16,17 @@
     .badge-pending  { background: #fef9e7; color: #7d6608; }
     .badge-none     { background: #f5f5f5; color: #999; }
     .badge-irn      { background: #d6eaf8; color: #1a5276; }
+    .json-btn { border: 0; background: #2d6cdf; color: white; border-radius: 4px; padding: 3px 8px; font-size: 10px; cursor: pointer; }
+    .json-modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; align-items: center; justify-content: center; padding: 18px; }
+    .json-modal-card { background: white; color: #1f2933; width: min(1100px, 96vw); max-height: 92vh; border-radius: 6px; display: flex; flex-direction: column; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+    .json-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #e5e7eb; }
+    .json-modal-head h3 { margin: 0; font-size: 14px; }
+    .json-modal-close { border: 0; background: #e5e7eb; border-radius: 4px; padding: 4px 9px; cursor: pointer; }
+    .json-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; padding: 10px 14px; font-size: 11px; border-bottom: 1px solid #edf2f7; }
+    .json-meta span { display: block; color: #718096; }
+    .json-body { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 14px; overflow: auto; }
+    .json-pane h4 { margin: 0 0 6px; font-size: 12px; }
+    .json-pane pre { margin: 0; background: #0f172a; color: #e2e8f0; border-radius: 4px; padding: 10px; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; min-height: 360px; }
 
     /* Dark theme */
     .dark-theme #sapInvTable .tabulator,
@@ -26,6 +37,9 @@
     .dark-theme .tabulator .tabulator-row:nth-child(even) { background: #252525; }
     .dark-theme .tabulator .tabulator-row:hover { background: #2a2a2a; }
     .dark-theme .tabulator .tabulator-footer { background: #2d2d2d; color: #ccc; border-top-color: #444; }
+    .dark-theme .json-modal-card { background: #1f2933; color: #f7fafc; }
+    .dark-theme .json-modal-head,
+    .dark-theme .json-meta { border-color: #384454; }
 </style>
 
 <div class="module-header">
@@ -66,6 +80,33 @@
     <div id="gstTable"></div>
 </div>
 
+<div id="sapLogModal" class="json-modal" style="display:none;">
+    <div class="json-modal-card">
+        <div class="json-modal-head">
+            <h3>SAP Request / Response</h3>
+            <button class="json-modal-close" onclick="closeSapLogModal()">Close</button>
+        </div>
+        <div class="json-meta">
+            <div><span>Document</span><strong id="sapLogDoc">-</strong></div>
+            <div><span>Log ID</span><strong id="sapLogId">-</strong></div>
+            <div><span>Status</span><strong id="sapLogStatus">-</strong></div>
+            <div><span>HTTP</span><strong id="sapLogHttp">-</strong></div>
+            <div><span>Duration</span><strong id="sapLogDuration">-</strong></div>
+            <div><span>Logged At</span><strong id="sapLogDate">-</strong></div>
+        </div>
+        <div class="json-body">
+            <div class="json-pane">
+                <h4>Sent JSON</h4>
+                <pre id="sapLogRequest">-</pre>
+            </div>
+            <div class="json-pane">
+                <h4>Received Response</h4>
+                <pre id="sapLogResponse">-</pre>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -84,8 +125,35 @@ function irnBadge(val) {
 }
 function statusBadge(val) {
     if (!val) return '';
-    const cls = (val === 'Posted' || val === 'Approved') ? 'badge-posted' : 'badge-pending';
+    const cls = ['Posted', 'Approved', 'Posted to SAP', 'SAP Posted', 'Success'].includes(val) ? 'badge-posted' : 'badge-pending';
     return `<span class="badge ${cls}">${val}</span>`;
+}
+function sapLogButton(cell) {
+    return cell.getValue() ? '<button class="json-btn">View JSON</button>' : '<span class="badge badge-none">No Log</span>';
+}
+function parseBody(value) {
+    if (!value) return '-';
+    try { return JSON.stringify(JSON.parse(value), null, 2); }
+    catch (e) { return String(value); }
+}
+function openSapLogModal(row) {
+    const docNo = row.invoice_number || row.credit_note_number || '-';
+    document.getElementById('sapLogDoc').textContent = docNo;
+    document.getElementById('sapLogId').textContent = row.sap_log_id || '-';
+    document.getElementById('sapLogStatus').textContent = row.sap_log_status || '-';
+    document.getElementById('sapLogHttp').textContent = row.sap_response_status_code || '-';
+    document.getElementById('sapLogDuration').textContent = row.sap_duration_ms ? `${row.sap_duration_ms} ms` : '-';
+    document.getElementById('sapLogDate').textContent = row.sap_log_date || '-';
+    document.getElementById('sapLogRequest').textContent = parseBody(row.sap_request_body);
+    document.getElementById('sapLogResponse').textContent = row.sap_response_body ? parseBody(row.sap_response_body) : (row.sap_error_message || '-');
+    document.getElementById('sapLogModal').style.display = 'flex';
+}
+function openSapLogFromCell(e, cell) {
+    const row = cell.getRow().getData();
+    if (row.sap_log_id) openSapLogModal(row);
+}
+function closeSapLogModal() {
+    document.getElementById('sapLogModal').style.display = 'none';
 }
 
 // SAP Invoice table
@@ -113,6 +181,8 @@ const sapInvTable = new Tabulator('#sapInvTable', {
             formatter: function(cell) { return statusBadge(cell.getValue()); }},
         {title: 'SAP Doc #',      field: 'sap_document_number', width: 130,
             formatter: function(cell) { return sapBadge(cell.getValue()); }},
+        {title: 'SAP Log',        field: 'sap_log_id',          width: 95,
+            formatter: sapLogButton, cellClick: openSapLogFromCell},
         {title: 'SAP Post Date',  field: 'sap_posting_date',    width: 120},
         {title: 'SAP FY',         field: 'sap_fiscal_year',     width: 80},
         {title: 'SAP Co. Code',   field: 'sap_company_code',    width: 110},
@@ -147,7 +217,12 @@ const sapCnTable = new Tabulator('#sapCnTable', {
             formatter: function(cell) { return statusBadge(cell.getValue()); }},
         {title: 'SAP Doc #',      field: 'sap_document_number',      width: 130,
             formatter: function(cell) { return sapBadge(cell.getValue()); }},
+        {title: 'SAP Log',        field: 'sap_log_id',               width: 95,
+            formatter: sapLogButton, cellClick: openSapLogFromCell},
         {title: 'SAP Post Date',  field: 'sap_posting_date',         width: 120},
+        {title: 'SAP FY',         field: 'sap_fiscal_year',          width: 80},
+        {title: 'Posted By',      field: 'posted_by',                width: 110},
+        {title: 'Posted Date',    field: 'posted_date',              width: 110},
         {title: 'Created By',     field: 'created_by',               width: 110},
         {title: 'Created Date',   field: 'created_date',             width: 110},
     ]

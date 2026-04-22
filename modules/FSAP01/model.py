@@ -10,13 +10,32 @@ def get_sap_invoice_logs(page=1, size=50):
     cur.execute('SELECT COUNT(*) as cnt FROM invoice_header')
     total = cur.fetchone()['cnt']
     cur.execute('''
-        SELECT id, invoice_number, invoice_date, financial_year,
-               customer_name, customer_type,
-               total_amount, invoice_status,
-               sap_document_number, sap_posting_date, sap_fiscal_year, sap_company_code,
-               created_by, created_date, posted_by, posted_date
-        FROM invoice_header
-        ORDER BY id DESC LIMIT %s OFFSET %s
+        SELECT ih.id, ih.invoice_number, ih.invoice_date, ih.financial_year,
+               ih.customer_name, ih.customer_type,
+               ih.total_amount, ih.invoice_status,
+               ih.sap_document_number, ih.sap_posting_date, ih.sap_fiscal_year, ih.sap_company_code,
+               ih.created_by, ih.created_date, ih.posted_by, ih.posted_date,
+               log.id AS sap_log_id,
+               log.status AS sap_log_status,
+               log.error_message AS sap_error_message,
+               log.request_url AS sap_request_url,
+               log.request_body AS sap_request_body,
+               log.response_status_code AS sap_response_status_code,
+               log.response_body AS sap_response_body,
+               log.duration_ms AS sap_duration_ms,
+               log.created_date AS sap_log_date
+        FROM invoice_header ih
+        LEFT JOIN LATERAL (
+            SELECT id, status, error_message, request_url, request_body,
+                   response_status_code, response_body, duration_ms, created_date
+            FROM integration_logs
+            WHERE integration_type = 'SAP'
+              AND source_type = 'Invoice'
+              AND source_id = ih.id
+            ORDER BY id DESC
+            LIMIT 1
+        ) log ON TRUE
+        ORDER BY ih.id DESC LIMIT %s OFFSET %s
     ''', [size, (page - 1) * size])
     rows = cur.fetchall()
     conn.close()
@@ -24,20 +43,50 @@ def get_sap_invoice_logs(page=1, size=50):
 
 
 def get_sap_cn_logs(page=1, size=50):
-    """Credit notes with SAP posting data."""
+    """FDCN01 credit notes with SAP posting data."""
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT COUNT(*) as cnt FROM credit_note_header')
+    cur.execute("SELECT COUNT(*) as cnt FROM fdcn_header WHERE doc_type = 'CN'")
     total = cur.fetchone()['cnt']
     cur.execute('''
-        SELECT cn.id, cn.credit_note_number, cn.credit_note_date, cn.financial_year,
-               cn.party_name, cn.total_amount, cn.credit_note_status,
-               cn.sap_document_number, cn.sap_posting_date,
-               i.invoice_number AS original_invoice_number,
-               cn.created_by, cn.created_date
-        FROM credit_note_header cn
-        LEFT JOIN invoice_header i ON cn.original_invoice_id = i.id
-        ORDER BY cn.id DESC LIMIT %s OFFSET %s
+        SELECT h.id,
+               h.doc_number AS credit_note_number,
+               h.doc_date AS credit_note_date,
+               h.financial_year,
+               h.customer_name AS party_name,
+               h.original_invoice_number,
+               h.total_amount,
+               h.doc_status AS credit_note_status,
+               h.sap_document_number,
+               h.sap_posting_date,
+               h.sap_fiscal_year,
+               h.sap_company_code,
+               h.created_by,
+               h.created_date,
+               h.posted_by,
+               h.posted_date,
+               log.id AS sap_log_id,
+               log.status AS sap_log_status,
+               log.error_message AS sap_error_message,
+               log.request_url AS sap_request_url,
+               log.request_body AS sap_request_body,
+               log.response_status_code AS sap_response_status_code,
+               log.response_body AS sap_response_body,
+               log.duration_ms AS sap_duration_ms,
+               log.created_date AS sap_log_date
+        FROM fdcn_header h
+        LEFT JOIN LATERAL (
+            SELECT id, status, error_message, request_url, request_body,
+                   response_status_code, response_body, duration_ms, created_date
+            FROM integration_logs
+            WHERE integration_type = 'SAP'
+              AND source_type = 'CreditNote'
+              AND source_id = h.id
+            ORDER BY id DESC
+            LIMIT 1
+        ) log ON TRUE
+        WHERE h.doc_type = 'CN'
+        ORDER BY h.id DESC LIMIT %s OFFSET %s
     ''', [size, (page - 1) * size])
     rows = cur.fetchall()
     conn.close()
