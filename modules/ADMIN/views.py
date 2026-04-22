@@ -362,7 +362,8 @@ def save_sap_config():
 
     if existing:
         cur.execute('''UPDATE sap_api_config SET
-            environment=%s, base_url=%s, client_id=%s, client_secret=%s,
+            environment=%s, base_url=%s, token_url=%s,
+            client_id=%s, client_secret=%s,
             company_code=%s, default_payment_term=%s, payment_term=%s,
             plant_code=%s, business_place=%s, section_code=%s,
             credit_control_area=%s,
@@ -372,6 +373,7 @@ def save_sap_config():
             WHERE id=%s''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
+            data.get('token_url', ''),
             data.get('client_id', ''),
             data.get('client_secret', ''),
             data.get('company_code', ''),
@@ -392,16 +394,18 @@ def save_sap_config():
         ])
     else:
         cur.execute('''INSERT INTO sap_api_config
-            (environment, base_url, client_id, client_secret,
+            (environment, base_url, token_url,
+             client_id, client_secret,
              company_code, default_payment_term, payment_term,
              plant_code, business_place, section_code,
              credit_control_area,
              profit_center, tax_code, currency,
              tds_gl, tcs_gl, round_off_gl,
              is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
+            data.get('token_url', ''),
             data.get('client_id', ''),
             data.get('client_secret', ''),
             data.get('company_code', ''),
@@ -423,6 +427,31 @@ def save_sap_config():
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+@bp.route('/api/sap-config/test-connection', methods=['POST'])
+@admin_required
+def test_sap_connection():
+    """Test OAuth token acquisition against the configured token URL (query-param credentials per PORTBIRD spec)."""
+    data = request.json or {}
+    token_url     = data.get('token_url')
+    client_id     = data.get('client_id')
+    client_secret = data.get('client_secret')
+    if not all([token_url, client_id, client_secret]):
+        return jsonify({'success': False, 'message': 'Missing token URL, client ID or secret'})
+    try:
+        import requests as req
+        resp = req.post(token_url, params={
+            'client_id':     client_id,
+            'client_secret': client_secret,
+            'grant_type':    'client_credentials',
+        }, timeout=15)
+        if resp.status_code == 200 and resp.json().get('access_token'):
+            return jsonify({'success': True,
+                            'message': f'Connected! Token expires in {resp.json().get("expires_in", "?")}s'})
+        return jsonify({'success': False, 'message': f'HTTP {resp.status_code}: {resp.text[:200]}'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 # ── Port Bank Accounts ────────────────────────────────────────────────────────
 

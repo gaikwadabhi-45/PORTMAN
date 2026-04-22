@@ -92,7 +92,6 @@ from modules.RP01 import bp as rp01_bp, MODULE_INFO as rp01_info
 
 # Import accounts redesign modules
 from modules.FINV01 import bp as finv01_bp, MODULE_INFO as finv01_info
-from modules.SAPCFG import bp as sapcfg_bp, MODULE_INFO as sapcfg_info
 from modules.GSTCFG import bp as gstcfg_bp, MODULE_INFO as gstcfg_info
 from modules.FSAP01 import bp as fsap01_bp, MODULE_INFO as fsap01_info
 from modules.FLOG01 import bp as flog01_bp, MODULE_INFO as flog01_info
@@ -150,7 +149,6 @@ register_module(rp01_info['code'], rp01_info['name'], rp01_bp)
 
 # Register accounts redesign modules
 register_module(finv01_info['code'], finv01_info['name'], finv01_bp)
-register_module(sapcfg_info['code'], sapcfg_info['name'], sapcfg_bp)
 register_module(gstcfg_info['code'], gstcfg_info['name'], gstcfg_bp)
 register_module(fsap01_info['code'], fsap01_info['name'], fsap01_bp)
 register_module(flog01_info['code'], flog01_info['name'], flog01_bp)

@@ -211,6 +211,7 @@
         <h3>SAP Integration Config</h3>
         <div class="toolbar">
             <button class="btn btn-save" onclick="saveSapConfig()">Save SAP Config</button>
+            <button class="btn" style="background:#f39c12;color:white;" onclick="testSapConnection()">Test Connection</button>
             <span id="sapStatus" style="font-size:11px;margin-left:10px;"></span>
         </div>
         <div class="config-panel" style="display:block;">
@@ -220,14 +221,17 @@
                     <label>Environment:<br>
                         <select id="sapEnvironment" style="width:100%;padding:6px;">
                             <option value="production">Production</option>
-                            <option value="testing">Testing</option>
+                            <option value="quality">Quality</option>
                             <option value="development">Development</option>
                         </select>
                     </label>
                     <label>Company Code:<br><input type="text" id="sapCompanyCode" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
                 </div>
                 <div class="config-row">
-                    <label>Base URL:<br><input type="text" id="sapBaseUrl" placeholder="e.g., https://sappi.jsw.in:443/RESTAdapter" style="width:100%;padding:6px;"></label>
+                    <label>Base URL:<br><input type="text" id="sapBaseUrl" placeholder="e.g., https://sapapi.jsw.in:54001" style="width:100%;padding:6px;"></label>
+                </div>
+                <div class="config-row">
+                    <label>Token URL (OAuth2):<br><input type="text" id="sapTokenUrl" placeholder="e.g., https://sapapi.jsw.in:54001/RESTAdapter/OAuthServer" style="width:100%;padding:6px;"></label>
                 </div>
                 <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                     <label>Client ID:<br><input type="text" id="sapClientId" placeholder="API client ID" style="width:100%;padding:6px;"></label>
@@ -235,18 +239,19 @@
                 </div>
             </div>
             <div class="config-group">
-                <h4>FB70 Defaults</h4>
+                <h4>Posting Defaults</h4>
                 <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-                    <label>Payment Term:<br><input type="text" id="sapPaymentTerm" placeholder="e.g., Z001" style="width:100%;padding:6px;"></label>
+                    <label>Payment Term:<br><input type="text" id="sapPaymentTerm" placeholder="e.g., 0051" maxlength="4" style="width:100%;padding:6px;"></label>
                     <label>Plant Code:<br><input type="text" id="sapPlantCode" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
                     <label>Business Place:<br><input type="text" id="sapBusinessPlace" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
                 </div>
                 <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
                     <label>Section Code:<br><input type="text" id="sapSectionCode" placeholder="e.g., 5130" style="width:100%;padding:6px;"></label>
+                    <label>Credit Control Area:<br><input type="text" id="sapCreditControlArea" placeholder="e.g., 5123" style="width:100%;padding:6px;"></label>
                     <label>Profit Center:<br><input type="text" id="sapProfitCenter" placeholder="e.g., 5130000" style="width:100%;padding:6px;"></label>
-                    <label>Tax Code:<br><input type="text" id="sapTaxCode" placeholder="e.g., V1" style="width:100%;padding:6px;"></label>
                 </div>
-                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                    <label>Tax Code:<br><input type="text" id="sapTaxCode" placeholder="e.g., V1" maxlength="2" style="width:100%;padding:6px;"></label>
                     <label>Currency:<br><input type="text" id="sapCurrency" placeholder="INR" value="INR" style="width:100%;padding:6px;"></label>
                     <label>Active:<br>
                         <select id="sapIsActive" style="width:100%;padding:6px;">
@@ -992,11 +997,35 @@ async function deleteSelectedBanks() {
 }
 
 // ── SAP Config ───────────────────────────────────────────────────────────────
+function _sapFormData() {
+    return {
+        environment: document.getElementById('sapEnvironment').value,
+        base_url: document.getElementById('sapBaseUrl').value.trim(),
+        token_url: document.getElementById('sapTokenUrl').value.trim(),
+        client_id: document.getElementById('sapClientId').value.trim(),
+        client_secret: document.getElementById('sapClientSecret').value.trim(),
+        company_code: document.getElementById('sapCompanyCode').value.trim(),
+        default_payment_term: document.getElementById('sapPaymentTerm').value.trim(),
+        plant_code: document.getElementById('sapPlantCode').value.trim(),
+        business_place: document.getElementById('sapBusinessPlace').value.trim(),
+        section_code: document.getElementById('sapSectionCode').value.trim(),
+        credit_control_area: document.getElementById('sapCreditControlArea').value.trim(),
+        profit_center: document.getElementById('sapProfitCenter').value.trim(),
+        tax_code: document.getElementById('sapTaxCode').value.trim(),
+        currency: document.getElementById('sapCurrency').value.trim() || 'INR',
+        is_active: document.getElementById('sapIsActive').value,
+        tds_gl: document.getElementById('sapTdsGl').value.trim(),
+        tcs_gl: document.getElementById('sapTcsGl').value.trim(),
+        round_off_gl: document.getElementById('sapRoundOffGl').value.trim()
+    };
+}
+
 async function loadSapConfig() {
     const res = await fetch('/admin/api/sap-config');
     const cfg = await res.json();
     document.getElementById('sapEnvironment').value = cfg.environment || 'production';
     document.getElementById('sapBaseUrl').value = cfg.base_url || '';
+    document.getElementById('sapTokenUrl').value = cfg.token_url || '';
     document.getElementById('sapClientId').value = cfg.client_id || '';
     document.getElementById('sapClientSecret').value = cfg.client_secret || '';
     document.getElementById('sapCompanyCode').value = cfg.company_code || '';
@@ -1004,6 +1033,7 @@ async function loadSapConfig() {
     document.getElementById('sapPlantCode').value = cfg.plant_code || '';
     document.getElementById('sapBusinessPlace').value = cfg.business_place || '';
     document.getElementById('sapSectionCode').value = cfg.section_code || '';
+    document.getElementById('sapCreditControlArea').value = cfg.credit_control_area || '';
     document.getElementById('sapProfitCenter').value = cfg.profit_center || '';
     document.getElementById('sapTaxCode').value = cfg.tax_code || '';
     document.getElementById('sapCurrency').value = cfg.currency || 'INR';
@@ -1016,24 +1046,7 @@ async function loadSapConfig() {
 }
 
 async function saveSapConfig() {
-    const data = {
-        environment: document.getElementById('sapEnvironment').value,
-        base_url: document.getElementById('sapBaseUrl').value.trim(),
-        client_id: document.getElementById('sapClientId').value.trim(),
-        client_secret: document.getElementById('sapClientSecret').value.trim(),
-        company_code: document.getElementById('sapCompanyCode').value.trim(),
-        default_payment_term: document.getElementById('sapPaymentTerm').value.trim(),
-        plant_code: document.getElementById('sapPlantCode').value.trim(),
-        business_place: document.getElementById('sapBusinessPlace').value.trim(),
-        section_code: document.getElementById('sapSectionCode').value.trim(),
-        profit_center: document.getElementById('sapProfitCenter').value.trim(),
-        tax_code: document.getElementById('sapTaxCode').value.trim(),
-        currency: document.getElementById('sapCurrency').value.trim() || 'INR',
-        is_active: document.getElementById('sapIsActive').value,
-        tds_gl: document.getElementById('sapTdsGl').value.trim(),
-        tcs_gl: document.getElementById('sapTcsGl').value.trim(),
-        round_off_gl: document.getElementById('sapRoundOffGl').value.trim()
-    };
+    const data = _sapFormData();
     if (!data.company_code) { alert('Company Code is required'); return; }
     const res = await fetch('/admin/api/sap-config/save', {
         method: 'POST',
@@ -1045,6 +1058,26 @@ async function saveSapConfig() {
         loadSapConfig();
     } else {
         alert('Failed to save SAP config');
+    }
+}
+
+async function testSapConnection() {
+    const data = _sapFormData();
+    const status = document.getElementById('sapStatus');
+    status.textContent = 'Testing...';
+    status.style.color = '#7d6608';
+    try {
+        const res = await fetch('/admin/api/sap-config/test-connection', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        status.textContent = result.message;
+        status.style.color = result.success ? '#38a169' : '#e53e3e';
+    } catch (e) {
+        status.textContent = 'Connection test failed: ' + e.message;
+        status.style.color = '#e53e3e';
     }
 }
 
