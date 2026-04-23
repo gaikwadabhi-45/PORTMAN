@@ -1460,7 +1460,8 @@
         contractorList.forEach(c => { contractorOptions[c] = c; });
 
         // Restrict cargo dropdown to cargos on this LDUD record; fall back to full master if none
-        const ldudCargoNames = (data.cargo_names_display || '').split(',').map(s => s.trim()).filter(Boolean);
+        const _mainRowData = mainRow ? mainRow.getData() : {};
+        const ldudCargoNames = (_mainRowData.cargo_names_display || '').split(',').map(s => s.trim()).filter(Boolean);
         const cargoOptions = {};
         (ldudCargoNames.length ? ldudCargoNames : cargoNames).forEach(c => { cargoOptions[c] = c; });
 
