@@ -156,7 +156,7 @@
             
         </div>
         <div class="header-right">
-            <span class="user">{{ session.email.split('@')[0] }}</span>
+            <span class="user">{{ (session.get('email') or session.get('username') or '').split('@')[0] }}</span>
             {% if session.is_admin %}
             <a href="/admin" class="admin-btn">Admin</a>
             {% endif %}

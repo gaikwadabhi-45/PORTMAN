@@ -217,6 +217,7 @@ def login():
         if user:
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['email'] = user['email'] or user['username']
             session['is_admin'] = bool(user['is_admin'])
             return redirect(url_for('home'))
         return render_template('login.html', error='Invalid credentials')
