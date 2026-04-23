@@ -151,12 +151,12 @@
 <body class="light-theme">
     <div class="header">
         <div class="header-left">
-            <a href="/"><img src="{{ url_for('static', filename='img/logopb.png') }}" alt="DPPL PMS" style="height: 40px; margin-left: 20px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));"></a>
+            <a href="/home"><img src="{{ url_for('static', filename='img/logopb.png') }}" alt="DPPL PMS" style="height: 40px; margin-left: 20px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));"></a>
 
             
         </div>
         <div class="header-right">
-            <span class="user">{{ session.username.split('@')[0] }}</span>
+            <span class="user">{{ session.email.split('@')[0] }}</span>
             {% if session.is_admin %}
             <a href="/admin" class="admin-btn">Admin</a>
             {% endif %}

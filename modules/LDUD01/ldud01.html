@@ -1714,10 +1714,10 @@
         let bargeLinesColumns;
         if (operationType === 'Export') {
             bargeLinesColumns = [
-                {title: "S.No.", formatter: "rownum", width: 45, hozAlign: "center", headerSort: false},
-                {title: "Trip#", field: "trip_number", width: 50, hozAlign: "center"},
+                {title: "S.No.", formatter: "rownum", width: 45, hozAlign: "center", headerSort: false, frozen: true},
+                {title: "Trip#", field: "trip_number", width: 50, hozAlign: "center", frozen: true},
                 {title: "Barge", field: "barge_name", width: 100, editor: canEdit ? "list" : false,
-                    editorParams: {values: bargeOptions, autocomplete: true, allowEmpty: true}},
+                    editorParams: {values: bargeOptions, autocomplete: true, allowEmpty: true}, frozen: true},
                 {title: "Cargo", field: "cargo_name", width: 100, editor: canEdit ? "list" : false,
                     editorParams: {values: cargoOptions, autocomplete: true, allowEmpty: true}},
                 {title: "Trip Start", field: "trip_start", width: 130, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
@@ -1755,14 +1755,14 @@
             ].filter(Boolean);
         } else {
             bargeLinesColumns = [
-                {title: "S.No.", formatter: "rownum", width: 45, hozAlign: "center", headerSort: false},
-                {title: "Trip#", field: "trip_number", width: 50, hozAlign: "center"},
+                {title: "S.No.", formatter: "rownum", width: 45, hozAlign: "center", headerSort: false, frozen: true},
+                {title: "Trip#", field: "trip_number", width: 50, hozAlign: "center", frozen: true},
                 {title: "Hold", field: "hold_name", width: 100, editor: holdMultiSelectEditor,
-                    formatter: multiBadgeFormatter('#38a169')},
+                    formatter: multiBadgeFormatter('#38a169'), frozen: true},
                 {title: "Crane Loaded From", field: "crane_loaded_from", width: 130, editor: craneLoadedFromEditor,
-                    formatter: multiBadgeFormatter('#3182ce')},
+                    formatter: multiBadgeFormatter('#3182ce'), frozen: true},
                 {title: "Barge", field: "barge_name", width: 100, editor: canEdit ? "list" : false,
-                    editorParams: {values: bargeOptions, autocomplete: true, allowEmpty: true}},
+                    editorParams: {values: bargeOptions, autocomplete: true, allowEmpty: true}, frozen: true},
                 {title: "Stevedore", field: "contractor_name", width: 120, editor: canEdit ? "list" : false,
                     editorParams: {values: contractorOptions, autocomplete: true, allowEmpty: true}},
                 {title: "Cargo", field: "cargo_name", width: 100, editor: canEdit ? "list" : false,

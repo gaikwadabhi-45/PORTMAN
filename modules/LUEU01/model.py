@@ -39,7 +39,7 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
 
     cur.execute(f'SELECT COUNT(*) as cnt FROM lueu_lines {where_sql}', params)
     total = cur.fetchone()['cnt']
-    cur.execute(f'SELECT * FROM lueu_lines {where_sql} ORDER BY id DESC LIMIT %s OFFSET %s',
+    cur.execute(f'SELECT * FROM lueu_lines {where_sql} ORDER BY entry_date DESC, from_time DESC NULLS FIRST, id DESC LIMIT %s OFFSET %s',
                 params + [size, offset])
     rows = [dict(r) for r in cur.fetchall()]
 
