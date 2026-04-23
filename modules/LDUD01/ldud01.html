@@ -1189,7 +1189,18 @@
             ${vesselOpsSection}
             <div class="sub-section">
                 <div class="sub-section-header" data-section="barge_lines">
-                    <span>${operationType === 'Export' ? 'Barge Lines Export' : 'Barge Lines'}</span>
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <span>${operationType === 'Export' ? 'Barge Lines Export' : 'Barge Lines'}</span>
+                        ${(function(){
+                            const cnames = (data.cargo_names_display||'').split(',').map(s=>s.trim()).filter(Boolean);
+                            const cqtys  = (data.bl_quantities_display||'').split(',').map(s=>s.trim()).filter(Boolean);
+                            if (!cnames.length) return '';
+                            const pills = cnames.map((c,i)=>
+                                `<span style="background:#dbeafe;color:#1e40af;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;">BL ${c}: ${cqtys[i]||'-'}</span>`
+                            ).join('');
+                            return `<span id="barge-bl-summary-${ldudId}" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${pills} <span id="barge-done-summary-${ldudId}" style="background:#d1fae5;color:#065f46;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;display:none;"></span></span>`;
+                        })()}
+                    </div>
                     <div class="sub-section-actions">
                         ${canAct ? `<button class="btn-sub-add" onclick="addSubRow('barge_lines', ${ldudId})">+ Add</button>` : ''}
                         ${canAct ? `<button class="btn-sub-save" onclick="saveSubTable('barge_lines', ${ldudId})">Save</button>` : ''}
@@ -1448,8 +1459,10 @@
         const contractorOptions = {};
         contractorList.forEach(c => { contractorOptions[c] = c; });
 
+        // Restrict cargo dropdown to cargos on this LDUD record; fall back to full master if none
+        const ldudCargoNames = (data.cargo_names_display || '').split(',').map(s => s.trim()).filter(Boolean);
         const cargoOptions = {};
-        cargoNames.forEach(c => { cargoOptions[c] = c; });
+        (ldudCargoNames.length ? ldudCargoNames : cargoNames).forEach(c => { cargoOptions[c] = c; });
 
         const yesNoOptions = {'Yes': 'Yes', 'No': 'No'};
         const bptBflOptions = {'BPT': 'BPT', 'BFL': 'BFL'};
@@ -1716,7 +1729,13 @@
                     formatter: multiBadgeFormatter('#805ad5')},
                 {title: "Cast Off from Port", field: "cast_off_port", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "Qty", field: "discharge_quantity", width: 80, editor: canEdit ? "number" : false, hozAlign: "right",
-                    editorParams: {min: 0, step: 0.01}},
+                    editorParams: {min: 0, step: 0.01},
+                    bottomCalc: "sum", bottomCalcFormatter: function(cell) {
+                        const tot = parseFloat(cell.getValue()||0);
+                        const el = document.getElementById(`barge-done-summary-${ldudId}`);
+                        if (el) { el.textContent = `Barges: ${tot.toFixed(2)} MT`; el.style.display = tot > 0 ? 'inline' : 'none'; }
+                        return `<b style="color:#065f46;">${tot > 0 ? tot.toFixed(2) : ''}</b>`;
+                    }},
                 {title: "Anch Gull Island (Loaded)", field: "anchored_gull_island", width: 155, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "Aweigh Gull Island (Loaded)", field: "aweigh_gull_island", width: 160, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "MBPT/PLA", field: "bpt_bfl", width: 80, editor: canEdit ? "list" : false,
@@ -1756,7 +1775,13 @@
                 {title: "Loading Start", field: "commenced_loading", width: 130, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "Loading End", field: "completed_loading", width: 130, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "Qty", field: "discharge_quantity", width: 80, editor: canEdit ? "number" : false, hozAlign: "right",
-                    editorParams: {min: 0, step: 0.01}},
+                    editorParams: {min: 0, step: 0.01},
+                    bottomCalc: "sum", bottomCalcFormatter: function(cell) {
+                        const tot = parseFloat(cell.getValue()||0);
+                        const el = document.getElementById(`barge-done-summary-${ldudId}`);
+                        if (el) { el.textContent = `Barges: ${tot.toFixed(2)} MT`; el.style.display = tot > 0 ? 'inline' : 'none'; }
+                        return `<b style="color:#065f46;">${tot > 0 ? tot.toFixed(2) : ''}</b>`;
+                    }},
                 {title: "Cast Off MV", field: "cast_off_mv", width: 130, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "Anch Gull Island (Loaded)", field: "anchored_gull_island_empty", width: 155, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                 {title: "Aweigh Gull Island (Loaded)", field: "aweigh_gull_island_empty", width: 160, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
@@ -1830,44 +1855,48 @@
 
             // Total column
             const totalLabel = isExport ? 'Total Loaded' : 'Total Day Qty';
+            let totalStowageAll = 0;
+            if (!isExport) holdDefs.forEach(def => { totalStowageAll += parseFloat(def.stowage_qty || 0); });
+            const totalColSubTitle = isExport ? '' : `Total Stow: ${totalStowageAll.toFixed(2)}`;
             const totalDayQtyCol = {
                 title: totalLabel,
-                field: "total_day_qty",
-                width: 130,
-                hozAlign: "right",
-                formatter: function(cell) {
-                    const data = cell.getRow().getData();
-                    let total = 0;
-                    holdDefs.forEach(def => {
-                        const v = parseFloat(data[def.field] || 0);
-                        if (Number.isFinite(v)) total += v;
-                    });
-                    return total > 0 ? total.toFixed(2) : '';
-                },
-                bottomCalc: function(values, data) {
-                    let grandTotal = 0;
-                    (data || []).forEach(row => {
+                columns: [{
+                    title: totalColSubTitle,
+                    field: "total_day_qty",
+                    width: 130,
+                    hozAlign: "right",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        let total = 0;
                         holdDefs.forEach(def => {
-                            const v = parseFloat(row[def.field] || 0);
-                            if (Number.isFinite(v)) grandTotal += v;
+                            const v = parseFloat(rowData[def.field] || 0);
+                            if (Number.isFinite(v)) total += v;
                         });
-                    });
-                    return grandTotal;
-                },
-                bottomCalcFormatter: function(cell) {
-                    const grand = parseFloat(cell.getValue() || 0);
-                    if (isExport) {
-                        return `<div style="font-weight:700;color:#15803d;">${grand > 0 ? grand.toFixed(2) : ''}</div>`;
+                        return total > 0 ? total.toFixed(2) : '';
+                    },
+                    bottomCalc: function(values, data) {
+                        let grandTotal = 0;
+                        (data || []).forEach(row => {
+                            holdDefs.forEach(def => {
+                                const v = parseFloat(row[def.field] || 0);
+                                if (Number.isFinite(v)) grandTotal += v;
+                            });
+                        });
+                        return grandTotal;
+                    },
+                    bottomCalcFormatter: function(cell) {
+                        const grand = parseFloat(cell.getValue() || 0);
+                        if (isExport) {
+                            return `<div style="font-weight:700;color:#15803d;">${grand > 0 ? grand.toFixed(2) : ''}</div>`;
+                        }
+                        const totalBalance = totalStowageAll - grand;
+                        const balColor = totalBalance < 0 ? '#e53e3e' : totalBalance === 0 ? '#38a169' : '#1f2937';
+                        return `<div style="line-height:1.8;font-weight:700;">
+                            <div style="border-bottom:1px solid #cbd5e0;padding-bottom:2px;">${grand > 0 ? grand.toFixed(2) : ''}</div>
+                            <div style="color:${balColor};padding-top:2px;">${totalBalance.toFixed(2)}</div>
+                        </div>`;
                     }
-                    let totalStowage = 0;
-                    holdDefs.forEach(def => { totalStowage += parseFloat(def.stowage_qty || 0); });
-                    const totalBalance = totalStowage - grand;
-                    const balColor = totalBalance < 0 ? '#e53e3e' : totalBalance === 0 ? '#38a169' : '#1f2937';
-                    return `<div style="line-height:1.8;font-weight:700;">
-                        <div style="border-bottom:1px solid #cbd5e0;padding-bottom:2px;">${grand > 0 ? grand.toFixed(2) : ''}</div>
-                        <div style="color:${balColor};padding-top:2px;">${totalBalance.toFixed(2)}</div>
-                    </div>`;
-                }
+                }]
             };
 
             // Date column with bottom label
