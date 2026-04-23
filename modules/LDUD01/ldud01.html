@@ -384,6 +384,11 @@
         <button class="btn-filter-add" onclick="addFilterRow()">+ Add Filter</button>
         <button class="btn-filter-apply" onclick="applyFilters()">Apply</button>
         <button class="btn-filter-clear" onclick="clearFilters()">Clear All</button>
+        <button onclick="saveCurrentFilter()" style="background:#48bb78;color:white;border:none;padding:5px 14px;border-radius:4px;font-size:12px;cursor:pointer;">💾 Save Filter</button>
+    </div>
+    <div id="savedFiltersBar" style="margin-top:8px;display:none;align-items:center;flex-wrap:wrap;gap:6px;">
+        <span style="font-size:11px;color:#718096;font-weight:600;white-space:nowrap;">Saved Filters:</span>
+        <div id="savedFiltersList" style="display:inline-flex;flex-wrap:wrap;gap:6px;"></div>
     </div>
 </div>
 
@@ -882,7 +887,7 @@
         vcnList.forEach(v => { vcnOptions[v.value] = v.value; });
 
         const columns = [
-            {formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", headerSort: false, width: 40},
+            {formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", headerSort: false, width: 40, frozen: true},
             {
                 title: "Details",
                 formatter: function(cell) {
@@ -893,17 +898,19 @@
                 width: 70,
                 hozAlign: "center",
                 headerSort: false,
+                frozen: true,
                 cellClick: function(e, cell) {
                     const row = cell.getRow();
                     const data = row.getData();
                     if (!data.id) return;
                     openDetailsModal(data);
                 },
-                
+
             },
             {title: "VCN / Vessel / Doc", field: "vcn_display", editor: canEdit ? "list" : false,
                 editorParams: {values: vcnOptions, autocomplete: true, allowEmpty: true, listOnEmpty: true},
                 width: 280,
+                frozen: true,
                 cellEdited: function(cell) {
                     const val = cell.getValue();
                     const vcn = vcnList.find(v => v.value === val);
@@ -918,20 +925,20 @@
                     }
                 }
             },
-            {title: "Doc Num", field: "doc_num", width: 80},
-            {title: "Cargo Name", field: "cargo_names_display", width: 200,
+            {title: "Doc Num", field: "doc_num", width: 80, frozen: true},
+            {title: "Cargo Name", field: "cargo_names_display", width: 200, frozen: true,
                 formatter: function(cell) { return cargoColorBadges(cell.getValue()); }
             },
-            {title: "BL Quantity", field: "bl_quantities_display", width: 160,
+            {title: "BL Quantity", field: "bl_quantities_display", width: 160, frozen: true,
                 formatter: function(cell) { return cargoColorBadges(cell.getValue()); }
             },
             {title: "Total Disch / Balance", field: "balance_display", width: 180,
                 formatter: function(cell) { return cargoColorBadges(cell.getValue()); }
             },
-            {title: "Agent Name", field: "agent_name", width: 120},
-            {title: "Stevedore", field: "stevedore_name", width: 120},
             {title: "NOR Tendered", field: "nor_tendered", editor: canEdit ? datetimeEditor : false, width: 150,
                 formatter: datetimeCellFormatter},
+            {title: "Agent Name", field: "agent_name", width: 120},
+            {title: "Stevedore", field: "stevedore_name", width: 120},
             {title: "NOR Accepted", field: "nor_accepted", editor: canEdit ? datetimeEditor : false, width: 150,
                 formatter: datetimeCellFormatter},
             {title: "Init Survey From", field: "initial_draft_survey_from", editor: canEdit ? datetimeEditor : false, width: 150,
@@ -1080,7 +1087,7 @@
         currentLdudId = ldudId;
 
         // Set modal title
-        document.getElementById('modalTitle').textContent = `Details for ${data.doc_num || 'LDUD'} (${operationType})`;
+        document.getElementById('modalTitle').textContent = `Details for ${data.vessel_name || data.doc_num || 'LDUD'} (${operationType})`;
         // Show lock banner for closed records
         let lockBanner = document.getElementById('modalLockBanner');
         if (!lockBanner) {
@@ -2549,6 +2556,7 @@
     function toggleFilterPanel() {
         const panel = document.getElementById('filterPanel');
         panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        if (panel.style.display === 'block') loadSavedFiltersBar();
     }
 
     function addFilterRow() {
@@ -2622,6 +2630,81 @@
         if (badge) { badge.textContent = active; badge.style.display = active > 0 ? 'inline' : 'none'; }
     }
     // ── End filter panel ──────────────────────────────────────────────────────
+
+    // ── Saved Filters ─────────────────────────────────────────────────────────
+    const SAVED_FILTER_MODULE = 'LDUD01';
+    let savedFiltersCache = [];
+
+    async function loadSavedFiltersBar() {
+        try {
+            const res = await fetch(`/api/saved-filters/${SAVED_FILTER_MODULE}`);
+            savedFiltersCache = await res.json();
+            const bar = document.getElementById('savedFiltersBar');
+            const list = document.getElementById('savedFiltersList');
+            if (!savedFiltersCache.length) { bar.style.display = 'none'; return; }
+            bar.style.display = 'flex';
+            list.innerHTML = savedFiltersCache.map(f =>
+                `<span style="display:inline-flex;align-items:center;gap:4px;background:#ebf8ff;border:1px solid #bee3f8;border-radius:12px;padding:2px 10px;font-size:11px;">
+                    <span style="cursor:pointer;color:#2b6cb0;font-weight:600;" onclick="applySavedFilter(${f.id})">${f.name}</span>
+                    <button onclick="deleteSavedFilter(${f.id})" style="background:none;border:none;color:#e53e3e;cursor:pointer;font-size:14px;padding:0;line-height:1;margin-left:2px;">&times;</button>
+                </span>`
+            ).join('');
+        } catch(e) {}
+    }
+
+    function applySavedFilter(id) {
+        const f = savedFiltersCache.find(x => x.id === id);
+        if (!f) return;
+        const filters = JSON.parse(f.filters_json);
+        document.getElementById('filterRows').innerHTML = '';
+        filters.forEach(function(filter) {
+            addFilterRow();
+            const rows = document.querySelectorAll('#filterRows .filter-row');
+            const row = rows[rows.length - 1];
+            const sel = row.querySelector('.filter-col-select');
+            sel.value = filter.field;
+            onFilterColChange(sel);
+            if (filter.type === 'contains') {
+                const inp = row.querySelector('.filter-text-input');
+                if (inp) inp.value = filter.value;
+            } else if (filter.type === 'multi') {
+                row.querySelectorAll('.filter-checkbox').forEach(cb => {
+                    cb.checked = filter.values && filter.values.includes(cb.value);
+                });
+            } else if (filter.type === 'range') {
+                const from = row.querySelector('.filter-from');
+                const to = row.querySelector('.filter-to');
+                if (from) from.value = filter.from || '';
+                if (to) to.value = filter.to || '';
+            }
+        });
+        applyFilters();
+    }
+
+    async function saveCurrentFilter() {
+        const filters = collectFilters();
+        if (!filters.length) { alert('Add at least one filter condition before saving.'); return; }
+        const name = prompt('Name this saved filter:');
+        if (!name || !name.trim()) return;
+        try {
+            const res = await fetch('/api/saved-filters', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name.trim(), module_code: SAVED_FILTER_MODULE, filters})
+            });
+            if (res.ok) loadSavedFiltersBar();
+            else alert('Failed to save filter.');
+        } catch(e) { alert('Error saving filter.'); }
+    }
+
+    async function deleteSavedFilter(id) {
+        if (!confirm('Delete this saved filter?')) return;
+        try {
+            await fetch(`/api/saved-filters/${id}`, {method: 'DELETE'});
+            loadSavedFiltersBar();
+        } catch(e) {}
+    }
+    // ── End saved filters ──────────────────────────────────────────────────────
 
     loadMasterData();
 </script>

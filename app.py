@@ -384,6 +384,50 @@ def _reschedule_mail_job():
     except Exception:
         pass
 
+# ── Saved Filters API ────────────────────────────────────────────────────────
+import json as _json
+
+@app.route('/api/saved-filters/<module_code>', methods=['GET'])
+@login_required
+def get_saved_filters(module_code):
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT id, name, filters_json FROM saved_filters WHERE module_code = %s ORDER BY name', [module_code])
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/saved-filters', methods=['POST'])
+@login_required
+def create_saved_filter():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()[:100]
+    module_code = (data.get('module_code') or '').strip()[:20]
+    filters = data.get('filters')
+    if not name or not module_code or not filters:
+        return jsonify({'error': 'Missing fields'}), 400
+    filters_json = _json.dumps(filters)
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute(
+        'INSERT INTO saved_filters (name, module_code, filters_json, created_by) VALUES (%s, %s, %s, %s) RETURNING id',
+        [name, module_code, filters_json, session.get('username', '')]
+    )
+    row = cur.fetchone()
+    conn.commit()
+    conn.close()
+    return jsonify({'id': row['id']}), 201
+
+@app.route('/api/saved-filters/<int:filter_id>', methods=['DELETE'])
+@login_required
+def delete_saved_filter(filter_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('DELETE FROM saved_filters WHERE id = %s', [filter_id])
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
 _mail_scheduler = BackgroundScheduler(daemon=True)
 _mail_scheduler.add_job(
     _mail_tick,

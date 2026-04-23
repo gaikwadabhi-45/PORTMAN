@@ -122,12 +122,12 @@
 <body class="light-theme">
     <div class="header">
         <div class="header-left">
-            <img src="{{ url_for('static', filename='img/logopb.png') }}"alt="DPPL PMS" style="height: 40px; margin-left: 20px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));">
+            <a href="/"><img src="{{ url_for('static', filename='img/logopb.png') }}" alt="DPPL PMS" style="height: 40px; margin-left: 20px; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));"></a>
 
-            <span style="background: rgba(255,255,255,0.2); color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.5px;">BETA</span>
+            
         </div>
         <div class="header-right">
-            <span class="user">{{ session.username }}</span>
+            <span class="user">{{ session.username.split('@')[0] }}</span>
             {% if session.is_admin %}
             <a href="/admin" class="admin-btn">Admin</a>
             {% endif %}
