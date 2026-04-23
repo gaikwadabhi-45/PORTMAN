@@ -7,6 +7,14 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
+        /* Frozen column z-index fix — keeps frozen headers/cells above scrolling columns */
+        .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            z-index: 11 !important;
+        }
+        .tabulator .tabulator-row .tabulator-cell.tabulator-frozen {
+            z-index: 10 !important;
+        }
+
         /* Accordion Styles */
         .accordion-section {
             margin-bottom: 2px;
