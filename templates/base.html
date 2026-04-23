@@ -8,9 +8,14 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         /* Frozen columns — z-index + opaque background so scrolling cells never bleed through */
-        .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+        /* Dark gradient header only on main tables (not sub-tabulators) */
+        .tabulator:not(.sub-tabulator) .tabulator-header .tabulator-col.tabulator-frozen {
             z-index: 11 !important;
             background: linear-gradient(180deg, #4a5568 0%, #2d3748 100%) !important;
+        }
+        /* Sub-table frozen headers: just z-index, keep their natural background */
+        .sub-tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            z-index: 11 !important;
         }
         .tabulator .tabulator-row .tabulator-cell.tabulator-frozen {
             z-index: 10 !important;
@@ -23,7 +28,7 @@
             background-color: #edf2f7;
         }
         /* Dark theme frozen cells */
-        .dark-theme .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+        .dark-theme .tabulator:not(.sub-tabulator) .tabulator-header .tabulator-col.tabulator-frozen {
             background: linear-gradient(180deg, #4a5568 0%, #2d3748 100%) !important;
         }
         .dark-theme .tabulator .tabulator-row .tabulator-cell.tabulator-frozen {
