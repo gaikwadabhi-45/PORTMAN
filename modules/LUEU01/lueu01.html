@@ -779,7 +779,7 @@
             {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(uomList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
             {title: "Remarks", field: "remarks", width: 200, editor: canEdit ? "input" : false, editable: editableCheck},
-            ...(permissions.can_delete ? [{
+            {
                 title: "Del",
                 field: "is_deleted",
                 width: 50,
@@ -794,7 +794,7 @@
                     return '<input type="checkbox" class="eu-del-cb" data-id="' + data.id + '" title="Mark for deletion" onclick="event.stopPropagation()">';
                 },
                 cellClick: function(e, cell) { /* prevent row selection on Del column */ }
-            }] : [])
+            }
         ];
 
         table = new Tabulator("#table", {
