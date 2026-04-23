@@ -7,12 +7,33 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* Frozen column z-index fix — keeps frozen headers/cells above scrolling columns */
+        /* Frozen columns — z-index + opaque background so scrolling cells never bleed through */
         .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
             z-index: 11 !important;
+            background: linear-gradient(180deg, #4a5568 0%, #2d3748 100%) !important;
         }
         .tabulator .tabulator-row .tabulator-cell.tabulator-frozen {
             z-index: 10 !important;
+            background-color: #ffffff;
+        }
+        .tabulator .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
+            background-color: #f7fafc;
+        }
+        .tabulator .tabulator-row:hover .tabulator-cell.tabulator-frozen {
+            background-color: #edf2f7;
+        }
+        /* Dark theme frozen cells */
+        .dark-theme .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            background: linear-gradient(180deg, #4a5568 0%, #2d3748 100%) !important;
+        }
+        .dark-theme .tabulator .tabulator-row .tabulator-cell.tabulator-frozen {
+            background-color: #2d3748;
+        }
+        .dark-theme .tabulator .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
+            background-color: #1a202c;
+        }
+        .dark-theme .tabulator .tabulator-row:hover .tabulator-cell.tabulator-frozen {
+            background-color: #4a5568;
         }
 
         /* Accordion Styles */
