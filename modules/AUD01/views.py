@@ -1,24 +1,43 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, Response
 from functools import wraps
-from database import get_db, get_cursor, get_module_config
+from database import get_module_config
+from datetime import datetime, timedelta
 import re
 import os
+import csv
+import io
 
 bp = Blueprint('AUD01', __name__, template_folder='.')
 MODULE_CODE = 'AUD01'
 MODULE_INFO = {'code': 'AUD01', 'name': 'Audit Logs'}
 
 # Nginx combined log format:
-# 127.0.0.1 - - [24/Apr/2026:10:00:00 +0530] "GET /module/LDUD01/ HTTP/1.1" 200 4321 "..." "..."
+# 127.0.0.1 - - [16/Mar/2026:15:13:08 +0530] "GET /module/LDUD01/ HTTP/1.1" 200 4321 "..." "..."
 _NGINX_RE = re.compile(
     r'^(\S+)\s+\S+\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+([^"]+)\s+HTTP[^"]*"\s+(\d+)\s+(\d+)'
 )
 
+_MONTH_MAP = {
+    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5,  'Jun': 6,
+    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
+}
+_NGINX_DT_RE = re.compile(r'(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})')
+
+def _parse_nginx_ts(ts_str):
+    m = _NGINX_DT_RE.search(ts_str)
+    if not m:
+        return None
+    day, mon, year, h, mi, s = m.groups()
+    try:
+        return datetime(int(year), _MONTH_MAP.get(mon, 1), int(day), int(h), int(mi), int(s))
+    except ValueError:
+        return None
+
 # Static-asset extensions and path prefixes to ignore
-_SKIP_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.css', '.js', '.woff', '.woff2', '.ttf', '.svg', '.map'}
+_SKIP_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.css', '.js',
+              '.woff', '.woff2', '.ttf', '.svg', '.map', '.eot'}
 _SKIP_PREFIXES = ('/static/', '/favicon')
 
-# Module name lookup by code (for /api/module/{CODE}/... attribution)
 _MODULE_NAMES = {
     'VC01': 'Vessel Creation', 'VCN01': 'Vessel Call Number',
     'LDUD01': 'Loading Unloading', 'MBC01': 'MBC Operation',
@@ -43,40 +62,21 @@ _MODULE_NAMES = {
     'RP01': 'Reports', 'AUD01': 'Audit Logs', 'ADMIN': 'Admin Panel',
 }
 
-# Regex to extract module code from /api/module/{CODE}/... paths
-_API_MODULE_RE = re.compile(r'^/api/module/([A-Z0-9]+)(?:/|$)')
-
-# Page-level URL prefix map (for /module/XXX/ and other top-level routes)
-_PREFIX_MAP = [
-    ('/admin',   'ADMIN', 'Admin Panel'),
-    ('/module/', None,    None),          # handled by code extraction below
-    ('/login',   'AUTH',  'Authentication'),
-    ('/logout',  'AUTH',  'Authentication'),
-    ('/auth/',   'AUTH',  'Authentication'),
-    ('/home',    'HOME',  'Home'),
-]
-
-# Regex to extract module code from /module/{CODE}/... page paths
+_API_MODULE_RE  = re.compile(r'^/api/module/([A-Z0-9]+)(?:/|$)')
 _PAGE_MODULE_RE = re.compile(r'^/module/([A-Z0-9]+)(?:/|$)')
 
 
 def _detect_module(path):
-    # /api/module/{CODE}/... → attribute to that module
     m = _API_MODULE_RE.match(path)
     if m:
         code = m.group(1)
         return code, _MODULE_NAMES.get(code, code)
-
-    # /module/{CODE}/... page load
     m = _PAGE_MODULE_RE.match(path)
     if m:
         code = m.group(1)
         return code, _MODULE_NAMES.get(code, code)
-
-    # /admin/... (including /admin/api/...)
     if path.startswith('/admin'):
         return 'ADMIN', 'Admin Panel'
-
     if path.startswith('/login') or path.startswith('/auth/'):
         return 'AUTH', 'Authentication'
     if path.startswith('/logout'):
@@ -85,7 +85,6 @@ def _detect_module(path):
         return 'HOME', 'Home'
     if path.startswith('/api/'):
         return 'APP', 'App API'
-
     return 'OTHER', path
 
 
@@ -101,16 +100,18 @@ def _get_log_path():
     return cfg.get('nginx_log_path', '').strip()
 
 
-def _parse_nginx_log(path, limit=2000):
-    if not path or not os.path.isfile(path):
-        return [], {'error': f'Log file not found: {path}'}
+def _parse_nginx_log(log_path, from_dt=None, to_dt=None):
+    """Parse nginx log and return entries within the given datetime range (inclusive).
+    No date filter → returns all entries. Always returns newest-first."""
+    if not log_path or not os.path.isfile(log_path):
+        return [], f'Log file not found: {log_path}'
 
     entries = []
     try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
     except Exception as e:
-        return [], {'error': str(e)}
+        return [], str(e)
 
     for line in lines:
         line = line.strip()
@@ -123,10 +124,21 @@ def _parse_nginx_log(path, limit=2000):
         path_only = path_qs.split('?')[0]
         if _should_skip(path_only):
             continue
+
+        dt = _parse_nginx_ts(ts)
+        if dt is None:
+            continue
+
+        if from_dt and dt < from_dt:
+            continue
+        if to_dt and dt > to_dt:
+            continue
+
         mod_code, mod_name = _detect_module(path_only)
         entries.append({
             'ip': ip,
             'timestamp': ts,
+            'date_iso': dt.strftime('%Y-%m-%d'),
             'method': method,
             'path': path_qs,
             'status': int(status),
@@ -135,27 +147,23 @@ def _parse_nginx_log(path, limit=2000):
             'module_name': mod_name,
         })
 
-    # newest first, capped to limit
     entries.reverse()
-    return entries[:limit], None
+    return entries, None
 
 
 def _calc_stats(entries):
     from collections import Counter, defaultdict
-    import re as _re
+    status_counts  = Counter(str(e['status']) for e in entries)
+    module_counts  = Counter(e['module_code'] for e in entries)
+    ip_counts      = Counter(e['ip'] for e in entries)
+    method_counts  = Counter(e['method'] for e in entries)
 
-    status_counts = Counter(str(e['status']) for e in entries)
-    module_counts = Counter(e['module_code'] for e in entries)
-    ip_counts = Counter(e['ip'] for e in entries)
-    method_counts = Counter(e['method'] for e in entries)
-
-    # By date (group by date portion of timestamp like "24/Apr/2026")
     date_groups = defaultdict(Counter)
     for e in entries:
-        date = e['timestamp'].split(':')[0]  # "24/Apr/2026"
-        date_groups[date][str(e['status'])] += 1
+        date_groups[e['date_iso']][str(e['status'])] += 1
 
-    by_date = [{'date': d, **dict(counts)} for d, counts in sorted(date_groups.items())]
+    by_date = [{'date': d, **dict(counts)}
+               for d, counts in sorted(date_groups.items())]
 
     return {
         'total': len(entries),
@@ -165,6 +173,13 @@ def _calc_stats(entries):
         'method_counts': dict(method_counts),
         'by_date': by_date,
     }
+
+
+def _parse_date_param(s, fallback):
+    try:
+        return datetime.strptime(s, '%Y-%m-%d') if s else fallback
+    except ValueError:
+        return fallback
 
 
 def login_required(f):
@@ -190,14 +205,62 @@ def get_data():
     if not session.get('is_admin'):
         return jsonify({'error': 'Admin only'}), 403
 
+    today   = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
+    default_from = (datetime.now() - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    to_dt   = _parse_date_param(request.args.get('to_date'),   today).replace(hour=23, minute=59, second=59)
+    from_dt = _parse_date_param(request.args.get('from_date'), default_from).replace(hour=0, minute=0, second=0)
+
+    # Hard cap: never show more than 31 days in the UI
+    if (to_dt - from_dt).days > 31:
+        from_dt = (to_dt - timedelta(days=30)).replace(hour=0, minute=0, second=0)
+
     log_path = _get_log_path()
-    entries, err = _parse_nginx_log(log_path)
+    entries, err = _parse_nginx_log(log_path, from_dt=from_dt, to_dt=to_dt)
     if err and not entries:
-        return jsonify({'error': err.get('error', 'Unknown error')}), 500
+        return jsonify({'error': err}), 500
 
     stats = _calc_stats(entries)
     return jsonify({
         'entries': entries,
         'stats': stats,
-        'log_path': log_path,
+        'from_date': from_dt.strftime('%Y-%m-%d'),
+        'to_date': to_dt.strftime('%Y-%m-%d'),
     })
+
+
+@bp.route('/api/module/AUD01/export')
+@login_required
+def export_csv():
+    """Export ALL log entries (no date cap) as CSV download."""
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+
+    log_path = _get_log_path()
+
+    # Optional date filter from query params; default = all data
+    from_dt = _parse_date_param(request.args.get('from_date'), None)
+    to_dt   = _parse_date_param(request.args.get('to_date'),   None)
+    if from_dt:
+        from_dt = from_dt.replace(hour=0, minute=0, second=0)
+    if to_dt:
+        to_dt = to_dt.replace(hour=23, minute=59, second=59)
+
+    entries, err = _parse_nginx_log(log_path, from_dt=from_dt, to_dt=to_dt)
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(['Timestamp', 'Date', 'IP', 'Method', 'Status', 'Module Code', 'Module Name', 'Path', 'Size (bytes)'])
+    for e in entries:
+        writer.writerow([
+            e['timestamp'], e['date_iso'], e['ip'], e['method'],
+            e['status'], e['module_code'], e['module_name'],
+            e['path'], e['size'],
+        ])
+
+    fname = f"audit_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        out.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={fname}'}
+    )

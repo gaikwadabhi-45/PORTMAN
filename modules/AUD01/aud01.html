@@ -4,18 +4,11 @@
 
 {% block head %}
 <style>
-.aud-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .aud-stats { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
 .aud-stat-card {
-    background:var(--bg-primary);
-    border:1px solid var(--border-color);
-    border-radius:8px;
-    padding:12px 16px;
-    min-width:120px;
-    text-align:center;
-    border-top:3px solid #4a90d9;
-    cursor:pointer;
-    transition:box-shadow 0.15s;
+    background:var(--bg-primary); border:1px solid var(--border-color);
+    border-radius:8px; padding:12px 16px; min-width:120px; text-align:center;
+    border-top:3px solid #4a90d9; cursor:pointer; transition:box-shadow 0.15s;
 }
 .aud-stat-card:hover { box-shadow:0 3px 10px rgba(0,0,0,0.12); }
 .aud-stat-num { font-size:22px; font-weight:700; color:var(--text-primary); }
@@ -29,29 +22,35 @@
     background:#e2e8f0; color:#4a5568; border-color:#cbd5e0;
 }
 .aud-filter-btn.active { box-shadow:0 0 0 2px currentColor; }
-.aud-table-wrap { overflow-x:auto; }
+.aud-table-wrap { overflow-x:auto; max-height:520px; overflow-y:auto; }
 .aud-table { width:100%; border-collapse:collapse; font-size:12px; }
-.aud-table th { background:var(--bg-secondary); color:var(--text-secondary); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color); position:sticky; top:0; z-index:1; }
+.aud-table th {
+    background:var(--bg-secondary); color:var(--text-secondary); font-size:10px;
+    font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
+    padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color);
+    position:sticky; top:0; z-index:1;
+}
 .aud-table td { padding:7px 10px; border-bottom:1px solid var(--border-color); color:var(--text-primary); vertical-align:top; }
 .aud-table tr:hover td { background:var(--hover-bg); }
 .aud-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
 .aud-method-badge { padding:2px 6px; border-radius:3px; font-size:10px; font-weight:700; font-family:monospace; }
 .aud-bars { display:flex; flex-direction:column; gap:6px; }
 .aud-bar-row { display:flex; align-items:center; gap:8px; }
-.aud-bar-label { width:120px; font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; flex-shrink:0; }
-.aud-bar-wrap { flex:1; background:var(--bg-secondary); border-radius:4px; overflow:hidden; height:18px; }
-.aud-bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }
+.aud-bar-label { width:110px; font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; flex-shrink:0; }
+.aud-bar-wrap { flex:1; background:var(--bg-secondary); border-radius:4px; overflow:hidden; height:18px; display:flex; }
+.aud-bar-fill { height:100%; border-radius:4px; }
 .aud-bar-count { width:40px; font-size:11px; font-weight:600; color:var(--text-primary); text-align:right; flex-shrink:0; }
-.aud-top-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.aud-search { padding:6px 10px; border:1px solid var(--border-color); border-radius:4px; font-size:12px; width:200px; background:var(--bg-primary); color:var(--text-primary); }
+.aud-date-input { padding:5px 8px; border:1px solid var(--border-color); border-radius:4px; font-size:12px; background:var(--bg-primary); color:var(--text-primary); }
 .aud-loading { text-align:center; color:var(--text-secondary); padding:40px; font-size:13px; }
-.aud-search { padding:6px 10px; border:1px solid var(--border-color); border-radius:4px; font-size:12px; width:220px; background:var(--bg-primary); color:var(--text-primary); }
-
-@media(max-width:700px) { .aud-top-grid { grid-template-columns:1fr; } }
+.btn-export { background:#276749; color:#fff; border:none; padding:6px 14px; border-radius:4px; font-size:12px; cursor:pointer; font-weight:600; }
+.btn-export:hover { background:#22543d; }
+.aud-range-warn { font-size:11px; color:#c05621; display:none; }
 
 body.dark-theme .aud-stat-card { background:#2d3748; border-color:#4a5568; }
 body.dark-theme .aud-filter-btn { background:#4a5568; color:#e2e8f0; border-color:#718096; }
 body.dark-theme .aud-table th { background:#1a202c; }
-body.dark-theme .aud-search { background:#1a202c; border-color:#4a5568; color:#e2e8f0; }
+body.dark-theme .aud-search, body.dark-theme .aud-date-input { background:#1a202c; border-color:#4a5568; color:#e2e8f0; }
 </style>
 {% endblock %}
 
@@ -61,23 +60,42 @@ body.dark-theme .aud-search { background:#1a202c; border-color:#4a5568; color:#e
     <span class="module-code">AUD01</span>
 </div>
 
+<!-- Date Range + Export Controls -->
+<div class="aud-section" style="margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <label style="font-size:11px;font-weight:600;color:var(--text-secondary);">From</label>
+            <input type="date" id="audFromDate" class="aud-date-input" onchange="_validateRange()">
+            <label style="font-size:11px;font-weight:600;color:var(--text-secondary);">To</label>
+            <input type="date" id="audToDate" class="aud-date-input" onchange="_validateRange()">
+            <button class="btn btn-save" onclick="loadAuditData()" style="padding:5px 14px;font-size:12px;">Apply</button>
+            <span class="aud-range-warn" id="audRangeWarn">Max range is 1 month. From date adjusted.</span>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+            <span id="audRangeLabel" style="font-size:11px;color:var(--text-secondary);"></span>
+            <button class="btn-export" onclick="exportCsv()" title="Export current range as CSV">&#8659; Export CSV</button>
+            <button class="btn-export" onclick="exportAllCsv()" style="background:#553c9a;" title="Export all log data as CSV">&#8659; Export All</button>
+        </div>
+    </div>
+</div>
+
 <div id="aud-loading" class="aud-loading">Loading audit data…</div>
 <div id="aud-content" style="display:none;">
 
     <!-- Stats Row -->
     <div class="aud-stats" id="audStatsCards"></div>
 
-    <!-- Activity by Date + Top Modules / IPs -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;" id="aud-charts-grid">
-        <div class="aud-section" style="grid-column:1/2;">
+    <!-- Charts Grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="aud-section">
             <h3>Top Modules</h3>
             <div class="aud-bars" id="audTopModules"></div>
         </div>
-        <div class="aud-section" style="grid-column:2/3;">
+        <div class="aud-section">
             <h3>Activity by Date</h3>
             <div class="aud-bars" id="audByDate"></div>
         </div>
-        <div class="aud-section" style="grid-column:3/4;">
+        <div class="aud-section">
             <h3>Top IPs</h3>
             <div class="aud-bars" id="audTopIPs"></div>
         </div>
@@ -90,13 +108,12 @@ body.dark-theme .aud-search { background:#1a202c; border-color:#4a5568; color:#e
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <input class="aud-search" id="audSearch" type="text" placeholder="Search path, IP, module…" oninput="renderAudTable()">
                 <span id="audEntryCount" style="font-size:11px;color:var(--text-secondary);"></span>
-                <button class="btn" style="background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="loadAuditData()">&#8635; Refresh</button>
+                <button class="btn" style="background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;font-size:12px;" onclick="loadAuditData()">&#8635; Refresh</button>
             </div>
         </div>
-        <!-- Filter buttons -->
         <div class="aud-filter-bar">
             <button class="aud-filter-btn active" data-filter="ALL" onclick="setAudFilter('ALL')">All</button>
-            <span id="audStatusFilters"></span>
+            <span id="audStatusFilters" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
             <span id="audMethodFilters" style="margin-left:8px;display:flex;gap:4px;flex-wrap:wrap;"></span>
         </div>
         <div class="aud-table-wrap">
@@ -126,6 +143,8 @@ body.dark-theme .aud-search { background:#1a202c; border-color:#4a5568; color:#e
 let _audEntries = [];
 let _audFilter = 'ALL';
 let _audMethodFilter = 'ALL';
+let _audFromDate = '';
+let _audToDate = '';
 
 const STATUS_COLORS = {
     '2': { color:'#276749', bg:'#c6f6d5' },
@@ -142,33 +161,84 @@ const METHOD_COLORS = {
 };
 
 function _statusMeta(code) {
-    const s = String(code);
-    const grp = s[0];
-    const meta = STATUS_COLORS[grp] || { color:'#4a5568', bg:'#e2e8f0' };
-    return meta;
+    const grp = String(code)[0];
+    return STATUS_COLORS[grp] || { color:'#4a5568', bg:'#e2e8f0' };
 }
-
 function _methodMeta(m) {
     return METHOD_COLORS[m] || { color:'#4a5568', bg:'#e2e8f0' };
 }
 
+// ── Date helpers ─────────────────────────────────────────────────────────────
+function _todayStr() {
+    return new Date().toISOString().slice(0, 10);
+}
+function _daysAgoStr(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+}
+
+function _initDates() {
+    const to   = document.getElementById('audToDate');
+    const from = document.getElementById('audFromDate');
+    const today = _todayStr();
+    to.max   = today;
+    to.value = today;
+    from.max = today;
+    from.value = _daysAgoStr(6);   // default: last 7 days
+    _audToDate   = to.value;
+    _audFromDate = from.value;
+}
+
+function _validateRange() {
+    const from = document.getElementById('audFromDate');
+    const to   = document.getElementById('audToDate');
+    const warn = document.getElementById('audRangeWarn');
+    if (!from.value || !to.value) return;
+    const diff = (new Date(to.value) - new Date(from.value)) / 86400000;
+    if (diff > 30) {
+        // cap from date to 30 days before to
+        const capped = new Date(to.value);
+        capped.setDate(capped.getDate() - 30);
+        from.value = capped.toISOString().slice(0, 10);
+        warn.style.display = 'inline';
+        setTimeout(() => warn.style.display = 'none', 3000);
+    }
+    if (new Date(from.value) > new Date(to.value)) {
+        from.value = to.value;
+    }
+}
+
+// ── Load data ────────────────────────────────────────────────────────────────
 async function loadAuditData() {
+    _audFromDate = document.getElementById('audFromDate').value;
+    _audToDate   = document.getElementById('audToDate').value;
+
     document.getElementById('aud-loading').style.display = 'block';
     document.getElementById('aud-content').style.display = 'none';
+    document.getElementById('aud-loading').textContent = 'Loading audit data…';
+
     try {
-        const res = await fetch('/api/module/AUD01/data');
+        const params = new URLSearchParams({ from_date: _audFromDate, to_date: _audToDate });
+        const res = await fetch(`/api/module/AUD01/data?${params}`);
         const data = await res.json();
         if (data.error) {
             document.getElementById('aud-loading').textContent = 'Error: ' + data.error;
             return;
         }
         _audEntries = data.entries || [];
+
+        // Show the actual range the server used
+        const label = document.getElementById('audRangeLabel');
+        label.textContent = `${data.from_date} → ${data.to_date}  (${_audEntries.length.toLocaleString()} entries)`;
+
         renderAudStats(data.stats || {});
         renderAudTopBars('audTopModules', (data.stats.top_modules || []).map(([k,v]) => [k,v]), '#4a90d9');
-        renderAudTopBars('audTopIPs', (data.stats.top_ips || []).map(([k,v]) => [k,v]), '#9f7aea');
+        renderAudTopBars('audTopIPs',     (data.stats.top_ips     || []).map(([k,v]) => [k,v]), '#9f7aea');
         renderAudByDate(data.stats.by_date || []);
         renderAudFilters(data.stats);
         renderAudTable();
+
         document.getElementById('aud-loading').style.display = 'none';
         document.getElementById('aud-content').style.display = 'block';
     } catch(e) {
@@ -176,24 +246,35 @@ async function loadAuditData() {
     }
 }
 
+// ── Export ───────────────────────────────────────────────────────────────────
+function exportCsv() {
+    const params = new URLSearchParams({ from_date: _audFromDate, to_date: _audToDate });
+    window.location.href = `/api/module/AUD01/export?${params}`;
+}
+function exportAllCsv() {
+    window.location.href = '/api/module/AUD01/export';
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────
 function renderAudStats(stats) {
     const cards = document.getElementById('audStatsCards');
     const counts = stats.status_counts || {};
     const allCodes = Object.keys(counts).sort((a,b) => parseInt(a)-parseInt(b));
     let html = `<div class="aud-stat-card" onclick="setAudFilter('ALL')">
-        <div class="aud-stat-num">${stats.total ?? 0}</div>
+        <div class="aud-stat-num">${(stats.total ?? 0).toLocaleString()}</div>
         <div class="aud-stat-label">Total Requests</div>
     </div>`;
     allCodes.forEach(code => {
         const m = _statusMeta(code);
-        html += `<div class="aud-stat-card" style="border-top-color:${m.color};cursor:pointer;" onclick="setAudFilter('${code}')">
-            <div class="aud-stat-num" style="color:${m.color};">${counts[code]}</div>
+        html += `<div class="aud-stat-card" style="border-top-color:${m.color};" onclick="setAudFilter('${code}')">
+            <div class="aud-stat-num" style="color:${m.color};">${counts[code].toLocaleString()}</div>
             <div class="aud-stat-label">${code} Responses</div>
         </div>`;
     });
     cards.innerHTML = html;
 }
 
+// ── Top bars ─────────────────────────────────────────────────────────────────
 function renderAudTopBars(elId, pairs, color) {
     const el = document.getElementById(elId);
     if (!pairs.length) { el.innerHTML = '<div style="color:var(--text-secondary);font-size:11px;">No data</div>'; return; }
@@ -201,11 +282,14 @@ function renderAudTopBars(elId, pairs, color) {
     el.innerHTML = pairs.map(([label, count]) => `
         <div class="aud-bar-row">
             <div class="aud-bar-label" title="${label}">${label}</div>
-            <div class="aud-bar-wrap"><div class="aud-bar-fill" style="width:${(count/max*100).toFixed(1)}%;background:${color};"></div></div>
-            <div class="aud-bar-count">${count}</div>
+            <div class="aud-bar-wrap">
+                <div class="aud-bar-fill" style="width:${(count/max*100).toFixed(1)}%;background:${color};"></div>
+            </div>
+            <div class="aud-bar-count">${count.toLocaleString()}</div>
         </div>`).join('');
 }
 
+// ── By date ──────────────────────────────────────────────────────────────────
 function renderAudByDate(byDate) {
     const el = document.getElementById('audByDate');
     if (!byDate.length) { el.innerHTML = '<div style="color:var(--text-secondary);font-size:11px;">No data</div>'; return; }
@@ -213,96 +297,97 @@ function renderAudByDate(byDate) {
     byDate.forEach(d => Object.keys(d).filter(k => k !== 'date').forEach(k => allCodes.add(k)));
     const codeList = [...allCodes].sort((a,b) => parseInt(a)-parseInt(b));
     const maxTotal = Math.max(...byDate.map(d => codeList.reduce((s,k) => s+(d[k]||0), 0)), 1);
+
     el.innerHTML = byDate.map(d => {
         const total = codeList.reduce((s,k) => s+(d[k]||0), 0);
         const segs = codeList.map(k => {
             if (!d[k]) return '';
             const m = _statusMeta(parseInt(k));
-            return `<div class="aud-bar-fill" style="width:${(d[k]/maxTotal*100).toFixed(1)}%;background:${m.color};display:inline-block;height:100%;" title="${k}: ${d[k]}"></div>`;
+            return `<div class="aud-bar-fill" style="width:${(d[k]/maxTotal*100).toFixed(1)}%;background:${m.color};" title="${k}: ${d[k]}"></div>`;
         }).join('');
+        // Format date nicely: "2026-03-16" → "16 Mar"
+        const parts = d.date.split('-');
+        const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const label = parts.length === 3 ? `${parts[2]} ${months[parseInt(parts[1])]}` : d.date;
         return `<div class="aud-bar-row">
-            <div class="aud-bar-label" title="${d.date}">${d.date}</div>
-            <div class="aud-bar-wrap" style="display:flex;">${segs}</div>
-            <div class="aud-bar-count">${total}</div>
+            <div class="aud-bar-label" title="${d.date}">${label}</div>
+            <div class="aud-bar-wrap">${segs}</div>
+            <div class="aud-bar-count">${total.toLocaleString()}</div>
         </div>`;
     }).join('');
 }
 
+// ── Filters ──────────────────────────────────────────────────────────────────
 function renderAudFilters(stats) {
     const statusSpan = document.getElementById('audStatusFilters');
     const methodSpan = document.getElementById('audMethodFilters');
-    const counts = stats.status_counts || {};
-    const allCodes = Object.keys(counts).sort((a,b) => parseInt(a)-parseInt(b));
+    const counts     = stats.status_counts || {};
+    const allCodes   = Object.keys(counts).sort((a,b) => parseInt(a)-parseInt(b));
     statusSpan.innerHTML = allCodes.map(code => {
         const m = _statusMeta(code);
         return `<button class="aud-filter-btn" data-filter="${code}" onclick="setAudFilter('${code}')"
             style="background:${m.bg};color:${m.color};border-color:${m.color};">${code}</button>`;
-    }).join(' ');
-
+    }).join('');
     const methods = stats.method_counts || {};
     methodSpan.innerHTML = Object.keys(methods).sort().map(met => {
         const m = _methodMeta(met);
         return `<button class="aud-filter-btn" data-method="${met}" onclick="setAudMethodFilter('${met}')"
             style="background:${m.bg};color:${m.color};border-color:${m.color};">${met}</button>`;
-    }).join(' ');
+    }).join('');
     _syncAudFilterActive();
 }
 
-function setAudFilter(f) {
-    _audFilter = f;
-    _syncAudFilterActive();
-    renderAudTable();
-}
-
-function setAudMethodFilter(m) {
-    _audMethodFilter = (m === _audMethodFilter) ? 'ALL' : m;
-    _syncAudFilterActive();
-    renderAudTable();
-}
-
+function setAudFilter(f) { _audFilter = f; _syncAudFilterActive(); renderAudTable(); }
+function setAudMethodFilter(m) { _audMethodFilter = (m === _audMethodFilter) ? 'ALL' : m; _syncAudFilterActive(); renderAudTable(); }
 function _syncAudFilterActive() {
-    document.querySelectorAll('.aud-filter-btn[data-filter]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === _audFilter);
-    });
-    document.querySelectorAll('.aud-filter-btn[data-method]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.method === _audMethodFilter);
-    });
+    document.querySelectorAll('.aud-filter-btn[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === _audFilter));
+    document.querySelectorAll('.aud-filter-btn[data-method]').forEach(b => b.classList.toggle('active', b.dataset.method === _audMethodFilter));
 }
 
+// ── Table ────────────────────────────────────────────────────────────────────
 function renderAudTable() {
     const q = (document.getElementById('audSearch').value || '').toLowerCase();
     const filtered = _audEntries.filter(e => {
         if (_audFilter !== 'ALL' && String(e.status) !== _audFilter) return false;
         if (_audMethodFilter !== 'ALL' && e.method !== _audMethodFilter) return false;
         if (q) {
-            const hay = (e.path + e.ip + e.module_code + e.module_name).toLowerCase();
-            if (!hay.includes(q)) return false;
+            if (!(e.path + e.ip + e.module_code + e.module_name).toLowerCase().includes(q)) return false;
         }
         return true;
     });
-    document.getElementById('audEntryCount').textContent = `${filtered.length} entr${filtered.length===1?'y':'ies'}`;
+    document.getElementById('audEntryCount').textContent = `${filtered.length.toLocaleString()} entr${filtered.length===1?'y':'ies'}`;
     const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     if (!filtered.length) {
         document.getElementById('audTableBody').innerHTML =
             '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:20px;">No entries match the current filter.</td></tr>';
         return;
     }
-    const fmtSize = b => b < 1024 ? b + ' B' : b < 1024*1024 ? (b/1024).toFixed(1)+' KB' : (b/1024/1024).toFixed(2)+' MB';
-    document.getElementById('audTableBody').innerHTML = filtered.slice(0, 500).map(e => {
+    const fmtSize = b => b < 1024 ? b+' B' : b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(2)+' MB';
+    // Show max 1000 rows in the table (full data is in CSV export)
+    const display = filtered.slice(0, 1000);
+    let rows = display.map(e => {
         const sm = _statusMeta(e.status);
         const mm = _methodMeta(e.method);
         return `<tr>
             <td style="white-space:nowrap;font-size:11px;color:var(--text-secondary);">${esc(e.timestamp)}</td>
             <td><span class="aud-badge" style="background:${sm.bg};color:${sm.color};">${e.status}</span></td>
             <td><span class="aud-method-badge" style="background:${mm.bg};color:${mm.color};">${esc(e.method)}</span></td>
-            <td style="font-size:11px;"><span style="font-weight:600;">${esc(e.module_code)}</span><br><span style="color:var(--text-secondary);">${esc(e.module_name)}</span></td>
-            <td style="font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.path)}">${esc(e.path)}</td>
+            <td style="font-size:11px;white-space:nowrap;"><span style="font-weight:600;">${esc(e.module_code)}</span>
+                <span style="color:var(--text-secondary);display:block;font-size:10px;">${esc(e.module_name)}</span></td>
+            <td style="font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.path)}">${esc(e.path)}</td>
             <td style="font-size:11px;font-family:monospace;">${esc(e.ip)}</td>
             <td style="text-align:right;font-size:11px;font-family:monospace;">${fmtSize(e.size)}</td>
         </tr>`;
     }).join('');
+    if (filtered.length > 1000) {
+        rows += `<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);font-size:11px;padding:10px;">
+            Showing first 1,000 of ${filtered.length.toLocaleString()} entries — use Export CSV for full data.</td></tr>`;
+    }
+    document.getElementById('audTableBody').innerHTML = rows;
 }
 
+// ── Init ─────────────────────────────────────────────────────────────────────
+_initDates();
 loadAuditData();
 </script>
 {% endblock %}
