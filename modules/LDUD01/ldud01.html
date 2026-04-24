@@ -2214,8 +2214,8 @@
                 if (d[fieldA] && d[fieldB]) {
                     const dateA = new Date(d[fieldA]);
                     const dateB = new Date(d[fieldB]);
-                    if (!isNaN(dateA) && !isNaN(dateB) && dateB <= dateA) {
-                        alert(`Row ${i + 1}: "${labelB}" (${d[fieldB]}) must be after "${labelA}" (${d[fieldA]}).`);
+                    if (!isNaN(dateA) && !isNaN(dateB) && dateB < dateA) {
+                        alert(`Row ${i + 1}: "${labelB}" (${d[fieldB]}) must be same or after "${labelA}" (${d[fieldA]}).`);
                         return false;
                     }
                 }
@@ -2283,8 +2283,8 @@
                 if (d.commenced && d.completed) {
                     const start = new Date(d.commenced.replace(' ', 'T'));
                     const end = new Date(d.completed.replace(' ', 'T'));
-                    if (end <= start) {
-                        if (!silent) showSubStatus(type, ldudId, `Error: Completed must be after Commenced for hold ${d.hold_name || ''}`, true);
+                    if (end < start) {
+                        if (!silent) showSubStatus(type, ldudId, `Error: Completed must be same or after Commenced for hold ${d.hold_name || ''}`, true);
                         return;
                     }
                 }

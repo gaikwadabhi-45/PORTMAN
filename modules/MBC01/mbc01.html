@@ -1159,8 +1159,8 @@
                 if (d[fieldA] && d[fieldB]) {
                     const dateA = new Date(d[fieldA]);
                     const dateB = new Date(d[fieldB]);
-                    if (!isNaN(dateA) && !isNaN(dateB) && dateB <= dateA) {
-                        alert(`Row ${i + 1}: "${labelB}" (${d[fieldB]}) must be after "${labelA}" (${d[fieldA]}).`);
+                    if (!isNaN(dateA) && !isNaN(dateB) && dateB < dateA) {
+                        alert(`Row ${i + 1}: "${labelB}" (${d[fieldB]}) must be same or after "${labelA}" (${d[fieldA]}).`);
                         return false;
                     }
                 }
