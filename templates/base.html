@@ -445,13 +445,20 @@
                     </div>
                 </div>
             </div>
-            <!-- Audit Logs (admin only) -->
+            <!-- Audit Accordion (admin only) -->
             {% if session.is_admin %}
-            <div class="sidebar-divider"></div>
-            <div class="module-item" onclick="goToModule('AUD01', 'Audit Logs')" style="margin:4px 8px;border-radius:6px;">
-                <img src="{{ url_for('static', filename='img/audit.png') }}" alt="Audit" style="width:22px;height:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.2));">
-                <span class="name">Audit Logs</span>
-                <span class="code" style="background:#9f7aea;">AUD01</span>
+            <div class="accordion-section audit">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <img src="{{ url_for('static', filename='img/audit.png') }}" alt="Audit" class="icon">
+                    <span>Audit</span>
+                    <span class="arrow">&#9654;</span>
+                </div>
+                <div class="accordion-content">
+                    <div class="module-item" onclick="goToModule('AUD01', 'Audit Logs')">
+                        <span class="code">AUD01</span>
+                        <span class="name">Audit Logs</span>
+                    </div>
+                </div>
             </div>
             {% endif %}
         </div>
