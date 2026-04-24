@@ -445,8 +445,7 @@
                     </div>
                 </div>
             </div>
-            <!-- Audit Accordion (admin only) -->
-            {% if session.is_admin %}
+            <!-- Audit Accordion -->
             <div class="accordion-section audit">
                 <div class="accordion-header" onclick="toggleAccordion(this)">
                     <img src="{{ url_for('static', filename='img/audit.png') }}" alt="Audit" class="icon">
@@ -460,7 +459,6 @@
                     </div>
                 </div>
             </div>
-            {% endif %}
         </div>
 
         <div class="content-area">

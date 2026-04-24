@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, Response
 from functools import wraps
-from database import get_module_config
+from database import get_module_config, get_user_permissions
 from datetime import datetime, timedelta
 import re
 import os
@@ -191,19 +191,26 @@ def login_required(f):
     return decorated
 
 
+def get_perms():
+    if session.get('is_admin'):
+        return {'can_read': 1, 'can_add': 1, 'can_edit': 1, 'can_delete': 1}
+    return get_user_permissions(session.get('user_id'), MODULE_CODE)
+
+
 @bp.route('/module/AUD01/')
 @login_required
 def view():
-    if not session.get('is_admin'):
+    perms = get_perms()
+    if not perms.get('can_read'):
         return render_template('no_access.html'), 403
-    return render_template('aud01.html')
+    return render_template('aud01.html', permissions=perms)
 
 
 @bp.route('/api/module/AUD01/data')
 @login_required
 def get_data():
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Admin only'}), 403
+    if not get_perms().get('can_read'):
+        return jsonify({'error': 'No permission'}), 403
 
     today   = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
     default_from = (datetime.now() - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -233,8 +240,8 @@ def get_data():
 @login_required
 def export_csv():
     """Export ALL log entries (no date cap) as CSV download."""
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Admin only'}), 403
+    if not get_perms().get('can_read'):
+        return jsonify({'error': 'No permission'}), 403
 
     log_path = _get_log_path()
 
