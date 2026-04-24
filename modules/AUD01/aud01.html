@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs - PORTMAN{% endblock %}
+
+{% block head %}
+<style>
+.aud-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+.aud-stats { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.aud-stat-card {
+    background:var(--bg-primary);
+    border:1px solid var(--border-color);
+    border-radius:8px;
+    padding:12px 16px;
+    min-width:120px;
+    text-align:center;
+    border-top:3px solid #4a90d9;
+    cursor:pointer;
+    transition:box-shadow 0.15s;
+}
+.aud-stat-card:hover { box-shadow:0 3px 10px rgba(0,0,0,0.12); }
+.aud-stat-num { font-size:22px; font-weight:700; color:var(--text-primary); }
+.aud-stat-label { font-size:11px; color:var(--text-secondary); margin-top:2px; }
+.aud-section { background:var(--bg-primary); border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:16px; }
+.aud-section h3 { margin:0 0 12px; font-size:13px; font-weight:700; color:var(--text-primary); }
+.aud-filter-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+.aud-filter-btn {
+    padding:4px 12px; border-radius:12px; border:1px solid; font-size:11px;
+    cursor:pointer; font-weight:600; transition:opacity 0.15s;
+    background:#e2e8f0; color:#4a5568; border-color:#cbd5e0;
+}
+.aud-filter-btn.active { box-shadow:0 0 0 2px currentColor; }
+.aud-table-wrap { overflow-x:auto; }
+.aud-table { width:100%; border-collapse:collapse; font-size:12px; }
+.aud-table th { background:var(--bg-secondary); color:var(--text-secondary); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color); position:sticky; top:0; z-index:1; }
+.aud-table td { padding:7px 10px; border-bottom:1px solid var(--border-color); color:var(--text-primary); vertical-align:top; }
+.aud-table tr:hover td { background:var(--hover-bg); }
+.aud-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+.aud-method-badge { padding:2px 6px; border-radius:3px; font-size:10px; font-weight:700; font-family:monospace; }
+.aud-bars { display:flex; flex-direction:column; gap:6px; }
+.aud-bar-row { display:flex; align-items:center; gap:8px; }
+.aud-bar-label { width:120px; font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; flex-shrink:0; }
+.aud-bar-wrap { flex:1; background:var(--bg-secondary); border-radius:4px; overflow:hidden; height:18px; }
+.aud-bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }
+.aud-bar-count { width:40px; font-size:11px; font-weight:600; color:var(--text-primary); text-align:right; flex-shrink:0; }
+.aud-top-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.aud-loading { text-align:center; color:var(--text-secondary); padding:40px; font-size:13px; }
+.aud-search { padding:6px 10px; border:1px solid var(--border-color); border-radius:4px; font-size:12px; width:220px; background:var(--bg-primary); color:var(--text-primary); }
+
+@media(max-width:700px) { .aud-top-grid { grid-template-columns:1fr; } }
+
+body.dark-theme .aud-stat-card { background:#2d3748; border-color:#4a5568; }
+body.dark-theme .aud-filter-btn { background:#4a5568; color:#e2e8f0; border-color:#718096; }
+body.dark-theme .aud-table th { background:#1a202c; }
+body.dark-theme .aud-search { background:#1a202c; border-color:#4a5568; color:#e2e8f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="module-header">
+    <h2>Audit Logs</h2>
+    <span class="module-code">AUD01</span>
+</div>
+
+<div id="aud-loading" class="aud-loading">Loading audit data…</div>
+<div id="aud-content" style="display:none;">
+
+    <!-- Stats Row -->
+    <div class="aud-stats" id="audStatsCards"></div>
+
+    <!-- Activity by Date + Top Modules / IPs -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;" id="aud-charts-grid">
+        <div class="aud-section" style="grid-column:1/2;">
+            <h3>Top Modules</h3>
+            <div class="aud-bars" id="audTopModules"></div>
+        </div>
+        <div class="aud-section" style="grid-column:2/3;">
+            <h3>Activity by Date</h3>
+            <div class="aud-bars" id="audByDate"></div>
+        </div>
+        <div class="aud-section" style="grid-column:3/4;">
+            <h3>Top IPs</h3>
+            <div class="aud-bars" id="audTopIPs"></div>
+        </div>
+    </div>
+
+    <!-- Log Table -->
+    <div class="aud-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <h3 style="margin:0;">Access Log</h3>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input class="aud-search" id="audSearch" type="text" placeholder="Search path, IP, module…" oninput="renderAudTable()">
+                <span id="audEntryCount" style="font-size:11px;color:var(--text-secondary);"></span>
+                <button class="btn" style="background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="loadAuditData()">&#8635; Refresh</button>
+            </div>
+        </div>
+        <!-- Filter buttons -->
+        <div class="aud-filter-bar">
+            <button class="aud-filter-btn active" data-filter="ALL" onclick="setAudFilter('ALL')">All</button>
+            <span id="audStatusFilters"></span>
+            <span id="audMethodFilters" style="margin-left:8px;display:flex;gap:4px;flex-wrap:wrap;"></span>
+        </div>
+        <div class="aud-table-wrap">
+            <table class="aud-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Status</th>
+                        <th>Method</th>
+                        <th>Module</th>
+                        <th>Path</th>
+                        <th>IP</th>
+                        <th style="text-align:right;">Size</th>
+                    </tr>
+                </thead>
+                <tbody id="audTableBody">
+                    <tr><td colspan="7" class="aud-loading">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _audEntries = [];
+let _audFilter = 'ALL';
+let _audMethodFilter = 'ALL';
+
+const STATUS_COLORS = {
+    '2': { color:'#276749', bg:'#c6f6d5' },
+    '3': { color:'#2b6cb0', bg:'#bee3f8' },
+    '4': { color:'#c05621', bg:'#feebc8' },
+    '5': { color:'#e53e3e', bg:'#fed7d7' },
+};
+const METHOD_COLORS = {
+    'GET':    { color:'#2b6cb0', bg:'#ebf8ff' },
+    'POST':   { color:'#276749', bg:'#f0fff4' },
+    'PUT':    { color:'#744210', bg:'#fffff0' },
+    'DELETE': { color:'#c53030', bg:'#fff5f5' },
+    'PATCH':  { color:'#553c9a', bg:'#faf5ff' },
+};
+
+function _statusMeta(code) {
+    const s = String(code);
+    const grp = s[0];
+    const meta = STATUS_COLORS[grp] || { color:'#4a5568', bg:'#e2e8f0' };
+    return meta;
+}
+
+function _methodMeta(m) {
+    return METHOD_COLORS[m] || { color:'#4a5568', bg:'#e2e8f0' };
+}
+
+async function loadAuditData() {
+    document.getElementById('aud-loading').style.display = 'block';
+    document.getElementById('aud-content').style.display = 'none';
+    try {
+        const res = await fetch('/api/module/AUD01/data');
+        const data = await res.json();
+        if (data.error) {
+            document.getElementById('aud-loading').textContent = 'Error: ' + data.error;
+            return;
+        }
+        _audEntries = data.entries || [];
+        renderAudStats(data.stats || {});
+        renderAudTopBars('audTopModules', (data.stats.top_modules || []).map(([k,v]) => [k,v]), '#4a90d9');
+        renderAudTopBars('audTopIPs', (data.stats.top_ips || []).map(([k,v]) => [k,v]), '#9f7aea');
+        renderAudByDate(data.stats.by_date || []);
+        renderAudFilters(data.stats);
+        renderAudTable();
+        document.getElementById('aud-loading').style.display = 'none';
+        document.getElementById('aud-content').style.display = 'block';
+    } catch(e) {
+        document.getElementById('aud-loading').textContent = 'Failed to load: ' + e.message;
+    }
+}
+
+function renderAudStats(stats) {
+    const cards = document.getElementById('audStatsCards');
+    const counts = stats.status_counts || {};
+    const allCodes = Object.keys(counts).sort((a,b) => parseInt(a)-parseInt(b));
+    let html = `<div class="aud-stat-card" onclick="setAudFilter('ALL')">
+        <div class="aud-stat-num">${stats.total ?? 0}</div>
+        <div class="aud-stat-label">Total Requests</div>
+    </div>`;
+    allCodes.forEach(code => {
+        const m = _statusMeta(code);
+        html += `<div class="aud-stat-card" style="border-top-color:${m.color};cursor:pointer;" onclick="setAudFilter('${code}')">
+            <div class="aud-stat-num" style="color:${m.color};">${counts[code]}</div>
+            <div class="aud-stat-label">${code} Responses</div>
+        </div>`;
+    });
+    cards.innerHTML = html;
+}
+
+function renderAudTopBars(elId, pairs, color) {
+    const el = document.getElementById(elId);
+    if (!pairs.length) { el.innerHTML = '<div style="color:var(--text-secondary);font-size:11px;">No data</div>'; return; }
+    const max = pairs[0][1] || 1;
+    el.innerHTML = pairs.map(([label, count]) => `
+        <div class="aud-bar-row">
+            <div class="aud-bar-label" title="${label}">${label}</div>
+            <div class="aud-bar-wrap"><div class="aud-bar-fill" style="width:${(count/max*100).toFixed(1)}%;background:${color};"></div></div>
+            <div class="aud-bar-count">${count}</div>
+        </div>`).join('');
+}
+
+function renderAudByDate(byDate) {
+    const el = document.getElementById('audByDate');
+    if (!byDate.length) { el.innerHTML = '<div style="color:var(--text-secondary);font-size:11px;">No data</div>'; return; }
+    const allCodes = new Set();
+    byDate.forEach(d => Object.keys(d).filter(k => k !== 'date').forEach(k => allCodes.add(k)));
+    const codeList = [...allCodes].sort((a,b) => parseInt(a)-parseInt(b));
+    const maxTotal = Math.max(...byDate.map(d => codeList.reduce((s,k) => s+(d[k]||0), 0)), 1);
+    el.innerHTML = byDate.map(d => {
+        const total = codeList.reduce((s,k) => s+(d[k]||0), 0);
+        const segs = codeList.map(k => {
+            if (!d[k]) return '';
+            const m = _statusMeta(parseInt(k));
+            return `<div class="aud-bar-fill" style="width:${(d[k]/maxTotal*100).toFixed(1)}%;background:${m.color};display:inline-block;height:100%;" title="${k}: ${d[k]}"></div>`;
+        }).join('');
+        return `<div class="aud-bar-row">
+            <div class="aud-bar-label" title="${d.date}">${d.date}</div>
+            <div class="aud-bar-wrap" style="display:flex;">${segs}</div>
+            <div class="aud-bar-count">${total}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderAudFilters(stats) {
+    const statusSpan = document.getElementById('audStatusFilters');
+    const methodSpan = document.getElementById('audMethodFilters');
+    const counts = stats.status_counts || {};
+    const allCodes = Object.keys(counts).sort((a,b) => parseInt(a)-parseInt(b));
+    statusSpan.innerHTML = allCodes.map(code => {
+        const m = _statusMeta(code);
+        return `<button class="aud-filter-btn" data-filter="${code}" onclick="setAudFilter('${code}')"
+            style="background:${m.bg};color:${m.color};border-color:${m.color};">${code}</button>`;
+    }).join(' ');
+
+    const methods = stats.method_counts || {};
+    methodSpan.innerHTML = Object.keys(methods).sort().map(met => {
+        const m = _methodMeta(met);
+        return `<button class="aud-filter-btn" data-method="${met}" onclick="setAudMethodFilter('${met}')"
+            style="background:${m.bg};color:${m.color};border-color:${m.color};">${met}</button>`;
+    }).join(' ');
+    _syncAudFilterActive();
+}
+
+function setAudFilter(f) {
+    _audFilter = f;
+    _syncAudFilterActive();
+    renderAudTable();
+}
+
+function setAudMethodFilter(m) {
+    _audMethodFilter = (m === _audMethodFilter) ? 'ALL' : m;
+    _syncAudFilterActive();
+    renderAudTable();
+}
+
+function _syncAudFilterActive() {
+    document.querySelectorAll('.aud-filter-btn[data-filter]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === _audFilter);
+    });
+    document.querySelectorAll('.aud-filter-btn[data-method]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.method === _audMethodFilter);
+    });
+}
+
+function renderAudTable() {
+    const q = (document.getElementById('audSearch').value || '').toLowerCase();
+    const filtered = _audEntries.filter(e => {
+        if (_audFilter !== 'ALL' && String(e.status) !== _audFilter) return false;
+        if (_audMethodFilter !== 'ALL' && e.method !== _audMethodFilter) return false;
+        if (q) {
+            const hay = (e.path + e.ip + e.module_code + e.module_name).toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+    document.getElementById('audEntryCount').textContent = `${filtered.length} entr${filtered.length===1?'y':'ies'}`;
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if (!filtered.length) {
+        document.getElementById('audTableBody').innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:20px;">No entries match the current filter.</td></tr>';
+        return;
+    }
+    const fmtSize = b => b < 1024 ? b + ' B' : b < 1024*1024 ? (b/1024).toFixed(1)+' KB' : (b/1024/1024).toFixed(2)+' MB';
+    document.getElementById('audTableBody').innerHTML = filtered.slice(0, 500).map(e => {
+        const sm = _statusMeta(e.status);
+        const mm = _methodMeta(e.method);
+        return `<tr>
+            <td style="white-space:nowrap;font-size:11px;color:var(--text-secondary);">${esc(e.timestamp)}</td>
+            <td><span class="aud-badge" style="background:${sm.bg};color:${sm.color};">${e.status}</span></td>
+            <td><span class="aud-method-badge" style="background:${mm.bg};color:${mm.color};">${esc(e.method)}</span></td>
+            <td style="font-size:11px;"><span style="font-weight:600;">${esc(e.module_code)}</span><br><span style="color:var(--text-secondary);">${esc(e.module_name)}</span></td>
+            <td style="font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(e.path)}">${esc(e.path)}</td>
+            <td style="font-size:11px;font-family:monospace;">${esc(e.ip)}</td>
+            <td style="text-align:right;font-size:11px;font-family:monospace;">${fmtSize(e.size)}</td>
+        </tr>`;
+    }).join('');
+}
+
+loadAuditData();
+</script>
+{% endblock %}

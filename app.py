@@ -90,6 +90,9 @@ from modules.PSOM01 import bp as psom01_bp, MODULE_INFO as psom01_info
 # Import reports module
 from modules.RP01 import bp as rp01_bp, MODULE_INFO as rp01_info
 
+# Import audit logs module
+from modules.AUD01 import bp as aud01_bp, MODULE_INFO as aud01_info
+
 # Import accounts redesign modules
 from modules.FINV01 import bp as finv01_bp, MODULE_INFO as finv01_info
 from modules.GSTCFG import bp as gstcfg_bp, MODULE_INFO as gstcfg_info
@@ -146,6 +149,9 @@ register_module(psom01_info['code'], psom01_info['name'], psom01_bp)
 
 # Register reports module
 register_module(rp01_info['code'], rp01_info['name'], rp01_bp)
+
+# Register audit logs module
+register_module(aud01_info['code'], aud01_info['name'], aud01_bp)
 
 # Register accounts redesign modules
 register_module(finv01_info['code'], finv01_info['name'], finv01_bp)

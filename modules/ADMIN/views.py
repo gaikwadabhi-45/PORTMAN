@@ -12,6 +12,10 @@ _LOG_FILE = os.path.join(
 _LOG_RE = re.compile(
     r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+\[(\w+)\]\s+(\S+)\s+(\S+)\s+[—\-]+\s*(.+)$'
 )
+# Werkzeug access log: "GET /path HTTP/1.1" 404
+_STATUS_FROM_ACCESS = re.compile(r'HTTP/\d+\.\d+["\s]+(\d{3})')
+# Status code embedded anywhere in traceback (4xx/5xx only)
+_STATUS_FROM_TB = re.compile(r'\b([45]\d\d)\b')
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -674,6 +678,22 @@ def get_mbc_approvals():
     return jsonify([dict(r) for r in rows])
 
 
+@bp.route('/api/aud-config')
+@admin_required
+def get_aud_config():
+    cfg = get_module_config('AUD01') or {}
+    return jsonify({'nginx_log_path': cfg.get('nginx_log_path', '')})
+
+
+@bp.route('/api/aud-config/save', methods=['POST'])
+@admin_required
+def save_aud_config():
+    cfg = get_module_config('AUD01') or {}
+    cfg['nginx_log_path'] = (request.json or {}).get('nginx_log_path', '').strip()
+    save_module_config('AUD01', cfg)
+    return jsonify({'success': True})
+
+
 @bp.route('/api/logs')
 @admin_required
 def get_logs():
@@ -702,6 +722,18 @@ def clear_logs():
         return jsonify({'error': str(e)}), 500
 
 
+def _extract_http_status(entry):
+    m = _STATUS_FROM_ACCESS.search(entry['message'])
+    if m:
+        return int(m.group(1))
+    tb = entry.get('traceback', '')
+    if tb:
+        m = _STATUS_FROM_TB.search(tb)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def _parse_log_entries(content):
     entries = []
     current = None
@@ -709,6 +741,7 @@ def _parse_log_entries(content):
         m = _LOG_RE.match(line)
         if m:
             if current:
+                current['http_status'] = _extract_http_status(current)
                 entries.append(current)
             current = {
                 'timestamp': m.group(1),
@@ -721,28 +754,33 @@ def _parse_log_entries(content):
         elif current is not None:
             current['traceback'] += line + '\n'
     if current:
+        current['http_status'] = _extract_http_status(current)
         entries.append(current)
     return entries
 
 
 def _calc_log_stats(entries):
-    stats = {'total': len(entries), 'ERROR': 0, 'WARNING': 0, 'INFO': 0, 'other': 0}
+    status_counts = {}
+    no_status = 0
     by_date = {}
     for e in entries:
-        lvl = e['level']
-        if lvl in ('ERROR', 'WARNING', 'INFO'):
-            stats[lvl] += 1
-        else:
-            stats['other'] += 1
+        s = e.get('http_status')
         day = e['timestamp'][:10]
         if day not in by_date:
-            by_date[day] = {'ERROR': 0, 'WARNING': 0, 'INFO': 0, 'other': 0}
-        if lvl in ('ERROR', 'WARNING', 'INFO'):
-            by_date[day][lvl] += 1
+            by_date[day] = {}
+        if s:
+            key = str(s)
+            status_counts[key] = status_counts.get(key, 0) + 1
+            by_date[day][key] = by_date[day].get(key, 0) + 1
         else:
-            by_date[day]['other'] += 1
-    stats['by_date'] = [{'date': d, **counts} for d, counts in sorted(by_date.items(), reverse=True)][:14]
-    return stats
+            no_status += 1
+            by_date[day]['none'] = by_date[day].get('none', 0) + 1
+    return {
+        'total': len(entries),
+        'status_counts': status_counts,
+        'no_status': no_status,
+        'by_date': [{'date': d, **counts} for d, counts in sorted(by_date.items(), reverse=True)][:14],
+    }
 
 
 @bp.route('/api/mbc/reset_approval', methods=['POST'])

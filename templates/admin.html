@@ -18,7 +18,7 @@
     <button class="tab-btn" onclick="showTab('sap')">SAP Config</button>
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
     <button class="tab-btn" onclick="showTab('mail')">Mail</button>
-    <button class="tab-btn" onclick="showTab('logs')">&#128202; Logs</button>
+    <button class="tab-btn" onclick="showTab('logs')">Logs</button>
 </div>
 
 <!-- User Management Tab -->
@@ -361,6 +361,20 @@
 
 <!-- Logs Tab -->
 <div id="logs-tab" class="tab-content">
+    <!-- Nginx log path config -->
+    <div class="admin-section" style="margin-bottom:14px;">
+        <h3 style="margin:0 0 12px;">Nginx Access Log Path</h3>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div style="flex:1;min-width:280px;">
+                <label style="font-size:11px;font-weight:600;color:#718096;text-transform:uppercase;display:block;margin-bottom:4px;">Log File Path</label>
+                <input type="text" id="nginxLogPath" placeholder="C:\nginx-1.28.2\logs\access.log"
+                    style="width:100%;padding:7px 10px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;font-family:monospace;box-sizing:border-box;background:var(--bg-primary);color:var(--text-primary);">
+            </div>
+            <button class="btn btn-save" onclick="saveNginxConfig()" style="white-space:nowrap;">Save Path</button>
+            <span id="nginxConfigStatus" style="font-size:11px;"></span>
+        </div>
+    </div>
+
     <div class="admin-section" style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
             <h3 style="margin:0;">Application Logs</h3>
@@ -372,24 +386,7 @@
         </div>
 
         <!-- Stats Cards -->
-        <div id="logStatsCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
-            <div class="log-stat-card" id="logStatTotal" style="border-color:#4a90d9;">
-                <div class="log-stat-num" id="logStatTotalNum">—</div>
-                <div class="log-stat-label">Total Entries</div>
-            </div>
-            <div class="log-stat-card" id="logStatError" style="border-color:#e53e3e;">
-                <div class="log-stat-num" style="color:#e53e3e;" id="logStatErrorNum">—</div>
-                <div class="log-stat-label">Errors</div>
-            </div>
-            <div class="log-stat-card" id="logStatWarning" style="border-color:#dd6b20;">
-                <div class="log-stat-num" style="color:#dd6b20;" id="logStatWarningNum">—</div>
-                <div class="log-stat-label">Warnings</div>
-            </div>
-            <div class="log-stat-card" id="logStatInfo" style="border-color:#38a169;">
-                <div class="log-stat-num" style="color:#38a169;" id="logStatInfoNum">—</div>
-                <div class="log-stat-label">Info</div>
-            </div>
-        </div>
+        <div id="logStatsCards" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;"></div>
 
         <!-- Activity by Date (mini bar chart) -->
         <div id="logByDate" style="margin-bottom:16px;display:none;">
@@ -402,10 +399,8 @@
         <!-- Filters -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
             <span style="font-size:11px;font-weight:600;color:#718096;">Filter:</span>
-            <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL')">All</button>
-            <button class="log-filter-btn error" data-level="ERROR" onclick="setLogFilter('ERROR')">Errors</button>
-            <button class="log-filter-btn warning" data-level="WARNING" onclick="setLogFilter('WARNING')">Warnings</button>
-            <button class="log-filter-btn info" data-level="INFO" onclick="setLogFilter('INFO')">Info</button>
+            <button class="log-filter-btn active" data-status="ALL" onclick="setLogFilter('ALL')">All</button>
+            <span id="logStatusFilters"></span>
             <input type="text" id="logSearch" placeholder="Search message or source…"
                 oninput="renderLogTable()"
                 style="margin-left:8px;padding:5px 9px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;width:220px;">
@@ -586,17 +581,10 @@ body.dark-theme .ps-rules li { color:#a0aec0; }
     background: #e2e8f0; color: #4a5568; font-size: 11px; font-weight: 600; cursor: pointer;
 }
 .log-filter-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
-.log-filter-btn.error.active { background: #e53e3e; border-color: #e53e3e; color: #fff; }
-.log-filter-btn.warning.active { background: #dd6b20; border-color: #dd6b20; color: #fff; }
-.log-filter-btn.info.active { background: #38a169; border-color: #38a169; color: #fff; }
-.log-level-badge {
-    display: inline-block; padding: 2px 7px; border-radius: 10px;
-    font-size: 10px; font-weight: 700; white-space: nowrap;
+.log-status-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; white-space: nowrap; font-family: monospace;
 }
-.log-level-ERROR  { background: #fed7d7; color: #c53030; }
-.log-level-WARNING { background: #feebc8; color: #c05621; }
-.log-level-INFO   { background: #c6f6d5; color: #276749; }
-.log-level-other  { background: #e2e8f0; color: #4a5568; }
 .log-tb-toggle { cursor: pointer; color: #4a90d9; font-size: 11px; user-select: none; }
 .log-tb-pre {
     display: none; margin: 4px 0 0; padding: 6px 8px;
@@ -677,7 +665,7 @@ function showTab(tab) {
     if (tab === 'banks') loadBankAccounts();
     if (tab === 'config') loadAllConfigs();
     if (tab === 'mail') { loadSmtpConfig(); loadMailQueue(); }
-    if (tab === 'logs') loadLogs();
+    if (tab === 'logs') { loadLogs(); loadNginxConfig(); }
 }
 
 let _newPwStrength = null;
@@ -1343,6 +1331,34 @@ async function sendMailNow() {
 let _logEntries = [];
 let _logFilter = 'ALL';
 
+const STATUS_META = {
+    '500': { label: '500 Server Error',   color: '#e53e3e', bg: '#fed7d7' },
+    '502': { label: '502 Bad Gateway',    color: '#e53e3e', bg: '#fed7d7' },
+    '503': { label: '503 Unavailable',    color: '#e53e3e', bg: '#fed7d7' },
+    '504': { label: '504 Timeout',        color: '#e53e3e', bg: '#fed7d7' },
+    '404': { label: '404 Not Found',      color: '#c05621', bg: '#feebc8' },
+    '403': { label: '403 Forbidden',      color: '#c05621', bg: '#feebc8' },
+    '401': { label: '401 Unauthorized',   color: '#c05621', bg: '#feebc8' },
+    '400': { label: '400 Bad Request',    color: '#c05621', bg: '#feebc8' },
+    '405': { label: '405 Method N/A',     color: '#c05621', bg: '#feebc8' },
+    '200': { label: '200 OK',             color: '#276749', bg: '#c6f6d5' },
+    '201': { label: '201 Created',        color: '#276749', bg: '#c6f6d5' },
+    '301': { label: '301 Redirect',       color: '#2b6cb0', bg: '#bee3f8' },
+    '302': { label: '302 Redirect',       color: '#2b6cb0', bg: '#bee3f8' },
+    'none': { label: 'No HTTP Status',    color: '#4a5568', bg: '#e2e8f0' },
+};
+
+function _statusMeta(code) {
+    const s = String(code ?? 'none');
+    if (STATUS_META[s]) return { ...STATUS_META[s], code: s };
+    const grp = s.charAt(0);
+    if (grp === '5') return { label: s + ' Server Error',  color: '#e53e3e', bg: '#fed7d7', code: s };
+    if (grp === '4') return { label: s + ' Client Error',  color: '#c05621', bg: '#feebc8', code: s };
+    if (grp === '3') return { label: s + ' Redirect',      color: '#2b6cb0', bg: '#bee3f8', code: s };
+    if (grp === '2') return { label: s + ' OK',            color: '#276749', bg: '#c6f6d5', code: s };
+    return { label: s, color: '#4a5568', bg: '#e2e8f0', code: s };
+}
+
 async function loadLogs() {
     document.getElementById('logTableBody').innerHTML =
         '<tr><td colspan="4" style="text-align:center;color:#718096;padding:16px;">Loading…</td></tr>';
@@ -1363,10 +1379,43 @@ async function loadLogs() {
 }
 
 function renderLogStats(stats) {
-    document.getElementById('logStatTotalNum').textContent   = stats.total   ?? '—';
-    document.getElementById('logStatErrorNum').textContent   = stats.ERROR   ?? '—';
-    document.getElementById('logStatWarningNum').textContent = stats.WARNING ?? '—';
-    document.getElementById('logStatInfoNum').textContent    = stats.INFO    ?? '—';
+    const cards = document.getElementById('logStatsCards');
+    const filterSpan = document.getElementById('logStatusFilters');
+
+    // Total card (always first)
+    let html = `<div class="log-stat-card" style="border-color:#4a90d9;min-width:110px;">
+        <div class="log-stat-num">${stats.total ?? '—'}</div>
+        <div class="log-stat-label">Total Entries</div>
+    </div>`;
+
+    let filterHtml = '';
+    const counts = stats.status_counts || {};
+    const allCodes = Object.keys(counts).sort((a, b) => parseInt(a) - parseInt(b));
+
+    allCodes.forEach(code => {
+        const m = _statusMeta(code);
+        html += `<div class="log-stat-card" style="border-color:${m.color};min-width:110px;cursor:pointer;" onclick="setLogFilter('${code}')">
+            <div class="log-stat-num" style="color:${m.color};">${counts[code]}</div>
+            <div class="log-stat-label">${m.label}</div>
+        </div>`;
+        filterHtml += `<button class="log-filter-btn" data-status="${code}" onclick="setLogFilter('${code}')"
+            style="background:${m.bg};color:${m.color};border-color:${m.color};">${code}</button> `;
+    });
+
+    if (stats.no_status) {
+        const m = _statusMeta('none');
+        html += `<div class="log-stat-card" style="border-color:${m.color};min-width:110px;cursor:pointer;" onclick="setLogFilter('none')">
+            <div class="log-stat-num" style="color:${m.color};">${stats.no_status}</div>
+            <div class="log-stat-label">${m.label}</div>
+        </div>`;
+        filterHtml += `<button class="log-filter-btn" data-status="none" onclick="setLogFilter('none')"
+            style="background:${m.bg};color:${m.color};border-color:${m.color};">No Status</button>`;
+    }
+
+    cards.innerHTML = html;
+    filterSpan.innerHTML = filterHtml;
+    // Re-sync active state
+    _syncFilterActive();
 }
 
 function renderLogDateBars(byDate) {
@@ -1374,40 +1423,54 @@ function renderLogDateBars(byDate) {
     const container = document.getElementById('logDateBars');
     if (!byDate.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = 'block';
-    const maxTotal = Math.max(...byDate.map(d => (d.ERROR||0)+(d.WARNING||0)+(d.INFO||0)+(d.other||0)), 1);
+
+    // Collect all status codes seen across all dates
+    const allCodes = new Set();
+    byDate.forEach(d => Object.keys(d).filter(k => k !== 'date').forEach(k => allCodes.add(k)));
+    const codeList = [...allCodes].filter(k => k !== 'none').sort((a, b) => parseInt(a) - parseInt(b));
+    if (allCodes.has('none')) codeList.push('none');
+
+    const maxTotal = Math.max(...byDate.map(d => codeList.reduce((s, k) => s + (d[k] || 0), 0)), 1);
+
     container.innerHTML = byDate.map(d => {
-        const total = (d.ERROR||0)+(d.WARNING||0)+(d.INFO||0)+(d.other||0);
+        const total = codeList.reduce((s, k) => s + (d[k] || 0), 0);
         const pct = v => ((v / maxTotal) * 100).toFixed(1);
+        const segs = codeList.map(k => {
+            if (!d[k]) return '';
+            const m = _statusMeta(k === 'none' ? null : k);
+            return `<div class="log-date-bar-seg" style="width:${pct(d[k])}%;background:${m.color};" title="${m.label}: ${d[k]}"></div>`;
+        }).join('');
         return `<div class="log-date-bar-row">
             <div class="log-date-label">${d.date}</div>
-            <div class="log-date-bar-wrap">
-                ${d.ERROR   ? `<div class="log-date-bar-seg" style="width:${pct(d.ERROR)}%;background:#e53e3e;" title="Errors: ${d.ERROR}"></div>` : ''}
-                ${d.WARNING ? `<div class="log-date-bar-seg" style="width:${pct(d.WARNING)}%;background:#dd6b20;" title="Warnings: ${d.WARNING}"></div>` : ''}
-                ${d.INFO    ? `<div class="log-date-bar-seg" style="width:${pct(d.INFO)}%;background:#38a169;" title="Info: ${d.INFO}"></div>` : ''}
-                ${d.other   ? `<div class="log-date-bar-seg" style="width:${pct(d.other)}%;background:#a0aec0;" title="Other: ${d.other}"></div>` : ''}
-            </div>
+            <div class="log-date-bar-wrap">${segs}</div>
             <div class="log-date-count">${total}</div>
         </div>`;
     }).join('');
 }
 
-function setLogFilter(level) {
-    _logFilter = level;
+function _syncFilterActive() {
     document.querySelectorAll('.log-filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.level === level);
+        btn.classList.toggle('active', btn.dataset.status === _logFilter);
     });
+}
+
+function setLogFilter(status) {
+    _logFilter = status;
+    _syncFilterActive();
     renderLogTable();
 }
 
 function renderLogTable() {
     const q = (document.getElementById('logSearch').value || '').toLowerCase();
     const filtered = _logEntries.filter(e => {
-        if (_logFilter !== 'ALL' && e.level !== _logFilter) return false;
+        if (_logFilter !== 'ALL') {
+            const s = e.http_status ? String(e.http_status) : 'none';
+            if (s !== _logFilter) return false;
+        }
         if (q && !e.message.toLowerCase().includes(q) && !e.source.toLowerCase().includes(q) && !e.logger.toLowerCase().includes(q)) return false;
         return true;
     });
     document.getElementById('logEntryCount').textContent = `${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'}`;
-    const levelClass = l => ({ ERROR: 'log-level-ERROR', WARNING: 'log-level-WARNING', INFO: 'log-level-INFO' }[l] || 'log-level-other');
     const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     if (!filtered.length) {
         document.getElementById('logTableBody').innerHTML =
@@ -1415,12 +1478,14 @@ function renderLogTable() {
         return;
     }
     document.getElementById('logTableBody').innerHTML = filtered.map((e, i) => {
+        const sm = _statusMeta(e.http_status ?? null);
+        const statusBadge = `<span class="log-status-badge" style="background:${sm.bg};color:${sm.color};">${e.http_status ?? '—'}</span>`;
         const tb = e.traceback ? e.traceback.trim() : '';
         const tbHtml = tb ? `<br><span class="log-tb-toggle" onclick="toggleLogTb(${i})">&#9660; traceback</span>
             <pre class="log-tb-pre" id="log-tb-${i}">${esc(tb)}</pre>` : '';
         return `<tr>
             <td style="white-space:nowrap;font-size:11px;color:#718096;">${esc(e.timestamp)}</td>
-            <td><span class="log-level-badge ${levelClass(e.level)}">${esc(e.level)}</span></td>
+            <td>${statusBadge}</td>
             <td style="font-size:11px;color:#4a5568;white-space:nowrap;">${esc(e.source)}</td>
             <td style="font-size:12px;">${esc(e.message)}${tbHtml}</td>
         </tr>`;
@@ -1442,6 +1507,30 @@ async function clearLogs() {
     const d = await res.json();
     if (d.success) { loadLogs(); }
     else alert('Failed to clear logs: ' + (d.error || 'Unknown error'));
+}
+
+async function loadNginxConfig() {
+    try {
+        const res = await fetch('/admin/api/aud-config');
+        const cfg = await res.json();
+        document.getElementById('nginxLogPath').value = cfg.nginx_log_path || '';
+    } catch (e) { /* ignore */ }
+}
+
+async function saveNginxConfig() {
+    const path = document.getElementById('nginxLogPath').value.trim();
+    const status = document.getElementById('nginxConfigStatus');
+    try {
+        const res = await fetch('/admin/api/aud-config/save', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({nginx_log_path: path})
+        });
+        const d = await res.json();
+        if (d.success) {
+            status.textContent = 'Saved!'; status.style.color = '#276749';
+            setTimeout(() => status.textContent = '', 2000);
+        } else { status.textContent = 'Failed'; status.style.color = '#c53030'; }
+    } catch (e) { status.textContent = 'Error'; status.style.color = '#c53030'; }
 }
 
 // Initialize
