@@ -2,6 +2,16 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from database import get_db, get_cursor, get_module_config, save_module_config
 import json
+import os
+import re
+
+_LOG_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'logs', 'app.log'
+)
+_LOG_RE = re.compile(
+    r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+\[(\w+)\]\s+(\S+)\s+(\S+)\s+[—\-]+\s*(.+)$'
+)
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -662,6 +672,77 @@ def get_mbc_approvals():
     rows = cur.fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+@bp.route('/api/logs')
+@admin_required
+def get_logs():
+    try:
+        if not os.path.exists(_LOG_FILE):
+            return jsonify({'entries': [], 'stats': {'total': 0, 'ERROR': 0, 'WARNING': 0, 'INFO': 0, 'other': 0, 'by_date': [], 'file_size': 0}})
+        file_size = os.path.getsize(_LOG_FILE)
+        with open(_LOG_FILE, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        entries = _parse_log_entries(content)
+        stats = _calc_log_stats(entries)
+        stats['file_size'] = file_size
+        return jsonify({'entries': list(reversed(entries[-1000:])), 'stats': stats})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/logs/clear', methods=['POST'])
+@admin_required
+def clear_logs():
+    try:
+        with open(_LOG_FILE, 'w', encoding='utf-8') as f:
+            f.write('')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def _parse_log_entries(content):
+    entries = []
+    current = None
+    for line in content.splitlines():
+        m = _LOG_RE.match(line)
+        if m:
+            if current:
+                entries.append(current)
+            current = {
+                'timestamp': m.group(1),
+                'level': m.group(2),
+                'logger': m.group(3),
+                'source': m.group(4),
+                'message': m.group(5).strip(),
+                'traceback': '',
+            }
+        elif current is not None:
+            current['traceback'] += line + '\n'
+    if current:
+        entries.append(current)
+    return entries
+
+
+def _calc_log_stats(entries):
+    stats = {'total': len(entries), 'ERROR': 0, 'WARNING': 0, 'INFO': 0, 'other': 0}
+    by_date = {}
+    for e in entries:
+        lvl = e['level']
+        if lvl in ('ERROR', 'WARNING', 'INFO'):
+            stats[lvl] += 1
+        else:
+            stats['other'] += 1
+        day = e['timestamp'][:10]
+        if day not in by_date:
+            by_date[day] = {'ERROR': 0, 'WARNING': 0, 'INFO': 0, 'other': 0}
+        if lvl in ('ERROR', 'WARNING', 'INFO'):
+            by_date[day][lvl] += 1
+        else:
+            by_date[day]['other'] += 1
+    stats['by_date'] = [{'date': d, **counts} for d, counts in sorted(by_date.items(), reverse=True)][:14]
+    return stats
 
 
 @bp.route('/api/mbc/reset_approval', methods=['POST'])

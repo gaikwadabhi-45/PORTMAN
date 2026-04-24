@@ -286,7 +286,10 @@
             <div class="delay-panel-title">Delay Selection</div>
             <div class="delay-panel-note">Choose which delays appear in the report and reorder the selected list before preview or export.</div>
         </div>
-        <div class="delay-status" id="delay-status">Select date and shift to load delays.</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <div class="delay-status" id="delay-status">Select date and shift to load delays.</div>
+            <button type="button" class="delay-btn" id="save-delays-btn" onclick="saveDelaySelection()" style="padding:4px 12px;font-size:11px;" title="Save current delay selection for this date &amp; shift">&#128190; Save</button>
+        </div>
     </div>
     <div class="delay-picker">
         <div class="delay-list">
@@ -315,6 +318,45 @@
 <script>
 let loadedDelaySignature = '';
 let delayOptionsPromise = null;
+let _lastLoadedDelayItems = [];
+
+function _delayStorageKey() {
+    const d = document.getElementById('entry-date').value;
+    const s = document.getElementById('shift-select').value;
+    return (d && s) ? `sr_delays_${d}_${s}` : null;
+}
+
+function saveDelaySelection() {
+    const key = _delayStorageKey();
+    if (!key) return;
+    const keys = Array.from(document.getElementById('delay-selected').options).map(o => o.value);
+    localStorage.setItem(key, JSON.stringify(keys));
+    setDelayStatus(`Saved. ${keys.length} delay(s) selected.`);
+}
+
+function _applySavedSelection(items) {
+    const key = _delayStorageKey();
+    if (!key) return false;
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    try {
+        const savedKeys = JSON.parse(raw);
+        if (!Array.isArray(savedKeys)) return false;
+        const itemMap = {};
+        items.forEach(item => { itemMap[item.key] = item; });
+        const available = document.getElementById('delay-available');
+        const selected = document.getElementById('delay-selected');
+        available.innerHTML = '';
+        selected.innerHTML = '';
+        savedKeys.forEach(k => {
+            if (itemMap[k]) { selected.appendChild(createDelayOption(itemMap[k])); delete itemMap[k]; }
+        });
+        Object.values(itemMap).forEach(item => available.appendChild(createDelayOption(item)));
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     const today = new Date();
@@ -396,11 +438,15 @@ async function refreshDelayOptions() {
             return r.json();
         })
         .then(items => {
-            const selected = document.getElementById('delay-selected');
-            items.forEach(item => selected.appendChild(createDelayOption(item)));
+            _lastLoadedDelayItems = items;
+            const hasSaved = _applySavedSelection(items);
+            if (!hasSaved) {
+                const selected = document.getElementById('delay-selected');
+                items.forEach(item => selected.appendChild(createDelayOption(item)));
+            }
             loadedDelaySignature = signature;
             setDelayStatus(items.length
-                ? 'All delays are selected by default. Remove or reorder as needed.'
+                ? (hasSaved ? 'Loaded saved selection. Adjust or save again as needed.' : 'All delays selected by default. Adjust and save.')
                 : 'No delays found for the selected date and shift.');
             return true;
         })

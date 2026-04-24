@@ -18,6 +18,7 @@
     <button class="tab-btn" onclick="showTab('sap')">SAP Config</button>
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
     <button class="tab-btn" onclick="showTab('mail')">Mail</button>
+    <button class="tab-btn" onclick="showTab('logs')">&#128202; Logs</button>
 </div>
 
 <!-- User Management Tab -->
@@ -358,6 +359,76 @@
     </div>
 </div>
 
+<!-- Logs Tab -->
+<div id="logs-tab" class="tab-content">
+    <div class="admin-section" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+            <h3 style="margin:0;">Application Logs</h3>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <span id="logFileSize" style="font-size:11px;color:#718096;"></span>
+                <button class="btn" style="background:#e2e8f0;color:#2d3748;border:1px solid #cbd5e0;" onclick="loadLogs()">&#8635; Refresh</button>
+                <button class="btn btn-danger" onclick="clearLogs()">&#128465; Clear Log File</button>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div id="logStatsCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px;">
+            <div class="log-stat-card" id="logStatTotal" style="border-color:#4a90d9;">
+                <div class="log-stat-num" id="logStatTotalNum">—</div>
+                <div class="log-stat-label">Total Entries</div>
+            </div>
+            <div class="log-stat-card" id="logStatError" style="border-color:#e53e3e;">
+                <div class="log-stat-num" style="color:#e53e3e;" id="logStatErrorNum">—</div>
+                <div class="log-stat-label">Errors</div>
+            </div>
+            <div class="log-stat-card" id="logStatWarning" style="border-color:#dd6b20;">
+                <div class="log-stat-num" style="color:#dd6b20;" id="logStatWarningNum">—</div>
+                <div class="log-stat-label">Warnings</div>
+            </div>
+            <div class="log-stat-card" id="logStatInfo" style="border-color:#38a169;">
+                <div class="log-stat-num" style="color:#38a169;" id="logStatInfoNum">—</div>
+                <div class="log-stat-label">Info</div>
+            </div>
+        </div>
+
+        <!-- Activity by Date (mini bar chart) -->
+        <div id="logByDate" style="margin-bottom:16px;display:none;">
+            <div style="font-size:11px;font-weight:600;color:#718096;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Activity by Date (last 14 days)</div>
+            <div id="logDateBars" style="display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+    </div>
+
+    <div class="admin-section">
+        <!-- Filters -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <span style="font-size:11px;font-weight:600;color:#718096;">Filter:</span>
+            <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL')">All</button>
+            <button class="log-filter-btn error" data-level="ERROR" onclick="setLogFilter('ERROR')">Errors</button>
+            <button class="log-filter-btn warning" data-level="WARNING" onclick="setLogFilter('WARNING')">Warnings</button>
+            <button class="log-filter-btn info" data-level="INFO" onclick="setLogFilter('INFO')">Info</button>
+            <input type="text" id="logSearch" placeholder="Search message or source…"
+                oninput="renderLogTable()"
+                style="margin-left:8px;padding:5px 9px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;width:220px;">
+            <span id="logEntryCount" style="font-size:11px;color:#718096;margin-left:4px;"></span>
+        </div>
+
+        <!-- Log Table -->
+        <div style="overflow-x:auto;max-height:520px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px;">
+            <table class="admin-table" id="logTable" style="margin-top:0;font-size:12px;">
+                <thead style="position:sticky;top:0;z-index:1;">
+                    <tr>
+                        <th style="width:140px;white-space:nowrap;">Timestamp</th>
+                        <th style="width:80px;">Level</th>
+                        <th style="width:110px;">Source</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody id="logTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <!-- Reset Password Modal -->
 <div id="resetPwModal" class="modal" style="display:none;">
     <div class="modal-content">
@@ -499,6 +570,49 @@ body.dark-theme .smtp-slider { background:#4a5568; }
 .ps-rules li { transition: color .2s; }
 body.dark-theme .ps-bar { background:#4a5568 !important; }
 body.dark-theme .ps-rules li { color:#a0aec0; }
+
+/* Log tab */
+.log-stat-card {
+    background: var(--bg-primary,#fff);
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    text-align: center;
+}
+.log-stat-num { font-size: 26px; font-weight: 700; color: var(--text-primary,#2c3e50); line-height: 1.1; }
+.log-stat-label { font-size: 10px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.log-filter-btn {
+    padding: 4px 12px; border-radius: 4px; border: 1px solid #cbd5e0;
+    background: #e2e8f0; color: #4a5568; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.log-filter-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+.log-filter-btn.error.active { background: #e53e3e; border-color: #e53e3e; color: #fff; }
+.log-filter-btn.warning.active { background: #dd6b20; border-color: #dd6b20; color: #fff; }
+.log-filter-btn.info.active { background: #38a169; border-color: #38a169; color: #fff; }
+.log-level-badge {
+    display: inline-block; padding: 2px 7px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; white-space: nowrap;
+}
+.log-level-ERROR  { background: #fed7d7; color: #c53030; }
+.log-level-WARNING { background: #feebc8; color: #c05621; }
+.log-level-INFO   { background: #c6f6d5; color: #276749; }
+.log-level-other  { background: #e2e8f0; color: #4a5568; }
+.log-tb-toggle { cursor: pointer; color: #4a90d9; font-size: 11px; user-select: none; }
+.log-tb-pre {
+    display: none; margin: 4px 0 0; padding: 6px 8px;
+    background: #1a202c; color: #f7fafc; font-size: 10px;
+    border-radius: 4px; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow-y: auto;
+}
+.log-date-bar-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.log-date-label { width: 80px; color: #718096; text-align: right; flex-shrink: 0; }
+.log-date-bar-wrap { flex: 1; display: flex; gap: 2px; height: 14px; align-items: stretch; border-radius: 3px; overflow: hidden; }
+.log-date-bar-seg { height: 100%; transition: width .3s; min-width: 0; }
+.log-date-count { width: 36px; color: #4a5568; font-weight: 600; flex-shrink: 0; }
+body.dark-theme .log-stat-card { background: #2d3748; border-color: #4a5568; }
+body.dark-theme .log-filter-btn { background: #4a5568; color: #e2e8f0; border-color: #718096; }
+body.dark-theme .log-date-label { color: #a0aec0; }
+body.dark-theme .log-date-count { color: #e2e8f0; }
+body.dark-theme #logSearch { background:#1a202c; border-color:#4a5568; color:#e2e8f0; }
 </style>
 {% endblock %}
 
@@ -563,6 +677,7 @@ function showTab(tab) {
     if (tab === 'banks') loadBankAccounts();
     if (tab === 'config') loadAllConfigs();
     if (tab === 'mail') { loadSmtpConfig(); loadMailQueue(); }
+    if (tab === 'logs') loadLogs();
 }
 
 let _newPwStrength = null;
@@ -1222,6 +1337,111 @@ async function sendMailNow() {
     const res = await fetch('/admin/api/mail-queue/send-now', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
     if (res.ok) { status.textContent = 'Done!'; status.style.color = '#276749'; loadMailQueue(); setTimeout(()=>status.textContent='',3000); }
     else { const d=await res.json(); status.textContent=d.error||'Failed'; status.style.color='#c53030'; }
+}
+
+// ── Logs Tab ─────────────────────────────────────────────────────────────────
+let _logEntries = [];
+let _logFilter = 'ALL';
+
+async function loadLogs() {
+    document.getElementById('logTableBody').innerHTML =
+        '<tr><td colspan="4" style="text-align:center;color:#718096;padding:16px;">Loading…</td></tr>';
+    try {
+        const res = await fetch('/admin/api/logs');
+        const data = await res.json();
+        if (data.error) { alert('Failed to load logs: ' + data.error); return; }
+        _logEntries = data.entries || [];
+        renderLogStats(data.stats || {});
+        renderLogDateBars(data.stats.by_date || []);
+        renderLogTable();
+        const kb = ((data.stats.file_size || 0) / 1024).toFixed(1);
+        document.getElementById('logFileSize').textContent = `File: ${kb} KB`;
+    } catch (e) {
+        document.getElementById('logTableBody').innerHTML =
+            `<tr><td colspan="4" style="text-align:center;color:#e53e3e;padding:16px;">Error: ${e.message}</td></tr>`;
+    }
+}
+
+function renderLogStats(stats) {
+    document.getElementById('logStatTotalNum').textContent   = stats.total   ?? '—';
+    document.getElementById('logStatErrorNum').textContent   = stats.ERROR   ?? '—';
+    document.getElementById('logStatWarningNum').textContent = stats.WARNING ?? '—';
+    document.getElementById('logStatInfoNum').textContent    = stats.INFO    ?? '—';
+}
+
+function renderLogDateBars(byDate) {
+    const wrap = document.getElementById('logByDate');
+    const container = document.getElementById('logDateBars');
+    if (!byDate.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    const maxTotal = Math.max(...byDate.map(d => (d.ERROR||0)+(d.WARNING||0)+(d.INFO||0)+(d.other||0)), 1);
+    container.innerHTML = byDate.map(d => {
+        const total = (d.ERROR||0)+(d.WARNING||0)+(d.INFO||0)+(d.other||0);
+        const pct = v => ((v / maxTotal) * 100).toFixed(1);
+        return `<div class="log-date-bar-row">
+            <div class="log-date-label">${d.date}</div>
+            <div class="log-date-bar-wrap">
+                ${d.ERROR   ? `<div class="log-date-bar-seg" style="width:${pct(d.ERROR)}%;background:#e53e3e;" title="Errors: ${d.ERROR}"></div>` : ''}
+                ${d.WARNING ? `<div class="log-date-bar-seg" style="width:${pct(d.WARNING)}%;background:#dd6b20;" title="Warnings: ${d.WARNING}"></div>` : ''}
+                ${d.INFO    ? `<div class="log-date-bar-seg" style="width:${pct(d.INFO)}%;background:#38a169;" title="Info: ${d.INFO}"></div>` : ''}
+                ${d.other   ? `<div class="log-date-bar-seg" style="width:${pct(d.other)}%;background:#a0aec0;" title="Other: ${d.other}"></div>` : ''}
+            </div>
+            <div class="log-date-count">${total}</div>
+        </div>`;
+    }).join('');
+}
+
+function setLogFilter(level) {
+    _logFilter = level;
+    document.querySelectorAll('.log-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.level === level);
+    });
+    renderLogTable();
+}
+
+function renderLogTable() {
+    const q = (document.getElementById('logSearch').value || '').toLowerCase();
+    const filtered = _logEntries.filter(e => {
+        if (_logFilter !== 'ALL' && e.level !== _logFilter) return false;
+        if (q && !e.message.toLowerCase().includes(q) && !e.source.toLowerCase().includes(q) && !e.logger.toLowerCase().includes(q)) return false;
+        return true;
+    });
+    document.getElementById('logEntryCount').textContent = `${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'}`;
+    const levelClass = l => ({ ERROR: 'log-level-ERROR', WARNING: 'log-level-WARNING', INFO: 'log-level-INFO' }[l] || 'log-level-other');
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    if (!filtered.length) {
+        document.getElementById('logTableBody').innerHTML =
+            '<tr><td colspan="4" style="text-align:center;color:#a0aec0;padding:20px;">No entries match the current filter.</td></tr>';
+        return;
+    }
+    document.getElementById('logTableBody').innerHTML = filtered.map((e, i) => {
+        const tb = e.traceback ? e.traceback.trim() : '';
+        const tbHtml = tb ? `<br><span class="log-tb-toggle" onclick="toggleLogTb(${i})">&#9660; traceback</span>
+            <pre class="log-tb-pre" id="log-tb-${i}">${esc(tb)}</pre>` : '';
+        return `<tr>
+            <td style="white-space:nowrap;font-size:11px;color:#718096;">${esc(e.timestamp)}</td>
+            <td><span class="log-level-badge ${levelClass(e.level)}">${esc(e.level)}</span></td>
+            <td style="font-size:11px;color:#4a5568;white-space:nowrap;">${esc(e.source)}</td>
+            <td style="font-size:12px;">${esc(e.message)}${tbHtml}</td>
+        </tr>`;
+    }).join('');
+}
+
+function toggleLogTb(i) {
+    const pre = document.getElementById(`log-tb-${i}`);
+    if (!pre) return;
+    const isOpen = pre.style.display === 'block';
+    pre.style.display = isOpen ? 'none' : 'block';
+    const toggle = pre.previousElementSibling;
+    if (toggle) toggle.textContent = (isOpen ? '▼' : '▲') + ' traceback';
+}
+
+async function clearLogs() {
+    if (!confirm('Clear the entire log file? This cannot be undone.')) return;
+    const res = await fetch('/admin/api/logs/clear', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await res.json();
+    if (d.success) { loadLogs(); }
+    else alert('Failed to clear logs: ' + (d.error || 'Unknown error'));
 }
 
 // Initialize

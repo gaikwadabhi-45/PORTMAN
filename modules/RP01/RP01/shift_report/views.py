@@ -107,20 +107,22 @@ def _fetch_cargo_pivot(entry_date, shift):
     conn = get_db()
     cur = get_cursor(conn)
     query = """
-        SELECT cargo_name, equipment_name, route_name,
-               COALESCE(SUM(quantity), 0) AS qty
-        FROM lueu_lines
-        WHERE entry_date = %s
-          AND quantity > 0
-          AND cargo_name IS NOT NULL AND cargo_name != ''
+        SELECT l.cargo_name, l.equipment_name, l.route_name,
+               COALESCE(vc.cargo_type, l.cargo_name) AS cargo_type,
+               COALESCE(SUM(l.quantity), 0) AS qty
+        FROM lueu_lines l
+        LEFT JOIN vessel_cargo vc ON vc.cargo_name = l.cargo_name
+        WHERE l.entry_date = %s
+          AND l.quantity > 0
+          AND l.cargo_name IS NOT NULL AND l.cargo_name != ''
     """
     params = [entry_date]
     if not _is_all_shifts(shift):
-        query += " AND shift = %s"
+        query += " AND l.shift = %s"
         params.append(shift)
     query += """
-        GROUP BY cargo_name, equipment_name, route_name
-        ORDER BY cargo_name, equipment_name, route_name
+        GROUP BY l.cargo_name, l.equipment_name, l.route_name, COALESCE(vc.cargo_type, l.cargo_name)
+        ORDER BY l.cargo_name, l.equipment_name, l.route_name
     """
     cur.execute(query, tuple(params))
     rows = cur.fetchall()
@@ -129,6 +131,7 @@ def _fetch_cargo_pivot(entry_date, shift):
     equipment_set = set()
     route_set = set()
     pivot = {}
+    cargo_type_map = {}
 
     for row in rows:
         cargo = row['cargo_name'] or 'Unknown'
@@ -136,6 +139,7 @@ def _fetch_cargo_pivot(entry_date, shift):
         route = row['route_name'] or 'Unknown'
         qty = float(row['qty'] or 0)
 
+        cargo_type_map[cargo] = row['cargo_type'] or cargo
         equipment_set.add(equip)
         route_set.add(route)
         pivot.setdefault(cargo, {}).setdefault(equip, {})
@@ -143,6 +147,7 @@ def _fetch_cargo_pivot(entry_date, shift):
 
     return {
         'data': pivot,
+        'cargo_type_map': cargo_type_map,
         'equipments': sorted(equipment_set, key=_equipment_sort_key),
         'routes': sorted(route_set, key=_route_sort_key),
     }
@@ -419,6 +424,7 @@ def _make_matrix_table(title, row_header, column_headers, row_names, values):
 
 def _build_cargo_tables(entry_date, shift, cargo_pivot):
     data = cargo_pivot['data']
+    cargo_type_map = cargo_pivot['cargo_type_map']
     equipments = cargo_pivot['equipments']
     routes = cargo_pivot['routes']
     cargo_names = sorted(data.keys(), key=_natural_sort_key)
@@ -429,6 +435,7 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
     equipment_values = {}
     route_values = {}
     location_values = {}
+    cargo_type_location_values = {}
 
     location_columns = sorted({_location_group(route) for route in routes}, key=_location_sort_key)
 
@@ -446,6 +453,17 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
             route_values[cargo][route] = route_total
             location = _location_group(route)
             location_values[cargo][location] = location_values[cargo].get(location, 0) + route_total
+
+        # Accumulate location totals by cargo_type
+        ctype = cargo_type_map.get(cargo, cargo)
+        if ctype not in cargo_type_location_values:
+            cargo_type_location_values[ctype] = {loc: 0 for loc in location_columns}
+        for loc in location_columns:
+            cargo_type_location_values[ctype][loc] = (
+                cargo_type_location_values[ctype].get(loc, 0) + location_values[cargo].get(loc, 0)
+            )
+
+    cargo_type_rows = sorted(cargo_type_location_values.keys(), key=_natural_sort_key)
 
     route_rows = sorted(routes, key=_route_sort_key)
     route_wise_values = {
@@ -465,10 +483,10 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
         ),
         _make_matrix_table(
             f'{shift_label} Location Wise Discharge: {date_label}',
-            '',
+            'Cargo Type',
             location_columns,
-            cargo_names,
-            location_values,
+            cargo_type_rows,
+            cargo_type_location_values,
         ),
         _make_matrix_table(
             f'{shift_label} Receiving Route Wise Discharge: {date_label}',
