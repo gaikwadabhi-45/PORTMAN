@@ -456,6 +456,7 @@
     let docSeriesList = [];
     let defaultDocSeries = '';
     let mbcList = [];
+    let portList = [];
     let operationTypes = [];
     let cargoTypes = [];
     let cargoNames = [];
@@ -570,7 +571,7 @@
     }
 
     async function loadMasterData() {
-        const [dsRes, mbcRes, otRes, ctRes, cnRes, uomRes, berthRes, pplRes, custRes, equipRes, configRes] = await Promise.all([
+        const [dsRes, mbcRes, otRes, ctRes, cnRes, uomRes, berthRes, pplRes, custRes, equipRes, configRes, portRes] = await Promise.all([
             fetch('/api/module/MBCDS01/all'),
             fetch('/api/module/MBCM01/all'),
             fetch('/api/module/LUEU01/operation-types'),
@@ -581,7 +582,8 @@
             fetch('/api/module/PPL01/all'),
             fetch('/api/module/VCUM01/all'),
             fetch('/api/module/VEM01/all'),
-            fetch('/admin/api/config/MBC01')
+            fetch('/admin/api/config/MBC01'),
+            fetch('/api/module/VPM01/all'),
         ]);
         const dsData = await dsRes.json();
         docSeriesList = dsData.map(d => d.name);
@@ -609,6 +611,7 @@
         customerList = await custRes.json();
         equipmentList = await equipRes.json();
         moduleConfig = await configRes.json();
+        portList = await portRes.json();
         initFilterConfig();
         initTable();
     }
@@ -633,6 +636,9 @@
 
         const mbcOptions = {};
         mbcList.forEach(m => { mbcOptions[m] = m; });
+
+        const portOptions = {};
+        portList.forEach(p => { portOptions[p] = p; });
 
         const otOptions = {};
         operationTypes.forEach(o => { otOptions[o] = o; });
@@ -670,6 +676,8 @@
             {title: "Doc Date", field: "doc_date", width: 100, editor: canEdit ? "date" : false},
             {title: "MBC Name", field: "mbc_name", editor: canEdit ? "list" : false, width: 120,
                 editorParams: {values: mbcOptions, autocomplete: true, allowEmpty: true}},
+            {title: "Load Port", field: "load_port", editor: canEdit ? "list" : false, width: 120,
+                editorParams: {values: portOptions, autocomplete: true, allowEmpty: true}},
             {title: "Cargo Type", field: "cargo_type", editor: canEdit ? "list" : false, width: 100,
                 editorParams: {values: ctOptions, autocomplete: true, allowEmpty: true}},
             {title: "Cargo Name", field: "cargo_name", editor: canEdit ? "list" : false, width: 120,
