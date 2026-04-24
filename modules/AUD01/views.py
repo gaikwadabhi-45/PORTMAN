@@ -18,65 +18,74 @@ _NGINX_RE = re.compile(
 _SKIP_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.css', '.js', '.woff', '.woff2', '.ttf', '.svg', '.map'}
 _SKIP_PREFIXES = ('/static/', '/favicon')
 
-# Map URL prefixes to module codes/names
-_MODULE_MAP = [
-    ('/admin',          'ADMIN',    'Admin Panel'),
-    ('/module/VC01',    'VC01',     'Vessel Creation'),
-    ('/module/VCN01',   'VCN01',    'Vessel Call Number'),
-    ('/module/LDUD01',  'LDUD01',   'Loading Unloading'),
-    ('/module/MBC01',   'MBC01',    'MBC Operation'),
-    ('/module/LUEU01',  'LUEU01',   'Load/Unload Equip Utilization'),
-    ('/module/SRV01',   'SRV01',    'Service Recording'),
-    ('/module/FIN01',   'FIN01',    'Billing'),
-    ('/module/FINV01',  'FINV01',   'Invoicing'),
-    ('/module/FCAM01',  'FCAM01',   'Customer Agreements'),
-    ('/module/FSTM01',  'FSTM01',   'Service Type Master'),
-    ('/module/FGRM01',  'FGRM01',   'GST Rate Master'),
-    ('/module/FCRM01',  'FCRM01',   'Currency Master'),
-    ('/module/FDCN01',  'FDCN01',   'Debit/Credit Note'),
-    ('/module/FSAP01',  'FSAP01',   'SAP Integration'),
-    ('/module/FLOG01',  'FLOG01',   'Integration Logs'),
-    ('/module/VTM01',   'VTM01',    'Vessel Type Master'),
-    ('/module/VCM01',   'VCM01',    'Vessel Country Master'),
-    ('/module/VAM01',   'VAM01',    'Vessel Agent Master'),
-    ('/module/VCUM01',  'VCUM01',   'Vessel Currency'),
-    ('/module/VRT01',   'VRT01',    'Run Types'),
-    ('/module/VDM01',   'VDM01',    'Vessel Delay Master'),
-    ('/module/PDM01',   'PDM01',    'Port Delay Master'),
-    ('/module/VCG01',   'VCG01',    'Cargo Master'),
-    ('/module/VQM01',   'VQM01',    'Quantity UOM'),
-    ('/module/VHO01',   'VHO01',    'Vessel Holds'),
-    ('/module/VEM01',   'VEM01',    'Equipment Master'),
-    ('/module/VBM01',   'VBM01',    'Barge Master'),
-    ('/module/VSDM01',  'VSDM01',   'Vessel Stevedore Master'),
-    ('/module/MBCM01',  'MBCM01',   'MBC Master'),
-    ('/module/PBM01',   'PBM01',    'Port Berth Master'),
-    ('/module/PPL01',   'PPL01',    'Port Payloader Master'),
-    ('/module/CRM01',   'CRM01',    'Conveyor Route Master'),
-    ('/module/VANM01',  'VANM01',   'Anchorage Master'),
-    ('/module/VPM01',   'VPM01',    'Port Master'),
-    ('/module/TM01',    'TM01',     'Tide Master'),
-    ('/module/VCDS01',  'VCDS01',   'VCN Doc Series'),
-    ('/module/MBCDS01', 'MBCDS01',  'MBC Doc Series'),
-    ('/module/INVDS01', 'INVDS01',  'Invoice Doc Series'),
-    ('/module/GSTCFG',  'GSTCFG',  'GST API Config'),
-    ('/module/PSM01',   'PSM01',    'PSM'),
-    ('/module/PSMM01',  'PSMM01',  'PSMM'),
-    ('/module/PSOM01',  'PSOM01',  'PSOM'),
-    ('/module/RP01',    'RP01',     'Reports'),
-    ('/module/AUD01',   'AUD01',    'Audit Logs'),
-    ('/api/',           'API',      'API Calls'),
-    ('/login',          'AUTH',     'Authentication'),
-    ('/logout',         'AUTH',     'Authentication'),
-    ('/auth/',          'AUTH',     'Authentication'),
-    ('/home',           'HOME',     'Home'),
+# Module name lookup by code (for /api/module/{CODE}/... attribution)
+_MODULE_NAMES = {
+    'VC01': 'Vessel Creation', 'VCN01': 'Vessel Call Number',
+    'LDUD01': 'Loading Unloading', 'MBC01': 'MBC Operation',
+    'LUEU01': 'Load/Unload Equip Utilization', 'SRV01': 'Service Recording',
+    'FIN01': 'Billing', 'FINV01': 'Invoicing', 'FCAM01': 'Customer Agreements',
+    'FSTM01': 'Service Type Master', 'FGRM01': 'GST Rate Master',
+    'FCRM01': 'Currency Master', 'FDCN01': 'Debit/Credit Note',
+    'FSAP01': 'SAP Integration', 'FLOG01': 'Integration Logs',
+    'VTM01': 'Vessel Type Master', 'VCM01': 'Vessel Country Master',
+    'VAM01': 'Vessel Agent Master', 'VCUM01': 'Vessel Currency',
+    'VRT01': 'Run Types', 'VDM01': 'Vessel Delay Master',
+    'PDM01': 'Port Delay Master', 'VCG01': 'Cargo Master',
+    'VQM01': 'Quantity UOM', 'VHO01': 'Vessel Holds',
+    'VEM01': 'Equipment Master', 'VBM01': 'Barge Master',
+    'VSDM01': 'Vessel Stevedore Master', 'MBCM01': 'MBC Master',
+    'PBM01': 'Port Berth Master', 'PPL01': 'Port Payloader Master',
+    'CRM01': 'Conveyor Route Master', 'VANM01': 'Anchorage Master',
+    'VPM01': 'Port Master', 'TM01': 'Tide Master',
+    'VCDS01': 'VCN Doc Series', 'MBCDS01': 'MBC Doc Series',
+    'INVDS01': 'Invoice Doc Series', 'GSTCFG': 'GST API Config',
+    'PSM01': 'PSM', 'PSMM01': 'PSMM', 'PSOM01': 'PSOM',
+    'RP01': 'Reports', 'AUD01': 'Audit Logs', 'ADMIN': 'Admin Panel',
+}
+
+# Regex to extract module code from /api/module/{CODE}/... paths
+_API_MODULE_RE = re.compile(r'^/api/module/([A-Z0-9]+)(?:/|$)')
+
+# Page-level URL prefix map (for /module/XXX/ and other top-level routes)
+_PREFIX_MAP = [
+    ('/admin',   'ADMIN', 'Admin Panel'),
+    ('/module/', None,    None),          # handled by code extraction below
+    ('/login',   'AUTH',  'Authentication'),
+    ('/logout',  'AUTH',  'Authentication'),
+    ('/auth/',   'AUTH',  'Authentication'),
+    ('/home',    'HOME',  'Home'),
 ]
+
+# Regex to extract module code from /module/{CODE}/... page paths
+_PAGE_MODULE_RE = re.compile(r'^/module/([A-Z0-9]+)(?:/|$)')
 
 
 def _detect_module(path):
-    for prefix, code, name in _MODULE_MAP:
-        if path.startswith(prefix):
-            return code, name
+    # /api/module/{CODE}/... → attribute to that module
+    m = _API_MODULE_RE.match(path)
+    if m:
+        code = m.group(1)
+        return code, _MODULE_NAMES.get(code, code)
+
+    # /module/{CODE}/... page load
+    m = _PAGE_MODULE_RE.match(path)
+    if m:
+        code = m.group(1)
+        return code, _MODULE_NAMES.get(code, code)
+
+    # /admin/... (including /admin/api/...)
+    if path.startswith('/admin'):
+        return 'ADMIN', 'Admin Panel'
+
+    if path.startswith('/login') or path.startswith('/auth/'):
+        return 'AUTH', 'Authentication'
+    if path.startswith('/logout'):
+        return 'AUTH', 'Authentication'
+    if path.startswith('/home'):
+        return 'HOME', 'Home'
+    if path.startswith('/api/'):
+        return 'APP', 'App API'
+
     return 'OTHER', path
 
 
