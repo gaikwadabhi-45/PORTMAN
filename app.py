@@ -205,6 +205,12 @@ def no_cache(response):
     response.headers['Expires'] = '0'
     return response
 
+# ---- SAP inbound callback (SAP team posts results back) ----
+import sap_inbound
+sap_inbound.ensure_token_table()
+app.add_url_rule('/api/sap/callback', view_func=sap_inbound.sap_callback_view, methods=['POST'])
+
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))

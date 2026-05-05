@@ -16,6 +16,8 @@
     <button class="tab-btn" onclick="showTab('mbc')">MBC Approval</button>
     <button class="tab-btn" onclick="showTab('gst')">GST Config</button>
     <button class="tab-btn" onclick="showTab('sap')">SAP Config</button>
+    <button class="tab-btn" onclick="showTab('saptokens')">SAP Tokens</button>
+    <button class="tab-btn" onclick="showTab('sapplay')">SAP Playground</button>
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
     <button class="tab-btn" onclick="showTab('mail')">Mail</button>
     <button class="tab-btn" onclick="showTab('logs')">Logs</button>
@@ -274,6 +276,95 @@
         </div>
     </div>
 </div>
+
+<!-- SAP Inbound Tokens Tab -->
+<div id="saptokens-tab" class="tab-content">
+    <div class="admin-section">
+        <h3>SAP Inbound Bearer Tokens</h3>
+        <p style="font-size:12px;color:#666;margin:4px 0 12px;">
+            SAP team uses these tokens to call <code>POST /api/sap/callback</code> with processing results.
+            The full token is shown <b>once at generation</b> and never again.
+        </p>
+        <div class="toolbar">
+            <button class="btn btn-add" onclick="generateSapToken()">+ Generate Token</button>
+            <button class="btn" onclick="loadSapTokens()" style="background:#3498db;color:#fff;">Refresh</button>
+        </div>
+        <table class="admin-table" id="sapTokensTable">
+            <thead>
+                <tr>
+                    <th>Label</th><th>Token</th><th>Active</th>
+                    <th>Last Used</th><th>Last IP</th>
+                    <th>Created By / Date</th><th>Revoked</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- SAP Playground Tab -->
+<div id="sapplay-tab" class="tab-content">
+    <div class="admin-section">
+        <div class="toolbar" style="gap:8px;">
+            <button class="tab-btn-inner active" id="spgOutboundBtn" onclick="showSpgSub('outbound')">Outbound (Push to SAP)</button>
+            <button class="tab-btn-inner" id="spgInboundBtn" onclick="showSpgSub('inbound')">Inbound Viewer (SAP → Us)</button>
+        </div>
+
+        <!-- Outbound -->
+        <div id="spgOutbound" class="spg-sub">
+            <h3>Send Existing Doc to SAP</h3>
+            <div style="display:flex;gap:10px;margin:8px 0;flex-wrap:wrap;">
+                <select id="spgKind" onchange="loadSpgDocs()" style="padding:4px 8px;">
+                    <option value="invoice">Invoice (FINV01)</option>
+                    <option value="fdcn">DN/CN (FDCN01)</option>
+                </select>
+                <select id="spgDoc" style="padding:4px 8px;min-width:280px;"></select>
+                <select id="spgVariant" style="padding:4px 8px;">
+                    <option value="post">Post</option>
+                    <option value="reversal">Reversal (FB08)</option>
+                </select>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgBuildPayload()">Build Payload</button>
+                <button class="btn" style="background:#27ae60;color:#fff;" onclick="spgSendPayload()">Send to SAP</button>
+                <button class="btn" style="background:#95a5a6;color:#fff;" onclick="spgFormatPayload()">Format JSON</button>
+            </div>
+            <textarea id="spgPayload" style="width:100%;height:340px;font-family:Consolas,monospace;font-size:12px;" placeholder='{"Record_Header":[ ... ]}'></textarea>
+            <h4 style="margin-top:14px;">Result</h4>
+            <pre id="spgResult" style="background:#f4f6f7;padding:8px;border:1px solid #ddd;border-radius:3px;font-size:12px;max-height:200px;overflow:auto;"></pre>
+        </div>
+
+        <!-- Inbound viewer -->
+        <div id="spgInbound" class="spg-sub" style="display:none;">
+            <h3>Inbound Callback Log (from SAP)</h3>
+            <p style="font-size:12px;color:#666;">
+                Every authenticated call to <code>/api/sap/callback</code> is recorded here.
+                Use this to confirm to the SAP team whether a particular invoice was received.
+            </p>
+            <div style="display:flex;gap:8px;margin:6px 0 10px;">
+                <input type="text" id="spgInRef" placeholder="Search reference..." style="padding:4px 8px;">
+                <select id="spgInStatus" style="padding:4px 8px;">
+                    <option value="">All</option>
+                    <option value="Success">Success</option>
+                    <option value="Error">Error</option>
+                </select>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="loadSpgInbound()">Filter</button>
+            </div>
+            <table class="admin-table" id="spgInboundTable">
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Logged At</th><th>Token Label</th><th>HTTP</th>
+                        <th>Status</th><th>Created By</th><th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tab-btn-inner { padding:6px 14px;font-size:12px;border:1px solid #ddd;background:#fff;cursor:pointer;border-radius:3px;font-weight:600; }
+    .tab-btn-inner.active { background:#2c3e50;color:#fff;border-color:#2c3e50; }
+</style>
 
 <!-- Bank Accounts Tab -->
 <div id="banks-tab" class="tab-content">
@@ -666,6 +757,8 @@ function showTab(tab) {
     if (tab === 'config') loadAllConfigs();
     if (tab === 'mail') { loadSmtpConfig(); loadMailQueue(); }
     if (tab === 'logs') { loadLogs(); loadNginxConfig(); }
+    if (tab === 'saptokens') loadSapTokens();
+    if (tab === 'sapplay') { loadSpgDocs(); }
 }
 
 let _newPwStrength = null;
@@ -1531,6 +1624,193 @@ async function saveNginxConfig() {
             setTimeout(() => status.textContent = '', 2000);
         } else { status.textContent = 'Failed'; status.style.color = '#c53030'; }
     } catch (e) { status.textContent = 'Error'; status.style.color = '#c53030'; }
+}
+
+// ===== SAP Inbound Tokens =====
+async function loadSapTokens() {
+    const res = await fetch('/admin/api/sap-tokens');
+    const rows = await res.json();
+    const tbody = document.querySelector('#sapTokensTable tbody');
+    if (!Array.isArray(rows) || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No tokens yet. Click "+ Generate Token" to create one.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const active = r.is_active && !r.revoked_at;
+        tr.innerHTML = `
+            <td>${escAdm(r.label)}</td>
+            <td><code>${escAdm(r.token_masked || '****')}</code></td>
+            <td>${active ? '<span style="color:#27ae60;font-weight:700;">Yes</span>' : '<span style="color:#c0392b;font-weight:700;">No</span>'}</td>
+            <td style="font-size:11px;">${r.last_used_at ? escAdm(String(r.last_used_at).slice(0,16)) : '—'}</td>
+            <td style="font-size:11px;">${escAdm(r.last_used_ip || '—')}</td>
+            <td style="font-size:11px;">${escAdm(r.created_by || '—')}<br><small>${escAdm(String(r.created_date || '').slice(0,16))}</small></td>
+            <td style="font-size:11px;">${r.revoked_at ? `${escAdm(r.revoked_by || '')}<br><small>${escAdm(String(r.revoked_at).slice(0,16))}</small>` : '—'}</td>
+            <td>${active
+                ? `<button class="btn" style="background:#e74c3c;color:#fff;padding:2px 8px;font-size:10px;" onclick="revokeSapToken(${r.id})">Revoke</button>`
+                : `<button class="btn" style="background:#27ae60;color:#fff;padding:2px 8px;font-size:10px;" onclick="reactivateSapToken(${r.id})">Reactivate</button>`}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function generateSapToken() {
+    const label = prompt('Token label (e.g. "SAP Prod"):');
+    if (!label) return;
+    const res = await fetch('/admin/api/sap-tokens/generate', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({label})
+    });
+    const d = await res.json();
+    if (!d.success) { alert(d.error || 'Failed'); return; }
+    // One-time token reveal
+    const w = window.prompt(
+        `Token generated for "${d.label}".\n\nCopy the token NOW — it will not be shown again:\n\n${d.token}\n\n(Click OK to close)`,
+        d.token
+    );
+    loadSapTokens();
+}
+
+async function revokeSapToken(id) {
+    if (!confirm('Revoke this token? Calls using it will be rejected.')) return;
+    await fetch('/admin/api/sap-tokens/revoke', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id})
+    });
+    loadSapTokens();
+}
+
+async function reactivateSapToken(id) {
+    await fetch('/admin/api/sap-tokens/reactivate', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id})
+    });
+    loadSapTokens();
+}
+
+function escAdm(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+// ===== SAP Playground =====
+let _spgDocs = {invoices: [], fdcns: []};
+
+async function loadSpgDocs() {
+    const res = await fetch('/admin/api/sap-playground/docs');
+    _spgDocs = await res.json();
+    fillSpgDocSelect();
+}
+
+function fillSpgDocSelect() {
+    const kind = document.getElementById('spgKind').value;
+    const sel = document.getElementById('spgDoc');
+    sel.innerHTML = '';
+    const list = kind === 'invoice' ? _spgDocs.invoices : _spgDocs.fdcns;
+    if (!list || !list.length) {
+        sel.innerHTML = '<option value="">-- No docs --</option>';
+        return;
+    }
+    list.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.dataset.kind = kind === 'invoice' ? 'invoice' : 'fdcn';
+        const dt = String(d.doc_date || '').slice(0,10);
+        opt.textContent = `${d.doc_number || ''} | ${d.customer_name || ''} | ${dt} | ${d.status || ''}`;
+        sel.appendChild(opt);
+    });
+    sel.insertAdjacentHTML('afterbegin', '<option value="">-- Select doc --</option>');
+}
+
+document.addEventListener('change', (ev) => {
+    if (ev.target && ev.target.id === 'spgKind') fillSpgDocSelect();
+});
+
+async function spgBuildPayload() {
+    const kind = document.getElementById('spgKind').value;
+    const id = document.getElementById('spgDoc').value;
+    const variant = document.getElementById('spgVariant').value;
+    if (!id) { alert('Pick a doc first.'); return; }
+    const res = await fetch('/admin/api/sap-playground/build-payload', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({kind, id: parseInt(id), variant})
+    });
+    const d = await res.json();
+    if (d.error) { alert(d.error); return; }
+    document.getElementById('spgPayload').value = JSON.stringify(d.payload, null, 2);
+}
+
+async function spgSendPayload() {
+    let payload;
+    try { payload = JSON.parse(document.getElementById('spgPayload').value); }
+    catch (e) { alert('Invalid JSON: ' + e.message); return; }
+    const refField = (payload?.Record_Header?.[0]?.Reference) || 'PLAYGROUND';
+    const out = document.getElementById('spgResult');
+    out.textContent = 'Sending...';
+    const res = await fetch('/admin/api/sap-playground/send', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({payload, reference: refField})
+    });
+    const d = await res.json();
+    out.textContent = JSON.stringify(d, null, 2);
+}
+
+function spgFormatPayload() {
+    const ta = document.getElementById('spgPayload');
+    try {
+        ta.value = JSON.stringify(JSON.parse(ta.value), null, 2);
+    } catch (e) { alert('Invalid JSON: ' + e.message); }
+}
+
+function showSpgSub(name) {
+    document.getElementById('spgOutbound').style.display = name === 'outbound' ? '' : 'none';
+    document.getElementById('spgInbound').style.display  = name === 'inbound' ? '' : 'none';
+    document.getElementById('spgOutboundBtn').classList.toggle('active', name === 'outbound');
+    document.getElementById('spgInboundBtn').classList.toggle('active', name === 'inbound');
+    if (name === 'inbound') loadSpgInbound();
+}
+
+async function loadSpgInbound() {
+    const ref = document.getElementById('spgInRef').value;
+    const status = document.getElementById('spgInStatus').value;
+    const qs = new URLSearchParams({ref, status});
+    const res = await fetch('/admin/api/sap-playground/inbound-logs?' + qs);
+    const d = await res.json();
+    const tbody = document.querySelector('#spgInboundTable tbody');
+    if (!d.data || !d.data.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No inbound calls yet.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    d.data.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${r.id}</td>
+            <td style="font-size:11px;">${escAdm(String(r.created_date || '').slice(0,19))}</td>
+            <td>${escAdm(r.token_label || '')}</td>
+            <td>${r.response_status_code || ''}</td>
+            <td>${escAdm(r.status || '')}</td>
+            <td style="font-size:11px;">${escAdm(r.created_by || '')}</td>
+            <td><button class="btn" style="background:#3498db;color:#fff;padding:2px 8px;font-size:10px;" onclick='spgViewInbound(${r.id}, ${JSON.stringify(r.request_body || "{}")}, ${JSON.stringify(r.response_body || "{}")})'>View</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function spgViewInbound(id, reqBody, respBody) {
+    const w = window.open('', '_blank', 'width=800,height=600');
+    const fmt = (s) => {
+        try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+    };
+    w.document.write(`<html><head><title>Inbound Log #${id}</title>
+        <style>body{font-family:Consolas,monospace;font-size:12px;padding:10px;}
+        h3{font-family:Arial;}pre{background:#f4f6f7;padding:8px;border:1px solid #ddd;}</style>
+        </head><body>
+        <h3>Inbound Log #${id}</h3>
+        <h4>Request body</h4><pre>${escAdm(fmt(reqBody))}</pre>
+        <h4>Response body</h4><pre>${escAdm(fmt(respBody))}</pre>
+        </body></html>`);
 }
 
 // Initialize
