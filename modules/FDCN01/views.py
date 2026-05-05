@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from functools import wraps
 from . import model
-from database import get_user_permissions, get_module_config
+from database import get_user_permissions, get_module_config, get_db, get_cursor
+from mail_service import notify_module_approver, get_module_approver_info, build_approval_mail_html
 import sap_builder
 import sap_client
 import logging
@@ -10,6 +11,71 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint('FDCN01', __name__, template_folder='.')
 MODULE_CODE = 'FDCN01'
+
+
+def _queue_fdcn_approval_request(fdcn_id, doc_number, doc_type, customer_name, total_amount, original_invoice_number):
+    info = get_module_approver_info(MODULE_CODE, fallback_module='FIN01')
+    if not info.get('approval_add'):
+        return
+    doc_url = request.host_url.rstrip('/') + url_for('FDCN01.entry') + f'?id={fdcn_id}'
+    label = 'Credit Note' if doc_type == 'CN' else 'Debit Note'
+    notify_module_approver(
+        module_code=MODULE_CODE,
+        ref_id=fdcn_id,
+        subject=f"[Portbird DPPL] {label} {doc_number} — Pending Approval",
+        fallback_module='FIN01',
+        body_html=build_approval_mail_html(
+            approver_name=info.get('username'),
+            action_label='Pending Approval',
+            subtitle=f'{label} — Approval Required',
+            details=[
+                ('Doc No',          doc_number or '—'),
+                ('Type',            label),
+                ('Original Invoice', original_invoice_number or '—'),
+                ('Customer',        customer_name or '—'),
+                ('Total Amount',    f'₹ {float(total_amount or 0):,.2f}'),
+            ],
+            action_url=doc_url,
+            action_btn_label=f'Review &amp; Approve {label}',
+            submitted_by=session.get('username'),
+            badge_color='#b7950b' if doc_type == 'CN' else '#2e86c1',
+        ),
+    )
+
+
+def _has_active_cn(cur, invoice_id, exclude_fdcn_id=None):
+    """Return doc_number of any active CN (not Rejected/Cancelled) for this invoice, else None."""
+    if not invoice_id:
+        return None
+    sql = """SELECT doc_number FROM fdcn_header
+             WHERE original_invoice_id = %s AND doc_type = 'CN'
+               AND doc_status NOT IN ('Rejected', 'Cancelled')"""
+    params = [invoice_id]
+    if exclude_fdcn_id:
+        sql += ' AND id <> %s'
+        params.append(exclude_fdcn_id)
+    sql += ' LIMIT 1'
+    cur.execute(sql, params)
+    row = cur.fetchone()
+    return row['doc_number'] if row else None
+
+
+def _enrich_lines_from_invoice(cur, lines):
+    """For manual CN lines, fill gl_code/sac_code from invoice_lines if missing."""
+    for line in lines:
+        if line.get('gl_code') and line.get('sac_code'):
+            continue
+        inv_line_id = line.get('invoice_line_id')
+        if not inv_line_id:
+            continue
+        cur.execute('SELECT gl_code, sac_code FROM invoice_lines WHERE id = %s', [inv_line_id])
+        row = cur.fetchone()
+        if not row:
+            continue
+        if not line.get('gl_code'):
+            line['gl_code'] = row.get('gl_code') or ''
+        if not line.get('sac_code'):
+            line['sac_code'] = row.get('sac_code') or ''
 
 
 def login_required(f):
@@ -166,7 +232,7 @@ def get_detail(fdcn_id):
 def save():
     perms = get_perms()
     data = request.json
-    is_new = not data.get('id')
+    is_new = not (data.get('id') or data.get('header', {}).get('id'))
 
     if is_new and not perms.get('can_add'):
         return jsonify({'error': 'No permission to add'}), 403
@@ -175,6 +241,27 @@ def save():
 
     header_data = data.get('header', data)
     lines_data = data.get('lines', [])
+
+    # 1:1 CN-per-invoice dedup (manual CN only — rate revisions and auto-cancellation skip this)
+    if (header_data.get('doc_type') == 'CN'
+            and header_data.get('creation_type') == 'manual'
+            and header_data.get('original_invoice_id')):
+        conn = get_db()
+        cur = get_cursor(conn)
+        existing = _has_active_cn(
+            cur,
+            header_data['original_invoice_id'],
+            exclude_fdcn_id=header_data.get('id')
+        )
+        conn.close()
+        if existing:
+            return jsonify({'error': f'A credit note already exists for this invoice: {existing}'}), 400
+
+        # Silent backfill of gl_code / sac_code from invoice_lines
+        conn = get_db()
+        cur = get_cursor(conn)
+        _enrich_lines_from_invoice(cur, lines_data)
+        conn.close()
 
     # Determine doc_status for new records
     if is_new:
@@ -192,6 +279,17 @@ def save():
         model.save_fdcn_lines(fdcn_id, lines_data)
 
     header = model.get_fdcn_by_id(fdcn_id)
+
+    if is_new and header_data.get('doc_status') == 'Pending Approval':
+        _queue_fdcn_approval_request(
+            fdcn_id,
+            header.get('doc_number'),
+            header.get('doc_type'),
+            header.get('customer_name'),
+            header.get('total_amount'),
+            header.get('original_invoice_number'),
+        )
+
     return jsonify({'success': True, 'id': fdcn_id, 'doc_number': header.get('doc_number')})
 
 
@@ -205,6 +303,16 @@ def submit():
         return jsonify({'error': 'No permission'}), 403
     fdcn_id = request.json.get('id')
     model.update_fdcn_status(fdcn_id, 'Pending Approval')
+    header = model.get_fdcn_by_id(fdcn_id)
+    if header:
+        _queue_fdcn_approval_request(
+            fdcn_id,
+            header.get('doc_number'),
+            header.get('doc_type'),
+            header.get('customer_name'),
+            header.get('total_amount'),
+            header.get('original_invoice_number'),
+        )
     return jsonify({'success': True})
 
 

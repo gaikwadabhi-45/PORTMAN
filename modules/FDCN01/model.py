@@ -339,7 +339,8 @@ def get_invoices_for_customer(customer_type, customer_id):
             ih.customer_gst_state_code,
             ih.customer_gl_code,
             map.bill_numbers,
-            map.agreement_refs
+            map.agreement_refs,
+            cn.doc_number AS has_active_cn
         FROM invoice_header ih
         LEFT JOIN (
             SELECT
@@ -363,6 +364,14 @@ def get_invoices_for_customer(customer_type, customer_id):
             LEFT JOIN customer_agreements ca ON bh.agreement_id = ca.id
             GROUP BY ibm.invoice_id
         ) map ON map.invoice_id = ih.id
+        LEFT JOIN LATERAL (
+            SELECT doc_number FROM fdcn_header
+            WHERE original_invoice_id = ih.id
+              AND doc_type = 'CN'
+              AND doc_status NOT IN ('Rejected', 'Cancelled')
+            ORDER BY id DESC
+            LIMIT 1
+        ) cn ON TRUE
         WHERE ih.customer_type = %s AND ih.customer_id = %s
           AND ih.invoice_status NOT IN ('Cancelled')
         ORDER BY ih.id DESC
@@ -630,161 +639,3 @@ def update_gst_details(fdcn_id, irn, ack_number, ack_date, qr_code):
         WHERE id=%s''', [irn, ack_number, ack_date, qr_code, fdcn_id])
     conn.commit()
     conn.close()
-
-
-def create_eu_deletion_cn(invoiced_line_refs, username=None):
-    """
-    Create Credit Note(s) when invoiced EU lines are soft-deleted.
-
-    invoiced_line_refs: list of dicts from soft_delete_lines(), each containing:
-        eu_line_id, eu_line (full row dict), bill_line_id, bill_id, invoice_id, invoice_number
-
-    Groups by invoice_id and creates one CN per affected invoice.
-    CN goes to Draft status (requires approver to approve).
-    Returns list of (fdcn_id, doc_number) tuples.
-    """
-    from collections import defaultdict
-
-    if not invoiced_line_refs:
-        return []
-
-    conn = get_db()
-    cur = get_cursor(conn)
-    now = datetime.now().strftime('%Y-%m-%d')
-    results = []
-
-    # Group refs by invoice_id
-    by_invoice = defaultdict(list)
-    for ref in invoiced_line_refs:
-        by_invoice[ref['invoice_id']].append(ref)
-
-    for invoice_id, refs in by_invoice.items():
-        # Fetch invoice header for customer details
-        cur.execute('SELECT * FROM invoice_header WHERE id = %s', [invoice_id])
-        invoice = cur.fetchone()
-        if not invoice:
-            continue
-
-        cn_lines = []
-        subtotal = cgst_total = sgst_total = igst_total = 0.0
-
-        for ref in refs:
-            bill_id = ref['bill_id']
-            eu_line = ref['eu_line']
-
-            # Find all invoice_lines for this invoice_id + bill_id
-            # NOTE: (invoice_id, bill_id) is NOT guaranteed unique in invoice_lines,
-            # so we fetch ALL matching rows and build a CN line for each.
-            cur.execute('''
-                SELECT il.*
-                FROM invoice_lines il
-                WHERE il.invoice_id = %s AND il.bill_id = %s
-            ''', [invoice_id, bill_id])
-            inv_lines = cur.fetchall()
-            if not inv_lines:
-                continue
-
-            for inv_line in inv_lines:
-                qty   = float(inv_line.get('quantity') or 0)
-                rate  = float(inv_line.get('rate') or 0)
-                la    = round(qty * rate, 2)
-                cgst  = float(inv_line.get('cgst_amount') or 0)
-                sgst  = float(inv_line.get('sgst_amount') or 0)
-                igst  = float(inv_line.get('igst_amount') or 0)
-                lt    = round(la + cgst + sgst + igst, 2)
-
-                subtotal   += la
-                cgst_total += cgst
-                sgst_total += sgst
-                igst_total += igst
-
-                eu_desc = (
-                    f"EU Line #{eu_line.get('id')} deleted — "
-                    f"{eu_line.get('cargo_name', '')} / "
-                    f"{eu_line.get('source_display', '')} / "
-                    f"Ref: {ref.get('invoice_number', '')}"
-                )
-
-                cn_lines.append({
-                    'invoice_line_id': inv_line['id'],
-                    'service_type_id': inv_line.get('service_type_id'),
-                    'service_name':    inv_line.get('service_name'),
-                    'service_description': eu_desc,
-                    'quantity':        qty,
-                    'uom':             inv_line.get('uom'),
-                    'original_rate':   rate,
-                    'revised_rate':    0,
-                    'rate_difference': -rate,
-                    'line_amount':     la,
-                    'gst_rate_id':     inv_line.get('gst_rate_id'),
-                    'cgst_rate':       float(inv_line.get('cgst_rate') or 0),
-                    'sgst_rate':       float(inv_line.get('sgst_rate') or 0),
-                    'igst_rate':       float(inv_line.get('igst_rate') or 0),
-                    'cgst_amount':     cgst,
-                    'sgst_amount':     sgst,
-                    'igst_amount':     igst,
-                    'line_total':      lt,
-                    'gl_code':         inv_line.get('gl_code'),
-                    'sac_code':        inv_line.get('sac_code'),
-                    'remarks':         eu_desc,
-                })
-
-        if not cn_lines:
-            continue
-
-        total_amount = round(subtotal + cgst_total + sgst_total + igst_total, 2)
-        invoice_number = invoice.get('invoice_number', '')
-        doc_number, prefix, seq, fy = get_next_doc_number('CN', now)
-
-        cur.execute('''
-            INSERT INTO fdcn_header
-            (doc_number, doc_type, doc_date, doc_series, doc_series_seq, financial_year,
-             original_invoice_id, original_invoice_number,
-             customer_id, customer_type, customer_name,
-             customer_gstin, customer_gst_state_code, customer_gl_code,
-             subtotal, cgst_amount, sgst_amount, igst_amount, total_amount,
-             doc_status, creation_type, remarks, created_by, created_date)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            RETURNING id
-        ''', [
-            doc_number, 'CN', now, prefix, seq, fy,
-            invoice_id, invoice_number,
-            invoice.get('customer_id'), invoice.get('customer_type'),
-            invoice.get('customer_name'),
-            invoice.get('customer_gstin'), invoice.get('customer_gst_state_code'),
-            invoice.get('customer_gl_code'),
-            subtotal, cgst_total, sgst_total, igst_total, total_amount,
-            'Draft', 'eu_deletion',
-            f'Auto CN: EU lines deleted — Ref Invoice {invoice_number}',
-            username, now
-        ])
-        fdcn_id = cur.fetchone()['id']
-
-        for line in cn_lines:
-            cur.execute('''
-                INSERT INTO fdcn_lines
-                (fdcn_id, invoice_line_id, service_type_id, service_name, service_description,
-                 quantity, uom, original_rate, revised_rate, rate_difference, line_amount,
-                 gst_rate_id, cgst_rate, sgst_rate, igst_rate,
-                 cgst_amount, sgst_amount, igst_amount, line_total,
-                 gl_code, sac_code, remarks)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ''', [
-                fdcn_id,
-                line['invoice_line_id'], line['service_type_id'],
-                line['service_name'], line['service_description'],
-                line['quantity'], line['uom'],
-                line['original_rate'], line['revised_rate'],
-                line['rate_difference'], line['line_amount'],
-                line['gst_rate_id'], line['cgst_rate'],
-                line['sgst_rate'], line['igst_rate'],
-                line['cgst_amount'], line['sgst_amount'],
-                line['igst_amount'], line['line_total'],
-                line['gl_code'], line['sac_code'], line['remarks']
-            ])
-
-        results.append((fdcn_id, doc_number))
-
-    conn.commit()
-    conn.close()
-    return results

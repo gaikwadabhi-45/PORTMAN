@@ -2,7 +2,6 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_db, get_cursor
-from modules.FDCN01 import model as fdcn_model
 
 bp = Blueprint('LUEU01', __name__, template_folder='.')
 MODULE_CODE = 'LUEU01'
@@ -93,19 +92,11 @@ def delete_data():
     if not user:
         return jsonify({'error': 'Incorrect password. Deletion not authorised.'}), 403
 
-    # Soft-delete; returns refs for any lines that are billed+invoiced
-    invoiced_refs = model.soft_delete_lines(ids, username=username)
-
-    # Auto-create CNs for invoiced lines
-    cn_results = []
-    if invoiced_refs:
-        created = fdcn_model.create_eu_deletion_cn(invoiced_refs, username)
-        cn_results = [{'fdcn_id': fid, 'doc_number': dnum} for fid, dnum in created]
+    model.soft_delete_lines(ids, username=username)
 
     return jsonify({
         'success': True,
-        'deleted_count': len(ids),
-        'auto_cn_created': cn_results
+        'deleted_count': len(ids)
     })
 
 # Dropdown data endpoints
