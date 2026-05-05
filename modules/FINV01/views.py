@@ -1084,7 +1084,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
         'Invoice_date':          inv_date,
         'Posting_Date':          inv_date,
         'Reference':             (reference if not cancel else reference)[:16],
-        'Document_type':         'INV',
+        'Document_type':         'DR',
         'Customer_Code':         customer_code[:10],
         'Invoice_Amount':        f'{total:.2f}',
         'Business_place':        company,

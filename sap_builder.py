@@ -11,7 +11,7 @@ Header fields (PORTBIRD spec):
   Invoice_date           DD.MM.YYYY
   Posting_Date           DD.MM.YYYY (= Invoice_date)
   Reference              16 char — PMS doc number; for reversals: original SAP Document_Number
-  Document_type          INV / CRN / DN (mapped from doc_type)
+  Document_type          DR for Invoice / Debit Note, DG for Credit Note
   Customer_Code          10 char
   Invoice_Amount         13 curr (taxable + GST - TDS + TCS, always positive)
   Business_place
@@ -187,7 +187,7 @@ def _service_sale_flag(lines, svc_map):
 # ---------------------------------------------------------------------------
 
 def _build_items(lines, reference, amount_field='line_amount',
-                 config_defaults=None, svc_map=None, doc_type='INV'):
+                 config_defaults=None, svc_map=None, doc_type='DR'):
     """
     Build the ITEM list per PORTBIRD spec.
 
@@ -252,7 +252,7 @@ def _build_items(lines, reference, amount_field='line_amount',
 
         # Round-off sign: INV/DN (Debit-side doc) → negate; CRN → keep sign.
         rounding = line.get('rounding_off')
-        if rounding and doc_type in ('INV', 'DN'):
+        if rounding and doc_type in ('DR', 'INV', 'DN'):
             rounding = -float(rounding)
 
         items.append({
@@ -374,14 +374,14 @@ def build_invoice_payload(invoice_header, invoice_lines):
         short_text=invoice_no,
         currency=invoice_header.get('currency_code'),
         invoice_credit='I',
-        document_type='INV',
+        document_type='DR',
         customer_gstin=invoice_header.get('customer_gstin'),
         service_sale=_service_sale_flag(invoice_lines, svc_map),
         invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
     )
     record['ITEM'] = _build_items(
         invoice_lines, invoice_no,
-        config_defaults=config, svc_map=svc_map, doc_type='INV',
+        config_defaults=config, svc_map=svc_map, doc_type='DR',
     )
     return {'Record_Header': [record]}
 
@@ -407,9 +407,9 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     doc_number    = fdcn_header.get('doc_number') or ''
     doc_type      = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
 
-    # PORTBIRD Document_type: DN → 'DN', CN → 'CRN'
+    # PORTBIRD Document_type: DN → 'DR' (debit), CN → 'DG' (credit)
     # Invoice_Credit: DN → 'I' (adds to receivable), CN → 'C' (reduces receivable)
-    document_type  = 'DN' if doc_type == 'DN' else 'CRN'
+    document_type  = 'DR' if doc_type == 'DN' else 'DG'
     invoice_credit = 'I' if doc_type == 'DN' else 'C'
 
     # fdcn_lines store service_type_id (integer FK), not service_code (string).
@@ -491,7 +491,7 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
         short_text=original_ref,
         currency=invoice_header.get('currency_code'),
         invoice_credit='I',
-        document_type='INV',
+        document_type='DR',
         customer_gstin=invoice_header.get('customer_gstin'),
         service_sale=_service_sale_flag(invoice_lines, svc_map),
         invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
