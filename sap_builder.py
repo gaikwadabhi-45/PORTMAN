@@ -223,8 +223,13 @@ def _build_items(lines, reference, amount_field='line_amount',
         unit_price = line.get('unit_price') if line.get('unit_price') is not None else line.get('rate')
         quantity   = line.get('quantity')
 
-        tds_gl       = svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or ''
-        tcs_gl       = svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or ''
+        # TDS / TCS GL only when applicable on the line (or amount actually present).
+        tds_amount_val = float(line.get('tds_amount') or 0)
+        tcs_amount_val = float(line.get('tcs_amount') or 0)
+        tds_applicable = bool(int(line.get('tds_applicable') or 0)) or tds_amount_val > 0
+        tcs_applicable = bool(int(line.get('tcs_applicable') or 0)) or tcs_amount_val > 0
+        tds_gl       = (svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or '') if tds_applicable else ''
+        tcs_gl       = (svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or '') if tcs_applicable else ''
         round_off_gl = config_defaults.get('round_off_gl') or ''
 
         tax_code = (
