@@ -281,10 +281,6 @@
 <div id="saptokens-tab" class="tab-content">
     <div class="admin-section">
         <h3>SAP Inbound Bearer Tokens</h3>
-        <p style="font-size:12px;color:#666;margin:4px 0 12px;">
-            SAP team uses these tokens to call <code>POST /api/sap/callback</code> with processing results.
-            The full token is shown <b>once at generation</b> and never again.
-        </p>
         <div class="toolbar">
             <button class="btn btn-add" onclick="generateSapToken()">+ Generate Token</button>
             <button class="btn" onclick="loadSapTokens()" style="background:#3498db;color:#fff;">Refresh</button>
@@ -313,17 +309,27 @@
         <!-- Outbound -->
         <div id="spgOutbound" class="spg-sub">
             <h3>Send Payload to SAP</h3>
-            <p style="font-size:12px;color:#666;margin:4px 0 8px;">
-                Sample below contains all 4 variants (Invoice, Reversal, Debit Note, Credit Note). Edit any value, then <b>Send to SAP</b> — POSTs to the active SAP config (real call to <code>/RESTAdapter/DynaportInvoice</code>).
-            </p>
-            <div style="display:flex;gap:10px;margin:8px 0;flex-wrap:wrap;">
+
+            <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;">
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('invoice')">Load Invoice</button>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('reversal')">Load Reversal (FB08)</button>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('dn')">Load Debit Note</button>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('cn')">Load Credit Note</button>
+                <span style="border-left:1px solid #ccc;margin:0 4px;"></span>
                 <button class="btn" style="background:#27ae60;color:#fff;" onclick="spgSendPayload()">Send to SAP</button>
                 <button class="btn" style="background:#95a5a6;color:#fff;" onclick="spgFormatPayload()">Format JSON</button>
-                <button class="btn" style="background:#7f8c8d;color:#fff;" onclick="spgLoadSample()">Reload Sample</button>
             </div>
-            <textarea id="spgPayload" style="width:100%;height:420px;font-family:Consolas,monospace;font-size:12px;" placeholder='{"Record_Header":[ ... ]}'></textarea>
-            <h4 style="margin-top:14px;">Result</h4>
-            <pre id="spgResult" style="background:#f4f6f7;padding:8px;border:1px solid #ddd;border-radius:3px;font-size:12px;max-height:240px;overflow:auto;"></pre>
+            <textarea id="spgPayload" style="width:100%;height:380px;font-family:Consolas,monospace;font-size:12px;" placeholder='Click a "Load ..." button above to load a sample.'></textarea>
+            <div style="display:flex;gap:14px;margin-top:14px;">
+                <div style="flex:1;">
+                    <h4>SAP Response (raw)</h4>
+                    <pre id="spgResult" style="background:#f4f6f7;padding:8px;border:1px solid #ddd;border-radius:3px;font-size:12px;max-height:280px;overflow:auto;"></pre>
+                </div>
+                <div style="flex:0 0 260px;">
+                    <h4>Meta</h4>
+                    <pre id="spgMeta" style="background:#f4f6f7;padding:8px;border:1px solid #ddd;border-radius:3px;font-size:11px;max-height:280px;overflow:auto;"></pre>
+                </div>
+            </div>
         </div>
 
         <!-- Inbound viewer -->
@@ -1689,190 +1695,197 @@ function escAdm(s) {
 }
 
 // ===== SAP Playground =====
-const SPG_SAMPLE = {
-  "Record_Header": [
+const _SPG_INVOICE_HEADER = {
+  "Invoice_Credit": "I",
+  "Company_code": "5130",
+  "Invoice_date": "06.05.2026",
+  "Posting_Date": "06.05.2026",
+  "Reference": "TEST-INV-001",
+  "Document_type": "DR",
+  "Customer_Code": "I510015",
+  "Invoice_Amount": "1180.30",
+  "Business_place": "5130",
+  "Section_code": "5130",
+  "Text": "TEST-INV-001",
+  "Document_Header_Text": "TEST-INV-001",
+  "Payment_Term": "51",
+  "Credit_Control_Area": "5130",
+  "Cancellation_Flag": "",
+  "Nature_of_transaction": "B2B",
+  "Service_Sale": "S",
+  "Currency": "INR",
+  "Payment_term": "51",
+  "Baseline_Date": "06.05.2026",
+  "ITEM": [
     {
-      "_comment": "Invoice posting (DR / I)",
-      "Invoice_Credit": "I",
-      "Company_code": "5130",
-      "Invoice_date": "06.05.2026",
-      "Posting_Date": "06.05.2026",
       "Reference": "TEST-INV-001",
-      "Document_type": "DR",
-      "Customer_Code": "I510015",
-      "Invoice_Amount": "1180.30",
-      "Business_place": "5130",
-      "Section_code": "5130",
-      "Text": "TEST-INV-001",
-      "Document_Header_Text": "TEST-INV-001",
-      "Payment_Term": "51",
-      "Credit_Control_Area": "5130",
-      "Cancellation_Flag": "",
-      "Nature_of_transaction": "B2B",
-      "Service_Sale": "S",
-      "Currency": "INR",
-      "Payment_term": "51",
-      "Baseline_Date": "06.05.2026",
-      "ITEM": [
-        {
-          "Reference": "TEST-INV-001",
-          "GL_account": "4101076260",
-          "Amount": "1000.00",
-          "Tax_Code": "50",
-          "Cost_Center": "",
-          "Plant": "5130",
-          "Text": "Cargo Handling Unloading",
-          "Profit_Center": "510302",
-          "HSN_SAC": "996511",
-          "CGST_AMT": "90.00",
-          "SGST_AMT": "90.00",
-          "IGST_AMT": "",
-          "IGST_GL": "",
-          "SGST_GL": "1404051141",
-          "CGST_GL": "1404051140",
-          "UOM": "MT",
-          "Unit_Price": "100.00",
-          "Quantity": "10.000",
-          "TDS_GL": "",
-          "TDS_amount": "",
-          "TCS_GL": "",
-          "TCS_amount": "",
-          "Round_off_GL": "",
-          "Round_off_Value": ""
-        }
-      ]
-    },
-    {
-      "_comment": "Invoice reversal — FB08. No ITEM array. Reference = original SAP Document_Number returned earlier.",
-      "Invoice_Credit": "I",
-      "Company_code": "5130",
-      "Invoice_date": "06.05.2026",
-      "Posting_Date": "06.05.2026",
-      "Reference": "5100001234",
-      "Document_type": "DR",
-      "Customer_Code": "I510015",
-      "Invoice_Amount": "1180.30",
-      "Business_place": "5130",
-      "Section_code": "5130",
-      "Text": "REV TEST-INV-001",
-      "Document_Header_Text": "REV TEST-INV-001",
-      "Payment_Term": "51",
-      "Credit_Control_Area": "5130",
-      "Cancellation_Flag": "F",
-      "Nature_of_transaction": "B2B",
-      "Service_Sale": "S",
-      "Currency": "INR",
-      "Payment_term": "51",
-      "Baseline_Date": "06.05.2026"
-    },
-    {
-      "_comment": "Debit Note (DR / I)",
-      "Invoice_Credit": "I",
-      "Company_code": "5130",
-      "Invoice_date": "06.05.2026",
-      "Posting_Date": "06.05.2026",
-      "Reference": "TEST-DN-001",
-      "Document_type": "DR",
-      "Customer_Code": "I510015",
-      "Invoice_Amount": "590.00",
-      "Business_place": "5130",
-      "Section_code": "5130",
-      "Text": "TEST-DN-001",
-      "Document_Header_Text": "TEST-DN-001",
-      "Payment_Term": "51",
-      "Credit_Control_Area": "5130",
-      "Cancellation_Flag": "",
-      "Nature_of_transaction": "B2B",
-      "Service_Sale": "S",
-      "Currency": "INR",
-      "Payment_term": "51",
-      "Baseline_Date": "06.05.2026",
-      "ITEM": [
-        {
-          "Reference": "TEST-DN-001",
-          "GL_account": "4101076260",
-          "Amount": "500.00",
-          "Tax_Code": "50",
-          "Cost_Center": "",
-          "Plant": "5130",
-          "Text": "Rate revision DN",
-          "Profit_Center": "510302",
-          "HSN_SAC": "996511",
-          "CGST_AMT": "45.00",
-          "SGST_AMT": "45.00",
-          "IGST_AMT": "",
-          "IGST_GL": "",
-          "SGST_GL": "1404051141",
-          "CGST_GL": "1404051140",
-          "UOM": "MT",
-          "Unit_Price": "50.00",
-          "Quantity": "10.000",
-          "TDS_GL": "",
-          "TDS_amount": "",
-          "TCS_GL": "",
-          "TCS_amount": "",
-          "Round_off_GL": "",
-          "Round_off_Value": ""
-        }
-      ]
-    },
-    {
-      "_comment": "Credit Note (DG / C)",
-      "Invoice_Credit": "C",
-      "Company_code": "5130",
-      "Invoice_date": "06.05.2026",
-      "Posting_Date": "06.05.2026",
-      "Reference": "TEST-CN-001",
-      "Document_type": "DG",
-      "Customer_Code": "I510015",
-      "Invoice_Amount": "1180.30",
-      "Business_place": "5130",
-      "Section_code": "5130",
-      "Text": "TEST-CN-001",
-      "Document_Header_Text": "TEST-CN-001",
-      "Payment_Term": "51",
-      "Credit_Control_Area": "5130",
-      "Cancellation_Flag": "",
-      "Nature_of_transaction": "B2B",
-      "Service_Sale": "S",
-      "Currency": "INR",
-      "Payment_term": "51",
-      "Baseline_Date": "06.05.2026",
-      "ITEM": [
-        {
-          "Reference": "TEST-CN-001",
-          "GL_account": "4101076260",
-          "Amount": "1000.00",
-          "Tax_Code": "50",
-          "Cost_Center": "",
-          "Plant": "5130",
-          "Text": "Full reversal CN",
-          "Profit_Center": "510302",
-          "HSN_SAC": "996511",
-          "CGST_AMT": "90.00",
-          "SGST_AMT": "90.00",
-          "IGST_AMT": "",
-          "IGST_GL": "",
-          "SGST_GL": "1404051141",
-          "CGST_GL": "1404051140",
-          "UOM": "MT",
-          "Unit_Price": "100.00",
-          "Quantity": "10.000",
-          "TDS_GL": "",
-          "TDS_amount": "",
-          "TCS_GL": "",
-          "TCS_amount": "",
-          "Round_off_GL": "",
-          "Round_off_Value": ""
-        }
-      ]
+      "GL_account": "4101076260",
+      "Amount": "1000.00",
+      "Tax_Code": "50",
+      "Cost_Center": "",
+      "Plant": "5130",
+      "Text": "Cargo Handling Unloading",
+      "Profit_Center": "510302",
+      "HSN_SAC": "996511",
+      "CGST_AMT": "90.00",
+      "SGST_AMT": "90.00",
+      "IGST_AMT": "",
+      "IGST_GL": "",
+      "SGST_GL": "1404051141",
+      "CGST_GL": "1404051140",
+      "UOM": "MT",
+      "Unit_Price": "100.00",
+      "Quantity": "10.000",
+      "TDS_GL": "",
+      "TDS_amount": "",
+      "TCS_GL": "",
+      "TCS_amount": "",
+      "Round_off_GL": "",
+      "Round_off_Value": ""
     }
   ]
 };
 
-function spgLoadSample() {
-    document.getElementById('spgPayload').value = JSON.stringify(SPG_SAMPLE, null, 2);
+const _SPG_REVERSAL_HEADER = {
+  "Invoice_Credit": "I",
+  "Company_code": "5130",
+  "Invoice_date": "06.05.2026",
+  "Posting_Date": "06.05.2026",
+  "Reference": "5100001234",
+  "Document_type": "DR",
+  "Customer_Code": "I510015",
+  "Invoice_Amount": "1180.30",
+  "Business_place": "5130",
+  "Section_code": "5130",
+  "Text": "REV TEST-INV-001",
+  "Document_Header_Text": "REV TEST-INV-001",
+  "Payment_Term": "51",
+  "Credit_Control_Area": "5130",
+  "Cancellation_Flag": "F",
+  "Nature_of_transaction": "B2B",
+  "Service_Sale": "S",
+  "Currency": "INR",
+  "Payment_term": "51",
+  "Baseline_Date": "06.05.2026"
+};
+
+const _SPG_DN_HEADER = {
+  "Invoice_Credit": "I",
+  "Company_code": "5130",
+  "Invoice_date": "06.05.2026",
+  "Posting_Date": "06.05.2026",
+  "Reference": "TEST-DN-001",
+  "Document_type": "DR",
+  "Customer_Code": "I510015",
+  "Invoice_Amount": "590.00",
+  "Business_place": "5130",
+  "Section_code": "5130",
+  "Text": "TEST-DN-001",
+  "Document_Header_Text": "TEST-DN-001",
+  "Payment_Term": "51",
+  "Credit_Control_Area": "5130",
+  "Cancellation_Flag": "",
+  "Nature_of_transaction": "B2B",
+  "Service_Sale": "S",
+  "Currency": "INR",
+  "Payment_term": "51",
+  "Baseline_Date": "06.05.2026",
+  "ITEM": [
+    {
+      "Reference": "TEST-DN-001",
+      "GL_account": "4101076260",
+      "Amount": "500.00",
+      "Tax_Code": "50",
+      "Cost_Center": "",
+      "Plant": "5130",
+      "Text": "Rate revision DN",
+      "Profit_Center": "510302",
+      "HSN_SAC": "996511",
+      "CGST_AMT": "45.00",
+      "SGST_AMT": "45.00",
+      "IGST_AMT": "",
+      "IGST_GL": "",
+      "SGST_GL": "1404051141",
+      "CGST_GL": "1404051140",
+      "UOM": "MT",
+      "Unit_Price": "50.00",
+      "Quantity": "10.000",
+      "TDS_GL": "",
+      "TDS_amount": "",
+      "TCS_GL": "",
+      "TCS_amount": "",
+      "Round_off_GL": "",
+      "Round_off_Value": ""
+    }
+  ]
+};
+
+const _SPG_CN_HEADER = {
+  "Invoice_Credit": "C",
+  "Company_code": "5130",
+  "Invoice_date": "06.05.2026",
+  "Posting_Date": "06.05.2026",
+  "Reference": "TEST-CN-001",
+  "Document_type": "DG",
+  "Customer_Code": "I510015",
+  "Invoice_Amount": "1180.30",
+  "Business_place": "5130",
+  "Section_code": "5130",
+  "Text": "TEST-CN-001",
+  "Document_Header_Text": "TEST-CN-001",
+  "Payment_Term": "51",
+  "Credit_Control_Area": "5130",
+  "Cancellation_Flag": "",
+  "Nature_of_transaction": "B2B",
+  "Service_Sale": "S",
+  "Currency": "INR",
+  "Payment_term": "51",
+  "Baseline_Date": "06.05.2026",
+  "ITEM": [
+    {
+      "Reference": "TEST-CN-001",
+      "GL_account": "4101076260",
+      "Amount": "1000.00",
+      "Tax_Code": "50",
+      "Cost_Center": "",
+      "Plant": "5130",
+      "Text": "Full reversal CN",
+      "Profit_Center": "510302",
+      "HSN_SAC": "996511",
+      "CGST_AMT": "90.00",
+      "SGST_AMT": "90.00",
+      "IGST_AMT": "",
+      "IGST_GL": "",
+      "SGST_GL": "1404051141",
+      "CGST_GL": "1404051140",
+      "UOM": "MT",
+      "Unit_Price": "100.00",
+      "Quantity": "10.000",
+      "TDS_GL": "",
+      "TDS_amount": "",
+      "TCS_GL": "",
+      "TCS_amount": "",
+      "Round_off_GL": "",
+      "Round_off_Value": ""
+    }
+  ]
+};
+
+const _SPG_SAMPLES = {
+    invoice:  { Record_Header: [_SPG_INVOICE_HEADER]  },
+    reversal: { Record_Header: [_SPG_REVERSAL_HEADER] },
+    dn:       { Record_Header: [_SPG_DN_HEADER]       },
+    cn:       { Record_Header: [_SPG_CN_HEADER]       }
+};
+
+function spgLoadSample(kind) {
+    const ta = document.getElementById('spgPayload');
     document.getElementById('spgResult').textContent = '';
+    document.getElementById('spgMeta').textContent = '';
+    if (!kind) { ta.value = ''; return; }
+    const sample = _SPG_SAMPLES[kind];
+    if (!sample) { alert('Unknown sample: ' + kind); return; }
+    ta.value = JSON.stringify(sample, null, 2);
 }
 
 function spgStripComments(obj) {
@@ -1894,14 +1907,39 @@ async function spgSendPayload() {
     catch (e) { alert('Invalid JSON: ' + e.message); return; }
     payload = spgStripComments(payload);
     const refField = (payload?.Record_Header?.[0]?.Reference) || 'PLAYGROUND';
-    const out = document.getElementById('spgResult');
-    out.textContent = 'Sending to SAP...';
+    const out  = document.getElementById('spgResult');
+    const meta = document.getElementById('spgMeta');
+    out.textContent  = 'Sending to SAP...';
+    meta.textContent = '';
     const res = await fetch('/admin/api/sap-playground/send', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({payload, reference: refField})
     });
     const d = await res.json();
-    out.textContent = JSON.stringify(d, null, 2);
+
+    // Raw SAP response (left panel)
+    if (d.response_body !== undefined) {
+        out.textContent = typeof d.response_body === 'string'
+            ? d.response_body
+            : JSON.stringify(d.response_body, null, 2);
+    } else {
+        out.textContent = JSON.stringify(d, null, 2);
+    }
+
+    // Meta (right panel)
+    const m = {
+        ok:                  d.ok,
+        http_status:         d.http_status,
+        duration_ms:         d.duration_ms,
+        request_url:         d.request_url,
+        log_id:              d.log_id,
+        sap_document_number: d.sap_document_number,
+        message:             d.message,
+    };
+    meta.textContent = Object.entries(m)
+        .filter(([k,v]) => v !== undefined && v !== null && v !== '')
+        .map(([k,v]) => `${k}: ${v}`)
+        .join('\n');
 }
 
 function spgFormatPayload() {
