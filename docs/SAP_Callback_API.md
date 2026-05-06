@@ -19,6 +19,8 @@
     {
       "Reference": "DPPL/26-27/1",
       "Document_Number": "5100001234",
+      "Posting_Date": "06.05.2026",
+      "Company_Code": "5130",
       "Message": "Posted successfully",
       "IRN_No": "a1b2c3d4e5f6...64chars",
       "Ack_No": "112226053100001",
@@ -28,6 +30,8 @@
     {
       "Reference": "CN/26-27/0001",
       "Document_Number": "5100002345",
+      "Posting_Date": "",
+      "Company_Code": "",
       "Message": "",
       "IRN_No": "",
       "Ack_No": "",
@@ -44,6 +48,8 @@
 |---|---|---|
 | `Reference` | ≤ 50 | PMS doc number echoed from original push (`invoice_number` for invoices/reversals, `doc_number` for DN/CN). |
 | `Document_Number` | ≤ 50 | SAP-assigned doc number after posting. |
+| `Posting_Date` | 10 (`DD.MM.YYYY` or `YYYY-MM-DD`) | SAP posting date. Stored on the row. |
+| `Company_Code` | ≤ 10 | SAP company code (e.g. `5130`). |
 | `Message` | ≤ 500 | Free text. Containing `Error` / `Invalid` / `Fail` marks the record as a SAP-side failure. |
 | `IRN_No` | ≤ 64 | IRN from IRP. |
 | `Ack_No` | ≤ 20 | Acknowledgement number. |

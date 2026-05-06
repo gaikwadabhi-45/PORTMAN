@@ -142,6 +142,19 @@ def _truncate(value, length):
     return s[:length], (len(s) > length)
 
 
+def _parse_posting_date(value):
+    """Parse SAP date string. Accepts dd.mm.yyyy or yyyy-mm-dd. Return YYYY-MM-DD or None."""
+    if not value:
+        return None
+    s = str(value).strip()
+    for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(s[:10], fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
 def _apply_record(rec):
     """Apply one callback record. Return (ok: bool, message: str)."""
     ref = (rec.get('Reference') or '').strip()
@@ -155,6 +168,8 @@ def _apply_record(rec):
     irn_date, _     = _truncate(irn_date_raw, 10)
     qr              = rec.get('QR_Code') or rec.get('QR') or ''
     sap_message     = (rec.get('Message') or '').strip()
+    company_code, _ = _truncate(rec.get('Company_Code') or rec.get('Company_code') or '', 10)
+    posting_date    = _parse_posting_date(rec.get('Posting_Date') or rec.get('Posting_date') or '')
 
     # Decide success vs SAP error: SAP message containing 'Error'/'invalid' marks failure.
     is_sap_error = bool(sap_message) and (
@@ -224,30 +239,33 @@ def _apply_record(rec):
         conn.close()
         return True, f'Stored SAP error: {sap_message[:80]}'
 
-    # Success path: write all fields
+    # Success path: write all fields. Posting_Date from SAP overrides server-side fallback.
     new_status = 'Posted to GST' if irn else None
+    posting_date_value = posting_date or now
     if table == 'invoice_header':
         cur.execute('''UPDATE invoice_header SET
             sap_document_number = COALESCE(NULLIF(%s,''), sap_document_number),
-            sap_posting_date    = COALESCE(sap_posting_date, %s),
+            sap_posting_date    = COALESCE(NULLIF(%s,''), sap_posting_date),
+            sap_company_code    = COALESCE(NULLIF(%s,''), sap_company_code),
             gst_irn             = COALESCE(NULLIF(%s,''), gst_irn),
             gst_ack_number      = COALESCE(NULLIF(%s,''), gst_ack_number),
             gst_ack_date        = COALESCE(NULLIF(%s,'')::date, gst_ack_date),
             gst_qr_code         = COALESCE(NULLIF(%s,''), gst_qr_code),
             invoice_status      = COALESCE(%s, invoice_status)
             WHERE id=%s''',
-            [sap_doc, now, irn, ack, irn_date or None, qr, new_status, row_id])
+            [sap_doc, posting_date_value, company_code, irn, ack, irn_date or None, qr, new_status, row_id])
     else:
         cur.execute('''UPDATE fdcn_header SET
             sap_document_number = COALESCE(NULLIF(%s,''), sap_document_number),
-            sap_posting_date    = COALESCE(sap_posting_date, %s::date),
+            sap_posting_date    = COALESCE(NULLIF(%s,'')::date, sap_posting_date),
+            sap_company_code    = COALESCE(NULLIF(%s,''), sap_company_code),
             gst_irn             = COALESCE(NULLIF(%s,''), gst_irn),
             gst_ack_number      = COALESCE(NULLIF(%s,''), gst_ack_number),
             gst_ack_date        = COALESCE(NULLIF(%s,'')::date, gst_ack_date),
             gst_qr_code         = COALESCE(NULLIF(%s,''), gst_qr_code),
             doc_status          = COALESCE(%s, doc_status)
             WHERE id=%s''',
-            [sap_doc, now, irn, ack, irn_date or None, qr, new_status, row_id])
+            [sap_doc, posting_date_value, company_code, irn, ack, irn_date or None, qr, new_status, row_id])
 
     conn.commit()
     conn.close()

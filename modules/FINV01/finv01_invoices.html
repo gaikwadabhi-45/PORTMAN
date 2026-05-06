@@ -125,7 +125,7 @@
                 {% if row.sap_document_number and not row.gst_irn %}
                 <button class="btn btn-success" onclick="fetchIRN({{ row.id }})" style="font-size:10px;padding:3px 8px;">Fetch IRN</button>
                 {% endif %}
-                {% if row.sap_document_number and row.invoice_status == 'Posted to SAP' %}
+                {% if row.sap_document_number and row.invoice_status in ('Posted to SAP', 'Posted to GST') %}
                     {% if row.within_cancel_window %}
                 <button class="btn btn-danger" onclick="cancelInSAP({{ row.id }})" style="font-size:10px;padding:3px 8px;" title="FB08 reversal — allowed within 24 hours of posting">Cancel</button>
                     {% else %}
