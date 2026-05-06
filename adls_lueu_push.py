@@ -38,7 +38,7 @@ TENANT_ID     = "1250f2eb-4784-4223-98dc-d6e33445565c"
 CLIENT_ID     = "19b5a145-6002-4f0b-9762-7cd08165d8a4"
 CLIENT_SECRET = ""
 
-ADLS_BASE = "landing/iportman"
+ADLS_BASE = "landing/iportman/incremental"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING  (file + console)
@@ -379,7 +379,22 @@ def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
+def build_adls_path(*parts: str) -> str:
+    """Join ADLS path fragments without producing empty path segments."""
+    normalized_parts = []
+    for part in parts:
+        segment = str(part).strip().replace("\\", "/").strip("/")
+        if segment:
+            normalized_parts.append(segment)
+
+    if not normalized_parts:
+        raise ValueError("ADLS path cannot be empty")
+
+    return "/".join(normalized_parts)
+
+
 def upload_to_adls(csv_bytes: bytes, blob_path: str, credential) -> None:
+    blob_path = build_adls_path(blob_path)
     file_client = DataLakeFileClient(
         account_url=f"https://{ACCOUNT_NAME}.dfs.core.windows.net",
         file_system_name=CONTAINER,
@@ -425,7 +440,11 @@ def main():
                 continue
 
             csv_bytes = df_to_csv_bytes(df)
-            blob_path = f"{ADLS_BASE}/{subfolder}/{prefix}_{timestamp}.csv"
+            blob_path = build_adls_path(
+                ADLS_BASE,
+                subfolder,
+                f"{prefix}_{timestamp}.csv",
+            )
 
             log.info(f"[{key}] rows={len(df):,}  cols={len(df.columns)}  size={len(csv_bytes):,}B")
             log.info(f"[{key}] target: {blob_path}")
