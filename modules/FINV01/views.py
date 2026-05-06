@@ -1043,7 +1043,8 @@ def _build_sample_payload(invoice, lines, cancel=False):
     reference = inv_num
 
     items = []
-    if not cancel:
+    # Reversal payload uses the same items as the original invoice, only Cancellation_Flag changes.
+    if True:
         for l in lines:
             svc = svc_map.get(l.get('service_code') or '', {})
             cgst = float(l.get('cgst_amount') or 0)
@@ -1093,15 +1094,14 @@ def _build_sample_payload(invoice, lines, cancel=False):
         'Document_Header_Text':  (f"REV {inv_num}" if cancel else inv_num)[:25],
         'Payment_Term':          '',
         'Credit_Control_Area':   company,
-        'Cancellation_Flag':     'F' if cancel else '',
+        'Cancellation_Flag':     'X' if cancel else '',
         'Nature_of_transaction': 'B2B' if gstin else 'B2C',
         'Service_Sale':          sap_builder._service_sale_flag(lines, svc_map),
         'Currency':              invoice.get('currency_code') or 'INR',
         'Payment_term':          '',
         'Baseline_Date':         inv_date,
     }
-    if not cancel:
-        record['ITEM'] = items
+    record['ITEM'] = items
     return {'Record_Header': [record]}
 
 

@@ -20,7 +20,7 @@ Header fields (PORTBIRD spec):
   Document_Header_Text   25 char
   Payment_Term           4 char
   Credit_Control_Area    from sap_api_config.credit_control_area
-  Cancellation_Flag      'F' for reversals, blank otherwise
+  Cancellation_Flag      'X' for reversals, blank otherwise
   Nature_of_transaction  B2B / B2C
   Service_Sale           S=Service, A=Sale
   Currency               INR
@@ -53,8 +53,9 @@ Line Item fields (per spec — ITEM array; omitted entirely for reversals):
   Round_off_GL
   Round_off_Value     ±13 curr (only signed field; blank if zero)
 
-Reversal rule: For reversals, Portbird sends ONLY the header fields.
-No ITEM array is included in the payload.
+Reversal rule: For reversals, the payload is identical to the original
+invoice with Cancellation_Flag set to 'X' and Reference set to the
+original SAP Document_Number.
 """
 from datetime import datetime
 from database import get_db, get_cursor
@@ -450,13 +451,13 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
 
 
 # ---------------------------------------------------------------------------
-# Invoice reversal builder  (Cancellation_Flag = 'F', no ITEM array)
+# Invoice reversal builder  (same as invoice with Cancellation_Flag = 'X')
 # ---------------------------------------------------------------------------
 
 def build_invoice_reversal_payload(invoice_header, invoice_lines):
     """
-    Per PORTBIRD spec: reversals send ONLY header fields — no ITEM array.
-    Reference is the original SAP Document_Number (not the PMS invoice number).
+    Reversal payload: identical shape to the original invoice payload,
+    only Cancellation_Flag = 'X'. Reference is the original SAP Document_Number.
     """
     config = get_active_config()
     if not config:
@@ -496,6 +497,9 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
         service_sale=_service_sale_flag(invoice_lines, svc_map),
         invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
     )
-    record['Cancellation_Flag'] = 'F'
-    # NOTE: no ITEM array for reversals per PORTBIRD spec
+    record['Cancellation_Flag'] = 'X'
+    record['ITEM'] = _build_items(
+        invoice_lines, original_ref,
+        config_defaults=config, svc_map=svc_map, doc_type='DR',
+    )
     return {'Record_Header': [record]}
