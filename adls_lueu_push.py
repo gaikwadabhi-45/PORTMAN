@@ -78,16 +78,47 @@ SELECT
     COALESCE(h.quantity_uom, '')                        AS "UOM",
     COALESCE(h.doc_status, '')                          AS "Status",
     COALESCE(h.created_by, '')                          AS "Created By",
+    COALESCE(h.created_date::TEXT, '')                  AS "Created Date",
     COALESCE(
         STRING_AGG(DISTINCT cd.customer_name, ', ')
             FILTER (WHERE cd.customer_name IS NOT NULL),
     '')                                                 AS "Customer",
+    COALESCE(
+        STRING_AGG(DISTINCT cd.material_po, ', ')
+            FILTER (WHERE cd.material_po IS NOT NULL AND cd.material_po <> ''),
+    '')                                                 AS "Material PO",
     COALESCE(elp.unloaded_by, '')                       AS "LP Unloaded By (Export)",
     COALESCE(elp.berth_master, '')                      AS "LP Berth Master (Export)",
     COALESCE(dp.vessel_unloaded_by, '')                 AS "DP Vessel Unloaded By",
     COALESCE(dp.vessel_unloading_berth, '')             AS "DP Unloading Berth",
     COALESCE(dp.discharge_stop_shifting, '')            AS "DP Stop Shifting",
     COALESCE(dp.discharge_start_shifting, '')           AS "DP Start Shifting",
+    -- Load Port (Import) date fields
+    COALESCE(lp.arrived_load_port, '')                  AS "LP Arrived Load Port",
+    COALESCE(lp.alongside_berth, '')                    AS "LP Alongside Berth",
+    COALESCE(lp.loading_commenced, '')                  AS "LP Loading Commenced",
+    COALESCE(lp.loading_completed, '')                  AS "LP Loading Completed",
+    COALESCE(lp.cast_off_load_port, '')                 AS "LP Cast Off Load Port",
+    -- Export Load Port date fields
+    COALESCE(elp.arrived_at_port, '')                   AS "ELP Arrived At Port",
+    COALESCE(elp.alongside_at_berth, '')                AS "ELP Alongside At Berth",
+    COALESCE(elp.loading_commenced, '')                 AS "ELP Loading Commenced",
+    COALESCE(elp.loading_completed, '')                 AS "ELP Loading Completed",
+    COALESCE(elp.cast_off_from_berth, '')               AS "ELP Cast Off From Berth",
+    COALESCE(elp.sailed_out_from_port, '')              AS "ELP Sailed Out From Port",
+    COALESCE(elp.eta_at_gull_island, '')                AS "ELP ETA At Gull Island",
+    -- Discharge Port date fields
+    COALESCE(dp.arrival_gull_island, '')                AS "DP Arrival Gull Island",
+    COALESCE(dp.departure_gull_island, '')              AS "DP Departure Gull Island",
+    COALESCE(dp.vessel_arrival_port, '')                AS "DP Vessel Arrival Port",
+    COALESCE(dp.vessel_all_made_fast, '')               AS "DP Vessel All Made Fast",
+    COALESCE(dp.unloading_commenced, '')                AS "DP Unloading Commenced",
+    COALESCE(dp.cleaning_commenced, '')                 AS "DP Cleaning Commenced",
+    COALESCE(dp.cleaning_completed, '')                 AS "DP Cleaning Completed",
+    COALESCE(dp.unloading_completed, '')                AS "DP Unloading Completed",
+    COALESCE(dp.vessel_cast_off, '')                    AS "DP Vessel Cast Off",
+    COALESCE(dp.arrived_yellow_crane::TEXT, '')         AS "DP Arrived Yellow Crane",
+    COALESCE(dp.sailed_out_load_port::TEXT, '')         AS "DP Sailed Out Load Port",
     COALESCE(h.doc_date::TEXT, '')                      AS "Doc Date",
     COALESCE(LEFT(h.doc_date::TEXT, 4), '')             AS "Year",
     COALESCE(LEFT(h.doc_date::TEXT, 7), '')             AS "Year-Month"
@@ -100,7 +131,7 @@ LEFT JOIN LATERAL (
     SELECT cargo_category, cargo_category_2, cargo_sub_category, cargo_sub_category_2
     FROM vessel_cargo WHERE cargo_name = h.cargo_name LIMIT 1
 ) vc ON TRUE
-GROUP BY h.id, h.doc_date, lp.id, elp.id, dp.id,
+GROUP BY h.id, h.doc_date, h.created_date, lp.id, elp.id, dp.id,
          vc.cargo_category, vc.cargo_category_2,
          vc.cargo_sub_category, vc.cargo_sub_category_2
 ORDER BY h.id ASC
@@ -115,6 +146,7 @@ SELECT
     COALESCE(v.vessel_agent_name, '')                   AS "Vessel Agent",
     COALESCE(STRING_AGG(DISTINCT cd.cargo_name, ', '), '') AS "Cargo",
     COALESCE(ROUND(CAST(SUM(cd.bl_quantity) AS NUMERIC), 0), 0) AS "BL Qty (MT)",
+    COALESCE(h.material_po_number, '')                  AS "Material PO",
     CASE
         WHEN NULLIF(h.discharge_commenced, '') IS NOT NULL
          AND NULLIF(h.discharge_completed,  '') IS NOT NULL
@@ -127,15 +159,30 @@ SELECT
         ELSE NULL
     END                                                 AS "Actual Days",
     COALESCE(h.doc_status, '')                          AS "Status",
+    COALESCE(h.created_by, '')                          AS "Created By",
+    COALESCE(h.created_date::TEXT, '')                  AS "Created Date",
+    -- All ldud_header date fields
+    COALESCE(h.anchored_datetime, '')                   AS "Anchored Datetime",
+    COALESCE(h.arrival_inner_anchorage, '')             AS "Arrival Inner Anchorage",
+    COALESCE(h.arrival_outer_anchorage, '')             AS "Arrival Outer Anchorage",
+    COALESCE(h.arrived_mbpt, '')                        AS "Arrived MBPT",
+    COALESCE(h.arrived_mfl, '')                         AS "Arrived MFL",
+    COALESCE(h.free_pratique_granted, '')               AS "Free Pratique Granted",
+    COALESCE(h.nor_tendered, '')                        AS "NOR Tendered",
+    COALESCE(h.nor_accepted, '')                        AS "NOR Accepted",
+    COALESCE(h.discharge_commenced, '')                 AS "Discharge Commenced",
+    COALESCE(h.discharge_completed, '')                 AS "Discharge Completed",
+    COALESCE(h.initial_draft_survey_from, '')           AS "Initial Draft Survey From",
+    COALESCE(h.initial_draft_survey_to, '')             AS "Initial Draft Survey To",
+    COALESCE(h.final_draft_survey_from, '')             AS "Final Draft Survey From",
+    COALESCE(h.final_draft_survey_to, '')               AS "Final Draft Survey To",
     COALESCE(LEFT(h.nor_tendered::TEXT, 10), '')        AS "NOR Date",
     COALESCE(LEFT(h.nor_tendered::TEXT, 4), '')         AS "Year",
     COALESCE(LEFT(h.nor_tendered::TEXT, 7), '')         AS "Year-Month"
 FROM ldud_header h
 LEFT JOIN vcn_header v ON v.id = h.vcn_id
 LEFT JOIN vcn_cargo_declaration cd ON cd.vcn_id = h.vcn_id
-GROUP BY h.id, h.doc_num, h.vcn_doc_num, h.vessel_name,
-         v.operation_type, h.operation_type, v.vessel_agent_name,
-         h.nor_tendered, h.discharge_commenced, h.discharge_completed, h.doc_status
+GROUP BY h.id, v.operation_type, v.vessel_agent_name
 ORDER BY h.nor_tendered ASC
 """
 
@@ -148,6 +195,8 @@ SELECT
     COALESCE(v.vessel_agent_name, '')                      AS "Vessel Agent",
     COALESCE(h.doc_status, '')                             AS "Status",
     COALESCE(h.created_by, '')                             AS "Created By",
+    COALESCE(h.created_date::TEXT, '')                     AS "Created Date",
+    COALESCE(h.material_po_number, '')                     AS "Material PO",
     COALESCE(h.initial_draft_survey_quantity::TEXT, '')    AS "Initial Draft Survey Qty",
     COALESCE(bl.trip_number::TEXT, '')                     AS "Trip No",
     COALESCE(bl.hold_name, '')                             AS "Hold",
@@ -163,6 +212,39 @@ SELECT
     COALESCE(vc.cargo_category_2, '')                      AS "Cargo Category 2",
     COALESCE(vc.cargo_sub_category, '')                    AS "Cargo Sub Category",
     COALESCE(vc.cargo_sub_category_2, '')                  AS "Cargo Sub Category 2",
+    -- ldud_header date fields
+    COALESCE(h.anchored_datetime, '')                      AS "Anchored Datetime",
+    COALESCE(h.arrival_inner_anchorage, '')                AS "Arrival Inner Anchorage",
+    COALESCE(h.arrival_outer_anchorage, '')                AS "Arrival Outer Anchorage",
+    COALESCE(h.arrived_mbpt, '')                           AS "Arrived MBPT",
+    COALESCE(h.arrived_mfl, '')                            AS "Arrived MFL",
+    COALESCE(h.free_pratique_granted, '')                  AS "Free Pratique Granted",
+    COALESCE(h.nor_tendered, '')                           AS "NOR Tendered",
+    COALESCE(h.nor_accepted, '')                           AS "NOR Accepted",
+    COALESCE(h.discharge_commenced, '')                    AS "Discharge Commenced",
+    COALESCE(h.discharge_completed, '')                    AS "Discharge Completed",
+    COALESCE(h.initial_draft_survey_from, '')              AS "Initial Draft Survey From",
+    COALESCE(h.initial_draft_survey_to, '')                AS "Initial Draft Survey To",
+    COALESCE(h.final_draft_survey_from, '')                AS "Final Draft Survey From",
+    COALESCE(h.final_draft_survey_to, '')                  AS "Final Draft Survey To",
+    -- ldud_barge_lines date fields
+    COALESCE(bl.along_side_vessel, '')                     AS "BL Along Side Vessel",
+    COALESCE(bl.commenced_loading, '')                     AS "BL Commenced Loading",
+    COALESCE(bl.completed_loading, '')                     AS "BL Completed Loading",
+    COALESCE(bl.cast_off_mv, '')                           AS "BL Cast Off MV",
+    COALESCE(bl.anchored_gull_island, '')                  AS "BL Anchored Gull Island",
+    COALESCE(bl.aweigh_gull_island, '')                    AS "BL Aweigh Gull Island",
+    COALESCE(bl.along_side_berth, '')                      AS "BL Along Side Berth",
+    COALESCE(bl.commence_discharge_berth, '')              AS "BL Commence Discharge Berth",
+    COALESCE(bl.completed_discharge_berth, '')             AS "BL Completed Discharge Berth",
+    COALESCE(bl.cast_off_berth, '')                        AS "BL Cast Off Berth",
+    COALESCE(bl.cast_off_berth_nt, '')                     AS "BL Cast Off Berth NT",
+    COALESCE(bl.trip_start, '')                            AS "BL Trip Start",
+    COALESCE(bl.amf_at_port, '')                           AS "BL AMF At Port",
+    COALESCE(bl.cast_off_port, '')                         AS "BL Cast Off Port",
+    COALESCE(bl.cast_off_loading_berth, '')                AS "BL Cast Off Loading Berth",
+    COALESCE(bl.anchored_gull_island_empty, '')            AS "BL Anchored Gull Island Empty",
+    COALESCE(bl.aweigh_gull_island_empty, '')              AS "BL Aweigh Gull Island Empty",
     COALESCE(LEFT(h.nor_tendered::TEXT, 10), '')           AS "NOR Date",
     COALESCE(LEFT(h.nor_tendered::TEXT, 4), '')            AS "Year",
     COALESCE(LEFT(h.nor_tendered::TEXT, 7), '')            AS "Year-Month"
@@ -200,6 +282,9 @@ SELECT
     COALESCE(vc.cargo_category_2, '')       AS "Cargo Category 2",
     COALESCE(vc.cargo_sub_category, '')     AS "Cargo Sub Category",
     COALESCE(vc.cargo_sub_category_2, '')   AS "Cargo Sub Category 2",
+    COALESCE(l.start_time, '')              AS "Start Time",
+    COALESCE(l.end_time, '')                AS "End Time",
+    COALESCE(l.created_date::TEXT, '')      AS "Created Date",
     COALESCE(l.entry_date::TEXT, '')        AS "Date",
     COALESCE(LEFT(l.entry_date::TEXT, 4), '') AS "Year",
     COALESCE(LEFT(l.entry_date::TEXT, 7), '') AS "Year-Month"
