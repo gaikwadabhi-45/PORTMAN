@@ -2,6 +2,7 @@ import io
 import json as _json
 import mimetypes
 import os
+import psycopg2
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, send_file
 from functools import wraps
 from . import model
@@ -312,7 +313,13 @@ def save_barge_line():
     if not perms.get('can_add') and not perms.get('can_edit'):
         return jsonify({'error': 'No permission'}), 403
     data = request.json
-    row_id, trip_number = model.save_barge_line(data)
+    try:
+        row_id, trip_number = model.save_barge_line(data)
+    except psycopg2.errors.UniqueViolation:
+        return jsonify({
+            'error': f"Trip {data.get('trip_number')} already exists for barge "
+                     f"'{data.get('barge_name')}' on this LDUD document."
+        }), 400
     return jsonify({'id': row_id, 'success': True, 'trip_number': trip_number})
 
 @bp.route('/api/module/LDUD01/barge_lines/delete', methods=['POST'])

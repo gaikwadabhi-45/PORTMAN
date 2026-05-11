@@ -327,6 +327,15 @@ def save_barge_line(data):
     conn = get_db()
     cur = get_cursor(conn)
 
+    try:
+        return _save_barge_line_inner(data, conn, cur)
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
+
+
+def _save_barge_line_inner(data, conn, cur):
     if data.get('id'):
         # Check if barge_name changed, if so recalculate trip number
         cur.execute('SELECT barge_name FROM ldud_barge_lines WHERE id=%s', (data['id'],))
