@@ -243,16 +243,15 @@ def _apply_record(rec):
     new_status = 'Posted to GST' if irn else None
     posting_date_value = posting_date or now
     if table == 'invoice_header':
-        # invoice_header.sap_posting_date and gst_ack_date are TEXT columns
-        # (unlike fdcn_header where they're DATE). No ::date cast here, or
-        # COALESCE complains: "types date and text cannot be matched".
+        # invoice_header date columns are now properly typed (migration
+        # c7d8e9f0a1b2): sap_posting_date=TIMESTAMP, gst_ack_date=DATE.
         cur.execute('''UPDATE invoice_header SET
             sap_document_number = COALESCE(NULLIF(%s,''), sap_document_number),
-            sap_posting_date    = COALESCE(NULLIF(%s,''), sap_posting_date),
+            sap_posting_date    = COALESCE(NULLIF(%s,'')::timestamp, sap_posting_date),
             sap_company_code    = COALESCE(NULLIF(%s,''), sap_company_code),
             gst_irn             = COALESCE(NULLIF(%s,''), gst_irn),
             gst_ack_number      = COALESCE(NULLIF(%s,''), gst_ack_number),
-            gst_ack_date        = COALESCE(NULLIF(%s,''), gst_ack_date),
+            gst_ack_date        = COALESCE(NULLIF(%s,'')::date, gst_ack_date),
             gst_qr_code         = COALESCE(NULLIF(%s,''), gst_qr_code),
             invoice_status      = COALESCE(%s, invoice_status)
             WHERE id=%s''',
