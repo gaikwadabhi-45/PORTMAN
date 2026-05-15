@@ -5,14 +5,14 @@ two simultaneous full-cancellation Credit Notes. Race-safe guard for the
 FINV01 post-24h CN flow — application-level pre-check alone allowed a
 narrow window for concurrent double-submits.
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: b6c7d8e9f0a1
 Revises: z6a7b8c9d0e1
 Create Date: 2026-05-15
 """
 from typing import Sequence, Union
 from alembic import op
 
-revision: str = 'a1b2c3d4e5f6'
+revision: str = 'b6c7d8e9f0a1'
 down_revision: Union[str, None] = 'z6a7b8c9d0e1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
