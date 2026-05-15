@@ -157,11 +157,10 @@ def invoices():
 
     now = datetime.now()
     for row in data:
-        posted_dt = (
-            _parse_datetime(row.get('sap_posting_date')) or
-            _parse_datetime(row.get('posted_date')) or
-            _parse_datetime(row.get('created_date'))
-        )
+        # 24h FB08 window is anchored to sap_posting_date — set by /api/sap/callback
+        # when SAP confirms the posting. No fallback to posted_date / created_date,
+        # otherwise the Cancel button would appear before SAP has acknowledged.
+        posted_dt = _parse_datetime(row.get('sap_posting_date'))
         row['within_cancel_window'] = bool(
             posted_dt and (now - posted_dt) <= timedelta(hours=24)
         )
@@ -214,13 +213,16 @@ def _auto_post_to_sap(invoice_id, invoice_number):
         conn = get_db()
         cur = get_cursor(conn)
         if result['ok']:
+            # Staging push only — SAP returns Status='N' with no Document_Number yet.
+            # sap_document_number and sap_posting_date are intentionally left for
+            # /api/sap/callback to populate when SAP confirms the actual posting.
+            # The 24h FB08 window anchors on sap_posting_date, so it must reflect
+            # SAP's confirmation time, not our staging push time.
             cur.execute('''UPDATE invoice_header
-                SET sap_document_number=%s, sap_posting_date=%s,
-                    posted_by=%s, posted_date=%s,
+                SET posted_by=%s, posted_date=%s,
                     invoice_status='Posted to SAP'
                 WHERE id=%s''',
-                [result['sap_document_number'], now_ts,
-                 session.get('username'), now_ts, invoice_id])
+                [session.get('username'), now_ts, invoice_id])
         else:
             cur.execute('''UPDATE invoice_header
                 SET invoice_status='SAP Failed',
@@ -911,12 +913,17 @@ def cancel_invoice_sap():
     if invoice.get('invoice_status') == 'Cancelled':
         return jsonify({'success': False, 'error': 'Invoice is already cancelled'})
 
-    posted_dt = (
-        _parse_datetime(invoice.get('sap_posting_date')) or
-        _parse_datetime(invoice.get('posted_date')) or
-        _parse_datetime(invoice.get('created_date'))
-    )
-    if not posted_dt or datetime.now() - posted_dt > timedelta(hours=24):
+    # Anchor the 24h FB08 window on SAP's posting confirmation only.
+    # sap_posting_date is stamped by /api/sap/callback when SAP acknowledges
+    # the document — using posted_date / created_date here would let users
+    # cancel before SAP has actually confirmed the posting.
+    posted_dt = _parse_datetime(invoice.get('sap_posting_date'))
+    if not posted_dt:
+        return jsonify({
+            'success': False,
+            'error': 'SAP has not yet confirmed this invoice posting. Cancellation window starts after SAP callback.',
+        }), 400
+    if datetime.now() - posted_dt > timedelta(hours=24):
         return jsonify({
             'success': False,
             'error': 'FB08 reversal window (24 hours) has expired.',
@@ -963,7 +970,10 @@ def cancel_invoice_sap():
 
 @bp.route('/api/module/FINV01/invoice/create-cancellation-cn', methods=['POST'])
 def create_cancellation_cn():
-    """Create a full cancellation Credit Note when FB08 24hr window has passed"""
+    """Post a credit-note cancellation against an invoice when the FB08
+    24hr reversal window has passed. The CN payload mirrors the original
+    invoice exactly, only flipping Invoice_Credit→'C' and Document_type→'DG'.
+    No separate FDCN01 doc is created — it posts straight to SAP."""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Not logged in'}), 401
 
@@ -982,36 +992,38 @@ def create_cancellation_cn():
     if not invoice.get('sap_document_number'):
         return jsonify({'success': False, 'error': 'Invoice not posted to SAP — use direct cancellation instead'})
 
-    # Check if a cancellation CN already exists
-    conn = get_db()
-    cur = get_cursor(conn)
-    cur.execute("""SELECT doc_number FROM fdcn_header
-        WHERE original_invoice_id = %s AND doc_type = 'CN'
-        AND remarks LIKE 'Full cancellation%%'
-        AND doc_status NOT IN ('Rejected', 'Cancelled')
-        LIMIT 1""", [invoice_id])
-    existing = cur.fetchone()
-    conn.close()
+    invoice_lines = model.get_invoice_lines(invoice_id)
+    payload = sap_builder.build_invoice_credit_note_payload(invoice, invoice_lines)
+    result = sap_client.post_invoice_to_sap(
+        payload, 'InvoiceCreditNote', invoice_id,
+        invoice['invoice_number'], session.get('username')
+    )
 
-    if existing:
-        return jsonify({
-            'success': False,
-            'error': f'Cancellation CN already exists: {existing["doc_number"]}'
-        })
-
-    from modules.FDCN01 import model as fdcn_model
-    try:
-        fdcn_id, doc_number = fdcn_model.create_cancellation_cn(
-            invoice_id, session.get('username')
-        )
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)})
+    if result['ok']:
+        now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cn_doc = result.get('sap_document_number') or ''
+        original_doc = invoice.get('sap_document_number') or ''
+        cn_note = f"SAP credit-note cancellation posted. Original: {original_doc}; CN: {cn_doc}"
+        conn = get_db()
+        cur = get_cursor(conn)
+        cur.execute('''UPDATE invoice_header
+            SET invoice_status='Cancelled',
+                posted_by=%s,
+                posted_date=%s,
+                remarks = CASE
+                    WHEN COALESCE(remarks, '') = '' THEN %s
+                    ELSE remarks || ' | ' || %s
+                END
+            WHERE id=%s''',
+            [session.get('username'), now_ts, cn_note, cn_note, invoice_id])
+        conn.commit()
+        conn.close()
 
     return jsonify({
-        'success': True,
-        'fdcn_id': fdcn_id,
-        'doc_number': doc_number,
-        'message': f'Cancellation Credit Note {doc_number} created (Approved). Post to SAP from FDCN01.'
+        'success': result['ok'],
+        'sap_document_number': result.get('sap_document_number'),
+        'message': result['message'],
+        'log_id': result['log_id']
     })
 
 

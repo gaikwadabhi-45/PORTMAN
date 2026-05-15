@@ -467,8 +467,10 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
 
 def build_invoice_reversal_payload(invoice_header, invoice_lines):
     """
-    Reversal payload: identical shape to the original invoice payload,
-    only Cancellation_Flag = 'X'. Reference is the original SAP Document_Number.
+    FB08 reversal payload (within 24 hours of posting): identical shape to
+    the original invoice payload, only Cancellation_Flag = 'X'. Reference
+    stays the PMS invoice_number — SAP looks up the original posted doc
+    by reference, not by SAP doc number.
     """
     config = get_active_config()
     if not config:
@@ -484,11 +486,7 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
     customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
     inv_date      = _fmt_date(invoice_header.get('invoice_date'))
 
-    original_ref = (
-        invoice_header.get('sap_document_number')
-        or invoice_header.get('invoice_number')
-        or ''
-    )
+    original_ref = invoice_header.get('invoice_number') or ''
 
     svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
     svc_map   = _get_service_gl_map(svc_codes)
@@ -512,6 +510,58 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
     record['ITEM'] = _build_items(
         invoice_lines, original_ref,
         config_defaults=config, svc_map=svc_map, doc_type='DR',
+        round_off=float(invoice_header.get('round_off') or 0),
+    )
+    return {'Record_Header': [record]}
+
+
+# ---------------------------------------------------------------------------
+# Invoice credit-note builder (post 24-hour cancellation, FB08 window expired)
+# ---------------------------------------------------------------------------
+
+def build_invoice_credit_note_payload(invoice_header, invoice_lines):
+    """
+    Post-24-hour cancellation payload — issued against the original invoice
+    when the FB08 reversal window has expired. Same shape as the original
+    invoice payload but with Invoice_Credit='C', Document_type='DG' and
+    Cancellation_Flag blank. Reference stays the original PMS invoice_number.
+    """
+    config = get_active_config()
+    if not config:
+        raise ValueError('No active SAP configuration found')
+
+    default_company = config.get('company_code', '5171')
+
+    cust_info = _get_customer_sap_info(
+        invoice_header.get('customer_type'),
+        invoice_header.get('customer_id'),
+    )
+    company       = cust_info.get('company_code') or default_company
+    customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
+    inv_date      = _fmt_date(invoice_header.get('invoice_date'))
+    invoice_no    = invoice_header.get('invoice_number') or ''
+
+    svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
+    svc_map   = _get_service_gl_map(svc_codes)
+
+    record = _build_header_base(
+        config=config,
+        customer_code=customer_code,
+        company=company,
+        inv_date=inv_date,
+        reference=invoice_no,
+        header_text=invoice_no,
+        short_text=invoice_no,
+        currency=invoice_header.get('currency_code'),
+        invoice_credit='C',
+        document_type='DG',
+        customer_gstin=invoice_header.get('customer_gstin'),
+        service_sale=_service_sale_flag(invoice_lines, svc_map),
+        invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
+    )
+    record['ITEM'] = _build_items(
+        invoice_lines, invoice_no,
+        config_defaults=config, svc_map=svc_map, doc_type='DG',
         round_off=float(invoice_header.get('round_off') or 0),
     )
     return {'Record_Header': [record]}
