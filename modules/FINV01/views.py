@@ -970,10 +970,20 @@ def cancel_invoice_sap():
 
 @bp.route('/api/module/FINV01/invoice/create-cancellation-cn', methods=['POST'])
 def create_cancellation_cn():
-    """Post a credit-note cancellation against an invoice when the FB08
-    24hr reversal window has passed. The CN payload mirrors the original
-    invoice exactly, only flipping Invoice_Credit→'C' and Document_type→'DG'.
-    No separate FDCN01 doc is created — it posts straight to SAP."""
+    """Cancel an SAP-posted invoice via a Credit Note after the 24hr FB08
+    window has expired.
+
+    Two-layer design:
+    1. The SAP payload sent is the *original invoice's* payload with
+       Invoice_Credit='C' / Document_type='DG' — Reference stays the
+       original invoice_number so SAP can match it against the original.
+    2. On SAP success we also create an FDCN01 'CN' record with its own
+       unique doc_number (DPPLCN/...) — this is purely a Portbird-side
+       artifact for tracking + the FDCN invoice-print reference. It is NOT
+       what's pushed to SAP.
+
+    Posting-first / FDCN-second ordering keeps us idempotent: if SAP rejects,
+    no orphan FDCN row is left behind and the user can retry."""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Not logged in'}), 401
 
@@ -992,6 +1002,24 @@ def create_cancellation_cn():
     if not invoice.get('sap_document_number'):
         return jsonify({'success': False, 'error': 'Invoice not posted to SAP — use direct cancellation instead'})
 
+    # Block duplicate cancellation CN against the same invoice.
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute("""SELECT doc_number FROM fdcn_header
+        WHERE original_invoice_id = %s AND doc_type = 'CN'
+          AND creation_type = 'cancellation'
+          AND doc_status NOT IN ('Rejected', 'Cancelled')
+        LIMIT 1""", [invoice_id])
+    existing = cur.fetchone()
+    conn.close()
+    if existing:
+        return jsonify({
+            'success': False,
+            'error': f'Cancellation CN already exists: {existing["doc_number"]}'
+        })
+
+    # 1. Build SAP payload from the ORIGINAL invoice (not from the FDCN)
+    #    — sap_builder flips Invoice_Credit→C and Document_type→DG only.
     invoice_lines = model.get_invoice_lines(invoice_id)
     payload = sap_builder.build_invoice_credit_note_payload(invoice, invoice_lines)
     result = sap_client.post_invoice_to_sap(
@@ -999,31 +1027,71 @@ def create_cancellation_cn():
         invoice['invoice_number'], session.get('username')
     )
 
-    if result['ok']:
-        now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cn_doc = result.get('sap_document_number') or ''
-        original_doc = invoice.get('sap_document_number') or ''
-        cn_note = f"SAP credit-note cancellation posted. Original: {original_doc}; CN: {cn_doc}"
-        conn = get_db()
-        cur = get_cursor(conn)
-        cur.execute('''UPDATE invoice_header
-            SET invoice_status='Cancelled',
-                posted_by=%s,
-                posted_date=%s,
-                remarks = CASE
-                    WHEN COALESCE(remarks, '') = '' THEN %s
-                    ELSE remarks || ' | ' || %s
-                END
-            WHERE id=%s''',
-            [session.get('username'), now_ts, cn_note, cn_note, invoice_id])
-        conn.commit()
-        conn.close()
+    if not result['ok']:
+        return jsonify({
+            'success': False,
+            'error': result.get('message') or 'SAP post failed',
+            'log_id': result.get('log_id'),
+        })
+
+    # 2. SAP accepted — create the Portbird-side FDCN CN record for tracking.
+    # The unique partial index `uniq_active_cancellation_cn_per_invoice` on
+    # fdcn_header guards against any race that slips past the SELECT above:
+    # a duplicate INSERT raises a uniqueness error which we translate to a
+    # clean message.
+    from modules.FDCN01 import model as fdcn_model
+    username = session.get('username')
+    try:
+        fdcn_id, cn_doc_number = fdcn_model.create_cancellation_cn(invoice_id, username)
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'SAP posted but FDCN record failed: {str(e)}',
+            'sap_document_number': result.get('sap_document_number'),
+            'log_id': result.get('log_id'),
+        }), 500
+    except Exception as e:
+        msg = str(e).lower()
+        if 'uniq_active_cancellation_cn_per_invoice' in msg or 'unique' in msg:
+            return jsonify({
+                'success': False,
+                'error': 'A cancellation CN already exists for this invoice (concurrent request blocked).',
+                'sap_document_number': result.get('sap_document_number'),
+                'log_id': result.get('log_id'),
+            }), 409
+        raise
+
+    sap_doc = result.get('sap_document_number') or ''
+    if sap_doc:
+        fdcn_model.update_sap_details(fdcn_id, sap_doc, username)
+
+    # 3. Mark the original invoice as Cancelled, with cross-reference to the CN.
+    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    original_sap_doc = invoice.get('sap_document_number') or ''
+    cn_note = (f"Cancelled via CN {cn_doc_number}. "
+               f"SAP original: {original_sap_doc}; SAP CN: {sap_doc}")
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''UPDATE invoice_header
+        SET invoice_status='Cancelled',
+            posted_by=%s,
+            posted_date=%s,
+            remarks = CASE
+                WHEN COALESCE(remarks, '') = '' THEN %s
+                ELSE remarks || ' | ' || %s
+            END
+        WHERE id=%s''',
+        [username, now_ts, cn_note, cn_note, invoice_id])
+    conn.commit()
+    conn.close()
 
     return jsonify({
-        'success': result['ok'],
-        'sap_document_number': result.get('sap_document_number'),
-        'message': result['message'],
-        'log_id': result['log_id']
+        'success': True,
+        'fdcn_id': fdcn_id,
+        'cn_doc_number': cn_doc_number,
+        'sap_document_number': sap_doc,
+        'message': f'Credit Note {cn_doc_number} posted to SAP. Invoice cancelled.',
+        'log_id': result['log_id'],
     })
 
 
@@ -1066,7 +1134,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
             qty = l.get('quantity')
             items.append({
                 'Reference':        reference[:16],
-                'GL_account':       (svc.get('sap_gl_account') or l.get('service_code') or l.get('gl_code') or '')[:10],
+                'GL_account':       (svc.get('sap_gl_account') or l.get('gl_code') or '')[:10],
                 'Amount':           f'{float(l.get("line_amount") or 0):.2f}',
                 'Tax_Code':         l.get('sap_tax_code') or svc.get('sap_tax_code') or '',
                 'Cost_Center':      l.get('cost_center') or svc.get('sap_cost_center') or '',

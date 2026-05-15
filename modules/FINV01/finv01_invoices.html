@@ -365,7 +365,9 @@ async function cancelInSAP(id) {
 }
 
 async function createCancellationCN(id) {
-    if (!confirm('The 24-hour FB08 reversal window has expired.\n\nPost a Credit Note to SAP to reverse this invoice?')) return;
+    if (!confirm('The 24-hour FB08 reversal window has expired.\n\nPost a Credit Note to SAP to cancel this invoice?\n\n' +
+                 '• SAP receives the original invoice payload with Invoice_Credit=C / Document_type=DG.\n' +
+                 '• A CN record (DPPLCN/...) is created in FDCN01 for tracking and invoice print.')) return;
     try {
         const res = await fetch('/api/module/FINV01/invoice/create-cancellation-cn', {
             method: 'POST',
@@ -374,7 +376,13 @@ async function createCancellationCN(id) {
         });
         const result = await res.json();
         if (result.success) {
-            alert('SAP credit-note cancellation posted. CN Doc: ' + (result.sap_document_number || 'Success'));
+            const msg = 'Credit Note posted to SAP.\n' +
+                        'CN Doc (Portbird): ' + (result.cn_doc_number || '—') + '\n' +
+                        'SAP CN Doc: ' + (result.sap_document_number || '—');
+            alert(msg);
+            if (result.fdcn_id && confirm('Open the CN in FDCN01?')) {
+                window.open('/module/FDCN01/entry/' + result.fdcn_id, '_blank');
+            }
             location.reload();
         } else {
             alert('Error: ' + (result.error || result.message || 'Failed to post credit note'));

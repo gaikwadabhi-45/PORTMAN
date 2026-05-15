@@ -217,7 +217,11 @@ def _build_items(lines, reference, amount_field='line_amount',
         svc_code = line.get('service_code') or ''
         svc      = svc_map.get(svc_code, {})
 
-        gl_account = svc.get('sap_gl_account') or svc_code
+        # GL_account: strictly from a real GL field. Never fall back to
+        # service_code (that's an HSN/SAC code, not a GL — would post wrong).
+        #   1. Service master's sap_gl_account (FSTM01) — authoritative
+        #   2. Line-level gl_code copied from the bill (snapshot at billing time)
+        gl_account = svc.get('sap_gl_account') or line.get('gl_code') or ''
         plant      = line.get('plant') or config_defaults.get('plant_code') or ''
 
         igst_gl = svc.get('sap_igst_gl') or ''
