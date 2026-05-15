@@ -13,7 +13,7 @@ Header fields (PORTBIRD spec):
   Reference              16 char — PMS doc number; for reversals: original SAP Document_Number
   Document_type          DR for Invoice / Debit Note, DG for Credit Note
   Customer_Code          10 char
-  Invoice_Amount         13 curr (taxable + GST - TDS + TCS, always positive)
+  Invoice_Amount         13 curr (taxable + GST + TDS - TCS + Round_off, always positive)
   Business_place
   Section_code
   Text                   short narration (25 char)
@@ -50,8 +50,9 @@ Line Item fields (per spec — ITEM array; omitted entirely for reversals):
   TDS_amount          blank if zero
   TCS_GL
   TCS_amount          blank if zero
-  Round_off_GL
-  Round_off_Value     ±13 curr (only signed field; blank if zero)
+  Round_off_GL        from sap_api_config.round_off_gl (blank if zero)
+  Round_off_Value     header-level round_off applied to the first line item;
+                      positive when invoice gross is rounded up (SAP-validated)
 
 Reversal rule: For reversals, the payload is identical to the original
 invoice with Cancellation_Flag set to 'X' and Reference set to the
@@ -188,7 +189,8 @@ def _service_sale_flag(lines, svc_map):
 # ---------------------------------------------------------------------------
 
 def _build_items(lines, reference, amount_field='line_amount',
-                 config_defaults=None, svc_map=None, doc_type='DR'):
+                 config_defaults=None, svc_map=None, doc_type='DR',
+                 round_off=0):
     """
     Build the ITEM list per PORTBIRD spec.
 
@@ -196,6 +198,8 @@ def _build_items(lines, reference, amount_field='line_amount',
     GL sources    — service master (sap_gl_account, sap_igst_gl, sap_cgst_gl,
                     sap_sgst_gl, sap_tds_gl, sap_tcs_gl) with SAP config fallback
                     for TDS/TCS/round-off.
+    round_off     — header-level round-off amount; applied to the FIRST item
+                    only (positive sign) so SAP-side debit/credit balances.
     """
     config_defaults = config_defaults or {}
 
@@ -231,7 +235,6 @@ def _build_items(lines, reference, amount_field='line_amount',
         tcs_applicable = bool(int(line.get('tcs_applicable') or 0)) or tcs_amount_val > 0
         tds_gl       = (svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or '') if tds_applicable else ''
         tcs_gl       = (svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or '') if tcs_applicable else ''
-        round_off_gl = config_defaults.get('round_off_gl') or ''
 
         tax_code = (
             line.get('sap_tax_code')
@@ -250,11 +253,6 @@ def _build_items(lines, reference, amount_field='line_amount',
             or svc.get('sap_cost_center')
             or ''
         )
-
-        # Round-off sign: INV/DN (Debit-side doc) → negate; CRN → keep sign.
-        rounding = line.get('rounding_off')
-        if rounding and doc_type in ('DR', 'INV', 'DN'):
-            rounding = -float(rounding)
 
         items.append({
             'Reference':        (reference or '')[:16],
@@ -279,14 +277,24 @@ def _build_items(lines, reference, amount_field='line_amount',
             'TDS_amount':       _fmt_amount(line.get('tds_amount')),
             'TCS_GL':           tcs_gl,
             'TCS_amount':       _fmt_amount(line.get('tcs_amount')),
-            'Round_off_GL':     round_off_gl,
-            'Round_off_Value':  _fmt_amount(rounding),
+            'Round_off_GL':     '',
+            'Round_off_Value':  '',
         })
+
+    # Apply header-level round-off to the first item (positive sign, per SAP).
+    if items and float(round_off or 0):
+        items[0]['Round_off_GL']    = config_defaults.get('round_off_gl') or ''
+        items[0]['Round_off_Value'] = _fmt_amount(round_off)
+
     return items
 
 
 def _total_invoice_amount(header, lines, amount_field='line_amount'):
-    """Return net invoice value (taxable + GST - TDS + TCS)."""
+    """Return net invoice value (taxable + GST + TDS - TCS + Round_off).
+
+    `total_amount` in invoice headers stores taxable + GST only (verified in
+    FIN01/FDCN01 model layers), so TDS/TCS/round-off are added on top.
+    """
     total = float(header.get('total_amount') or 0)
     if not total:
         total  = sum(float(l.get(amount_field) or 0) for l in lines)
@@ -300,8 +308,9 @@ def _total_invoice_amount(header, lines, amount_field='line_amount'):
     tcs = float(header.get('tcs_amount') or 0)
     if not tcs:
         tcs = sum(float(l.get('tcs_amount') or 0) for l in lines)
+    round_off = float(header.get('round_off') or 0)
 
-    return total - tds + tcs
+    return total + tds - tcs + round_off
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +392,7 @@ def build_invoice_payload(invoice_header, invoice_lines):
     record['ITEM'] = _build_items(
         invoice_lines, invoice_no,
         config_defaults=config, svc_map=svc_map, doc_type='DR',
+        round_off=float(invoice_header.get('round_off') or 0),
     )
     return {'Record_Header': [record]}
 
@@ -446,6 +456,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     record['ITEM'] = _build_items(
         enriched_lines, doc_number,
         config_defaults=config, svc_map=svc_map, doc_type=doc_type,
+        round_off=float(fdcn_header.get('round_off') or 0),
     )
     return {'Record_Header': [record]}
 
@@ -501,5 +512,6 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
     record['ITEM'] = _build_items(
         invoice_lines, original_ref,
         config_defaults=config, svc_map=svc_map, doc_type='DR',
+        round_off=float(invoice_header.get('round_off') or 0),
     )
     return {'Record_Header': [record]}

@@ -1027,7 +1027,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
         except ValueError:
             pass
 
-    total = float(invoice.get('total_amount') or 0)
+    total = sap_builder._total_invoice_amount(invoice, lines)
     gstin = invoice.get('customer_gstin') or ''
 
     cust_info = sap_builder._get_customer_sap_info(
