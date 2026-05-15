@@ -309,128 +309,17 @@
         <!-- Outbound -->
         <div id="spgOutbound" class="spg-sub">
             <h3>Send Payload to SAP</h3>
-            <p style="font-size:12px;color:#666;margin:4px 0 10px;">
-                Structure is identical for Invoice / Reversal / DN / CN — the doc-type buttons
-                just preset the header flags (<code>Invoice_Credit</code>, <code>Document_type</code>,
-                <code>Cancellation_Flag</code>). Edit any field below and hit <b>Send to SAP</b>.
-            </p>
 
-            <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center;">
-                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('invoice')">Invoice (I / DR)</button>
-                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('reversal')">Reversal (I / DR / X)</button>
-                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('dn')">Debit Note (I / DR)</button>
-                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('cn')">Credit Note (C / DG)</button>
-                <span style="border-left:1px solid #ccc;margin:0 4px;height:24px;"></span>
+            <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;">
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('invoice')">Load Invoice</button>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('reversal')">Load Reversal (FB08)</button>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('dn')">Load Debit Note</button>
+                <button class="btn" style="background:#3498db;color:#fff;" onclick="spgLoadSample('cn')">Load Credit Note</button>
+                <span style="border-left:1px solid #ccc;margin:0 4px;"></span>
                 <button class="btn" style="background:#27ae60;color:#fff;" onclick="spgSendPayload()">Send to SAP</button>
-                <button class="btn" style="background:#95a5a6;color:#fff;" onclick="spgClearForm()">Clear</button>
+                <button class="btn" style="background:#95a5a6;color:#fff;" onclick="spgFormatPayload()">Format JSON</button>
             </div>
-
-            <!-- Header form -->
-            <details open style="border:1px solid #ddd;border-radius:4px;margin-top:8px;">
-                <summary style="background:#ecf0f1;padding:6px 10px;font-weight:600;cursor:pointer;font-size:13px;">Record Header</summary>
-                <div class="spg-hdr-grid" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px 10px;padding:10px;font-size:11px;">
-                    <label>Invoice_Credit
-                        <select id="hdr_Invoice_Credit" oninput="spgRefreshPreview()" style="width:100%;padding:4px;">
-                            <option value="I">I — Invoice / DN / Reversal</option>
-                            <option value="C">C — Credit Note</option>
-                        </select>
-                    </label>
-                    <label>Document_type
-                        <select id="hdr_Document_type" oninput="spgRefreshPreview()" style="width:100%;padding:4px;">
-                            <option value="DR">DR — Debit</option>
-                            <option value="DG">DG — Credit</option>
-                        </select>
-                    </label>
-                    <label>Cancellation_Flag
-                        <select id="hdr_Cancellation_Flag" oninput="spgRefreshPreview()" style="width:100%;padding:4px;">
-                            <option value="">(blank)</option>
-                            <option value="X">X — Reversal</option>
-                        </select>
-                    </label>
-                    <label>Currency
-                        <input type="text" id="hdr_Currency" value="INR" oninput="spgRefreshPreview()" style="width:100%;padding:4px;">
-                    </label>
-
-                    <label>Company_code<input type="text" id="hdr_Company_code" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Customer_Code<input type="text" id="hdr_Customer_Code" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Business_place<input type="text" id="hdr_Business_place" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Section_code<input type="text" id="hdr_Section_code" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-
-                    <label>Invoice_date (DD.MM.YYYY)<input type="text" id="hdr_Invoice_date" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Posting_Date (DD.MM.YYYY)<input type="text" id="hdr_Posting_Date" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Baseline_Date (DD.MM.YYYY)<input type="text" id="hdr_Baseline_Date" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Invoice_Amount<input type="text" id="hdr_Invoice_Amount" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-
-                    <label>Reference<input type="text" id="hdr_Reference" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Text (≤25)<input type="text" id="hdr_Text" maxlength="25" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Document_Header_Text (≤25)<input type="text" id="hdr_Document_Header_Text" maxlength="25" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Credit_Control_Area<input type="text" id="hdr_Credit_Control_Area" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-
-                    <label>Payment_Term<input type="text" id="hdr_Payment_Term" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Payment_term (lowercase)<input type="text" id="hdr_Payment_term" oninput="spgRefreshPreview()" style="width:100%;padding:4px;"></label>
-                    <label>Nature_of_transaction
-                        <select id="hdr_Nature_of_transaction" oninput="spgRefreshPreview()" style="width:100%;padding:4px;">
-                            <option value="B2B">B2B</option>
-                            <option value="B2C">B2C</option>
-                        </select>
-                    </label>
-                    <label>Service_Sale
-                        <select id="hdr_Service_Sale" oninput="spgRefreshPreview()" style="width:100%;padding:4px;">
-                            <option value="S">S — Service</option>
-                            <option value="A">A — Sale</option>
-                        </select>
-                    </label>
-                </div>
-            </details>
-
-            <!-- Items table -->
-            <details open style="border:1px solid #ddd;border-radius:4px;margin-top:8px;">
-                <summary style="background:#ecf0f1;padding:6px 10px;font-weight:600;cursor:pointer;font-size:13px;">
-                    ITEM lines
-                    <button class="btn" style="background:#3498db;color:#fff;float:right;padding:2px 10px;font-size:11px;" onclick="event.preventDefault();spgAddItem();">+ Add Item</button>
-                </summary>
-                <div style="overflow-x:auto;max-width:100%;">
-                    <table id="spgItemsTable" style="font-size:10px;border-collapse:collapse;white-space:nowrap;min-width:100%;">
-                        <thead style="background:#f4f6f7;">
-                            <tr>
-                                <th style="padding:4px 6px;">Reference</th>
-                                <th style="padding:4px 6px;">GL_account</th>
-                                <th style="padding:4px 6px;">Amount</th>
-                                <th style="padding:4px 6px;">Tax_Code</th>
-                                <th style="padding:4px 6px;">Cost_Center</th>
-                                <th style="padding:4px 6px;">Plant</th>
-                                <th style="padding:4px 6px;">Text</th>
-                                <th style="padding:4px 6px;">Profit_Center</th>
-                                <th style="padding:4px 6px;">HSN_SAC</th>
-                                <th style="padding:4px 6px;">CGST_AMT</th>
-                                <th style="padding:4px 6px;">SGST_AMT</th>
-                                <th style="padding:4px 6px;">IGST_AMT</th>
-                                <th style="padding:4px 6px;">IGST_GL</th>
-                                <th style="padding:4px 6px;">SGST_GL</th>
-                                <th style="padding:4px 6px;">CGST_GL</th>
-                                <th style="padding:4px 6px;">UOM</th>
-                                <th style="padding:4px 6px;">Unit_Price</th>
-                                <th style="padding:4px 6px;">Quantity</th>
-                                <th style="padding:4px 6px;">TDS_GL</th>
-                                <th style="padding:4px 6px;">TDS_amount</th>
-                                <th style="padding:4px 6px;">TCS_GL</th>
-                                <th style="padding:4px 6px;">TCS_amount</th>
-                                <th style="padding:4px 6px;">Round_off_GL</th>
-                                <th style="padding:4px 6px;">Round_off_Value</th>
-                                <th style="padding:4px 6px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="spgItemsBody"></tbody>
-                    </table>
-                </div>
-            </details>
-
-            <!-- JSON preview (read-only mirror) -->
-            <details style="border:1px solid #ddd;border-radius:4px;margin-top:8px;">
-                <summary style="background:#ecf0f1;padding:6px 10px;font-weight:600;cursor:pointer;font-size:13px;">JSON Preview (read-only)</summary>
-                <textarea id="spgPayload" readonly style="width:100%;height:300px;font-family:Consolas,monospace;font-size:11px;border:none;padding:8px;box-sizing:border-box;background:#fdfdfd;"></textarea>
-            </details>
-
+            <textarea id="spgPayload" style="width:100%;height:380px;font-family:Consolas,monospace;font-size:12px;" placeholder='Click a "Load ..." button above to load a sample.'></textarea>
             <div style="display:flex;gap:14px;margin-top:14px;">
                 <div style="flex:1;">
                     <h4>SAP Response (raw)</h4>
@@ -869,9 +758,7 @@ function showTab(tab) {
     if (tab === 'mail') { loadSmtpConfig(); loadMailQueue(); }
     if (tab === 'logs') { loadLogs(); loadNginxConfig(); }
     if (tab === 'saptokens') loadSapTokens();
-    if (tab === 'sapplay') {
-        if (!document.querySelector('#spgItemsBody tr')) spgAddItem();
-    }
+    if (tab === 'sapplay') { spgLoadSample(); }
 }
 
 let _newPwStrength = null;
@@ -2019,105 +1906,35 @@ const _SPG_SAMPLES = {
     cn:       { Record_Header: [_SPG_CN_HEADER]       }
 };
 
-// ----- Field lists driving form ↔ JSON binding -----
-const _SPG_HDR_FIELDS = [
-    'Invoice_Credit','Company_code','Invoice_date','Posting_Date','Reference','Document_type',
-    'Customer_Code','Invoice_Amount','Business_place','Section_code','Text','Document_Header_Text',
-    'Payment_Term','Credit_Control_Area','Cancellation_Flag','Nature_of_transaction','Service_Sale',
-    'Currency','Payment_term','Baseline_Date'
-];
-const _SPG_ITEM_FIELDS = [
-    'Reference','GL_account','Amount','Tax_Code','Cost_Center','Plant','Text','Profit_Center','HSN_SAC',
-    'CGST_AMT','SGST_AMT','IGST_AMT','IGST_GL','SGST_GL','CGST_GL','UOM','Unit_Price','Quantity',
-    'TDS_GL','TDS_amount','TCS_GL','TCS_amount','Round_off_GL','Round_off_Value'
-];
-// Column widths (px) keyed to _SPG_ITEM_FIELDS for compact rendering.
-const _SPG_ITEM_WIDTHS = {
-    Reference:110, GL_account:90, Amount:80, Tax_Code:60, Cost_Center:80, Plant:55,
-    Text:130, Profit_Center:80, HSN_SAC:80, CGST_AMT:75, SGST_AMT:75, IGST_AMT:75,
-    IGST_GL:90, SGST_GL:90, CGST_GL:90, UOM:50, Unit_Price:75, Quantity:75,
-    TDS_GL:90, TDS_amount:75, TCS_GL:90, TCS_amount:75, Round_off_GL:90, Round_off_Value:80
-};
-
-function spgItemRowHtml(item) {
-    item = item || {};
-    const cells = _SPG_ITEM_FIELDS.map(f => {
-        const w = _SPG_ITEM_WIDTHS[f] || 80;
-        const v = (item[f] !== undefined && item[f] !== null) ? String(item[f]) : '';
-        return `<td style="padding:2px;"><input type="text" data-fld="${f}" value="${v.replace(/"/g, '&quot;')}" oninput="spgRefreshPreview()" style="width:${w}px;padding:3px;font-size:10px;font-family:Consolas,monospace;"></td>`;
-    }).join('');
-    return `<tr>${cells}<td style="padding:2px;"><button class="btn" style="background:#e74c3c;color:#fff;padding:2px 8px;font-size:10px;" onclick="event.preventDefault();this.closest('tr').remove();spgRefreshPreview();">Remove</button></td></tr>`;
-}
-
-function spgAddItem(item) {
-    const tbody = document.getElementById('spgItemsBody');
-    tbody.insertAdjacentHTML('beforeend', spgItemRowHtml(item || {}));
-    spgRefreshPreview();
-}
-
-function spgClearForm() {
-    _SPG_HDR_FIELDS.forEach(f => {
-        const el = document.getElementById('hdr_' + f);
-        if (el) el.value = (f === 'Currency') ? 'INR' : (f === 'Invoice_Credit' ? 'I' : (f === 'Document_type' ? 'DR' : ''));
-    });
-    document.getElementById('spgItemsBody').innerHTML = '';
-    spgAddItem();
-    document.getElementById('spgResult').textContent = '';
-    document.getElementById('spgMeta').textContent = '';
-}
-
-function spgFillFromSample(sample) {
-    const hdr = (sample && sample.Record_Header && sample.Record_Header[0]) || {};
-    _SPG_HDR_FIELDS.forEach(f => {
-        const el = document.getElementById('hdr_' + f);
-        if (el) el.value = (hdr[f] !== undefined && hdr[f] !== null) ? hdr[f] : '';
-    });
-    const items = hdr.ITEM || [];
-    const tbody = document.getElementById('spgItemsBody');
-    tbody.innerHTML = '';
-    if (items.length === 0) {
-        spgAddItem();
-    } else {
-        items.forEach(it => spgAddItem(it));
-    }
-    spgRefreshPreview();
-}
-
 function spgLoadSample(kind) {
+    const ta = document.getElementById('spgPayload');
     document.getElementById('spgResult').textContent = '';
     document.getElementById('spgMeta').textContent = '';
+    if (!kind) { ta.value = ''; return; }
     const sample = _SPG_SAMPLES[kind];
     if (!sample) { alert('Unknown sample: ' + kind); return; }
-    spgFillFromSample(sample);
+    ta.value = JSON.stringify(sample, null, 2);
 }
 
-function spgFormToObject() {
-    const hdr = {};
-    _SPG_HDR_FIELDS.forEach(f => {
-        const el = document.getElementById('hdr_' + f);
-        hdr[f] = el ? el.value : '';
-    });
-    const items = [];
-    document.querySelectorAll('#spgItemsBody tr').forEach(tr => {
-        const it = {};
-        _SPG_ITEM_FIELDS.forEach(f => {
-            const inp = tr.querySelector(`input[data-fld="${f}"]`);
-            it[f] = inp ? inp.value : '';
-        });
-        items.push(it);
-    });
-    hdr.ITEM = items;
-    return { Record_Header: [hdr] };
-}
-
-function spgRefreshPreview() {
-    const ta = document.getElementById('spgPayload');
-    if (ta) ta.value = JSON.stringify(spgFormToObject(), null, 2);
+function spgStripComments(obj) {
+    if (Array.isArray(obj)) return obj.map(spgStripComments);
+    if (obj && typeof obj === 'object') {
+        const out = {};
+        for (const k of Object.keys(obj)) {
+            if (k.startsWith('_')) continue;
+            out[k] = spgStripComments(obj[k]);
+        }
+        return out;
+    }
+    return obj;
 }
 
 async function spgSendPayload() {
-    const payload = spgFormToObject();
-    const refField = payload.Record_Header[0].Reference || 'PLAYGROUND';
+    let payload;
+    try { payload = JSON.parse(document.getElementById('spgPayload').value); }
+    catch (e) { alert('Invalid JSON: ' + e.message); return; }
+    payload = spgStripComments(payload);
+    const refField = (payload?.Record_Header?.[0]?.Reference) || 'PLAYGROUND';
     const out  = document.getElementById('spgResult');
     const meta = document.getElementById('spgMeta');
     out.textContent  = 'Sending to SAP...';
@@ -2153,15 +1970,19 @@ async function spgSendPayload() {
         .join('\n');
 }
 
+function spgFormatPayload() {
+    const ta = document.getElementById('spgPayload');
+    try {
+        ta.value = JSON.stringify(JSON.parse(ta.value), null, 2);
+    } catch (e) { alert('Invalid JSON: ' + e.message); }
+}
+
 function showSpgSub(name) {
     document.getElementById('spgOutbound').style.display = name === 'outbound' ? '' : 'none';
     document.getElementById('spgInbound').style.display  = name === 'inbound' ? '' : 'none';
     document.getElementById('spgOutboundBtn').classList.toggle('active', name === 'outbound');
     document.getElementById('spgInboundBtn').classList.toggle('active', name === 'inbound');
     if (name === 'inbound') loadSpgInbound();
-    if (name === 'outbound' && !document.querySelector('#spgItemsBody tr')) {
-        spgAddItem();
-    }
 }
 
 async function loadSpgInbound() {
