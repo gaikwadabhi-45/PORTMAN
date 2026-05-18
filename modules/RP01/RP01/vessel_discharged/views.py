@@ -9,6 +9,7 @@ from .. import bp
 from database import get_db, get_cursor
 
 # ── Excel colour / style constants ─────────────────────────────────────────
+
 XL_GREY    = 'C0C0C0'
 XL_LAVEND  = 'CCCCFF'
 XL_CYAN    = 'CCFFFF'
@@ -28,15 +29,6 @@ _ctr    = Alignment(horizontal='center', vertical='center', wrap_text=True)
 _left   = Alignment(horizontal='left',   vertical='center', wrap_text=True)
 _right  = Alignment(horizontal='right',  vertical='center', wrap_text=True)
 
-ACCOUNT_LABELS = {
-    'Vessel Account':      'On Mother Vessel Account',
-    'Port Account':        'On Port / Exim Team Account',
-    'Weather Account':     'Bad Weather / Force Majeure',
-    'Shipper Account':     'On Shipper Account',
-    'Receiver Account':    'On Receiver Account',
-    'Third Party Account': 'Third Party Account',
-}
-
 
 def _fill(hex_color):
     return PatternFill('solid', fgColor=hex_color)
@@ -46,19 +38,46 @@ def _font(bold=False, size=XL_NORM_SZ, color='000000'):
     return Font(name='Calibri', bold=bold, size=size, color=color)
 
 
-def _fmt_mins(total_mins):
-    if total_mins is None:
-        return '—'
-    h, m = divmod(int(round(abs(total_mins))), 60)
-    return f'{h}:{m:02d}'
-
-
 def _fmt_modu(total_mins):
-    """Format minutes as HH.MM (e.g. 290 -> '04.50')"""
+    """Format minutes as decimal hours"""
     if not total_mins:
+        return '0.00'
+    decimal_hours = float(total_mins) / 60
+    return f"{decimal_hours:.2f}"
+
+
+def _fmt_qty(value):
+    if value is None or value == '':
         return ''
-    h, m = divmod(int(round(abs(float(total_mins)))), 60)
-    return f'{h:02d}.{m:02d}'
+    try:
+        return '{:,}'.format(int(round(float(value))))
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _fmt_number(value, decimals=2):
+    if value is None or value == '':
+        return ''
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _parse_number(val):
+    if val is None or val == '':
+        return None
+    if isinstance(val, (int, float)):
+        return val
+    try:
+        text = str(val).replace(',', '').strip()
+        if text == '':
+            return None
+        if '.' in text:
+            return float(text)
+        return int(text)
+    except (TypeError, ValueError):
+        return val
 
 
 def _parse_dt(val):
@@ -66,8 +85,20 @@ def _parse_dt(val):
         return None
     if isinstance(val, datetime):
         return val
+    val = str(val).strip()
+    formats = [
+        '%d-%m-%Y %H:%M',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%d %H:%M',
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(val, fmt)
+        except Exception:
+            pass
     try:
-        return datetime.fromisoformat(str(val))
+        return datetime.fromisoformat(val)
     except Exception:
         return None
 
@@ -94,8 +125,8 @@ def login_required(f):
 # ── Data fetch ──────────────────────────────────────────────────────────────
 
 _DATE_FIELDS = {
-    'discharge_commenced': 'h.discharge_commenced',
-    'discharge_completed': 'h.discharge_completed',
+    'discharge_commenced': 'a.discharge_started',
+    'discharge_completed': 'a.discharge_commenced',
     'nor_tendered':        'h.nor_tendered',
 }
 _DATE_FIELD_DEFAULT = 'discharge_commenced'
@@ -106,15 +137,14 @@ def _fetch_list(from_date, to_date, date_field=None):
                                 _DATE_FIELDS[_DATE_FIELD_DEFAULT])
     conn = get_db()
     cur = get_cursor(conn)
-    # Build WHERE: date range applies only when the chosen field is not NULL
     cur.execute(f"""
         SELECT
             h.id,
             h.doc_num,
             h.vcn_doc_num,
             h.vessel_name,
-            h.discharge_commenced,
-            h.discharge_completed,
+            a.discharge_started AS discharge_commenced,
+            a.discharge_commenced AS discharge_completed,
             h.nor_tendered,
             h.doc_status,
             v.vessel_agent_name,
@@ -124,13 +154,32 @@ def _fetch_list(from_date, to_date, date_field=None):
         FROM ldud_header h
         LEFT JOIN vcn_header v ON v.id = h.vcn_id
         LEFT JOIN vcn_cargo_declaration cd ON cd.vcn_id = h.vcn_id
+        LEFT JOIN LATERAL (
+            SELECT
+                aa.discharge_started,
+                aa.discharge_commenced
+            FROM ldud_anchorage aa
+            WHERE aa.ldud_id = h.id
+            ORDER BY aa.discharge_started DESC NULLS LAST
+            LIMIT 1
+        ) a ON TRUE
         WHERE LOWER(h.operation_type) = 'import'
-          AND ({date_col} IS NULL
-               OR (DATE({date_col}) >= %s AND DATE({date_col}) <= %s))
-        GROUP BY h.id, h.doc_num, h.vcn_doc_num, h.vessel_name,
-                 h.discharge_commenced, h.discharge_completed, h.nor_tendered,
-                 h.doc_status, v.vessel_agent_name, v.operation_type
-        ORDER BY {date_col} DESC NULLS LAST
+          AND (
+              {date_col} IS NULL
+              OR (DATE({date_col}) BETWEEN %s AND %s)
+          )
+        GROUP BY
+            h.id,
+            h.doc_num,
+            h.vcn_doc_num,
+            h.vessel_name,
+            h.nor_tendered,
+            h.doc_status,
+            v.vessel_agent_name,
+            v.operation_type,
+            a.discharge_started,
+            a.discharge_commenced
+        ORDER BY a.discharge_started DESC NULLS LAST
     """, (from_date, to_date))
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
@@ -162,7 +211,17 @@ def _fetch_vessel_data(ldud_id):
             (vcn_id,))
         cargo_list = [dict(r) for r in cur.fetchall()]
 
-    cur.execute("SELECT * FROM ldud_delays WHERE ldud_id = %s ORDER BY start_datetime", (ldud_id,))
+    cur.execute("""
+        SELECT DISTINCT
+            d.*,
+            vdt.name AS delay_name,
+            vdt.type AS delay_type_name
+        FROM ldud_delays d
+        LEFT JOIN vessel_delay_types vdt
+            ON d.delay_name = vdt.name
+        WHERE d.ldud_id = %s
+        ORDER BY d.start_datetime
+    """, (ldud_id,))
     delays = [dict(r) for r in cur.fetchall()]
 
     cur.execute("SELECT * FROM ldud_vessel_operations WHERE ldud_id = %s ORDER BY start_time", (ldud_id,))
@@ -204,20 +263,48 @@ def _write_vessel_sheet(ws, data):
     type_of_disc   = vcn.get('type_of_discharge', '')
     vessel_agent   = vcn.get('vessel_agent_name', '')
     operation_type = header.get('operation_type', '')
-    arrived_mfl    = _fmt_dt(header.get('arrived_mfl'))
-    arrived_mbpt   = _fmt_dt(header.get('arrived_mbpt'))
-    disc_start_str = _fmt_dt(header.get('discharge_commenced'))
-    disc_end_str   = _fmt_dt(header.get('discharge_completed'))
 
-    # 7 columns: A=20, B=8, C=8, D=14, E=8, F=18, G=22
-    for i, w in enumerate([20, 8, 8, 14, 8, 18, 22], 1):
+    anchorages = data.get('anchorages', [])
+
+    mfl_date = None
+    pla_date = None
+
+    for a in anchorages:
+        anch_name = (a.get('anchorage_name') or '').upper()
+        anchored = a.get('anchored')
+        anchored_dt = _parse_dt(anchored)
+        if not anchored_dt:
+            continue
+        if 'PLA' in anch_name:
+            if pla_date is None or anchored_dt < pla_date:
+                pla_date = anchored_dt
+        else:
+            if mfl_date is None or anchored_dt < mfl_date:
+                mfl_date = anchored_dt
+
+    arrived_pla  = pla_date.strftime('%d-%m-%Y %H:%M') if pla_date else '-'
+    arrived_mbpt = mfl_date.strftime('%d-%m-%Y %H:%M') if mfl_date else '-'
+
+    started_list   = [_parse_dt(a.get('discharge_started'))   for a in anchorages if a.get('discharge_started')]
+    completed_list = [_parse_dt(a.get('discharge_commenced'))  for a in anchorages if a.get('discharge_commenced')]
+    started_list   = [x for x in started_list if x]
+    completed_list = [x for x in completed_list if x]
+
+    disc_start = min(started_list)   if started_list   else None
+    disc_end   = max(completed_list) if completed_list else None
+
+    disc_start_str = _fmt_dt(disc_start) or '-'
+    disc_end_str   = _fmt_dt(disc_end)   or '-'
+
+    custom_cleared_fmt = _fmt_dt(header.get('custom_clearance')) or 'N/A'
+
+    for i, w in enumerate([28, 14, 14, 14, 12, 16, 16], 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
     NC = 7
     _nw = Alignment(horizontal='left', vertical='center', wrap_text=False)
 
     def _mbdr(row, c1, c2, fill=XL_WHITE):
-        """Apply perimeter thin borders to every cell in a horizontal merged range."""
         for ci in range(c1, c2 + 1):
             b = Border(
                 left   = _thin if ci == c1 else None,
@@ -229,7 +316,7 @@ def _write_vessel_sheet(ws, data):
                 ws.cell(row, ci).border = b
                 ws.cell(row, ci).fill   = _fill(fill)
             except AttributeError:
-                pass  # MergedCell in older openpyxl
+                pass
 
     # ── Row 1: Title ─────────────────────────────────────────────────────────
     ws.row_dimensions[1].height = 28
@@ -247,7 +334,6 @@ def _write_vessel_sheet(ws, data):
     _mbdr(2, 1, NC)
 
     # ── Rows 3-10: Header block ───────────────────────────────────────────────
-    # A:B merged = left label (bold) | C:E merged = left value | F = right label | G = right value
     def _hdr2(row, ll, lv, rl, rv, height=16):
         ws.row_dimensions[row].height = height
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
@@ -255,22 +341,28 @@ def _write_vessel_sheet(ws, data):
         c.font = _font(bold=True); c.fill = _fill(XL_WHITE); c.alignment = _left; c.border = _bdr
         _mbdr(row, 1, 2)
         ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=5)
-        c = ws.cell(row, 3, lv if lv is not None else '')
+        lv_value = _parse_number(lv)
+        c = ws.cell(row, 3, lv_value if lv_value is not None else '')
         c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _left; c.border = _bdr
+        if isinstance(lv_value, (int, float)):
+            c.number_format = '#,##0' if isinstance(lv_value, int) or float(lv_value).is_integer() else '#,##0.00'
         _mbdr(row, 3, 5)
         c = ws.cell(row, 6, rl)
         c.font = _font(bold=True); c.fill = _fill(XL_WHITE); c.alignment = _left; c.border = _bdr
-        c = ws.cell(row, 7, rv if rv is not None else '')
+        rv_value = _parse_number(rv)
+        c = ws.cell(row, 7, rv_value if rv_value is not None else '')
         c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _left; c.border = _bdr
+        if isinstance(rv_value, (int, float)):
+            c.number_format = '#,##0' if isinstance(rv_value, int) or float(rv_value).is_integer() else '#,##0.00'
 
-    _hdr2(3,  'Mother Vessel',                                               vessel_name,    'Mother Vessel Sr. No', doc_num)
-    _hdr2(4,  'Cargo Handler',                                               type_of_disc,   'Stevedores',           vessel_agent)
-    _hdr2(5,  'Cargo Type',                                                  cargo_nm,       'Quantity as B/L',      bl_qty or '')
-    _hdr2(6,  'Charter Type',                                                operation_type, 'Custom Cleared',       'N/A')
-    _hdr2(7,  'Arrived at MFL',                                              arrived_mfl,    'Arrived at MbPT',      arrived_mbpt)
-    _hdr2(8,  'Discharge Commenced',                                         disc_start_str, 'Discharge Completed',  disc_end_str)
-    _hdr2(9,  'Committed Discharge Rate as per Charter Party Agreement',     '',             'Demurrage Rate',       '', height=28)
-    _hdr2(10, 'Committed Discharge Rate\nas per Barge Owner Agreement',      '',             'Despatch Rate',        '', height=32)
+    _hdr2(3,  'Mother Vessel',                                               vessel_name,        'Mother Vessel Sr. No', doc_num)
+    _hdr2(4,  'Cargo Handler',                                               type_of_disc,       'Stevedores',           vessel_agent)
+    _hdr2(5,  'Cargo Type',                                                  cargo_nm,           'Quantity as B/L',      bl_qty or '')
+    _hdr2(6,  'Charter Type',                                                operation_type,     'Custom Cleared',       custom_cleared_fmt)
+    _hdr2(7,  'Arrived at PLA',                                              arrived_pla,        'Arrived at MBPT',      arrived_mbpt)
+    _hdr2(8,  'Discharge Commenced',                                         disc_start_str,     'Discharge Completed',  disc_end_str)
+    _hdr2(9,  'Committed Discharge Rate as per Charter Party Agreement',     header.get('charter_party_rate') or '-', 'Demurrage Rate',  header.get('demurrage_rate') or '-',  height=40)
+    _hdr2(10, 'Committed Discharge Rate\nas per Barge Owner Agreement',      header.get('barge_owner_rate') or '-',  'Despatch Rate',   header.get('despatch_rate') or '-',    height=40)
 
     # ── Row 11: Blank separator ───────────────────────────────────────────────
     ws.row_dimensions[11].height = 8
@@ -323,6 +415,7 @@ def _write_vessel_sheet(ws, data):
             ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
             c = ws.cell(r, 2, int(round(qty)))
             c.font = _font(); c.alignment = _ctr
+            c.number_format = '#,##0'
             _mbdr(r, 2, 3)
         else:
             c = ws.cell(r, 1, '')
@@ -339,7 +432,7 @@ def _write_vessel_sheet(ws, data):
             c = ws.cell(r, 6, dk.strftime('%d-%b-%y').upper())
             c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
             c = ws.cell(r, 7, int(round(qty)))
-            c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
+            c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.number_format = '#,##0'; c.border = _bdr
         else:
             c = ws.cell(r, 6, '')
             c.fill = _fill(XL_WHITE); c.border = _bdr
@@ -347,13 +440,14 @@ def _write_vessel_sheet(ws, data):
             c.fill = _fill(XL_WHITE); c.border = _bdr
         r += 1
 
-    # ── Total row (numbers only, no "TOTAL" label) ────────────────────────────
+    # ── Total row ─────────────────────────────────────────────────────────────
     ws.row_dimensions[r].height = 16
     c = ws.cell(r, 1, '')
     c.fill = _fill(XL_WHITE); c.border = _bdr
     ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
     c = ws.cell(r, 2, int(round(mv_total)))
     c.font = _font(bold=True); c.alignment = _ctr
+    c.number_format = '#,##0'
     _mbdr(r, 2, 3)
     c = ws.cell(r, 4, '')
     c.fill = _fill(XL_WHITE); c.border = _bdr
@@ -362,7 +456,7 @@ def _write_vessel_sheet(ws, data):
     c = ws.cell(r, 6, '')
     c.fill = _fill(XL_WHITE); c.border = _bdr
     c = ws.cell(r, 7, int(round(bg_total)))
-    c.font = _font(bold=True); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
+    c.font = _font(bold=True); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.number_format = '#,##0'; c.border = _bdr
     r += 1
 
     # ── Blank row ─────────────────────────────────────────────────────────────
@@ -391,216 +485,216 @@ def _write_vessel_sheet(ws, data):
     _mbdr(r, 3, 5, XL_GREY)
     c = ws.cell(r, 6, 'MODU')
     c.font = _font(bold=True); c.fill = _fill(XL_GREY); c.alignment = _ctr; c.border = _bdr
-    c = ws.cell(r, 7, '')
-    c.fill = _fill(XL_GREY); c.border = _bdr
+    c = ws.cell(r, 7, 'CALCULATED HRS')
+    c.font = _font(bold=True); c.fill = _fill(XL_GREY); c.alignment = _ctr; c.border = _bdr
     r += 1
 
-    total_delay_mins = 0.0
+    total_delay_mins      = 0.0
+    total_calculated_mins = 0.0
+
     for d in delays:
         ws.row_dimensions[r].height = 15
         mins = float(d.get('total_time_mins') or 0)
         total_delay_mins += mins
+
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
-        c = ws.cell(r, 1, d.get('delay_name', ''))
+        c = ws.cell(r, 1, d.get('delay_type_name', ''))
         c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
         _mbdr(r, 1, 2)
+
         ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=5)
-        c = ws.cell(r, 3, d.get('equipment_name', ''))
+        delay_name = d.get('delay_name', '') or ''
+        crane_no   = d.get('crane_number', '') or ''
+        crane_list = [x.strip() for x in crane_no.split(',') if x.strip()]
+        if len(crane_list) >= 4:
+            delay_desc = f" All Crane  {delay_name}"
+        elif crane_no:
+            delay_desc = f" Crane No {crane_no}  {delay_name}"
+        else:
+            delay_desc = delay_name
+        c = ws.cell(r, 3, delay_desc)
         c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
         _mbdr(r, 3, 5)
+
         c = ws.cell(r, 6, _fmt_modu(mins))
         c.font = _font(size=XL_SMALL_SZ); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
-        c = ws.cell(r, 7, '')
-        c.fill = _fill(XL_WHITE); c.border = _bdr
+
+        crane_count = len(crane_list)
+        if crane_count == 1:
+            calc_hours = mins / 4
+        elif crane_count == 2:
+            calc_hours = mins / 2
+        elif crane_count == 3:
+            calc_hours = (mins / 4) * 3
+        else:
+            calc_hours = mins
+
+        total_calculated_mins += calc_hours
+
+        c = ws.cell(r, 7, _fmt_modu(calc_hours))
+        c.font = _font(size=XL_SMALL_SZ); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
         r += 1
 
-    # Total delays: A:E right-aligned, F = total MODU
+    # Total delays row
     ws.row_dimensions[r].height = 16
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
     c = ws.cell(r, 1, 'Total Delays')
     c.font = _font(bold=True); c.alignment = _right
     _mbdr(r, 1, 5)
     c = ws.cell(r, 6, _fmt_modu(total_delay_mins))
-    c.font = _font(bold=True); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
-    c = ws.cell(r, 7, '')
-    c.fill = _fill(XL_WHITE); c.border = _bdr
+    c.font = _font(bold=True); c.fill = _fill(XL_LAVEND); c.alignment = _ctr; c.border = _bdr
+    c = ws.cell(r, 7, _fmt_modu(total_calculated_mins))
+    c.font = _font(bold=True); c.fill = _fill(XL_LAVEND); c.alignment = _ctr; c.border = _bdr
     r += 1
 
-    # ── Delay classification ──────────────────────────────────────────────────
-    PRE_CATS = [
-        ('Port Account',        'A. On Exim Team Account',     XL_CYAN,  True),
-        ('Shipper Account',     'B. On Shipping Team Account', XL_WHITE, False),
-        ('Third Party Account', 'C. Miscellaneous',            XL_WHITE, False),
-    ]
-    POST_CATS = [
-        ('Vessel Account',   'On Mother Vessel Account',   XL_CYAN,  True),
-        ('Receiver Account', 'On Barge Owner Account',     XL_WHITE, False),
-        ('RM Procurement',   'RM Procurement',             XL_WHITE, False),
-        ('Weather Account',  'Other Delays/Force Majeure', XL_WHITE, False),
-    ]
-
-    pre_groups  = defaultdict(list)
-    post_groups = defaultdict(list)
-    pre_keys  = {k for k, _, _, _ in PRE_CATS}
-    post_keys = {k for k, _, _, _ in POST_CATS}
-    for d in delays:
-        acct = d.get('delay_account_type', '')
-        if acct in pre_keys:
-            pre_groups[acct].append(d)
-        elif acct in post_keys:
-            post_groups[acct].append(d)
-
-    # Pre-Berthing header (lavender, full width)
+    # ── Summary section ───────────────────────────────────────────────────────
     ws.row_dimensions[r].height = 18
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NC)
-    c = ws.cell(r, 1, 'Pre-Berthing Delays')
-    c.font = _font(bold=True); c.alignment = _ctr
-    _mbdr(r, 1, NC, XL_LAVEND)
-    r += 1
-
-    def _cls_cat(row, items, cat_label, fill, bold, seq=None):
-        """Write one classification category. Returns (next_row, seq)."""
-        if not items:
-            ws.row_dimensions[row].height = 15
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
-            c = ws.cell(row, 1, cat_label)
-            c.font = _font(bold=bold); c.alignment = _left
-            _mbdr(row, 1, 2, fill)
-            ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=5)
-            c = ws.cell(row, 3, '')
-            _mbdr(row, 3, 5, fill)
-            c = ws.cell(row, 6, '')
-            c.fill = _fill(fill); c.border = _bdr
-            c = ws.cell(row, 7, '')
-            c.fill = _fill(fill); c.border = _bdr
-            return row + 1, seq
-        for idx, d in enumerate(items):
-            ws.row_dimensions[row].height = 15
-            mins = float(d.get('total_time_mins') or 0)
-            hrs  = round(mins / 60.0, 3) if mins else ''
-            desc = d.get('equipment_name', '') or d.get('delay_name', '')
-            if seq is not None:
-                desc = f'{desc} ({seq})'
-                seq += 1
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
-            c = ws.cell(row, 1, cat_label if idx == 0 else '')
-            c.font = _font(bold=(bold and idx == 0)); c.alignment = _left
-            _mbdr(row, 1, 2, fill)
-            ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=5)
-            c = ws.cell(row, 3, desc)
-            c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
-            _mbdr(row, 3, 5, fill)
-            c = ws.cell(row, 6, hrs)
-            c.font = _font(size=XL_SMALL_SZ); c.fill = _fill(fill); c.alignment = _ctr; c.border = _bdr
-            c = ws.cell(row, 7, '')
-            c.fill = _fill(fill); c.border = _bdr
-            row += 1
-        return row, seq
-
-    for acct, lbl, fill, bold in PRE_CATS:
-        r, _ = _cls_cat(r, pre_groups[acct], lbl, fill, bold)
-
-    # Post-Berthing label row (A:B only, white, not bold)
-    ws.row_dimensions[r].height = 15
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
-    c = ws.cell(r, 1, 'Post-Berthing Delays')
-    c.font = _font(bold=False); c.alignment = _left
-    _mbdr(r, 1, 2)
-    ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=5)
-    c = ws.cell(r, 3, '')
-    _mbdr(r, 3, 5)
-    c = ws.cell(r, 6, '')
-    c.fill = _fill(XL_WHITE); c.border = _bdr
-    c = ws.cell(r, 7, '')
-    c.fill = _fill(XL_WHITE); c.border = _bdr
-    r += 1
-
-    seq = 1
-    for acct, lbl, fill, bold in POST_CATS:
-        r, seq = _cls_cat(r, post_groups[acct], lbl, fill, bold, seq)
-
-    # Classification total row
-    ws.row_dimensions[r].height = 15
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
     c = ws.cell(r, 1, 'Total Delays')
-    c.font = _font(bold=True); c.alignment = _left
-    _mbdr(r, 1, 2)
+    c.font = _font(bold=True); c.alignment = _ctr
+    _mbdr(r, 1, 7, XL_LAVEND)
+    r += 1
+
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    c = ws.cell(r, 1, 'DELAY TYPE NAME')
+    c.font = _font(bold=True); c.alignment = _ctr
+    _mbdr(r, 1, 2, XL_CYAN)
     ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=5)
-    c = ws.cell(r, 3, '')
-    _mbdr(r, 3, 5)
-    c = ws.cell(r, 6, '')
-    c.fill = _fill(XL_WHITE); c.border = _bdr
-    c = ws.cell(r, 7, '')
-    c.fill = _fill(XL_WHITE); c.border = _bdr
+    c = ws.cell(r, 3, 'DELAY DESCRIPTION')
+    c.font = _font(bold=True); c.alignment = _ctr
+    _mbdr(r, 3, 5, XL_CYAN)
+    c = ws.cell(r, 6, 'Total Hrs')
+    c.font = _font(bold=True); c.fill = _fill(XL_CYAN); c.alignment = _ctr; c.border = _bdr
+    c = ws.cell(r, 7, 'Calculated Hrs')
+    c.font = _font(bold=True); c.fill = _fill(XL_CYAN); c.alignment = _ctr; c.border = _bdr
     r += 1
 
-    # ── Performance section ───────────────────────────────────────────────────
-    disc_com = _parse_dt(header.get('discharge_commenced'))
-    disc_cmp = _parse_dt(header.get('discharge_completed'))
-    actual_days = None
-    gross_rate  = None
-    if disc_com and disc_cmp:
-        delta = (disc_cmp - disc_com).total_seconds() / 86400
-        actual_days = round(delta, 3)
-        if actual_days and bl_qty:
-            gross_rate = round(bl_qty / actual_days, 2)
+    summary = {}
+    for d in delays:
+        delay_type = d.get('delay_type_name', '') or ''
+        delay_name = d.get('delay_name', '') or ''
+        mins = float(d.get('total_time_mins') or 0)
+        crane_no = d.get('crane_number', '') or ''
+        crane_count = len([x for x in crane_no.split(',') if x.strip()])
+        if crane_count == 1:
+            calc_mins = mins / 4
+        elif crane_count == 2:
+            calc_mins = mins / 2
+        elif crane_count == 3:
+            calc_mins = (mins / 4) * 3
+        else:
+            calc_mins = mins
+        key = (delay_type, delay_name)
+        if key not in summary:
+            summary[key] = {'mins': 0, 'calc': 0}
+        summary[key]['mins'] += mins
+        summary[key]['calc'] += calc_mins
 
-    # Lavender separator row
-    ws.row_dimensions[r].height = 12
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NC)
+    total_calc = 0
+    total_hrs  = 0
+    for (delay_type, delay_name), vals in summary.items():
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        c = ws.cell(r, 1, delay_type)
+        c.alignment = _left
+        _mbdr(r, 1, 2)
+        ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=5)
+        c = ws.cell(r, 3, delay_name)
+        c.alignment = _left
+        _mbdr(r, 3, 5)
+        c = ws.cell(r, 6, _fmt_modu(vals['mins']))
+        c.alignment = _ctr; c.border = _bdr
+        c = ws.cell(r, 7, _fmt_modu(vals['calc']))
+        c.alignment = _ctr; c.border = _bdr
+        total_calc += vals['calc']
+        total_hrs  += vals['mins']
+        r += 1
+
+    ws.row_dimensions[r].height = 16
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+    c = ws.cell(r, 1, 'Total Delays')
+    c.font = _font(bold=True); c.alignment = _right
+    _mbdr(r, 1, 5, XL_LAVEND)
+    c = ws.cell(r, 6, _fmt_modu(total_hrs))
+    c.font = _font(bold=True); c.fill = _fill(XL_LAVEND); c.alignment = _ctr; c.border = _bdr
+    c = ws.cell(r, 7, _fmt_modu(total_calc))
+    c.font = _font(bold=True); c.fill = _fill(XL_LAVEND); c.alignment = _ctr; c.border = _bdr
+    r += 1
+
+    # ── Performance calculations ───────────────────────────────────────────────
+    gross_days = 0
+    net_days   = 0
+    gross_rate = 0
+    net_rate   = 0
+
+    if disc_start and disc_end:
+        total_discharge_hours = (disc_end - disc_start).total_seconds() / 3600
+        gross_days = round(total_discharge_hours / 24, 2)
+
+        delay_display = _fmt_modu(total_calculated_mins)
+        parts = str(delay_display).split('.')
+        hrs  = int(parts[0])
+        mins = int(parts[1]) if len(parts) > 1 else 0
+        total_delay_hours = hrs + (mins / 60)
+        delay_days = round(total_delay_hours / 24, 2)
+        net_days = max(round(gross_days - delay_days, 2), 0)
+
+        if gross_days > 0:
+            gross_rate = round(float(bl_qty) / gross_days, 2)
+        if net_days > 0:
+            net_rate = round(float(bl_qty) / net_days, 2)
+
+    # Purple separator
+    ws.row_dimensions[r].height = 10
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
     c = ws.cell(r, 1, '')
-    _mbdr(r, 1, NC, XL_LAVEND)
+    _mbdr(r, 1, 7, XL_LAVEND)
     r += 1
 
-    def _perf(row, ll, dval, rl, rv, ll_fill=XL_WHITE):
-        ws.row_dimensions[row].height = 16
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
-        c = ws.cell(row, 1, ll)
-        c.font = _font(); c.alignment = _nw
-        _mbdr(row, 1, 3, ll_fill)
-        c = ws.cell(row, 4, dval if dval is not None else '')
-        c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
-        ws.merge_cells(start_row=row, start_column=5, end_row=row, end_column=6)
-        c = ws.cell(row, 5, rl)
-        c.font = _font(); c.alignment = _nw
-        _mbdr(row, 5, 6)
-        c = ws.cell(row, 7, rv if rv is not None else '')
-        c.font = _font(); c.fill = _fill(XL_WHITE); c.alignment = _ctr; c.border = _bdr
-
-    _perf(r, '',                                              actual_days, 'Gross Discharge Rate Achieved (A/G)', gross_rate)
-    r += 1
-    _perf(r, 'Savings / Delay Calculations',                  '',          'As per Charter Party Agreement',       '')
-    r += 1
-    _perf(r, '',                                              '',          'Net Discharge Rate Achieved (A/G)',     '')
-    r += 1
-    _perf(r, 'Time allowed since MV reported at anchorage',   '',          '',                                      '', XL_LAVEND)
-    r += 1
-    _perf(r, 'Time Saved (+)   /   Delayed (-) ',             '',          '',                                      '')
-    r += 1
-    _perf(r, '',                                              '',          '',                                      '')
+    # Gross row
+    ws.row_dimensions[r].height = 20
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    c = ws.cell(r, 1, 'Gross Discharge Days')
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
+    _mbdr(r, 1, 2)
+    c = ws.cell(r, 3, gross_days)
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _ctr; c.border = _bdr
+    ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=6)
+    c = ws.cell(r, 4, 'Gross Discharge Rate Achieved (A/G)')
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
+    _mbdr(r, 4, 6)
+    c = ws.cell(r, 7, gross_rate)
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _ctr; c.number_format = '#,##0.00'; c.border = _bdr
     r += 1
 
-    # Remarks: A:D merged over 2 rows, E:F merged per row, G per row
-    ws.merge_cells(start_row=r, start_column=1, end_row=r + 1, end_column=4)
-    c = ws.cell(r, 1, 'Remarks ')
-    c.font = _font(); c.alignment = _left
-    _mbdr(r,     1, 4)
-    _mbdr(r + 1, 1, 4)
-    for rr in (r, r + 1):
-        ws.row_dimensions[rr].height = 16
-        ws.merge_cells(start_row=rr, start_column=5, end_row=rr, end_column=6)
-        c = ws.cell(rr, 5, '')
-        _mbdr(rr, 5, 6)
-        c = ws.cell(rr, 7, '')
-        c.fill = _fill(XL_WHITE); c.border = _bdr
-    r += 2
+    # Net row
+    ws.row_dimensions[r].height = 20
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    c = ws.cell(r, 1, 'Net Discharge Days')
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
+    _mbdr(r, 1, 2)
+    c = ws.cell(r, 3, net_days)
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _ctr; c.border = _bdr
+    ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=6)
+    c = ws.cell(r, 4, 'Net Discharge Rate Achieved (A/G)')
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _left
+    _mbdr(r, 4, 6)
+    c = ws.cell(r, 7, net_rate)
+    c.font = _font(size=XL_SMALL_SZ); c.alignment = _ctr; c.number_format = '#,##0.00'; c.border = _bdr
+    r += 1
 
-    # Two blank rows
+    # Remarks header
+    ws.row_dimensions[r].height = 18
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+    c = ws.cell(r, 1, 'Remarks')
+    c.font = _font(bold=True); c.alignment = _left
+    _mbdr(r, 1, 7, XL_LAVEND)
+    r += 1
+
     for _ in range(2):
-        ws.row_dimensions[r].height = 16
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NC)
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
         c = ws.cell(r, 1, '')
-        _mbdr(r, 1, NC)
+        _mbdr(r, 1, 7)
         r += 1
 
 
@@ -695,4 +789,246 @@ def vessel_discharged_download(ldud_id):
         buf.getvalue(),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
+
+
+@bp.route('/api/module/RP01/vessel-discharged/<int:ldud_id>/preview')
+@login_required
+def vessel_discharged_preview(ldud_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT DISTINCT
+            h.doc_num,
+            h.vessel_name,
+            h.custom_clearance,
+            STRING_AGG(DISTINCT cd.cargo_name, ', ') AS cargo,
+            COALESCE(SUM(DISTINCT cd.bl_quantity), 0) AS bl_qty,
+            h.arrived_mfl,
+            h.arrived_mbpt,
+            MIN(a.discharge_started)  AS commence_discharge_berth,
+            MAX(a.discharge_commenced) AS completed_discharge_berth
+        FROM ldud_header h
+        LEFT JOIN vcn_cargo_declaration cd ON cd.vcn_id = h.vcn_id
+        LEFT JOIN ldud_anchorage a ON a.ldud_id = h.id
+        WHERE h.id = %s
+        GROUP BY
+            h.doc_num, h.vessel_name, h.custom_clearance,
+            h.arrived_mfl, h.arrived_mbpt
+    """, (ldud_id,))
+    header = cur.fetchone()
+
+    if not header:
+        conn.close()
+        return jsonify({'error': 'Record not found'}), 404
+
+    # Anchorage-based PLA / MFL dates
+    cur.execute("""
+        SELECT anchorage_name, anchored
+        FROM ldud_anchorage
+        WHERE ldud_id = %s
+        ORDER BY anchored
+    """, (ldud_id,))
+    anchorages = cur.fetchall()
+
+    mfl_date = None
+    pla_date = None
+    for a in anchorages:
+        anch_name = (a['anchorage_name'] or '').upper()
+        anchored  = _parse_dt(a['anchored'])
+        if not anchored:
+            continue
+        if 'PLA' in anch_name:
+            if pla_date is None or anchored < pla_date:
+                pla_date = anchored
+        else:
+            if mfl_date is None or anchored < mfl_date:
+                mfl_date = anchored
+
+    arrived_pla  = pla_date.strftime('%d-%m-%Y %H:%M') if pla_date else '-'
+    arrived_mbpt = mfl_date.strftime('%d-%m-%Y %H:%M') if mfl_date else '-'
+
+    # Day-wise MV discharge
+    cur.execute("""
+        SELECT DATE(start_time) as d, COALESCE(SUM(quantity), 0) as qty
+        FROM ldud_vessel_operations
+        WHERE ldud_id = %s
+        GROUP BY DATE(start_time)
+        ORDER BY DATE(start_time)
+    """, (ldud_id,))
+    mv_daywise = cur.fetchall()
+
+    # Day-wise jetty discharge
+    cur.execute("""
+        SELECT DATE(trip_start::timestamp) as d, COALESCE(SUM(discharge_quantity), 0) as qty
+        FROM ldud_barge_lines
+        WHERE ldud_id = %s
+        GROUP BY DATE(trip_start::timestamp)
+        ORDER BY DATE(trip_start::timestamp)
+    """, (ldud_id,))
+    jetty_daywise = cur.fetchall()
+
+    daywise_data = []
+    mv_total    = 0
+    barge_total = 0
+    max_rows = max(len(mv_daywise), len(jetty_daywise), 1)
+    for i in range(max_rows):
+        row = {}
+        if i < len(mv_daywise):
+            d   = mv_daywise[i]['d']
+            qty = int(round(mv_daywise[i]['qty'] or 0))
+            row['mv_date'] = d.strftime('%d-%b-%y').upper() if d else ''
+            row['mv_qty']  = _fmt_qty(qty)
+            mv_total += qty
+        else:
+            row['mv_date'] = ''
+            row['mv_qty']  = ''
+        if i < len(jetty_daywise):
+            d   = jetty_daywise[i]['d']
+            qty = int(round(jetty_daywise[i]['qty'] or 0))
+            row['barge_date'] = d.strftime('%d-%b-%y').upper() if d else ''
+            row['barge_qty']  = _fmt_qty(qty)
+            barge_total += qty
+        else:
+            row['barge_date'] = ''
+            row['barge_qty']  = ''
+        daywise_data.append(row)
+
+    mv_total    = _fmt_qty(mv_total)
+    barge_total = _fmt_qty(barge_total)
+
+    # Delays
+    cur.execute("""
+        SELECT d.*, vdt.type AS delay_type_name
+        FROM ldud_delays d
+        LEFT JOIN vessel_delay_types vdt ON d.delay_name = vdt.name
+        WHERE d.ldud_id = %s
+        ORDER BY d.start_datetime
+    """, (ldud_id,))
+    delay_rows = [dict(r) for r in cur.fetchall()]
+
+    delays      = []
+    seen_delays = set()
+    summary_map = {}
+    total_delay = 0
+    total_calc  = 0
+
+    for d in delay_rows:
+        mins      = float(d.get('total_time_mins') or 0)
+        crane_no  = d.get('crane_number', '') or ''
+        crane_list = [x.strip() for x in crane_no.split(',') if x.strip()]
+
+        if len(crane_list) >= 4:
+            delay_desc = f" All Crane {d.get('delay_name', '')}"
+        elif crane_no:
+            delay_desc = f" Crane No {crane_no} {d.get('delay_name', '')}"
+        else:
+            delay_desc = d.get('delay_name', '')
+
+        if len(crane_list) == 1:
+            calc = mins / 4
+        elif len(crane_list) == 2:
+            calc = mins / 2
+        elif len(crane_list) == 3:
+            calc = (mins / 4) * 3
+        else:
+            calc = mins
+
+        delay_key = (d.get('delay_type_name', ''), delay_desc, _fmt_modu(mins))
+        if delay_key in seen_delays:
+            continue
+        seen_delays.add(delay_key)
+
+        delays.append({
+            'delay_type':        d.get('delay_type_name', '') or '',
+            'delay_description': delay_desc,
+            'modu':              _fmt_modu(mins),
+            'calc':              _fmt_modu(calc),
+        })
+
+        delay_type = d.get('delay_type_name', '') or ''
+        delay_name = d.get('delay_name', '') or ''
+        key = (delay_type, delay_name)
+        if key not in summary_map:
+            summary_map[key] = {'total': 0, 'calc': 0}
+        summary_map[key]['total'] += mins
+        summary_map[key]['calc']  += calc
+        total_delay += mins
+        total_calc  += calc
+
+    summary = [
+        {
+            'delay_type':        dt,
+            'delay_description': dn,
+            'total':             _fmt_modu(vals['total']),
+            'calc':              _fmt_modu(vals['calc']),
+        }
+        for (dt, dn), vals in summary_map.items()
+    ]
+
+    totals = {
+        'total_delay': _fmt_modu(total_delay),
+        'total_calc':  _fmt_modu(total_calc),
+    }
+
+    # Gross / net days
+    gross_days = 0
+    net_days   = 0
+    gross_rate = 0
+    net_rate   = 0
+    try:
+        start = _parse_dt(header['commence_discharge_berth'])
+        end   = _parse_dt(header['completed_discharge_berth'])
+        if start and end:
+            total_hours = (end - start).total_seconds() / 3600
+            gross_days  = round(total_hours / 24, 2)
+            delay_days  = round(total_calc / 60 / 24, 2)
+            net_days    = round(gross_days - delay_days, 2)
+            bl_qty_val  = float(header['bl_qty'] or 0)
+            if gross_days > 0:
+                gross_rate = round(bl_qty_val / gross_days, 2)
+            if net_days > 0:
+                net_rate = round(bl_qty_val / net_days, 2)
+    except Exception as e:
+        print(e)
+
+    conn.close()
+
+    custom_cleared_fmt       = _fmt_dt(header.get('custom_clearance')) or 'N/A'
+    discharge_commenced_fmt  = _fmt_dt(header['commence_discharge_berth'])
+    discharge_completed_fmt  = _fmt_dt(header['completed_discharge_berth'])
+    bl_qty_fmt   = _fmt_qty(header.get('bl_qty') or 0)
+    gross_rate_fmt = _fmt_number(gross_rate)
+    net_rate_fmt   = _fmt_number(net_rate)
+
+    return render_template(
+        'vessel_discharged/vessel_discharged_preview.html',
+        vessel_name=header['vessel_name'],
+        doc_num=header['doc_num'],
+        cargo_handler='Full Discharge',
+        stevedores='SAIPRO SHIPPING SERVICES',
+        cargo_type=header.get('cargo') or '-',
+        bl_qty=bl_qty_fmt,
+        charter_type='Import',
+        custom_cleared=custom_cleared_fmt,
+        arrived_pla=arrived_pla,
+        arrived_mbpt=arrived_mbpt,
+        discharge_commenced=discharge_commenced_fmt,
+        discharge_completed=discharge_completed_fmt,
+        charter_party_rate='-',
+        demurrage_rate='-',
+        barge_owner_rate='-',
+        despatch_rate='-',
+        daywise_data=daywise_data,
+        mv_total=mv_total,
+        barge_total=barge_total,
+        delays=delays,
+        summary=summary,
+        total_delay=totals['total_delay'],
+        total_calc=totals['total_calc'],
+        gross_days=gross_days,
+        net_days=net_days,
+        gross_rate=gross_rate_fmt,
+        net_rate=net_rate_fmt,
     )
