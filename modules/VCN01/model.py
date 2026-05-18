@@ -341,10 +341,11 @@ def save_stowage_plan(data):
             if old_row:
                 current_stowage_total -= (old_row['hatchwise_quantity'] or 0)
 
-        # Check if new total would exceed IGM quantity
-        if current_stowage_total + new_quantity > igm_total:
+        # Check if new total would exceed IGM quantity (round to 3dp to avoid float precision noise)
+        new_total = round(float(current_stowage_total) + float(new_quantity), 3)
+        if new_total > round(float(igm_total), 3):
             conn.close()
-            return None, f"Total stowage quantity ({current_stowage_total + new_quantity}) cannot exceed cargo BL quantity ({igm_total})"
+            return None, f"Total stowage quantity ({new_total}) cannot exceed cargo BL quantity ({igm_total})"
 
     if data.get('id'):
         cur.execute('UPDATE vcn_stowage_plan SET cargo_name=%s, hold_name=%s, hatchwise_quantity=%s WHERE id=%s',
