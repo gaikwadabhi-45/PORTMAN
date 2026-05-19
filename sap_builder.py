@@ -240,10 +240,23 @@ def _build_items(lines, reference, amount_field='line_amount',
         tds_gl       = (svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or '') if tds_applicable else ''
         tcs_gl       = (svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or '') if tcs_applicable else ''
 
+        # Tax_Code is empty when the line has no GST (TC-09 spec).
+        # When GST applies, pick by transaction type:
+        #   IGST > 0   → inter-state → igst_tax_code
+        #   CGST/SGST  → intra-state → cgst_tax_code
         if igst > 0:
             tax_code = config_defaults.get('igst_tax_code') or config_defaults.get('tax_code') or ''
-        else:
+        elif (cgst + sgst) > 0:
             tax_code = config_defaults.get('cgst_tax_code') or config_defaults.get('tax_code') or ''
+        else:
+            tax_code = ''
+
+        # IGST_GL / CGST_GL / SGST_GL are all blank when no GST applies on the line.
+        # When ANY GST applies, all 3 GLs are sent together (per tested SAP payload).
+        any_gst = (igst + cgst + sgst) > 0
+        igst_gl_out = (igst_gl[:10] if igst_gl else '') if any_gst else ''
+        cgst_gl_out = (cgst_gl[:10] if cgst_gl else '') if any_gst else ''
+        sgst_gl_out = (sgst_gl[:10] if sgst_gl else '') if any_gst else ''
         profit_center = (
             line.get('profit_center')
             or svc.get('sap_profit_center')
@@ -269,9 +282,9 @@ def _build_items(lines, reference, amount_field='line_amount',
             'CGST_AMT':         _fmt_amount(cgst),
             'SGST_AMT':         _fmt_amount(sgst),
             'IGST_AMT':         _fmt_amount(igst),
-            'IGST_GL':          igst_gl[:10] if igst_gl else '',
-            'SGST_GL':          sgst_gl[:10] if sgst_gl else '',
-            'CGST_GL':          cgst_gl[:10] if cgst_gl else '',
+            'IGST_GL':          igst_gl_out,
+            'SGST_GL':          sgst_gl_out,
+            'CGST_GL':          cgst_gl_out,
             'UOM':              uom,
             'Unit_Price':       _fmt_amount_required(unit_price) if unit_price is not None else '',
             'Quantity':         f'{float(quantity):.3f}' if quantity is not None else '',
