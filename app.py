@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from functools import wraps
 from database import get_db, get_cursor
 from config import SECRET_KEY, FLASK_ENV, SERVER_HOST, SERVER_PORT
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -222,11 +223,10 @@ def login():
         password = request.form.get('password')
         conn = get_db()
         cur = get_cursor(conn)
-        cur.execute('SELECT * FROM users WHERE username = %s AND password = %s',
-                       (username, password))
+        cur.execute('SELECT * FROM users WHERE username = %s', (username,))
         user = cur.fetchone()
         conn.close()
-        if user:
+        if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['email'] = user['email'] or user['username']
@@ -355,7 +355,7 @@ def set_password_otp():
         conn.close()
         return jsonify({'error': 'Invalid or expired reset session. Please start over.'}), 400
 
-    cur.execute('UPDATE users SET password=%s WHERE id=%s', [new_password, row['user_id']])
+    cur.execute('UPDATE users SET password=%s WHERE id=%s', [generate_password_hash(new_password), row['user_id']])
     cur.execute('UPDATE password_reset_tokens SET used=TRUE WHERE id=%s', [row['id']])
     conn.commit()
     conn.close()

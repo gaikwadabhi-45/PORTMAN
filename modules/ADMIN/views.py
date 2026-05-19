@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from functools import wraps
 from database import get_db, get_cursor, get_module_config, save_module_config
+from werkzeug.security import generate_password_hash
 import json
 import os
 import re
@@ -68,7 +69,7 @@ def add_user():
     cur = get_cursor(conn)
     try:
         cur.execute('INSERT INTO users (username, password, email, is_admin) VALUES (%s, %s, %s, %s) RETURNING id',
-                    [username, password, email, is_admin])
+                    [username, generate_password_hash(password), email, is_admin])
         user_id = cur.fetchone()['id']
         conn.commit()
         conn.close()
@@ -88,7 +89,7 @@ def reset_password():
         return jsonify({'error': 'User ID and new password required'}), 400
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('UPDATE users SET password = %s WHERE id = %s', [new_password, user_id])
+    cur.execute('UPDATE users SET password = %s WHERE id = %s', [generate_password_hash(new_password), user_id])
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -381,7 +382,7 @@ def save_sap_config():
             company_code=%s, default_payment_term=%s, payment_term=%s,
             plant_code=%s, business_place=%s, section_code=%s,
             credit_control_area=%s,
-            profit_center=%s, tax_code=%s, currency=%s,
+            profit_center=%s, igst_tax_code=%s, cgst_tax_code=%s, currency=%s,
             tds_gl=%s, tcs_gl=%s, round_off_gl=%s,
             is_active=%s, updated_by=%s, updated_date=%s
             WHERE id=%s''', [
@@ -398,7 +399,8 @@ def save_sap_config():
             data.get('section_code', ''),
             data.get('credit_control_area', ''),
             data.get('profit_center', ''),
-            data.get('tax_code', ''),
+            data.get('igst_tax_code', ''),
+            data.get('cgst_tax_code', ''),
             data.get('currency', 'INR'),
             data.get('tds_gl', ''),
             data.get('tcs_gl', ''),
@@ -413,10 +415,10 @@ def save_sap_config():
              company_code, default_payment_term, payment_term,
              plant_code, business_place, section_code,
              credit_control_area,
-             profit_center, tax_code, currency,
+             profit_center, igst_tax_code, cgst_tax_code, currency,
              tds_gl, tcs_gl, round_off_gl,
              is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
             data.get('token_url', ''),
@@ -430,7 +432,8 @@ def save_sap_config():
             data.get('section_code', ''),
             data.get('credit_control_area', ''),
             data.get('profit_center', ''),
-            data.get('tax_code', ''),
+            data.get('igst_tax_code', ''),
+            data.get('cgst_tax_code', ''),
             data.get('currency', 'INR'),
             data.get('tds_gl', ''),
             data.get('tcs_gl', ''),

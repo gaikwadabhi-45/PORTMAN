@@ -240,12 +240,10 @@ def _build_items(lines, reference, amount_field='line_amount',
         tds_gl       = (svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or '') if tds_applicable else ''
         tcs_gl       = (svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or '') if tcs_applicable else ''
 
-        tax_code = (
-            line.get('sap_tax_code')
-            or svc.get('sap_tax_code')
-            or config_defaults.get('tax_code')
-            or ''
-        )
+        if igst > 0:
+            tax_code = config_defaults.get('igst_tax_code') or config_defaults.get('tax_code') or ''
+        else:
+            tax_code = config_defaults.get('cgst_tax_code') or config_defaults.get('tax_code') or ''
         profit_center = (
             line.get('profit_center')
             or svc.get('sap_profit_center')

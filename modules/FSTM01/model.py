@@ -73,7 +73,7 @@ def save_service_type(data):
             UPDATE finance_service_types
             SET service_name=%s, service_category=%s, gl_code=%s, sac_code=%s,
                 gst_rate_id=%s, uom=%s, is_billable=%s, is_active=%s,
-                sap_gl_account=%s, sap_tax_code=%s, sap_profit_center=%s, sap_cost_center=%s,
+                sap_gl_account=%s, sap_profit_center=%s, sap_cost_center=%s,
                 sap_igst_gl=%s, sap_cgst_gl=%s, sap_sgst_gl=%s, service_sale_flag=%s,
                 sap_tds_gl=%s, sap_tcs_gl=%s,
                 is_tds=%s, tds_percent=%s, is_tcs=%s, tcs_percent=%s, is_triplicate=%s
@@ -88,7 +88,6 @@ def save_service_type(data):
             data.get('is_billable', 1),
             data.get('is_active', 1),
             data.get('sap_gl_account'),
-            data.get('sap_tax_code'),
             data.get('sap_profit_center'),
             data.get('sap_cost_center'),
             data.get('sap_igst_gl') or None,
@@ -110,11 +109,11 @@ def save_service_type(data):
             INSERT INTO finance_service_types
             (service_code, service_name, service_category, gl_code, sac_code,
              gst_rate_id, uom, is_billable, is_active,
-             sap_gl_account, sap_tax_code, sap_profit_center, sap_cost_center,
+             sap_gl_account, sap_profit_center, sap_cost_center,
              sap_igst_gl, sap_cgst_gl, sap_sgst_gl, service_sale_flag,
              sap_tds_gl, sap_tcs_gl,
              is_tds, tds_percent, is_tcs, tcs_percent, is_triplicate, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', [
             data.get('service_code'),
@@ -127,7 +126,6 @@ def save_service_type(data):
             data.get('is_billable', 1),
             data.get('is_active', 1),
             data.get('sap_gl_account'),
-            data.get('sap_tax_code'),
             data.get('sap_profit_center'),
             data.get('sap_cost_center'),
             data.get('sap_igst_gl') or None,

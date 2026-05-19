@@ -221,7 +221,11 @@ def push_invoice_to_staging(invoice_id, pushed_by=None):
     for idx, line in enumerate(lines):
         gl_account   = line.get('sap_gl_account') or line.get('gl_code') or ''
         profit_center = line.get('sap_profit_center') or line.get('profit_center') or cfg.get('profit_center') or ''
-        tax_code      = line.get('sap_tax_code') or line.get('fst_tax_code') or cfg.get('tax_code') or ''
+        igst_amt_peek = float(line.get('igst_amount') or 0)
+        if igst_amt_peek > 0:
+            tax_code = cfg.get('igst_tax_code') or cfg.get('tax_code') or ''
+        else:
+            tax_code = cfg.get('cgst_tax_code') or cfg.get('tax_code') or ''
         igst_gl       = line.get('sap_igst_gl') or ''
         cgst_gl       = line.get('sap_cgst_gl') or ''
         sgst_gl       = line.get('sap_sgst_gl') or ''

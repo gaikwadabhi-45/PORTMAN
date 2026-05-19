@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from werkzeug.security import check_password_hash
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_db, get_cursor
@@ -86,10 +87,10 @@ def delete_data():
     # Verify the current user's password before allowing deletion
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT id FROM users WHERE username = %s AND password = %s', (username, password))
+    cur.execute('SELECT id, password FROM users WHERE username = %s', (username,))
     user = cur.fetchone()
     conn.close()
-    if not user:
+    if not user or not check_password_hash(user['password'], password):
         return jsonify({'error': 'Incorrect password. Deletion not authorised.'}), 403
 
     model.soft_delete_lines(ids, username=username)

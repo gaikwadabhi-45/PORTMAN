@@ -254,7 +254,8 @@
                     <label>Profit Center:<br><input type="text" id="sapProfitCenter" placeholder="e.g., 5130000" style="width:100%;padding:6px;"></label>
                 </div>
                 <div class="config-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-                    <label>Tax Code:<br><input type="text" id="sapTaxCode" placeholder="e.g., V1" maxlength="2" style="width:100%;padding:6px;"></label>
+                    <label>IGST Tax Code:<br><input type="text" id="sapIgstTaxCode" placeholder="e.g., I1" maxlength="2" style="width:100%;padding:6px;" title="Used when IGST applies (inter-state)"></label>
+                    <label>CGST/SGST Tax Code:<br><input type="text" id="sapCgstTaxCode" placeholder="e.g., C1" maxlength="2" style="width:100%;padding:6px;" title="Used when CGST+SGST applies (intra-state)"></label>
                     <label>Currency:<br><input type="text" id="sapCurrency" placeholder="INR" value="INR" style="width:100%;padding:6px;"></label>
                     <label>Active:<br>
                         <select id="sapIsActive" style="width:100%;padding:6px;">
@@ -1207,7 +1208,8 @@ function _sapFormData() {
         section_code: document.getElementById('sapSectionCode').value.trim(),
         credit_control_area: document.getElementById('sapCreditControlArea').value.trim(),
         profit_center: document.getElementById('sapProfitCenter').value.trim(),
-        tax_code: document.getElementById('sapTaxCode').value.trim(),
+        igst_tax_code: document.getElementById('sapIgstTaxCode').value.trim(),
+        cgst_tax_code: document.getElementById('sapCgstTaxCode').value.trim(),
         currency: document.getElementById('sapCurrency').value.trim() || 'INR',
         is_active: document.getElementById('sapIsActive').value,
         tds_gl: document.getElementById('sapTdsGl').value.trim(),
@@ -1231,7 +1233,8 @@ async function loadSapConfig() {
     document.getElementById('sapSectionCode').value = cfg.section_code || '';
     document.getElementById('sapCreditControlArea').value = cfg.credit_control_area || '';
     document.getElementById('sapProfitCenter').value = cfg.profit_center || '';
-    document.getElementById('sapTaxCode').value = cfg.tax_code || '';
+    document.getElementById('sapIgstTaxCode').value = cfg.igst_tax_code || '';
+    document.getElementById('sapCgstTaxCode').value = cfg.cgst_tax_code || '';
     document.getElementById('sapCurrency').value = cfg.currency || 'INR';
     document.getElementById('sapIsActive').value = cfg.is_active ? '1' : '0';
     document.getElementById('sapTdsGl').value = cfg.tds_gl || '';

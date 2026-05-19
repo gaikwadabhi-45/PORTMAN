@@ -1136,7 +1136,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
                 'Reference':        reference[:16],
                 'GL_account':       (svc.get('sap_gl_account') or l.get('gl_code') or '')[:10],
                 'Amount':           f'{float(l.get("line_amount") or 0):.2f}',
-                'Tax_Code':         l.get('sap_tax_code') or svc.get('sap_tax_code') or '',
+                'Tax_Code':         '',
                 'Cost_Center':      l.get('cost_center') or svc.get('sap_cost_center') or '',
                 'Plant':            company,
                 'Text':             (l.get('service_name') or '')[:25],
