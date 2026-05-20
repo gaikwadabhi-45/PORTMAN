@@ -343,8 +343,7 @@
 {% set reason_map = {
     'rate_revision': 'Rate revision against agreement',
     'cancellation':  'Full invoice cancellation',
-    'eu_deletion':   'EU line deletion — credit for removed cargo',
-    'manual':        'Manual adjustment'
+    'manual':        'Credit note against invoice'
 } %}
 
 {# ── MACRO: one full copy ── #}
@@ -414,6 +413,16 @@
             </tr>
         </table>
     </div>
+
+    {% if header.doc_type == 'CN' and (header.original_invoice_number or header.original_invoice_number_display) %}
+    <div style="margin: 4px 0 6px 0; padding: 6px 10px; border: 1px solid #b7950b; background: #fef9e7; font-size: 9.5px; font-weight: 700; color: #7d6608; display: flex; justify-content: space-between; align-items: center;">
+        <span>Reference Invoice: <span style="font-size:11px;color:#000;">{{ header.original_invoice_number or header.original_invoice_number_display }}</span></span>
+        {% if header.original_invoice_date %}
+        <span>Invoice Date: <span style="font-size:10px;color:#000;font-weight:600;">{{ header.original_invoice_date[8:10] ~ '-' ~ header.original_invoice_date[5:7] ~ '-' ~ header.original_invoice_date[0:4] }}</span></span>
+        {% endif %}
+        <span style="font-size:8px;font-weight:600;color:#7d6608;">CN issued under Section 34, CGST Act 2017</span>
+    </div>
+    {% endif %}
 
     <!-- 5. Billed To / Issued By -->
     <div class="parties-row">

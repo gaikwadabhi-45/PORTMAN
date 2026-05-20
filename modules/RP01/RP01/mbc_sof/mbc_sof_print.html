@@ -14,7 +14,6 @@
             font-size: 11px;
             color: #222;
         }
-
         .screen-toolbar {
             max-width: 210mm;
             margin: 0 auto 12px;
@@ -31,16 +30,9 @@
             cursor: pointer;
             transition: background 0.15s;
         }
-        .btn-print {
-            background: #1a73e8;
-            color: #fff;
-        }
+        .btn-print { background: #1a73e8; color: #fff; }
         .btn-print:hover { background: #1558b0; }
-        .btn-back {
-            background: #f0f2f5;
-            color: #333;
-            border: 1px solid #bbb;
-        }
+        .btn-back  { background: #f0f2f5; color: #333; border: 1px solid #bbb; }
         .btn-back:hover { background: #e2e6ea; border-color: #999; }
 
         /* ── A4 page ─────────────────────────────────────────────────── */
@@ -49,7 +41,7 @@
             min-height: 297mm;
             margin: 0 auto;
             background: #fff;
-            padding: 14mm 14mm 14mm 14mm;
+            padding: 6mm 10mm 6mm 10mm;
             box-sizing: border-box;
             box-shadow: 0 4px 20px rgba(0,0,0,0.18);
         }
@@ -57,190 +49,367 @@
         /* ── Header ─────────────────────────────────────────────────── */
         .sof-header {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
             margin-bottom: 10px;
-            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #333;
         }
-        .sof-header .top-logo {
-            height: 60px;
-            object-fit: contain;
+        .sof-header .logo { height: 52px; object-fit: contain; }
+        .sof-header-center { text-align: center; flex: 1; }
+        .sof-header-center .company-name {
+            font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+            color: #1a3a6a;
         }
-        .sof-title-block {
-            text-align: center;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
-        .sof-title-block .top-logo {
-            height: 60px;
-            object-fit: contain;
-            margin-bottom: 4px;
-        }
-        .sof-mbc-name {
-            font-size: 16px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            margin-bottom: 2px;
-        }
-        .sof-doc-title {
-            font-size: 14px;
-            font-weight: 700;
+        .sof-header-center .doc-title {
+            font-size: 13px; font-weight: 700;
             text-decoration: underline;
             letter-spacing: 2px;
             text-transform: uppercase;
+            margin-top: 2px;
+        }
+        .sof-header-right {
+            text-align: right;
+            font-size: 10px;
+            white-space: nowrap;
+        }
+        .sof-header-right .sr-label { color: #555; font-weight: 600; }
+        .sof-header-right .sr-value { font-weight: 700; font-size: 13px; color: #1a3a6a; }
+
+        /* ── Vessel Info Block ─────────────────────────────────────── */
+        .vessel-info {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            font-size: 10px;
+            border: 1.5px solid #444;
+        }
+        .vessel-info td {
+            padding: 4px 8px;
+            border: 1px solid #999;
+            vertical-align: top;
+        }
+        .vessel-info .vi-label {
+            font-weight: 700;
+            color: #333;
+            width: 40%;
+            background: #f5f7fa;
+        }
+        .vessel-info .vi-value { color: #111; }
+        .vessel-info .section-banner {
+            background: #1a3a6a;
+            color: #fff;
+            font-weight: 700;
+            font-size: 10.5px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            padding: 5px 8px;
+            text-align: center;
         }
 
-        /* ── Main table ──────────────────────────────────────────────── */
+        /* ── Activity / Main table ─────────────────────────────────── */
         .sof-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 8px;
             font-size: 10px;
+            border: 1.5px solid #444;
+            margin-bottom: 8px;
         }
         .sof-table td, .sof-table th {
-            border: 1px solid #555;
+            border: 1px solid #999;
             padding: 4px 7px;
-            vertical-align: top;
+            vertical-align: middle;
         }
-        .banner-row td {
-            font-size: 9.5px;
-            font-weight: 600;
-            text-align: center;
-            padding: 6px 10px;
-            border-bottom: 1.5px solid #333;
-        }
-
-        /* Section header row */
-        .section-header td {
-            background: #f0f4fa;
+        .sof-table thead th {
+            background: #dde4f0;
             font-weight: 700;
             font-size: 10px;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            color: #1a3a6a;
-            border-top: 2px solid #aac;
-            padding: 5px 7px;
-        }
-
-        /* Row number column */
-        .col-num {
-            width: 28px;
             text-align: center;
-            font-weight: 700;
-            background: #f7f7f7;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: #1a3a6a;
+            border-bottom: 2px solid #444;
         }
-        /* Label column */
-        .col-label { width: 50%; }
-        /* Value column */
-        .col-value { width: 44%; }
+        .section-header td {
+            background: #1a3a6a;
+            color: #fff;
+            font-weight: 700;
+            font-size: 10px;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            padding: 5px 7px;
+            border-color: #1a3a6a;
+        }
+        .col-num    { width: 30px; text-align: center; background: #f7f7f7; font-weight: 700; }
+        .col-act    { width: 46%; }
+        .col-dt     { width: 28%; }
+        .col-rem    { width: 22%; color: #555; font-size: 9px; }
+        .alt-row td { background: #fafbfd; }
 
-        /* Footer */
+        /* ── Delays table ──────────────────────────────────────────── */
+        .delays-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            border: 1.5px solid #444;
+            margin-bottom: 8px;
+        }
+        .delays-table td, .delays-table th {
+            border: 1px solid #999;
+            padding: 4px 7px;
+            vertical-align: middle;
+        }
+        .delays-table thead th {
+            background: #dde4f0;
+            font-weight: 700;
+            font-size: 10px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: #1a3a6a;
+            border-bottom: 2px solid #444;
+        }
+        .delays-table .section-header td {
+            background: #1a3a6a;
+            color: #fff;
+            font-weight: 700;
+            font-size: 10px;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            padding: 5px 7px;
+            border-color: #1a3a6a;
+        }
+        .col-delay-desc  { width: 50%; }
+        .col-delay-dur   { width: 20%; text-align: center; }
+        .col-delay-resp  { width: 30%; }
+
+        /* ── Remarks block ─────────────────────────────────────────── */
+        .remarks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            border: 1.5px solid #444;
+            margin-bottom: 8px;
+        }
+        .remarks-table td {
+            border: 1px solid #999;
+            padding: 4px 8px;
+            vertical-align: top;
+        }
+        .remarks-table .rm-header {
+            background: #1a3a6a;
+            color: #fff;
+            font-weight: 700;
+            font-size: 10px;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            padding: 5px 8px;
+        }
+        .remarks-table .rm-body {
+            height: 12px;
+        }
+
+        /* ── Signature block ───────────────────────────────────────── */
+        .signature-block {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            border: 1.5px solid #444;
+            margin-bottom: 10px;
+        }
+        .signature-block td {
+            border: 1px solid #999;
+            padding: 6px 10px 4px 10px;
+            vertical-align: bottom;
+            width: 50%;
+            height: 70px;
+        }
+        .sig-line {
+            border-bottom: 1px solid #333;
+            margin-bottom: 4px;
+            height: 28px;
+        }
+        .sig-label {
+            font-weight: 700;
+            font-size: 10px;
+            color: #333;
+            text-align: center;
+        }
+
+        /* ── Footer ───────────────────────────────────────────────── */
         .sof-footer {
             text-align: center;
             font-style: italic;
-            font-size: 9.5px;
-            padding-top: 8px;
-            color: #444;
+            font-size: 9px;
+            color: #666;
+            padding-top: 4px;
         }
 
-        /* ── Print overrides ─────────────────────────────────────────── */
+        /* ── Print ────────────────────────────────────────────────── */
         @media print {
-            body {
-                background: #fff;
-                padding: 0;
-                margin: 0;
-            }
-            .no-print { display: none !important; }
-            .screen-toolbar { display: none !important; }
+            body { background: #fff; padding: 0; margin: 0; }
+            .no-print, .screen-toolbar { display: none !important; }
             .sof-page {
                 box-shadow: none;
                 width: 100%;
                 min-height: 0;
-                padding: 10mm 10mm 10mm 10mm;
+                padding: 8mm 10mm 10mm 10mm;
                 margin: 0;
             }
-            @page {
-                size: A4 portrait;
-                margin: 0;
-            }
+            @page { size: A4 portrait; margin: 0; }
         }
     </style>
 </head>
 <body>
 
-<!-- Screen toolbar (hidden at print) -->
+<!-- Screen toolbar -->
 <div class="screen-toolbar no-print">
     <button class="btn-toolbar btn-back" onclick="window.close()">&#10005; Close</button>
-    <button class="btn-toolbar btn-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+    <button class="btn-toolbar btn-print" onclick="window.print()">&#128424; Print / Save as PDF</button>
 </div>
 
-<!-- A4 page -->
 <div class="sof-page">
 
-    <!-- Header: logo + mbc name + title -->
-    <div class="sof-header">
-        <img class="top-logo" src="{{ url_for('static', filename='img/logo31.png') }}" alt="JSW Dharamtar Port Pvt. Ltd.">
-        <div class="sof-title-block">
-            <div class="sof-mbc-name">{{ mbc_name }}</div>
-            <div class="sof-doc-title">STATEMENT OF FACTS &mdash; MBC</div>
+    <!-- ── Header ── -->
+    <div class="sof-header" style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; border-bottom:2px solid #333; padding-bottom:10px;">
+
+        <img class="logo"
+             src="{{ url_for('static', filename='img/logo31.png') }}"
+             alt="JSW Dharamtar Port Pvt. Ltd."
+             style="height:70px; object-fit:contain; margin-bottom:8px;">
+
+        <div class="sof-header-center">
+            <div class="company-name" style="font-size:22px; font-weight:700; color:#000;"></div>
+            <div class="doc-title" style="font-size:18px; font-weight:700; letter-spacing:3px; margin-top:4px;">
+                STATEMENT OF FACTS
+            </div>
         </div>
     </div>
 
-    <!-- Main SOF table -->
-    <table class="sof-table">
-
-        <!-- Banner row -->
-        <tr class="banner-row">
-            <td colspan="3">{{ banner }}</td>
-        </tr>
-
-        {% set row_counter = namespace(value=0) %}
-
-        {% for section in sections %}
-        <!-- Section header -->
-        <tr class="section-header">
-            <td colspan="3">{{ section.title }}</td>
-        </tr>
-
-        {% set row_counter.value = 0 %}
-        {% for row in section.rows %}
-        {% set row_counter.value = row_counter.value + 1 %}
+    <!-- ── Vessel / Cargo Info ── -->
+    <table class="vessel-info">
         <tr>
-            <td class="col-num">{{ row_counter.value }}</td>
-            <td class="col-label">{{ row.label }}</td>
-            <td class="col-value">{{ row.value }}</td>
+            <td class="vi-label">Name of Vessel</td>
+            <td class="vi-value" colspan="3"><strong>{{ mbc_name or '—' }}</strong></td>
         </tr>
-        {% endfor %}
-
-        {% if not section.rows %}
         <tr>
-            <td class="col-num">&mdash;</td>
-            <td class="col-label" colspan="2" style="color:#999;font-style:italic;">No data recorded for this section.</td>
+            <td class="vi-label">Date</td>
+            <td class="vi-value" colspan="3">{{ doc_date_display or '—' }}</td>
         </tr>
-        {% endif %}
-
-        {% endfor %}
-
-        {% if not sections %}
         <tr>
-            <td colspan="3" style="text-align:center;padding:20px;color:#999;font-style:italic;">
-                No MBC data found.
-            </td>
+            <td class="vi-label">MBC Document No</td>
+            <td class="vi-value" colspan="3">{{ mbc_no or '—' }}</td>
         </tr>
-        {% endif %}
-
+        <tr>
+            <td class="vi-label">Type of Cargo</td>
+            <td class="vi-value" colspan="3">{{ cargo_name or '—' }}</td>
+        </tr>
+        <tr>
+            <td class="vi-label">Quantity as per BL ({{ uom }})</td>
+            <td class="vi-value" colspan="3">{{ bl_qty or '—' }}</td>
+        </tr>
+        <tr>
+            <td class="vi-label">Load Port</td>
+            <td class="vi-value" colspan="3">{{ load_port_name or '—' }}</td>
+        </tr>
+        <tr>
+            <td class="vi-label">Discharge Port</td>
+            <td class="vi-value" colspan="3">DHARAMTAR PORT</td>
+        </tr>
     </table>
 
-    <!-- Footer -->
-    <div class="sof-footer">
-        <em>This is a system generated report. No signature required.</em>
-    </div>
+    <!-- ── Activity Details ── -->
+    <table class="sof-table">
+        <tr class="section-header">
+            <td colspan="4">Activity Details</td>
+        </tr>
+        <thead>
+            <tr>
+                <th class="col-num">Sr. No.</th>
+                <th class="col-act">Activity</th>
+                <th class="col-dt">Date / Timings</th>
+                <th class="col-rem">Remark</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if activities %}
+                {% for act in activities %}
+                <tr{% if loop.index is odd %} class="alt-row"{% endif %}>
+                    <td class="col-num">{{ loop.index }}</td>
+                    <td class="col-act">{{ act.label }}</td>
+                    <td class="col-dt">{{ act.datetime }}</td>
+                    <td class="col-rem">{{ act.remark or '' }}</td>
+                </tr>
+                {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align:center;color:#999;font-style:italic;padding:16px;">
+                    No activity data recorded.
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <!-- ── Delays & Detentions ── -->
+    <table class="delays-table">
+        <tr class="section-header">
+            <td colspan="3">Delays &amp; Detentions</td>
+        </tr>
+        <thead>
+            <tr>
+                <th class="col-delay-desc">Description of Delay</th>
+                <th class="col-delay-dur">Duration (Hrs)</th>
+                <th class="col-delay-resp">Responsibility</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in delays %}
+            <tr{% if loop.index is odd %} class="alt-row"{% endif %}>
+                <td class="col-delay-desc">{{ d.description }}</td>
+                <td class="col-delay-dur">{{ d.duration or '' }}</td>
+                <td class="col-delay-resp">{{ d.responsibility }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- ── Remarks ── -->
+    <table class="remarks-table">
+        <tr>
+            <td class="rm-header" colspan="2">Vessel Master's Remarks</td>
+        </tr>
+        <tr>
+            <td class="rm-body" colspan="2"></td>
+        </tr>
+    </table>
+
+    <table class="remarks-table">
+        <tr>
+            <td class="rm-header" colspan="2">Port Remarks</td>
+        </tr>
+        <tr>
+            <td class="rm-body" colspan="2"></td>
+        </tr>
+    </table>
+
+    <!-- ── Signatures ── -->
+    <table class="signature-block">
+        <tr>
+            <td>
+                <div class="sig-line"></div>
+                <div class="sig-label">Port Representative</div>
+            </td>
+            <td style="border-left: 2px solid #777;">
+                <div class="sig-line"></div>
+                <div class="sig-label">Vessel Master</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- ── Footer ── -->
+    <div class="sof-footer"></div>
 
 </div><!-- /sof-page -->
-
 </body>
 </html>

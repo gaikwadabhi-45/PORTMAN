@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from functools import wraps
 from database import get_db, get_cursor, get_module_config, save_module_config
+from werkzeug.security import generate_password_hash
 import json
 import os
 import re
@@ -68,7 +69,7 @@ def add_user():
     cur = get_cursor(conn)
     try:
         cur.execute('INSERT INTO users (username, password, email, is_admin) VALUES (%s, %s, %s, %s) RETURNING id',
-                    [username, password, email, is_admin])
+                    [username, generate_password_hash(password), email, is_admin])
         user_id = cur.fetchone()['id']
         conn.commit()
         conn.close()
@@ -88,7 +89,7 @@ def reset_password():
         return jsonify({'error': 'User ID and new password required'}), 400
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('UPDATE users SET password = %s WHERE id = %s', [new_password, user_id])
+    cur.execute('UPDATE users SET password = %s WHERE id = %s', [generate_password_hash(new_password), user_id])
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -381,7 +382,7 @@ def save_sap_config():
             company_code=%s, default_payment_term=%s, payment_term=%s,
             plant_code=%s, business_place=%s, section_code=%s,
             credit_control_area=%s,
-            profit_center=%s, tax_code=%s, currency=%s,
+            profit_center=%s, igst_tax_code=%s, cgst_tax_code=%s, currency=%s,
             tds_gl=%s, tcs_gl=%s, round_off_gl=%s,
             is_active=%s, updated_by=%s, updated_date=%s
             WHERE id=%s''', [
@@ -398,7 +399,8 @@ def save_sap_config():
             data.get('section_code', ''),
             data.get('credit_control_area', ''),
             data.get('profit_center', ''),
-            data.get('tax_code', ''),
+            data.get('igst_tax_code', ''),
+            data.get('cgst_tax_code', ''),
             data.get('currency', 'INR'),
             data.get('tds_gl', ''),
             data.get('tcs_gl', ''),
@@ -413,10 +415,10 @@ def save_sap_config():
              company_code, default_payment_term, payment_term,
              plant_code, business_place, section_code,
              credit_control_area,
-             profit_center, tax_code, currency,
+             profit_center, igst_tax_code, cgst_tax_code, currency,
              tds_gl, tcs_gl, round_off_gl,
              is_active, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''', [
             data.get('environment', 'production'),
             data.get('base_url', ''),
             data.get('token_url', ''),
@@ -430,7 +432,8 @@ def save_sap_config():
             data.get('section_code', ''),
             data.get('credit_control_area', ''),
             data.get('profit_center', ''),
-            data.get('tax_code', ''),
+            data.get('igst_tax_code', ''),
+            data.get('cgst_tax_code', ''),
             data.get('currency', 'INR'),
             data.get('tds_gl', ''),
             data.get('tcs_gl', ''),
@@ -804,3 +807,155 @@ def reset_mbc_approval():
     conn.commit()
     conn.close()
     return jsonify({'success': True, 'docs_removed': doc_count})
+
+
+# ── SAP Inbound Tokens ────────────────────────────────────────────────────────
+
+import sap_inbound  # noqa: E402
+
+@bp.route('/api/sap-tokens')
+@admin_required
+def list_sap_tokens():
+    return jsonify(sap_inbound.list_tokens())
+
+
+@bp.route('/api/sap-tokens/generate', methods=['POST'])
+@admin_required
+def generate_sap_token():
+    data = request.json or {}
+    label = (data.get('label') or '').strip()
+    if not label:
+        return jsonify({'error': 'Label required'}), 400
+    try:
+        result = sap_inbound.generate_token(label, created_by=session.get('username'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    return jsonify({'success': True, **result})
+
+
+@bp.route('/api/sap-tokens/revoke', methods=['POST'])
+@admin_required
+def revoke_sap_token():
+    token_id = (request.json or {}).get('id')
+    if not token_id:
+        return jsonify({'error': 'id required'}), 400
+    sap_inbound.revoke_token(token_id, revoked_by=session.get('username'))
+    return jsonify({'success': True})
+
+
+@bp.route('/api/sap-tokens/reactivate', methods=['POST'])
+@admin_required
+def reactivate_sap_token():
+    token_id = (request.json or {}).get('id')
+    if not token_id:
+        return jsonify({'error': 'id required'}), 400
+    sap_inbound.reactivate_token(token_id)
+    return jsonify({'success': True})
+
+
+# ── SAP Playground ────────────────────────────────────────────────────────────
+
+@bp.route('/api/sap-playground/docs')
+@admin_required
+def playground_docs():
+    """List recent invoices + FDCN docs for the playground dropdown."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''SELECT id, invoice_number AS doc_number, 'Invoice' AS doc_kind,
+                          customer_name, total_amount, invoice_status AS status,
+                          invoice_date AS doc_date
+                   FROM invoice_header ORDER BY id DESC LIMIT 100''')
+    invs = [dict(r) for r in cur.fetchall()]
+    cur.execute('''SELECT id, doc_number, doc_type AS doc_kind,
+                          customer_name, total_amount, doc_status AS status,
+                          doc_date FROM fdcn_header ORDER BY id DESC LIMIT 100''')
+    fdcns = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return jsonify({'invoices': invs, 'fdcns': fdcns})
+
+
+@bp.route('/api/sap-playground/build-payload', methods=['POST'])
+@admin_required
+def playground_build_payload():
+    """Build outbound payload for a chosen doc (no SAP send)."""
+    data = request.json or {}
+    kind = (data.get('kind') or '').lower()
+    doc_id = data.get('id')
+    variant = (data.get('variant') or 'post').lower()  # 'post' or 'reversal'
+    if not doc_id:
+        return jsonify({'error': 'id required'}), 400
+
+    import sap_builder
+    try:
+        if kind == 'invoice':
+            from modules.FIN01 import model as fin_model
+            inv = fin_model.get_invoice_by_id(doc_id)
+            if not inv:
+                return jsonify({'error': 'Invoice not found'}), 404
+            lines = fin_model.get_invoice_lines(doc_id)
+            if variant == 'reversal':
+                payload = sap_builder.build_invoice_reversal_payload(inv, lines)
+            else:
+                payload = sap_builder.build_invoice_payload(inv, lines)
+        elif kind in ('fdcn', 'dn', 'cn'):
+            from modules.FDCN01 import model as fdcn_model
+            header = fdcn_model.get_fdcn_by_id(doc_id)
+            if not header:
+                return jsonify({'error': 'FDCN doc not found'}), 404
+            lines = fdcn_model.get_fdcn_lines(doc_id)
+            payload = sap_builder.build_fdcn_payload(header, lines)
+        else:
+            return jsonify({'error': 'Unknown kind'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    return jsonify({'payload': payload})
+
+
+@bp.route('/api/sap-playground/send', methods=['POST'])
+@admin_required
+def playground_send():
+    """POST a (possibly user-edited) payload to SAP and return raw result."""
+    data = request.json or {}
+    payload = data.get('payload')
+    reference = (data.get('reference') or 'PLAYGROUND').strip()
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'payload (object) required'}), 400
+
+    import sap_client
+    result = sap_client.post_invoice_to_sap(
+        payload, 'Playground', 0, reference, session.get('username')
+    )
+    return jsonify(result)
+
+
+@bp.route('/api/sap-playground/inbound-logs')
+@admin_required
+def playground_inbound_logs():
+    """List integration_logs rows where integration_type='SAP_INBOUND'."""
+    page = int(request.args.get('page', 1))
+    size = int(request.args.get('size', 50))
+    ref = (request.args.get('ref') or '').strip()
+    status_filter = (request.args.get('status') or '').strip()
+
+    where = ["integration_type = 'SAP_INBOUND'"]
+    params = []
+    if ref:
+        where.append("(request_body LIKE %s OR source_reference LIKE %s)")
+        params.extend([f'%{ref}%', f'%{ref}%'])
+    if status_filter:
+        where.append('status = %s')
+        params.append(status_filter)
+    where_sql = 'WHERE ' + ' AND '.join(where)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute(f'SELECT COUNT(*) AS cnt FROM integration_logs {where_sql}', params)
+    total = cur.fetchone()['cnt']
+    cur.execute(f'''SELECT id, source_reference AS token_label, request_body, response_body,
+                           response_status_code, status, error_message, created_by, created_date
+                    FROM integration_logs {where_sql}
+                    ORDER BY id DESC LIMIT %s OFFSET %s''',
+                params + [size, (page - 1) * size])
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return jsonify({'data': rows, 'total': total, 'last_page': (total + size - 1) // size})

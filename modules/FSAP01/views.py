@@ -109,47 +109,8 @@ def staging_list():
 
 
 # ── SAP adapter inbound callback ──────────────────────────────────────────────
-
-@bp.route('/api/sap/callback', methods=['POST'])
-def sap_callback():
-    """
-    Inbound endpoint called by the SAP adapter after it processes staging rows.
-
-    Matched by reference_text (= invoice_number, up to 16 chars).
-    Updates invoice_sap_staging rows and invoice_header accordingly.
-
-    No session auth — secured by a static API key passed in the
-    X-SAP-Api-Key header (configured in sap_api_config.callback_api_key).
-
-    Expected JSON body:
-        {
-          "reference_text":      "INV/2025/0042",
-          "processing_status":   "Y",          -- Y | E | R
-          "sap_document_number": "1900000123",
-          "fiscal_year":         "2025",
-          "fiscal_period":       "01",
-          "sap_message":         "",
-          "irn_number":          "abc...def",
-          "ack_number":          "1234567890",
-          "irn_date":            "2025-04-14",
-          "qr_code":             "..."
-        }
-    """
-    # ── API-key guard ─────────────────────────────────────────────────────────
-    from database import get_db, get_cursor
-    conn = get_db()
-    cur  = get_cursor(conn)
-    cur.execute("SELECT callback_api_key FROM sap_api_config WHERE is_active = 1 LIMIT 1")
-    cfg_row = cur.fetchone()
-    conn.close()
-    expected_key = (cfg_row['callback_api_key'] if cfg_row else None) or ''
-
-    if expected_key:
-        provided_key = request.headers.get('X-SAP-Api-Key', '')
-        if provided_key != expected_key:
-            return jsonify({'ok': False, 'error': 'Unauthorized'}), 401
-
-    payload = request.get_json(force=True, silent=True) or {}
-    result  = model.sap_callback(payload)
-    status_code = 200 if result.get('ok') else 400
-    return jsonify(result), status_code
+# Note: the live /api/sap/callback handler now lives in sap_inbound.py and is
+# registered from app.py. It uses Bearer token auth + the `Record[]` schema
+# documented in docs/SAP_Callback_API.md. The legacy reference_text-based
+# handler that used to live here was removed to stop it from shadowing the
+# new endpoint at the same URL.

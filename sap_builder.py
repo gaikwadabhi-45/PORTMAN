@@ -11,16 +11,16 @@ Header fields (PORTBIRD spec):
   Invoice_date           DD.MM.YYYY
   Posting_Date           DD.MM.YYYY (= Invoice_date)
   Reference              16 char — PMS doc number; for reversals: original SAP Document_Number
-  Document_type          INV / CRN / DN (mapped from doc_type)
+  Document_type          DR for Invoice / Debit Note, DG for Credit Note
   Customer_Code          10 char
-  Invoice_Amount         13 curr (taxable + GST - TDS + TCS, always positive)
+  Invoice_Amount         13 curr (taxable + GST + TDS - TCS + Round_off, always positive)
   Business_place
   Section_code
   Text                   short narration (25 char)
   Document_Header_Text   25 char
   Payment_Term           4 char
   Credit_Control_Area    from sap_api_config.credit_control_area
-  Cancellation_Flag      'F' for reversals, blank otherwise
+  Cancellation_Flag      'X' for reversals, blank otherwise
   Nature_of_transaction  B2B / B2C
   Service_Sale           S=Service, A=Sale
   Currency               INR
@@ -50,11 +50,13 @@ Line Item fields (per spec — ITEM array; omitted entirely for reversals):
   TDS_amount          blank if zero
   TCS_GL
   TCS_amount          blank if zero
-  Round_off_GL
-  Round_off_Value     ±13 curr (only signed field; blank if zero)
+  Round_off_GL        from sap_api_config.round_off_gl (blank if zero)
+  Round_off_Value     header-level round_off applied to the first line item;
+                      positive when invoice gross is rounded up (SAP-validated)
 
-Reversal rule: For reversals, Portbird sends ONLY the header fields.
-No ITEM array is included in the payload.
+Reversal rule: For reversals, the payload is identical to the original
+invoice with Cancellation_Flag set to 'X' and Reference set to the
+original SAP Document_Number.
 """
 from datetime import datetime
 from database import get_db, get_cursor
@@ -187,7 +189,8 @@ def _service_sale_flag(lines, svc_map):
 # ---------------------------------------------------------------------------
 
 def _build_items(lines, reference, amount_field='line_amount',
-                 config_defaults=None, svc_map=None, doc_type='INV'):
+                 config_defaults=None, svc_map=None, doc_type='DR',
+                 round_off=0):
     """
     Build the ITEM list per PORTBIRD spec.
 
@@ -195,6 +198,8 @@ def _build_items(lines, reference, amount_field='line_amount',
     GL sources    — service master (sap_gl_account, sap_igst_gl, sap_cgst_gl,
                     sap_sgst_gl, sap_tds_gl, sap_tcs_gl) with SAP config fallback
                     for TDS/TCS/round-off.
+    round_off     — header-level round-off amount; applied to the FIRST item
+                    only (positive sign) so SAP-side debit/credit balances.
     """
     config_defaults = config_defaults or {}
 
@@ -212,7 +217,11 @@ def _build_items(lines, reference, amount_field='line_amount',
         svc_code = line.get('service_code') or ''
         svc      = svc_map.get(svc_code, {})
 
-        gl_account = svc.get('sap_gl_account') or svc_code
+        # GL_account: strictly from a real GL field. Never fall back to
+        # service_code (that's an HSN/SAC code, not a GL — would post wrong).
+        #   1. Service master's sap_gl_account (FSTM01) — authoritative
+        #   2. Line-level gl_code copied from the bill (snapshot at billing time)
+        gl_account = svc.get('sap_gl_account') or line.get('gl_code') or ''
         plant      = line.get('plant') or config_defaults.get('plant_code') or ''
 
         igst_gl = svc.get('sap_igst_gl') or ''
@@ -223,16 +232,31 @@ def _build_items(lines, reference, amount_field='line_amount',
         unit_price = line.get('unit_price') if line.get('unit_price') is not None else line.get('rate')
         quantity   = line.get('quantity')
 
-        tds_gl       = svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or ''
-        tcs_gl       = svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or ''
-        round_off_gl = config_defaults.get('round_off_gl') or ''
+        # TDS / TCS GL only when applicable on the line (or amount actually present).
+        tds_amount_val = float(line.get('tds_amount') or 0)
+        tcs_amount_val = float(line.get('tcs_amount') or 0)
+        tds_applicable = bool(int(line.get('tds_applicable') or 0)) or tds_amount_val > 0
+        tcs_applicable = bool(int(line.get('tcs_applicable') or 0)) or tcs_amount_val > 0
+        tds_gl       = (svc.get('sap_tds_gl') or config_defaults.get('tds_gl') or '') if tds_applicable else ''
+        tcs_gl       = (svc.get('sap_tcs_gl') or config_defaults.get('tcs_gl') or '') if tcs_applicable else ''
 
-        tax_code = (
-            line.get('sap_tax_code')
-            or svc.get('sap_tax_code')
-            or config_defaults.get('tax_code')
-            or ''
-        )
+        # Tax_Code is empty when the line has no GST (TC-09 spec).
+        # When GST applies, pick by transaction type:
+        #   IGST > 0   → inter-state → igst_tax_code
+        #   CGST/SGST  → intra-state → cgst_tax_code
+        if igst > 0:
+            tax_code = config_defaults.get('igst_tax_code') or config_defaults.get('tax_code') or ''
+        elif (cgst + sgst) > 0:
+            tax_code = config_defaults.get('cgst_tax_code') or config_defaults.get('tax_code') or ''
+        else:
+            tax_code = ''
+
+        # IGST_GL / CGST_GL / SGST_GL are all blank when no GST applies on the line.
+        # When ANY GST applies, all 3 GLs are sent together (per tested SAP payload).
+        any_gst = (igst + cgst + sgst) > 0
+        igst_gl_out = (igst_gl[:10] if igst_gl else '') if any_gst else ''
+        cgst_gl_out = (cgst_gl[:10] if cgst_gl else '') if any_gst else ''
+        sgst_gl_out = (sgst_gl[:10] if sgst_gl else '') if any_gst else ''
         profit_center = (
             line.get('profit_center')
             or svc.get('sap_profit_center')
@@ -244,11 +268,6 @@ def _build_items(lines, reference, amount_field='line_amount',
             or svc.get('sap_cost_center')
             or ''
         )
-
-        # Round-off sign: INV/DN (Debit-side doc) → negate; CRN → keep sign.
-        rounding = line.get('rounding_off')
-        if rounding and doc_type in ('INV', 'DN'):
-            rounding = -float(rounding)
 
         items.append({
             'Reference':        (reference or '')[:16],
@@ -263,9 +282,9 @@ def _build_items(lines, reference, amount_field='line_amount',
             'CGST_AMT':         _fmt_amount(cgst),
             'SGST_AMT':         _fmt_amount(sgst),
             'IGST_AMT':         _fmt_amount(igst),
-            'IGST_GL':          igst_gl[:10] if igst_gl else '',
-            'SGST_GL':          sgst_gl[:10] if sgst_gl else '',
-            'CGST_GL':          cgst_gl[:10] if cgst_gl else '',
+            'IGST_GL':          igst_gl_out,
+            'SGST_GL':          sgst_gl_out,
+            'CGST_GL':          cgst_gl_out,
             'UOM':              uom,
             'Unit_Price':       _fmt_amount_required(unit_price) if unit_price is not None else '',
             'Quantity':         f'{float(quantity):.3f}' if quantity is not None else '',
@@ -273,14 +292,24 @@ def _build_items(lines, reference, amount_field='line_amount',
             'TDS_amount':       _fmt_amount(line.get('tds_amount')),
             'TCS_GL':           tcs_gl,
             'TCS_amount':       _fmt_amount(line.get('tcs_amount')),
-            'Round_off_GL':     round_off_gl,
-            'Round_off_Value':  _fmt_amount(rounding),
+            'Round_off_GL':     '',
+            'Round_off_Value':  '',
         })
+
+    # Apply header-level round-off to the first item (positive sign, per SAP).
+    if items and float(round_off or 0):
+        items[0]['Round_off_GL']    = config_defaults.get('round_off_gl') or ''
+        items[0]['Round_off_Value'] = _fmt_amount(round_off)
+
     return items
 
 
 def _total_invoice_amount(header, lines, amount_field='line_amount'):
-    """Return net invoice value (taxable + GST - TDS + TCS)."""
+    """Return net invoice value (taxable + GST + TDS - TCS + Round_off).
+
+    `total_amount` in invoice headers stores taxable + GST only (verified in
+    FIN01/FDCN01 model layers), so TDS/TCS/round-off are added on top.
+    """
     total = float(header.get('total_amount') or 0)
     if not total:
         total  = sum(float(l.get(amount_field) or 0) for l in lines)
@@ -294,8 +323,9 @@ def _total_invoice_amount(header, lines, amount_field='line_amount'):
     tcs = float(header.get('tcs_amount') or 0)
     if not tcs:
         tcs = sum(float(l.get('tcs_amount') or 0) for l in lines)
+    round_off = float(header.get('round_off') or 0)
 
-    return total - tds + tcs
+    return total + tds - tcs + round_off
 
 
 # ---------------------------------------------------------------------------
@@ -369,14 +399,15 @@ def build_invoice_payload(invoice_header, invoice_lines):
         short_text=invoice_no,
         currency=invoice_header.get('currency_code'),
         invoice_credit='I',
-        document_type='INV',
+        document_type='DR',
         customer_gstin=invoice_header.get('customer_gstin'),
         service_sale=_service_sale_flag(invoice_lines, svc_map),
         invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
     )
     record['ITEM'] = _build_items(
         invoice_lines, invoice_no,
-        config_defaults=config, svc_map=svc_map, doc_type='INV',
+        config_defaults=config, svc_map=svc_map, doc_type='DR',
+        round_off=float(invoice_header.get('round_off') or 0),
     )
     return {'Record_Header': [record]}
 
@@ -402,9 +433,9 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     doc_number    = fdcn_header.get('doc_number') or ''
     doc_type      = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
 
-    # PORTBIRD Document_type: DN → 'DN', CN → 'CRN'
+    # PORTBIRD Document_type: DN → 'DR' (debit), CN → 'DG' (credit)
     # Invoice_Credit: DN → 'I' (adds to receivable), CN → 'C' (reduces receivable)
-    document_type  = 'DN' if doc_type == 'DN' else 'CRN'
+    document_type  = 'DR' if doc_type == 'DN' else 'DG'
     invoice_credit = 'I' if doc_type == 'DN' else 'C'
 
     # fdcn_lines store service_type_id (integer FK), not service_code (string).
@@ -440,18 +471,21 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     record['ITEM'] = _build_items(
         enriched_lines, doc_number,
         config_defaults=config, svc_map=svc_map, doc_type=doc_type,
+        round_off=float(fdcn_header.get('round_off') or 0),
     )
     return {'Record_Header': [record]}
 
 
 # ---------------------------------------------------------------------------
-# Invoice reversal builder  (Cancellation_Flag = 'F', no ITEM array)
+# Invoice reversal builder  (same as invoice with Cancellation_Flag = 'X')
 # ---------------------------------------------------------------------------
 
 def build_invoice_reversal_payload(invoice_header, invoice_lines):
     """
-    Per PORTBIRD spec: reversals send ONLY header fields — no ITEM array.
-    Reference is the original SAP Document_Number (not the PMS invoice number).
+    FB08 reversal payload (within 24 hours of posting): identical shape to
+    the original invoice payload, only Cancellation_Flag = 'X'. Reference
+    stays the PMS invoice_number — SAP looks up the original posted doc
+    by reference, not by SAP doc number.
     """
     config = get_active_config()
     if not config:
@@ -467,11 +501,7 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
     customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
     inv_date      = _fmt_date(invoice_header.get('invoice_date'))
 
-    original_ref = (
-        invoice_header.get('sap_document_number')
-        or invoice_header.get('invoice_number')
-        or ''
-    )
+    original_ref = invoice_header.get('invoice_number') or ''
 
     svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
     svc_map   = _get_service_gl_map(svc_codes)
@@ -486,11 +516,67 @@ def build_invoice_reversal_payload(invoice_header, invoice_lines):
         short_text=original_ref,
         currency=invoice_header.get('currency_code'),
         invoice_credit='I',
-        document_type='INV',
+        document_type='DR',
         customer_gstin=invoice_header.get('customer_gstin'),
         service_sale=_service_sale_flag(invoice_lines, svc_map),
         invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
     )
-    record['Cancellation_Flag'] = 'F'
-    # NOTE: no ITEM array for reversals per PORTBIRD spec
+    record['Cancellation_Flag'] = 'X'
+    record['ITEM'] = _build_items(
+        invoice_lines, original_ref,
+        config_defaults=config, svc_map=svc_map, doc_type='DR',
+        round_off=float(invoice_header.get('round_off') or 0),
+    )
+    return {'Record_Header': [record]}
+
+
+# ---------------------------------------------------------------------------
+# Invoice credit-note builder (post 24-hour cancellation, FB08 window expired)
+# ---------------------------------------------------------------------------
+
+def build_invoice_credit_note_payload(invoice_header, invoice_lines):
+    """
+    Post-24-hour cancellation payload — issued against the original invoice
+    when the FB08 reversal window has expired. Same shape as the original
+    invoice payload but with Invoice_Credit='C', Document_type='DG' and
+    Cancellation_Flag blank. Reference stays the original PMS invoice_number.
+    """
+    config = get_active_config()
+    if not config:
+        raise ValueError('No active SAP configuration found')
+
+    default_company = config.get('company_code', '5171')
+
+    cust_info = _get_customer_sap_info(
+        invoice_header.get('customer_type'),
+        invoice_header.get('customer_id'),
+    )
+    company       = cust_info.get('company_code') or default_company
+    customer_code = cust_info.get('sap_customer_code') or invoice_header.get('customer_gl_code') or ''
+    inv_date      = _fmt_date(invoice_header.get('invoice_date'))
+    invoice_no    = invoice_header.get('invoice_number') or ''
+
+    svc_codes = {l.get('service_code') for l in invoice_lines if l.get('service_code')}
+    svc_map   = _get_service_gl_map(svc_codes)
+
+    record = _build_header_base(
+        config=config,
+        customer_code=customer_code,
+        company=company,
+        inv_date=inv_date,
+        reference=invoice_no,
+        header_text=invoice_no,
+        short_text=invoice_no,
+        currency=invoice_header.get('currency_code'),
+        invoice_credit='C',
+        document_type='DG',
+        customer_gstin=invoice_header.get('customer_gstin'),
+        service_sale=_service_sale_flag(invoice_lines, svc_map),
+        invoice_amount=_total_invoice_amount(invoice_header, invoice_lines),
+    )
+    record['ITEM'] = _build_items(
+        invoice_lines, invoice_no,
+        config_defaults=config, svc_map=svc_map, doc_type='DG',
+        round_off=float(invoice_header.get('round_off') or 0),
+    )
     return {'Record_Header': [record]}

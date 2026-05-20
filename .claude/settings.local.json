@@ -51,7 +51,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git check-ignore:*)",
-      "Bash(git -C d:/PORTMAN ls-files)"
+      "Bash(git -C d:/PORTMAN ls-files)",
+      "mcp__codegraph__codegraph_files"
     ]
   }
 }

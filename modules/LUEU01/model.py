@@ -278,7 +278,13 @@ def get_mbc_options():
 
 
 def get_vcn_barges(vcn_id):
-    """Get barge trips for a VCN — excludes trips where handled qty >= discharge_quantity."""
+    """Get barge trips for a VCN — excludes trips where handled qty >= discharge_quantity.
+
+    Aggregates by (barge_name, trip_number) so duplicate LDUD rows (same barge + trip)
+    don't double-filter the dropdown. Sorted by data-entry order (earliest id first)
+    rather than trip number, which previously confused users when trips were entered
+    out of sequence.
+    """
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s', [vcn_id])
@@ -286,10 +292,14 @@ def get_vcn_barges(vcn_id):
     if ldud:
         ldud_id = ldud['id']
         cur.execute('''
-            SELECT barge_name, trip_number, COALESCE(discharge_quantity, 0) AS expected_qty
+            SELECT barge_name,
+                   trip_number,
+                   COALESCE(SUM(discharge_quantity), 0) AS expected_qty,
+                   MIN(id) AS first_id
             FROM ldud_barge_lines
             WHERE ldud_id = %s AND barge_name IS NOT NULL AND barge_name != ''
-            ORDER BY trip_number, barge_name
+            GROUP BY barge_name, trip_number
+            ORDER BY MIN(id) ASC
         ''', [ldud_id])
         trip_rows = cur.fetchall()
 
@@ -304,7 +314,6 @@ def get_vcn_barges(vcn_id):
         handled_map = {r['barge_name']: float(r['handled_qty'] or 0) for r in cur.fetchall()}
 
         conn.close()
-        seen = set()
         result = []
         for r in trip_rows:
             trip = r['trip_number'] or ''
@@ -313,9 +322,7 @@ def get_vcn_barges(vcn_id):
             handled = handled_map.get(display, 0)
             if expected > 0 and handled >= expected:
                 continue
-            if display not in seen:
-                seen.add(display)
-                result.append(display)
+            result.append(display)
         return result
     conn.close()
     return []

@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}DN/CN Entry - PORTMAN{% endblock %}
 
@@ -13,17 +13,20 @@
     .form-field.span2 { grid-column: span 2; }
     .form-field.span4 { grid-column: span 4; }
 
-    .inv-list { max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color, #ddd); border-radius: 4px; padding: 6px; }
+    .inv-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color, #ddd); border-radius: 4px; padding: 6px; }
     .inv-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--border-color, #f0f0f0); font-size: 11px; }
     .inv-item:last-child { border-bottom: none; }
     .inv-item label { font-size: 11px; cursor: pointer; margin: 0; text-transform: none; font-weight: normal; color: var(--text-color, #333); }
     .inv-item .inv-amt { margin-left: auto; font-weight: 600; color: var(--text-muted, #7f8c8d); }
+    .inv-item.has-cn { opacity: 0.5; }
+    .inv-item .cn-tag { color: #c0392b; font-size: 9px; font-weight: 700; }
 
     .lines-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
     .lines-table th { background: var(--primary-color, #2c3e50); color: white; padding: 6px 5px; text-align: left; font-size: 10px; text-transform: uppercase; font-weight: 600; }
     .lines-table td { padding: 4px 5px; border-bottom: 1px solid var(--border-color, #ecf0f1); }
     .lines-table .cb-cell { width: 25px; text-align: center; }
     .lines-table .inv-ref { font-size: 9px; color: var(--text-muted, #999); }
+    .lines-table input.cell-edit { width: 100%; padding: 3px 4px; font-size: 11px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; text-align: right; }
 
     .totals-bar { display: flex; justify-content: flex-end; gap: 20px; padding: 10px 15px; background: var(--card-bg, #f8f9fa); border: 1px solid var(--border-color, #ddd); border-radius: 4px; margin-top: 10px; font-size: 12px; font-weight: 600; }
     .totals-bar .total-item { text-align: right; }
@@ -44,6 +47,8 @@
 
     .rate-match { color: #27ae60; font-weight: 600; }
     .rate-no-match { color: #e74c3c; font-style: italic; font-size: 10px; }
+
+    .custom-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 6px 10px; background: #fef9e7; border: 1px solid #f9e79f; border-radius: 3px; margin: 8px 0; color: #7d6608; font-weight: 600; }
 </style>
 
 <div class="module-header">
@@ -66,15 +71,8 @@
         <div class="form-field">
             <label>Entry Type</label>
             <select id="entryType" onchange="onEntryTypeChange()">
-                <option value="rate_revision">Rate Revision</option>
-                <option value="manual">Manual Entry</option>
-            </select>
-        </div>
-        <div class="form-field" id="docTypeField" style="display:none">
-            <label>Document Type</label>
-            <select id="docTypeSel">
-                <option value="DN">Debit Note (DN)</option>
-                <option value="CN">Credit Note (CN)</option>
+                <option value="manual" selected>Credit Note (Manual)</option>
+                <option value="rate_revision">Rate Revision (DN/CN)</option>
             </select>
         </div>
         <div class="form-field">
@@ -126,8 +124,8 @@
     </div>
 </div>
 
-<!-- Agreement Section -->
-<div class="form-section" id="agreementSection">
+<!-- Agreement Section (rate revision only) -->
+<div class="form-section" id="agreementSection" style="display:none">
     <h3>Revised Agreement (New Rates)</h3>
     <div class="form-grid">
         <div class="form-field span2">
@@ -147,51 +145,35 @@
     </div>
 </div>
 
-<!-- Invoice Selection (Multi-select) -->
+<!-- Invoice Selection -->
 <div class="form-section" id="invoiceSection">
-    <h3>Select Invoices</h3>
-    <p style="font-size:11px;color:var(--text-muted,#7f8c8d);margin:0 0 8px 0;">
-        Select one or more invoices to include in this DN/CN. Lines will be loaded below.
+    <h3 id="invoiceSectionTitle">Select Invoice for Credit Note</h3>
+    <p id="invoiceSectionSubtitle" style="font-size:11px;color:var(--text-muted,#7f8c8d);margin:0 0 8px 0;">
+        Pick exactly one invoice. The credit note will mirror the full invoice amount; toggle <b>Custom CN</b> below to edit qty/rate per line (1% of cases).
     </p>
     <div id="invoiceList" class="inv-list">
         <div style="color:#999;font-size:11px;padding:10px;">Select a customer first</div>
     </div>
     <div style="margin-top:6px">
-        <button class="btn" style="background:#3498db;color:white;padding:4px 12px;font-size:11px;" onclick="loadSelectedInvoiceLines()">Load Lines from Selected Invoices</button>
+        <button class="btn" id="loadLinesBtn" style="background:#3498db;color:white;padding:4px 12px;font-size:11px;" onclick="loadSelectedInvoiceLines()">Load Invoice Lines</button>
     </div>
 </div>
 
 <!-- Lines Section -->
 <div class="form-section">
-    <h3 id="linesSectionTitle">Rate Revision Lines</h3>
+    <h3 id="linesSectionTitle">Credit Note Lines</h3>
     <p id="linesSectionSubtitle" style="font-size:11px;color:var(--text-muted,#7f8c8d);margin:0 0 8px 0;">
-        Revised rates are auto-filled from the selected agreement. Check lines to include.
+        Lines auto-loaded from selected invoice. Default: full reversal of invoice amount.
     </p>
+
+    <label class="custom-toggle" id="customToggleWrap" style="display:none">
+        <input type="checkbox" id="customCnToggle" onchange="onCustomToggle()"> Custom CN — edit quantity / rate per line
+    </label>
+
     <table class="lines-table">
-        <thead id="linesTableHead">
-            <tr>
-                <th class="cb-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                <th>Invoice</th>
-                <th>Service</th>
-                <th style="width:70px">Qty</th>
-                <th style="width:50px">UOM</th>
-                <th style="width:90px">Orig. Rate</th>
-                <th style="width:90px">Revised Rate</th>
-                <th style="width:90px">Difference</th>
-                <th style="width:100px">Amount</th>
-                <th style="width:60px">GST %</th>
-                <th style="width:80px">CGST</th>
-                <th style="width:80px">SGST</th>
-                <th style="width:80px">IGST</th>
-                <th style="width:100px">Line Total</th>
-            </tr>
-        </thead>
+        <thead id="linesTableHead"></thead>
         <tbody id="linesBody"></tbody>
     </table>
-
-    <div id="manualAddRow" style="display:none;margin-top:8px;">
-        <button class="btn" style="background:#27ae60;color:white;padding:4px 12px;font-size:11px;" onclick="addManualLine()">+ Add Line</button>
-    </div>
 
     <div id="directionNote" class="direction-note"></div>
 
@@ -221,8 +203,39 @@
     const MODULE = 'FDCN01';
     let customersList = [];
     let invoicesList = [];
-    let agreementRates = {};  // keyed by service_type_id
+    let agreementRates = {};
     let existingData = null;
+
+    const HEAD_RR = `<tr>
+        <th class="cb-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+        <th>Invoice</th>
+        <th>Service</th>
+        <th style="width:70px">Qty</th>
+        <th style="width:50px">UOM</th>
+        <th style="width:90px">Orig. Rate</th>
+        <th style="width:90px">Revised Rate</th>
+        <th style="width:90px">Difference</th>
+        <th style="width:100px">Amount</th>
+        <th style="width:60px">GST %</th>
+        <th style="width:80px">CGST</th>
+        <th style="width:80px">SGST</th>
+        <th style="width:80px">IGST</th>
+        <th style="width:100px">Line Total</th>
+    </tr>`;
+
+    const HEAD_CN = `<tr>
+        <th>Invoice</th>
+        <th>Service</th>
+        <th style="width:80px">Qty</th>
+        <th style="width:50px">UOM</th>
+        <th style="width:90px">Rate</th>
+        <th style="width:110px">Amount</th>
+        <th style="width:60px">GST %</th>
+        <th style="width:80px">CGST</th>
+        <th style="width:80px">SGST</th>
+        <th style="width:80px">IGST</th>
+        <th style="width:100px">Line Total</th>
+    </tr>`;
 
     function formatDateDMY(value) {
         if (!value) return '';
@@ -232,9 +245,12 @@
         return text;
     }
 
-    // --- Initialization ---
+    function esc(v) { return (v || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
     (async function init() {
         document.getElementById('docDate').value = new Date().toISOString().split('T')[0];
+        applyEntryTypeUi();
         const fdcnId = document.getElementById('fdcnId').value;
         if (fdcnId) {
             await loadExisting(fdcnId);
@@ -260,80 +276,60 @@
             document.getElementById('customerId').value = h.customer_id || '';
             document.getElementById('customerGstin').value = h.customer_gstin || '';
             document.getElementById('customerGlCode').value = h.customer_gl_code || '';
-            await loadInvoices(h.customer_type, h.customer_id);
-            await loadAgreements(h.customer_type, h.customer_id);
         }
 
-        // Render existing lines
-        if (h.creation_type === 'manual') {
-            document.getElementById('entryType').value = 'manual';
-            onEntryTypeChange();
-            document.getElementById('docTypeSel').value = h.doc_type || 'CN';
-            for (const line of data.lines) {
-                addManualLine();
-                const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
-                const lastRow = rows[rows.length - 1];
-                lastRow.querySelector('.ml-desc').value   = line.service_name || '';
-                lastRow.querySelector('.ml-sac').value    = line.sac_code || '';
-                lastRow.querySelector('.ml-gl').value     = line.gl_code || '';
-                lastRow.querySelector('.ml-amount').value = line.line_amount || 0;
-                // Reconstruct GST % from stored rates
-                const cgstR = parseFloat(line.cgst_rate || 0);
-                const sgstR = parseFloat(line.sgst_rate || 0);
-                const igstR = parseFloat(line.igst_rate || 0);
-                const totalGst = cgstR + sgstR + igstR;
-                lastRow.querySelector('.ml-gstpct').value = totalGst;
-                recalcManualLine(lastRow.id);
-            }
+        const isManual = (h.creation_type === 'manual' || h.creation_type === 'cancellation' || h.creation_type === 'eu_deletion');
+        document.getElementById('entryType').value = isManual ? 'manual' : 'rate_revision';
+        applyEntryTypeUi();
+
+        if (!isManual) {
+            await loadAgreements(h.customer_type, h.customer_id);
+            await loadInvoices(h.customer_type, h.customer_id, 'rate_revision');
+            renderRrLines(data.lines);
         } else {
-            renderExistingLines(data.lines);
+            await loadInvoices(h.customer_type, h.customer_id, 'manual');
+            // Pre-check the original invoice
+            if (h.original_invoice_id) {
+                const cb = document.querySelector(`.inv-cb[value="${h.original_invoice_id}"]`);
+                if (cb) cb.checked = true;
+            }
+            renderCnLines(data.lines, /*editable=*/false);
         }
         updateDocTypeIndicator();
     }
 
-    function renderExistingLines(lines) {
-        const tbody = document.getElementById('linesBody');
-        tbody.innerHTML = '';
-        if (!lines || !lines.length) return;
-
-        lines.forEach(line => {
-            const tr = document.createElement('tr');
-            tr.setAttribute('data-invoice-line-id', line.invoice_line_id || '');
-            tr.setAttribute('data-service-type-id', line.service_type_id || '');
-            tr.setAttribute('data-cgst-rate', line.cgst_rate || 0);
-            tr.setAttribute('data-sgst-rate', line.sgst_rate || 0);
-            tr.setAttribute('data-igst-rate', line.igst_rate || 0);
-            tr.setAttribute('data-gl-code', line.gl_code || '');
-            tr.setAttribute('data-sac-code', line.sac_code || '');
-
-            const qty = parseFloat(line.quantity || 0);
-            const origRate = parseFloat(line.original_rate || 0);
-            const revisedRate = parseFloat(line.revised_rate || 0);
-            const diff = parseFloat(line.rate_difference || 0);
-            const gstPct = parseFloat(line.cgst_rate||0) + parseFloat(line.sgst_rate||0) + parseFloat(line.igst_rate||0);
-
-            tr.innerHTML = `
-                <td class="cb-cell"><input type="checkbox" class="cb-select" checked></td>
-                <td class="inv-ref">${esc(line.invoice_number || '')}</td>
-                <td>${esc(line.service_name)}<br><small style="color:#999">${esc(line.service_description || '')}</small></td>
-                <td style="text-align:right">${qty.toFixed(2)}</td>
-                <td>${esc(line.uom || '')}</td>
-                <td style="text-align:right">${origRate.toFixed(2)}</td>
-                <td style="text-align:right" class="rate-match">${revisedRate.toFixed(2)}</td>
-                <td style="text-align:right;color:${diff > 0 ? '#2e86c1' : diff < 0 ? '#b7950b' : ''}" class="diff-cell">${diff.toFixed(2)}</td>
-                <td style="text-align:right" class="amt-cell">${parseFloat(line.line_amount||0).toFixed(2)}</td>
-                <td style="text-align:center" class="gst-cell">${gstPct}%</td>
-                <td style="text-align:right" class="cgst-cell">${parseFloat(line.cgst_amount||0).toFixed(2)}</td>
-                <td style="text-align:right" class="sgst-cell">${parseFloat(line.sgst_amount||0).toFixed(2)}</td>
-                <td style="text-align:right" class="igst-cell">${parseFloat(line.igst_amount||0).toFixed(2)}</td>
-                <td style="text-align:right;font-weight:600" class="total-cell">${parseFloat(line.line_total||0).toFixed(2)}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-        recalcTotals();
+    // ===== Entry type UI swap =====
+    function onEntryTypeChange() {
+        document.getElementById('linesBody').innerHTML = '';
+        document.getElementById('invoiceList').innerHTML = '<div style="color:#999;font-size:11px;padding:10px;">Select a customer first</div>';
+        document.getElementById('customCnToggle').checked = false;
+        applyEntryTypeUi();
+        resetTotals();
+        // Reload invoices for new mode
+        const ct = document.getElementById('customerType').value;
+        const cid = document.getElementById('customerId').value;
+        if (ct && cid) loadInvoices(ct, cid, document.getElementById('entryType').value);
     }
 
-    // --- Customer Type Change ---
+    function applyEntryTypeUi() {
+        const t = document.getElementById('entryType').value;
+        const isManual = (t === 'manual');
+        document.getElementById('agreementSection').style.display = isManual ? 'none' : '';
+        document.getElementById('invoiceSectionTitle').textContent = isManual
+            ? 'Select Invoice for Credit Note'
+            : 'Select Invoices for Rate Revision';
+        document.getElementById('invoiceSectionSubtitle').innerHTML = isManual
+            ? 'Pick exactly one invoice. The credit note will mirror the full invoice amount; toggle <b>Custom CN</b> below to edit qty/rate per line (1% of cases).'
+            : 'Select one or more invoices. Lines will be loaded with revised rates from the agreement.';
+        document.getElementById('linesSectionTitle').textContent = isManual ? 'Credit Note Lines' : 'Rate Revision Lines';
+        document.getElementById('linesSectionSubtitle').textContent = isManual
+            ? 'Lines auto-loaded from selected invoice. Default: full reversal of invoice amount.'
+            : 'Revised rates are auto-filled from the selected agreement. Check lines to include.';
+        document.getElementById('customToggleWrap').style.display = isManual ? '' : 'none';
+        document.getElementById('linesTableHead').innerHTML = isManual ? HEAD_CN : HEAD_RR;
+    }
+
+    // ===== Customer =====
     async function onCustomerTypeChange() {
         const ct = document.getElementById('customerType').value;
         document.getElementById('customerId').innerHTML = '<option value="">-- Loading... --</option>';
@@ -362,7 +358,6 @@
         });
     }
 
-    // --- Customer Change ---
     async function onCustomerChange() {
         const ct = document.getElementById('customerType').value;
         const cid = document.getElementById('customerId').value;
@@ -378,13 +373,14 @@
         }
 
         if (!ct || !cid) return;
+        const t = document.getElementById('entryType').value;
         await Promise.all([
-            loadInvoices(ct, cid),
-            loadAgreements(ct, cid)
+            loadInvoices(ct, cid, t),
+            (t === 'rate_revision' ? loadAgreements(ct, cid) : Promise.resolve())
         ]);
     }
 
-    async function loadInvoices(ct, cid) {
+    async function loadInvoices(ct, cid, mode) {
         const res = await fetch(`/api/module/${MODULE}/invoices/${ct}/${cid}`);
         invoicesList = await res.json();
         const container = document.getElementById('invoiceList');
@@ -393,18 +389,23 @@
             return;
         }
         container.innerHTML = '';
+        const inputType = mode === 'manual' ? 'radio' : 'checkbox';
         invoicesList.forEach(inv => {
             const div = document.createElement('div');
-            div.className = 'inv-item';
+            div.className = 'inv-item' + (inv.has_active_cn ? ' has-cn' : '');
             const billRef = esc(inv.bill_numbers || '-');
             const agreementRef = esc(inv.agreement_refs || '-');
+            const cnTag = inv.has_active_cn
+                ? `<span class="cn-tag">CN exists: ${esc(inv.has_active_cn)}</span><br>`
+                : '';
+            const disabled = (mode === 'manual' && inv.has_active_cn) ? 'disabled' : '';
             div.innerHTML = `
-                <input type="checkbox" class="inv-cb" value="${inv.id}" id="inv_${inv.id}" data-inv-num="${inv.invoice_number || ''}">
+                <input type="${inputType}" name="invSel" class="inv-cb" value="${inv.id}" id="inv_${inv.id}" data-inv-num="${inv.invoice_number || ''}" ${disabled}>
                 <label for="inv_${inv.id}">
                     ${esc(inv.invoice_number)} - ${formatDateDMY(inv.invoice_date || "")}
-                    <br><small style="color:#7f8c8d">Bill: ${billRef} | Agreement: ${agreementRef}</small>
+                    <br>${cnTag}<small style="color:#7f8c8d">Bill: ${billRef} | Agreement: ${agreementRef}</small>
                 </label>
-                <span class="inv-amt">â‚¹${parseFloat(inv.total_amount||0).toLocaleString('en-IN', {minimumFractionDigits:2})}</span>
+                <span class="inv-amt">&#x20B9;${parseFloat(inv.total_amount||0).toLocaleString('en-IN', {minimumFractionDigits:2})}</span>
             `;
             container.appendChild(div);
         });
@@ -418,14 +419,13 @@
         agreements.forEach(a => {
             const opt = document.createElement('option');
             opt.value = a.id;
-            opt.textContent = `${a.agreement_code} â€” ${a.agreement_name || ''} (${a.valid_from || '?'} to ${a.valid_to || '?'})`;
+            opt.textContent = `${a.agreement_code} - ${a.agreement_name || ''} (${a.valid_from || '?'} to ${a.valid_to || '?'})`;
             opt.dataset.validFrom = a.valid_from || '';
             opt.dataset.validTo = a.valid_to || '';
             sel.appendChild(opt);
         });
     }
 
-    // --- Agreement Change ---
     async function onAgreementChange() {
         const agId = document.getElementById('agreementId').value;
         const selOpt = document.getElementById('agreementId').selectedOptions[0];
@@ -438,27 +438,25 @@
         const res = await fetch(`/api/module/${MODULE}/agreement-rates/${agId}`);
         const rates = await res.json();
         rates.forEach(r => {
-            // For cargo handling services with cargo_name, index by service_type_id + cargo_name
             if (r.service_type_id && r.cargo_name) {
                 const cargoKey = r.service_type_id + ':cargo:' + r.cargo_name.trim().toLowerCase();
                 agreementRates[cargoKey] = r;
             }
-            // Generic index by service_type_id (last one wins for non-cargo or fallback)
             if (r.service_type_id && !r.cargo_name) {
                 agreementRates[r.service_type_id] = r;
             }
-            // Also index by service_name for fallback matching
             const svcName = (r.service_name || r.fst_service_name || '').trim().toLowerCase();
             if (svcName && !r.cargo_name) agreementRates['name:' + svcName] = r;
         });
         applyAgreementRates();
     }
 
-    // --- Load lines from selected invoices ---
+    // ===== Load lines =====
     async function loadSelectedInvoiceLines() {
-        const checkedBoxes = document.querySelectorAll('.inv-cb:checked');
-        const ids = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
-        if (!ids.length) { alert('Select at least one invoice'); return; }
+        const t = document.getElementById('entryType').value;
+        const checked = Array.from(document.querySelectorAll('.inv-cb:checked'));
+        if (!checked.length) { alert('Select at least one invoice'); return; }
+        const ids = checked.map(cb => parseInt(cb.value));
 
         const res = await fetch(`/api/module/${MODULE}/invoice-lines`, {
             method: 'POST',
@@ -466,16 +464,133 @@
             body: JSON.stringify({invoice_ids: ids})
         });
         const lines = await res.json();
-        renderInvoiceLines(lines);
-        applyAgreementRates();
+
+        if (t === 'manual') {
+            renderCnLines(lines, /*editable=*/false);
+        } else {
+            renderRrLines(lines);
+            applyAgreementRates();
+        }
     }
 
-    function renderInvoiceLines(lines) {
+    // ===== Manual CN render (full reversal) =====
+    function renderCnLines(lines, editable) {
         const tbody = document.getElementById('linesBody');
         tbody.innerHTML = '';
+        if (!lines || !lines.length) return;
+
+        lines.forEach(line => {
+            const qty = parseFloat(line.quantity || 0);
+            const rate = parseFloat(line.original_rate != null ? line.original_rate : line.rate || 0);
+            const cgstRate = parseFloat(line.cgst_rate || 0);
+            const sgstRate = parseFloat(line.sgst_rate || 0);
+            const igstRate = parseFloat(line.igst_rate || 0);
+            const gstPct = cgstRate + sgstRate + igstRate;
+
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-invoice-line-id', line.invoice_line_id || line.id || '');
+            tr.setAttribute('data-service-type-id', line.service_type_id || '');
+            tr.setAttribute('data-service-name', line.service_name || '');
+            tr.setAttribute('data-service-description', line.service_description || '');
+            tr.setAttribute('data-uom', line.uom || '');
+            tr.setAttribute('data-cgst-rate', cgstRate);
+            tr.setAttribute('data-sgst-rate', sgstRate);
+            tr.setAttribute('data-igst-rate', igstRate);
+            tr.setAttribute('data-gl-code', line.gl_code || '');
+            tr.setAttribute('data-sac-code', line.sac_code || '');
+            tr.setAttribute('data-orig-qty', qty);
+            tr.setAttribute('data-orig-rate', rate);
+
+            tr.innerHTML = `
+                <td class="inv-ref">${esc(line.invoice_number || '')}</td>
+                <td>${esc(line.service_name || '')}<br><small style="color:#999">${esc(line.service_description || '')}</small></td>
+                <td class="qty-cell" style="text-align:right"></td>
+                <td>${esc(line.uom || '')}</td>
+                <td class="rate-cell" style="text-align:right"></td>
+                <td class="amt-cell" style="text-align:right"></td>
+                <td style="text-align:center" class="gst-cell">${gstPct}%</td>
+                <td style="text-align:right" class="cgst-cell">0.00</td>
+                <td style="text-align:right" class="sgst-cell">0.00</td>
+                <td style="text-align:right" class="igst-cell">0.00</td>
+                <td style="text-align:right;font-weight:600" class="total-cell">0.00</td>
+            `;
+            tbody.appendChild(tr);
+            applyCnRow(tr, qty, rate, editable);
+        });
+        recalcCnTotals();
+    }
+
+    function applyCnRow(tr, qty, rate, editable) {
+        if (editable) {
+            tr.querySelector('.qty-cell').innerHTML  = `<input class="cell-edit qty-input" type="number" step="0.001" value="${qty}">`;
+            tr.querySelector('.rate-cell').innerHTML = `<input class="cell-edit rate-input" type="number" step="0.01" value="${rate}">`;
+            tr.querySelector('.qty-input').addEventListener('input', () => recalcCnRow(tr));
+            tr.querySelector('.rate-input').addEventListener('input', () => recalcCnRow(tr));
+        } else {
+            tr.querySelector('.qty-cell').textContent  = qty.toFixed(2);
+            tr.querySelector('.rate-cell').textContent = rate.toFixed(2);
+        }
+        recalcCnRow(tr);
+    }
+
+    function recalcCnRow(tr) {
+        const qty = parseFloat(tr.querySelector('.qty-input')?.value ?? tr.getAttribute('data-orig-qty')) || 0;
+        const rate = parseFloat(tr.querySelector('.rate-input')?.value ?? tr.getAttribute('data-orig-rate')) || 0;
+        const amt = round2(qty * rate);
+        const cgst = round2(amt * (parseFloat(tr.getAttribute('data-cgst-rate')) || 0) / 100);
+        const sgst = round2(amt * (parseFloat(tr.getAttribute('data-sgst-rate')) || 0) / 100);
+        const igst = round2(amt * (parseFloat(tr.getAttribute('data-igst-rate')) || 0) / 100);
+        const lt = round2(amt + cgst + sgst + igst);
+        tr.querySelector('.amt-cell').textContent  = amt.toFixed(2);
+        tr.querySelector('.cgst-cell').textContent = cgst.toFixed(2);
+        tr.querySelector('.sgst-cell').textContent = sgst.toFixed(2);
+        tr.querySelector('.igst-cell').textContent = igst.toFixed(2);
+        tr.querySelector('.total-cell').textContent = lt.toFixed(2);
+        recalcCnTotals();
+    }
+
+    function recalcCnTotals() {
+        let s=0, c=0, sg=0, i=0;
+        document.querySelectorAll('#linesBody tr').forEach(tr => {
+            s  += parseFloat(tr.querySelector('.amt-cell')?.textContent)  || 0;
+            c  += parseFloat(tr.querySelector('.cgst-cell')?.textContent) || 0;
+            sg += parseFloat(tr.querySelector('.sgst-cell')?.textContent) || 0;
+            i  += parseFloat(tr.querySelector('.igst-cell')?.textContent) || 0;
+        });
+        document.getElementById('totalSubtotal').textContent = s.toFixed(2);
+        document.getElementById('totalCGST').textContent = c.toFixed(2);
+        document.getElementById('totalSGST').textContent = sg.toFixed(2);
+        document.getElementById('totalIGST').textContent = i.toFixed(2);
+        document.getElementById('totalGrand').textContent = (s + c + sg + i).toFixed(2);
+        document.getElementById('directionNote').className = 'direction-note cn';
+        document.getElementById('directionNote').style.display = s > 0 ? 'block' : 'none';
+        document.getElementById('directionNote').textContent = 'CREDIT NOTE — refund to customer.';
+        updateDocTypeIndicator();
+    }
+
+    function onCustomToggle() {
+        const editable = document.getElementById('customCnToggle').checked;
+        document.querySelectorAll('#linesBody tr').forEach(tr => {
+            const qty = parseFloat(tr.getAttribute('data-orig-qty')) || 0;
+            const rate = parseFloat(tr.getAttribute('data-orig-rate')) || 0;
+            // preserve current values if already edited
+            const curQty = parseFloat(tr.querySelector('.qty-input')?.value);
+            const curRate = parseFloat(tr.querySelector('.rate-input')?.value);
+            const useQty = !isNaN(curQty) ? curQty : qty;
+            const useRate = !isNaN(curRate) ? curRate : rate;
+            applyCnRow(tr, useQty, useRate, editable);
+        });
+    }
+
+    // ===== Rate Revision render (DN/CN by rate diff) =====
+    function renderRrLines(lines) {
+        const tbody = document.getElementById('linesBody');
+        tbody.innerHTML = '';
+        if (!lines || !lines.length) return;
+
         lines.forEach(line => {
             const tr = document.createElement('tr');
-            tr.setAttribute('data-invoice-line-id', line.invoice_line_id);
+            tr.setAttribute('data-invoice-line-id', line.invoice_line_id || line.id || '');
             tr.setAttribute('data-service-type-id', line.service_type_id || '');
             tr.setAttribute('data-service-name', (line.service_name || '').trim());
             tr.setAttribute('data-cargo-name', (line.cargo_name || '').trim());
@@ -486,7 +601,9 @@
             tr.setAttribute('data-sac-code', line.sac_code || '');
 
             const qty = parseFloat(line.quantity || 0);
-            const origRate = parseFloat(line.original_rate || 0);
+            const origRate = parseFloat(line.original_rate != null ? line.original_rate : line.rate || 0);
+            const revisedRate = line.revised_rate != null ? parseFloat(line.revised_rate) : null;
+            const diff = line.rate_difference != null ? parseFloat(line.rate_difference) : 0;
             const gstPct = parseFloat(line.cgst_rate||0) + parseFloat(line.sgst_rate||0) + parseFloat(line.igst_rate||0);
             const alreadyBilled = line.existing_fdcn_doc;
 
@@ -494,39 +611,40 @@
                 tr.style.opacity = '0.5';
                 tr.setAttribute('data-already-billed', '1');
             }
+            if (revisedRate != null) tr.setAttribute('data-revised-rate', revisedRate);
 
             tr.innerHTML = `
-                <td class="cb-cell"><input type="checkbox" class="cb-select" ${alreadyBilled ? 'disabled' : ''}></td>
+                <td class="cb-cell"><input type="checkbox" class="cb-select" ${alreadyBilled ? 'disabled' : (revisedRate != null ? 'checked' : '')}></td>
                 <td class="inv-ref">${esc(line.invoice_number || '')}${alreadyBilled ? '<br><span style="color:#e74c3c;font-size:9px;font-weight:600;">DN/CN: ' + esc(alreadyBilled) + '</span>' : ''}</td>
                 <td>${esc(line.service_name)}<br><small style="color:#999">${esc(line.service_description || '')}</small></td>
                 <td style="text-align:right">${qty.toFixed(2)}</td>
                 <td>${esc(line.uom || '')}</td>
                 <td style="text-align:right">${origRate.toFixed(2)}</td>
-                <td style="text-align:right" class="revised-cell">${alreadyBilled ? '<span style="color:#999">--</span>' : '<span class="rate-no-match">Select agreement</span>'}</td>
-                <td style="text-align:right" class="diff-cell">0.00</td>
-                <td style="text-align:right" class="amt-cell">0.00</td>
+                <td style="text-align:right" class="revised-cell">${alreadyBilled ? '<span style="color:#999">--</span>' : (revisedRate != null ? `<span class="rate-match">${revisedRate.toFixed(2)}</span>` : '<span class="rate-no-match">Select agreement</span>')}</td>
+                <td style="text-align:right" class="diff-cell">${diff.toFixed(2)}</td>
+                <td style="text-align:right" class="amt-cell">${parseFloat(line.line_amount||0).toFixed(2)}</td>
                 <td style="text-align:center" class="gst-cell">${gstPct}%</td>
-                <td style="text-align:right" class="cgst-cell">0.00</td>
-                <td style="text-align:right" class="sgst-cell">0.00</td>
-                <td style="text-align:right" class="igst-cell">0.00</td>
-                <td style="text-align:right;font-weight:600" class="total-cell">0.00</td>
+                <td style="text-align:right" class="cgst-cell">${parseFloat(line.cgst_amount||0).toFixed(2)}</td>
+                <td style="text-align:right" class="sgst-cell">${parseFloat(line.sgst_amount||0).toFixed(2)}</td>
+                <td style="text-align:right" class="igst-cell">${parseFloat(line.igst_amount||0).toFixed(2)}</td>
+                <td style="text-align:right;font-weight:600" class="total-cell">${parseFloat(line.line_total||0).toFixed(2)}</td>
             `;
             if (!alreadyBilled) {
-                tr.querySelector('.cb-select').addEventListener('change', () => recalcTotals());
+                tr.querySelector('.cb-select').addEventListener('change', () => recalcRrTotals());
             }
             tbody.appendChild(tr);
         });
+        recalcRrTotals();
     }
 
     function applyAgreementRates() {
         document.querySelectorAll('#linesBody tr').forEach(row => {
-            if (row.getAttribute('data-already-billed') === '1') return; // Skip already billed
+            if (row.getAttribute('data-already-billed') === '1') return;
             const svcTypeId = row.getAttribute('data-service-type-id');
             const svcName = (row.getAttribute('data-service-name') || '').trim().toLowerCase();
             const cargoName = (row.getAttribute('data-cargo-name') || '').trim().toLowerCase();
-            const origRate = parseFloat(row.cells[5].textContent) || 0;
+            const origRate = parseFloat(row.cells[5]?.textContent) || 0;
 
-            // Match priority: cargo-specific rate > generic service_type_id > service_name fallback
             let match = null;
             if (svcTypeId && cargoName && agreementRates[svcTypeId + ':cargo:' + cargoName]) {
                 match = agreementRates[svcTypeId + ':cargo:' + cargoName];
@@ -541,36 +659,31 @@
                 const revisedRate = parseFloat(match.rate || 0);
                 revisedCell.innerHTML = `<span class="rate-match">${revisedRate.toFixed(2)}</span>`;
                 row.setAttribute('data-revised-rate', revisedRate);
-
                 const diff = revisedRate - origRate;
-                if (diff !== 0) {
-                    row.querySelector('.cb-select').checked = true;
-                }
-                calcLine(row, revisedRate);
+                if (diff !== 0) row.querySelector('.cb-select').checked = true;
+                calcRrLine(row, revisedRate);
             } else {
                 revisedCell.innerHTML = '<span class="rate-no-match">No match</span>';
                 row.setAttribute('data-revised-rate', '');
                 row.querySelector('.cb-select').checked = false;
-                clearLine(row);
+                clearRrLine(row);
             }
         });
-        recalcTotals();
+        recalcRrTotals();
     }
 
-    function calcLine(row, revisedRate) {
+    function calcRrLine(row, revisedRate) {
         const qty = parseFloat(row.cells[3].textContent) || 0;
         const origRate = parseFloat(row.cells[5].textContent) || 0;
         const diff = revisedRate - origRate;
         const amt = Math.abs(qty * diff);
-
         const cgstRate = parseFloat(row.getAttribute('data-cgst-rate')) || 0;
         const sgstRate = parseFloat(row.getAttribute('data-sgst-rate')) || 0;
         const igstRate = parseFloat(row.getAttribute('data-igst-rate')) || 0;
-
-        const cgstAmt = +(amt * cgstRate / 100).toFixed(2);
-        const sgstAmt = +(amt * sgstRate / 100).toFixed(2);
-        const igstAmt = +(amt * igstRate / 100).toFixed(2);
-        const lineTotal = +(amt + cgstAmt + sgstAmt + igstAmt).toFixed(2);
+        const cgstAmt = round2(amt * cgstRate / 100);
+        const sgstAmt = round2(amt * sgstRate / 100);
+        const igstAmt = round2(amt * igstRate / 100);
+        const lineTotal = round2(amt + cgstAmt + sgstAmt + igstAmt);
 
         row.querySelector('.diff-cell').textContent = diff.toFixed(2);
         row.querySelector('.diff-cell').style.color = diff > 0 ? '#2e86c1' : diff < 0 ? '#b7950b' : '';
@@ -581,7 +694,7 @@
         row.querySelector('.total-cell').textContent = lineTotal.toFixed(2);
     }
 
-    function clearLine(row) {
+    function clearRrLine(row) {
         row.querySelector('.diff-cell').textContent = '0.00';
         row.querySelector('.diff-cell').style.color = '';
         row.querySelector('.amt-cell').textContent = '0.00';
@@ -591,20 +704,19 @@
         row.querySelector('.total-cell').textContent = '0.00';
     }
 
-    function esc(v) { return (v || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-
     function toggleSelectAll() {
         const checked = document.getElementById('selectAll').checked;
-        document.querySelectorAll('.cb-select').forEach(cb => cb.checked = checked);
-        recalcTotals();
+        document.querySelectorAll('.cb-select').forEach(cb => { if (!cb.disabled) cb.checked = checked; });
+        recalcRrTotals();
     }
 
-    function recalcTotals() {
+    function recalcRrTotals() {
         let subtotal = 0, cgst = 0, sgst = 0, igst = 0;
         let hasPositive = false, hasNegative = false;
 
         document.querySelectorAll('#linesBody tr').forEach(row => {
-            if (!row.querySelector('.cb-select').checked) return;
+            const cb = row.querySelector('.cb-select');
+            if (!cb || !cb.checked) return;
             const revisedRate = row.getAttribute('data-revised-rate');
             if (!revisedRate && revisedRate !== '0') return;
 
@@ -628,15 +740,15 @@
         if (hasPositive && hasNegative) {
             note.className = 'direction-note error';
             note.style.display = 'block';
-            note.textContent = 'Cannot mix positive and negative rate differences. All selected lines must be either Debit Note (rate increase) or Credit Note (rate decrease).';
+            note.textContent = 'Cannot mix positive and negative rate differences.';
         } else if (hasPositive) {
             note.className = 'direction-note dn';
             note.style.display = 'block';
-            note.textContent = 'This will generate a DEBIT NOTE (rates increased â€” charge the customer).';
+            note.textContent = 'DEBIT NOTE (rates increased — charge customer).';
         } else if (hasNegative) {
             note.className = 'direction-note cn';
             note.style.display = 'block';
-            note.textContent = 'This will generate a CREDIT NOTE (rates decreased â€” refund the customer).';
+            note.textContent = 'CREDIT NOTE (rates decreased — refund customer).';
         } else {
             note.style.display = 'none';
         }
@@ -645,12 +757,21 @@
 
     function updateDocTypeIndicator() {
         const indicator = document.getElementById('docTypeIndicator');
-        const entryType = document.getElementById('entryType').value;
-        let docType;
-        if (entryType === 'manual') {
-            docType = document.getElementById('docTypeSel').value || null;
+        const t = document.getElementById('entryType').value;
+        let docType = null;
+        if (t === 'manual') {
+            docType = 'CN';
         } else {
-            docType = getDocType();
+            let hasPos = false, hasNeg = false;
+            document.querySelectorAll('#linesBody tr').forEach(row => {
+                const cb = row.querySelector('.cb-select');
+                if (!cb || !cb.checked) return;
+                const diff = parseFloat(row.querySelector('.diff-cell').textContent) || 0;
+                if (diff > 0) hasPos = true;
+                if (diff < 0) hasNeg = true;
+            });
+            if (hasPos && !hasNeg) docType = 'DN';
+            else if (hasNeg && !hasPos) docType = 'CN';
         }
         if (docType === 'DN') {
             indicator.className = 'type-indicator type-DN';
@@ -665,22 +786,6 @@
         }
     }
 
-    function getDocType() {
-        if (existingData && existingData.header && existingData.header.doc_type) {
-            return existingData.header.doc_type;
-        }
-        let hasPos = false, hasNeg = false;
-        document.querySelectorAll('#linesBody tr').forEach(row => {
-            if (!row.querySelector('.cb-select').checked) return;
-            const diff = parseFloat(row.querySelector('.diff-cell').textContent) || 0;
-            if (diff > 0) hasPos = true;
-            if (diff < 0) hasNeg = true;
-        });
-        if (hasPos && !hasNeg) return 'DN';
-        if (hasNeg && !hasPos) return 'CN';
-        return null;
-    }
-
     function resetTotals() {
         ['totalSubtotal', 'totalCGST', 'totalSGST', 'totalIGST', 'totalGrand'].forEach(id => {
             document.getElementById(id).textContent = '0.00';
@@ -689,130 +794,130 @@
         updateDocTypeIndicator();
     }
 
-    // --- Save ---
+    // ===== Save =====
     async function saveDocument() {
-        const entryType = document.getElementById('entryType').value;
+        const t = document.getElementById('entryType').value;
+        if (t === 'manual') return saveManualCn();
+        return saveRateRevision();
+    }
 
-        if (entryType === 'manual') {
-            if (!document.getElementById('customerId').value) { alert('Please select a customer.'); return; }
-            if (!document.getElementById('docDate').value) { alert('Please enter a document date.'); return; }
-            // Collect manual line rows
-            const rows = document.querySelectorAll('#linesBody tr[id^="ml_"]');
-            const lines = [];
-            const intra = _isIntraState();
-            rows.forEach(tr => {
-                const desc = tr.querySelector('.ml-desc').value.trim();
-                if (!desc) return;
-                const amount  = round2(parseFloat(tr.querySelector('.ml-amount').value) || 0);
-                if (amount === 0) return;
-                const gstPct  = parseFloat(tr.querySelector('.ml-gstpct').value) || 0;
-                const sacCode = tr.querySelector('.ml-sac').value.trim();
-                const glCode  = tr.querySelector('.ml-gl').value.trim();
+    async function saveManualCn() {
+        if (!document.getElementById('customerId').value) { alert('Select a customer.'); return; }
+        if (!document.getElementById('docDate').value)    { alert('Enter doc date.'); return; }
 
-                let cgstRate = 0, sgstRate = 0, igstRate = 0;
-                if (intra) { cgstRate = gstPct / 2; sgstRate = gstPct / 2; }
-                else       { igstRate = gstPct; }
+        const checked = document.querySelector('.inv-cb:checked');
+        if (!checked) { alert('Select an invoice.'); return; }
+        const invoiceId = parseInt(checked.value);
+        const invoiceNum = checked.getAttribute('data-inv-num') || '';
 
-                const cgst = round2(amount * cgstRate / 100);
-                const sgst = round2(amount * sgstRate / 100);
-                const igst = round2(amount * igstRate / 100);
-                const lt   = round2(amount + cgst + sgst + igst);
+        const rows = document.querySelectorAll('#linesBody tr');
+        if (!rows.length) { alert('Load invoice lines first.'); return; }
 
-                lines.push({
-                    invoice_line_id:     null,
-                    service_type_id:     null,
-                    service_name:        desc,
-                    service_description: '',
-                    quantity:            1,
-                    uom:                 '',
-                    original_rate:       0,
-                    revised_rate:        amount,
-                    rate_difference:     amount,
-                    line_amount:         amount,
-                    gst_rate_id:         null,
-                    cgst_rate:           cgstRate,
-                    sgst_rate:           sgstRate,
-                    igst_rate:           igstRate,
-                    cgst_amount:         cgst,
-                    sgst_amount:         sgst,
-                    igst_amount:         igst,
-                    line_total:          lt,
-                    gl_code:             glCode,
-                    sac_code:            sacCode,
-                    remarks:             '',
-                });
+        const lines = [];
+        rows.forEach(tr => {
+            const qty = parseFloat(tr.querySelector('.qty-input')?.value ?? tr.getAttribute('data-orig-qty')) || 0;
+            const rate = parseFloat(tr.querySelector('.rate-input')?.value ?? tr.getAttribute('data-orig-rate')) || 0;
+            const origQty = parseFloat(tr.getAttribute('data-orig-qty')) || 0;
+            const origRate = parseFloat(tr.getAttribute('data-orig-rate')) || 0;
+            const amt = round2(qty * rate);
+            if (amt <= 0) return;
+            const cgstR = parseFloat(tr.getAttribute('data-cgst-rate')) || 0;
+            const sgstR = parseFloat(tr.getAttribute('data-sgst-rate')) || 0;
+            const igstR = parseFloat(tr.getAttribute('data-igst-rate')) || 0;
+            const cgst = round2(amt * cgstR / 100);
+            const sgst = round2(amt * sgstR / 100);
+            const igst = round2(amt * igstR / 100);
+            lines.push({
+                invoice_line_id:     parseInt(tr.getAttribute('data-invoice-line-id')) || null,
+                service_type_id:     parseInt(tr.getAttribute('data-service-type-id')) || null,
+                service_name:        tr.getAttribute('data-service-name') || '',
+                service_description: tr.getAttribute('data-service-description') || '',
+                quantity:            qty,
+                uom:                 tr.getAttribute('data-uom') || '',
+                original_rate:       origRate,
+                revised_rate:        0,
+                rate_difference:     -origRate,
+                line_amount:         amt,
+                gst_rate_id:         null,
+                cgst_rate:           cgstR,
+                sgst_rate:           sgstR,
+                igst_rate:           igstR,
+                cgst_amount:         cgst,
+                sgst_amount:         sgst,
+                igst_amount:         igst,
+                line_total:          round2(amt + cgst + sgst + igst),
+                gl_code:             tr.getAttribute('data-gl-code') || '',
+                sac_code:            tr.getAttribute('data-sac-code') || '',
+                remarks:             '',
             });
+        });
 
-            if (!lines.length) { alert('Add at least one line item.'); return; }
+        if (!lines.length) { alert('No lines with non-zero amount.'); return; }
 
-            const docType = document.getElementById('docTypeSel').value;
-            let subtotal=0, cgstAmt=0, sgstAmt=0, igstAmt=0;
-            lines.forEach(l => { subtotal+=l.line_amount; cgstAmt+=l.cgst_amount; sgstAmt+=l.sgst_amount; igstAmt+=l.igst_amount; });
+        const customerSel = document.getElementById('customerId');
+        const customerName = customerSel.options[customerSel.selectedIndex]?.text.split(' (')[0] || '';
 
-            const customerSel = document.getElementById('customerId');
-            const customerName = customerSel.options[customerSel.selectedIndex]?.text || '';
+        let s=0, c=0, sg=0, ig=0;
+        lines.forEach(l => { s+=l.line_amount; c+=l.cgst_amount; sg+=l.sgst_amount; ig+=l.igst_amount; });
 
-            const payload = {
-                header: {
-                    id:                      document.getElementById('fdcnId').value || null,
-                    doc_type:                docType,
-                    doc_date:                document.getElementById('docDate').value,
-                    original_invoice_id:     getSelectedInvoiceId(),
-                    original_invoice_number: getSelectedInvoiceNumber(),
-                    customer_id:             document.getElementById('customerId').value,
-                    customer_type:           document.getElementById('customerType').value,
-                    customer_name:           customerName,
-                    customer_gstin:          document.getElementById('customerGstin').value,
-                    customer_gst_state_code: document.getElementById('customerGstStateCode')?.value || '',
-                    customer_gl_code:        document.getElementById('customerGlCode').value,
-                    subtotal:                round2(subtotal),
-                    cgst_amount:             round2(cgstAmt),
-                    sgst_amount:             round2(sgstAmt),
-                    igst_amount:             round2(igstAmt),
-                    total_amount:            round2(subtotal + cgstAmt + sgstAmt + igstAmt),
-                    creation_type:           'manual',
-                    remarks:                 document.getElementById('remarks').value.trim(),
-                },
-                lines
-            };
+        const payload = {
+            header: {
+                id:                      document.getElementById('fdcnId').value || null,
+                doc_type:                'CN',
+                doc_date:                document.getElementById('docDate').value,
+                original_invoice_id:     invoiceId,
+                original_invoice_number: invoiceNum,
+                customer_id:             document.getElementById('customerId').value,
+                customer_type:           document.getElementById('customerType').value,
+                customer_name:           customerName,
+                customer_gstin:          document.getElementById('customerGstin').value,
+                customer_gst_state_code: document.getElementById('customerGstStateCode')?.value || '',
+                customer_gl_code:        document.getElementById('customerGlCode').value,
+                subtotal:                round2(s),
+                cgst_amount:             round2(c),
+                sgst_amount:             round2(sg),
+                igst_amount:             round2(ig),
+                total_amount:            round2(s + c + sg + ig),
+                creation_type:           'manual',
+                remarks:                 document.getElementById('remarks').value.trim(),
+            },
+            lines
+        };
 
-            const res = await fetch('/api/module/FDCN01/save', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-            const result = await res.json();
-            if (result.success) {
-                alert('Saved: ' + result.doc_number);
-                location.href = '/module/FDCN01/entry?id=' + result.id;
-            } else {
-                alert('Error: ' + (result.error || 'Unknown'));
-            }
-            return;  // don't fall through to rate_revision save logic
+        const res = await fetch('/api/module/FDCN01/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (result.success) {
+            alert('Saved: ' + result.doc_number);
+            location.href = '/module/FDCN01/entry?id=' + result.id;
+        } else {
+            alert('Error: ' + (result.error || 'Unknown'));
         }
+    }
 
-        // --- Rate Revision save logic ---
-        const docType = getDocType();
+    async function saveRateRevision() {
+        const docType = (function () {
+            let hasPos=false, hasNeg=false;
+            document.querySelectorAll('#linesBody tr').forEach(row => {
+                const cb = row.querySelector('.cb-select');
+                if (!cb || !cb.checked) return;
+                const diff = parseFloat(row.querySelector('.diff-cell').textContent) || 0;
+                if (diff > 0) hasPos = true;
+                if (diff < 0) hasNeg = true;
+            });
+            if (hasPos && !hasNeg) return 'DN';
+            if (hasNeg && !hasPos) return 'CN';
+            return null;
+        })();
         if (!docType) {
             alert('No lines with rate differences selected, or mixed directions detected.');
             return;
         }
 
-        let hasPos = false, hasNeg = false;
-        document.querySelectorAll('#linesBody tr').forEach(row => {
-            if (!row.querySelector('.cb-select').checked) return;
-            const diff = parseFloat(row.querySelector('.diff-cell').textContent) || 0;
-            if (diff > 0) hasPos = true;
-            if (diff < 0) hasNeg = true;
-        });
-        if (hasPos && hasNeg) {
-            alert('Cannot mix rate increases and decreases. All lines must go in the same direction.');
-            return;
-        }
-
         const selectedOpt = document.getElementById('customerId').selectedOptions[0];
-
-        // Collect selected invoice IDs for reference
         const selectedInvIds = [];
         const selectedInvNumbers = [];
         document.querySelectorAll('.inv-cb:checked').forEach(cb => {
@@ -823,12 +928,12 @@
 
         const lines = [];
         document.querySelectorAll('#linesBody tr').forEach(row => {
-            if (!row.querySelector('.cb-select').checked) return;
+            const cb = row.querySelector('.cb-select');
+            if (!cb || !cb.checked) return;
             const revisedRate = parseFloat(row.getAttribute('data-revised-rate'));
             if (isNaN(revisedRate)) return;
             const diff = parseFloat(row.querySelector('.diff-cell').textContent) || 0;
             if (diff === 0) return;
-
             lines.push({
                 invoice_line_id: row.getAttribute('data-invoice-line-id'),
                 service_type_id: row.getAttribute('data-service-type-id') || null,
@@ -853,10 +958,7 @@
             });
         });
 
-        if (lines.length === 0) {
-            alert('No lines with rate differences to save.');
-            return;
-        }
+        if (!lines.length) { alert('No lines with rate differences to save.'); return; }
 
         const payload = {
             id: document.getElementById('fdcnId').value || null,
@@ -877,6 +979,7 @@
                 sgst_amount: parseFloat(document.getElementById('totalSGST').textContent) || 0,
                 igst_amount: parseFloat(document.getElementById('totalIGST').textContent) || 0,
                 total_amount: parseFloat(document.getElementById('totalGrand').textContent) || 0,
+                creation_type: 'rate_revision',
                 remarks: document.getElementById('remarks').value
             },
             lines: lines
@@ -888,162 +991,12 @@
             body: JSON.stringify(payload)
         });
         const result = await res.json();
-
         if (result.success) {
             alert(`Saved! Document: ${result.doc_number || result.id}`);
             location.href = `/module/FDCN01/entry?id=${result.id}`;
         } else {
             alert('Error: ' + (result.error || 'Unknown error'));
         }
-    }
-
-    // --- Manual Entry helpers ---
-    function onEntryTypeChange() {
-        const type = document.getElementById('entryType').value;
-        const manualAdd = document.getElementById('manualAddRow');
-        const docTypeField = document.getElementById('docTypeField');
-        const sectionTitle = document.getElementById('linesSectionTitle');
-        const sectionSubtitle = document.getElementById('linesSectionSubtitle');
-        const thead = document.getElementById('linesTableHead');
-
-        document.getElementById('linesBody').innerHTML = '';
-        updateTotals();
-
-        if (type === 'manual') {
-            manualAdd.style.display = '';
-            docTypeField.style.display = '';
-            document.getElementById('agreementSection').style.display = 'none';
-            document.getElementById('invoiceSection').style.display = 'none';
-            sectionTitle.textContent = 'Manual Line Items';
-            if (sectionSubtitle) sectionSubtitle.textContent = 'Add line items manually. Doc type (DN/CN) is set above.';
-            thead.innerHTML = `<tr>
-                <th></th>
-                <th>Description</th>
-                <th style="width:65px">SAC Code</th>
-                <th style="width:65px">GL Code</th>
-                <th style="width:110px">Taxable Amount</th>
-                <th style="width:60px">GST %</th>
-                <th style="width:80px">CGST</th>
-                <th style="width:80px">SGST</th>
-                <th style="width:80px">IGST</th>
-                <th style="width:100px">Line Total</th>
-                <th style="width:40px"></th>
-            </tr>`;
-        } else {
-            manualAdd.style.display = 'none';
-            docTypeField.style.display = 'none';
-            document.getElementById('agreementSection').style.display = '';
-            document.getElementById('invoiceSection').style.display = '';
-            sectionTitle.textContent = 'Rate Revision Lines';
-            if (sectionSubtitle) sectionSubtitle.textContent = 'Revised rates are auto-filled from the selected agreement. Check lines to include.';
-            thead.innerHTML = `<tr>
-                <th class="cb-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-                <th>Invoice</th>
-                <th>Service</th>
-                <th style="width:70px">Qty</th>
-                <th style="width:50px">UOM</th>
-                <th style="width:90px">Orig. Rate</th>
-                <th style="width:90px">Revised Rate</th>
-                <th style="width:90px">Difference</th>
-                <th style="width:100px">Amount</th>
-                <th style="width:60px">GST %</th>
-                <th style="width:80px">CGST</th>
-                <th style="width:80px">SGST</th>
-                <th style="width:80px">IGST</th>
-                <th style="width:100px">Line Total</th>
-            </tr>`;
-        }
-    }
-
-    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
-
-    function addManualLine() {
-        const tbody = document.getElementById('linesBody');
-        const rowId = 'ml_' + Date.now();
-        const tr = document.createElement('tr');
-        tr.id = rowId;
-        tr.innerHTML = `
-            <td></td>
-            <td><input class="ml-desc" type="text" style="width:100%;font-size:11px;" placeholder="Description"></td>
-            <td><input class="ml-sac" type="text" style="width:100%;font-size:11px;" placeholder="SAC Code"></td>
-            <td><input class="ml-gl" type="text" style="width:100%;font-size:11px;" placeholder="GL Code"></td>
-            <td><input class="ml-amount" type="number" step="0.01" min="0" style="width:100%;font-size:11px;text-align:right;" oninput="recalcManualLine('${rowId}')" value="0"></td>
-            <td>
-                <select class="ml-gstpct" style="width:100%;font-size:11px;" onchange="recalcManualLine('${rowId}')">
-                    <option value="0">0%</option>
-                    <option value="5">5%</option>
-                    <option value="9">9%</option>
-                    <option value="12">12%</option>
-                    <option value="18" selected>18%</option>
-                    <option value="28">28%</option>
-                </select>
-            </td>
-            <td class="ml-cgst" style="text-align:right">0.00</td>
-            <td class="ml-sgst" style="text-align:right">0.00</td>
-            <td class="ml-igst" style="text-align:right">0.00</td>
-            <td class="ml-linetotal" style="text-align:right;font-weight:700">0.00</td>
-            <td style="text-align:center"><button onclick="document.getElementById('${rowId}').remove();updateTotals();" style="background:#e74c3c;color:white;border:none;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:10px;">&#x2715;</button></td>
-        `;
-        tbody.appendChild(tr);
-    }
-
-    function _isIntraState() {
-        const sc = (document.getElementById('customerGstStateCode')?.value || '').trim();
-        return !sc || sc === '27';
-    }
-
-    function recalcManualLine(rowId) {
-        const tr = document.getElementById(rowId);
-        if (!tr) return;
-        const amount  = parseFloat(tr.querySelector('.ml-amount').value) || 0;
-        const gstPct  = parseFloat(tr.querySelector('.ml-gstpct').value) || 0;
-        const intra   = _isIntraState();
-
-        let cgst = 0, sgst = 0, igst = 0;
-        if (intra) {
-            cgst = round2(amount * (gstPct / 2) / 100);
-            sgst = round2(amount * (gstPct / 2) / 100);
-        } else {
-            igst = round2(amount * gstPct / 100);
-        }
-        const lt = round2(amount + cgst + sgst + igst);
-
-        tr.querySelector('.ml-cgst').textContent      = cgst.toFixed(2);
-        tr.querySelector('.ml-sgst').textContent      = sgst.toFixed(2);
-        tr.querySelector('.ml-igst').textContent      = igst.toFixed(2);
-        tr.querySelector('.ml-linetotal').textContent = lt.toFixed(2);
-        updateTotals();
-    }
-
-    function updateTotals() {
-        const entryType = document.getElementById('entryType').value;
-        if (entryType === 'manual') {
-            let subtotal=0, cgst=0, sgst=0, igst=0;
-            document.querySelectorAll('#linesBody tr[id^="ml_"]').forEach(tr => {
-                subtotal += parseFloat(tr.querySelector('.ml-amount')?.value)    || 0;
-                cgst     += parseFloat(tr.querySelector('.ml-cgst')?.textContent)|| 0;
-                sgst     += parseFloat(tr.querySelector('.ml-sgst')?.textContent)|| 0;
-                igst     += parseFloat(tr.querySelector('.ml-igst')?.textContent)|| 0;
-            });
-            document.getElementById('totalSubtotal').textContent = subtotal.toFixed(2);
-            document.getElementById('totalCGST').textContent = cgst.toFixed(2);
-            document.getElementById('totalSGST').textContent = sgst.toFixed(2);
-            document.getElementById('totalIGST').textContent = igst.toFixed(2);
-            document.getElementById('totalGrand').textContent = (subtotal + cgst + sgst + igst).toFixed(2);
-            document.getElementById('directionNote').style.display = 'none';
-            updateDocTypeIndicator();
-        } else {
-            recalcTotals();
-        }
-    }
-
-    function getSelectedInvoiceId() {
-        const checked = document.querySelector('#invoiceList input[type=checkbox]:checked');
-        return checked ? checked.value : null;
-    }
-    function getSelectedInvoiceNumber() {
-        const checked = document.querySelector('#invoiceList input[type=checkbox]:checked');
-        return checked ? (checked.getAttribute('data-inv-num') || '') : '';
     }
 </script>
 {% endblock %}

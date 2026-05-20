@@ -19,7 +19,7 @@ def login_required(f):
 
 
 # ---------------------------------------------------------------------------
-# Timestamp helper
+# Timestamp helpers
 # ---------------------------------------------------------------------------
 
 def _parse(ts):
@@ -39,6 +39,22 @@ def fmt_dt(ts):
     return f"ON {dt.strftime('%d.%m.%Y')} AT {dt.strftime('%H%M')} HRS."
 
 
+def fmt_dt_display(ts):
+    """Format timestamp for display in activity table: '20-04-2026 14:20'"""
+    dt = _parse(ts)
+    if not dt:
+        return ''
+    return dt.strftime('%d-%m-%Y %H:%M')
+
+
+def fmt_date_display(ts):
+    """Format date only: '20-04-2026'"""
+    dt = _parse(ts)
+    if not dt:
+        return ''
+    return dt.strftime('%d-%m-%Y')
+
+
 def fmt_qty(value):
     if value is None or value == '':
         return ''
@@ -54,7 +70,6 @@ def fmt_qty(value):
 # ---------------------------------------------------------------------------
 
 def _fetch_mbc_list():
-    """Return all MBC header records sorted by operation_type, then doc_date DESC."""
     conn = get_db()
     cur  = get_cursor(conn)
     cur.execute("""
@@ -69,7 +84,6 @@ def _fetch_mbc_list():
         d = r.get('doc_date')
         if d:
             try:
-                # May be a date/datetime object or a string like 'YYYY-MM-DD'
                 if hasattr(d, 'strftime'):
                     r['doc_date_display'] = d.strftime('%d.%m.%Y')
                 else:
@@ -84,11 +98,7 @@ def _fetch_mbc_list():
 
 
 def _fetch_mbc_sof_data(mbc_id):
-    """Fetch header + relevant lines for one MBC.
-
-    Returns (header, load_port, discharge_port, export_load_port).
-    Unused dicts will be empty {}.
-    """
+    """Fetch header + relevant lines for one MBC."""
     conn = get_db()
     cur  = get_cursor(conn)
 
@@ -97,8 +107,8 @@ def _fetch_mbc_sof_data(mbc_id):
     if not row:
         conn.close()
         return None, {}, {}, {}
-    header   = dict(row)
-    op_type  = (header.get('operation_type') or '').lower()
+    header  = dict(row)
+    op_type = (header.get('operation_type') or '').lower()
 
     load_port      = {}
     discharge_port = {}
@@ -134,74 +144,207 @@ def _fetch_mbc_sof_data(mbc_id):
 
 
 # ---------------------------------------------------------------------------
-# Row builders
+# Activity row builders — matching Excel SOF format
 # ---------------------------------------------------------------------------
 
-def _build_import_sections(load_port, discharge_port):
-    """Return list of section dicts for Import SOF.
-    Each section: {'title': str, 'rows': [{label, value}, ...]}
-    Only non-empty values are included.
-    """
-    sections = []
+def _build_import_activities(load_port, discharge_port):
+    activities = []
 
-    # ── Section 1: Load Port Details ────────────────────────────────────────
-    lp_rows = []
-    for label, val in [
-        ('Arrived Load Port',    fmt_dt(load_port.get('arrived_load_port'))),
-        ('Alongside Berth',      fmt_dt(load_port.get('alongside_berth'))),
-        ('Loading Commenced',    fmt_dt(load_port.get('loading_commenced'))),
-        ('Loading Completed',    fmt_dt(load_port.get('loading_completed'))),
-        ('Cast Off Load Port',   fmt_dt(load_port.get('cast_off_load_port'))),
-        ('ETA at Gull Island',   fmt_dt(load_port.get('eta'))),
-    ]:
-        if val:
-            lp_rows.append({'label': label, 'value': val})
-    sections.append({'title': 'Load Port Details', 'rows': lp_rows})
+    lp_source = 'Captured from MBC Operation - Load Port Details'
 
-    # ── Section 2: Discharge Port Details ───────────────────────────────────
-    dp_rows = []
-    dp_fields = [
-        ('Arrival Gull Island',          fmt_dt(discharge_port.get('arrival_gull_island'))),
-        ('Departure Gull Island',         fmt_dt(discharge_port.get('departure_gull_island'))),
-        ('Arrived Yellow Crane',          fmt_dt(discharge_port.get('arrived_yellow_crane'))),
-        ('MBC Arrival Port',             fmt_dt(discharge_port.get('vessel_arrival_port'))),
-        ('MBC AMF at Unloading Berth',   fmt_dt(discharge_port.get('vessel_all_made_fast'))),
-        ('Unloading Commenced',          fmt_dt(discharge_port.get('unloading_commenced'))),
-        ('Cleaning Commenced',           fmt_dt(discharge_port.get('cleaning_commenced'))),
-        ('Cleaning Completed',           fmt_dt(discharge_port.get('cleaning_completed'))),
-        ('Unloading Completed',          fmt_dt(discharge_port.get('unloading_completed'))),
-        ('MBC Cast Off',                 fmt_dt(discharge_port.get('vessel_cast_off'))),
-        ('Sailed Out From Load Port',    fmt_dt(discharge_port.get('sailed_out_load_port'))),
-        ('Unloaded By',                  discharge_port.get('vessel_unloaded_by') or ''),
-        ('Unloading Berth',              discharge_port.get('vessel_unloading_berth') or ''),
-        ('Discharge Stop',               fmt_dt(discharge_port.get('discharge_stop_shifting'))),
-        ('Discharge Start',              fmt_dt(discharge_port.get('discharge_start_shifting'))),
+    load_port_activities = [
+        ('Arrived Load Port',  'arrived_load_port'),
+        ('Alongside Berth',    'alongside_berth'),
+        ('Loading Commenced',  'loading_commenced'),
+        ('Loading Completed',  'loading_completed'),
+        ('Cast Off Load Port', 'cast_off_load_port'),
+        ('ETA at Gull Island', 'eta'),
     ]
-    for label, val in dp_fields:
-        if val:
-            dp_rows.append({'label': label, 'value': val})
-    sections.append({'title': 'Discharge Port Details', 'rows': dp_rows})
 
-    return sections
+    for label, key in load_port_activities:
+        val = fmt_dt_display(load_port.get(key))
 
+        activities.append({
+            'label': label,
+            'datetime': val if val else '',
+            'remark': '',
+            'source': lp_source
+        })
 
-def _build_export_sections(export_load):
-    """Return list of section dicts for Export SOF."""
-    rows = []
-    for label, val in [
-        ('Arrived at Port',       fmt_dt(export_load.get('arrived_at_port'))),
-        ('Alongside at Berth',    fmt_dt(export_load.get('alongside_at_berth'))),
-        ('Loading Commenced',     fmt_dt(export_load.get('loading_commenced'))),
-        ('Loading Completed',     fmt_dt(export_load.get('loading_completed'))),
-        ('Cast Off From Berth',   fmt_dt(export_load.get('cast_off_from_berth'))),
-        ('Sailed Out From Port',  fmt_dt(export_load.get('sailed_out_from_port'))),
-        ('ETA at Gull Island',    fmt_dt(export_load.get('eta_at_gull_island'))),
-        ('Unloaded By',           export_load.get('unloaded_by') or ''),
-        ('Berth Master',          export_load.get('berth_master') or ''),
+    dp_source = 'Captured from MBC Operation - Discharge Port Details'
+
+    discharge_activities = [
+        ('Arrival at Gull Island',                  'arrival_gull_island'),
+        ('Departure from Gull Island',              'departure_gull_island'),
+        ('Arrived Yellow Crane',                    'arrived_yellow_crane'),
+        ('Vessel Arrival at Port',                  'vessel_arrival_port'),
+        ('Vessel All Made Fast at Unloading Berth', 'vessel_all_made_fast'),
+        ('Unloading Commenced',                     'unloading_commenced'),
+        ('Cleaning Commenced',                      'cleaning_commenced'),
+        ('Cleaning Completed',                      'cleaning_completed'),
+        ('Unloading Completed',                     'unloading_completed'),
+        ('Vessel Cast Off from Dharamtar Jetty',    'vessel_cast_off'),
+        ('Sailed Out From Load Port',               'sailed_out_load_port'),
+    ]
+
+    for label, key in discharge_activities:
+        val = fmt_dt_display(discharge_port.get(key))
+
+        activities.append({
+            'label': label,
+            'datetime': val if val else '',
+            'remark': '',
+            'source': dp_source
+        })
+
+    # ADD THESE ONLY ONCE AT THE END
+    activities.append({
+        'label': 'Vessel Unloaded By',
+        'datetime': discharge_port.get('vessel_unloaded_by', '') or '',
+        'remark': '',
+        'source': dp_source,
+    })
+
+    activities.append({
+        'label': 'Vessel Unloading Berth',
+        'datetime': discharge_port.get('vessel_unloading_berth', '') or '',
+        'remark': '',
+        'source': dp_source,
+    })
+
+    return activities
+
+def _build_export_activities(export_load):
+    source = 'Captured from MBC Operation - Export Load Port Details'
+    activities = []
+    for label, key in [
+        ('Arrived at Port',      'arrived_at_port'),
+        ('Alongside at Berth',   'alongside_at_berth'),
+        ('Loading Commenced',    'loading_commenced'),
+        ('Loading Completed',    'loading_completed'),
+        ('Cast Off From Berth',  'cast_off_from_berth'),
+        ('Sailed Out From Port', 'sailed_out_from_port'),
+        ('ETA at Gull Island',   'eta_at_gull_island'),
     ]:
+        val = fmt_dt_display(export_load.get(key))
         if val:
-            rows.append({'label': label, 'value': val})
-    return [{'title': 'Load Port Details', 'rows': rows}]
+            activities.append({'label': label, 'datetime': val, 'remark': '', 'source': source})
+
+    for label, key in [
+        ('Vessel Unloaded By', 'unloaded_by'),
+        ('Berth Master',       'berth_master'),
+    ]:
+        v = export_load.get(key) or ''
+        if v:
+            activities.append({'label': label, 'datetime': v, 'remark': '', 'source': source})
+
+    return activities
+
+
+# ---------------------------------------------------------------------------
+# Delay builder with full debug logging
+# ---------------------------------------------------------------------------
+
+def _parse_time_only(t):
+    """Parse 'HH:MM' or 'HH:MM:SS' time-only strings into total seconds from midnight."""
+    if not t:
+        return None
+    try:
+        parts = str(t).strip().split(':')
+        hours   = int(parts[0])
+        minutes = int(parts[1]) if len(parts) > 1 else 0
+        seconds = int(parts[2]) if len(parts) > 2 else 0
+        return hours * 3600 + minutes * 60 + seconds
+    except Exception:
+        return None
+
+
+def _build_delays(mbc_id):
+    conn = get_db()
+    cur  = get_cursor(conn)
+
+    query = """
+        SELECT
+            delay_name,
+            from_time,
+            to_time
+        FROM lueu_lines
+        WHERE source_id = %s
+          AND delay_name IS NOT NULL
+    """
+
+    cur.execute(query, (mbc_id,))
+    rows = cur.fetchall()
+    conn.close()
+
+    print(f"[DEBUG] _build_delays called — mbc_id={mbc_id}")
+    print(f"[DEBUG] Total rows fetched from lueu_lines: {len(rows)}")
+    for row in rows:
+        print(f"[DEBUG]   delay_name={row['delay_name']!r}  "
+              f"from_time={row['from_time']!r}  "
+              f"to_time={row['to_time']!r}")
+
+    maintenance_hours = 0.0
+    rhms_hours        = 0.0
+    master_hours      = 0.0
+    weather_hours     = 0.0
+
+    for row in rows:
+        delay_name = (row['delay_name'] or '').strip().lower()
+
+        from_secs = _parse_time_only(row.get('from_time'))
+        to_secs   = _parse_time_only(row.get('to_time'))
+
+        if from_secs is None or to_secs is None:
+            print(f"[DEBUG]   SKIPPED (could not parse times): "
+                  f"from={row.get('from_time')!r}  to={row.get('to_time')!r}")
+            continue
+
+        # Handle overnight crossing (e.g. from=23:00, to=01:00)
+        if to_secs < from_secs:
+            to_secs += 24 * 3600
+
+        duration = (to_secs - from_secs) / 3600  # convert seconds → hours
+        print(f"[DEBUG]   delay={delay_name!r}  duration={duration:.4f} hrs")
+
+        if 'breakdown' in delay_name or 'lt' == delay_name:
+            maintenance_hours += duration
+        elif 'stop' in delay_name:
+            rhms_hours += duration
+        elif 'discharge stopped by master' in delay_name:
+            master_hours += duration
+        elif 'bad weather' in delay_name:
+            weather_hours += duration
+        else:
+            print(f"[DEBUG]   WARNING: no bucket match for delay={delay_name!r}")
+
+    print(f"[DEBUG] Totals — maintenance={maintenance_hours:.2f}  "
+          f"rhms={rhms_hours:.2f}  "
+          f"master={master_hours:.2f}  "
+          f"weather={weather_hours:.2f}")
+
+    return [
+        {
+            'description':    'Unloading System Not Available',
+            'duration':       f"{maintenance_hours:.2f}" if maintenance_hours else '',
+            'responsibility': 'DPPL',
+        },
+        {
+            'description':    'Receiving System Not Available',
+            'duration':       f"{rhms_hours:.2f}" if rhms_hours else '',
+            'responsibility': 'Steel Plant (RMHS)',
+        },
+        {
+            'description':    'Discharge Stopped by Master',
+            'duration':       f"{master_hours:.2f}" if master_hours else '',
+            'responsibility': 'Vessel Account',
+        },
+        {
+            'description':    'Bad Weather',
+            'duration':       f"{weather_hours:.2f}" if weather_hours else '',
+            'responsibility': 'Force Majeure',
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +354,7 @@ def _build_export_sections(export_load):
 @bp.route('/module/RP01/mbc-sof/')
 @login_required
 def mbc_sof_list():
-    records = _fetch_mbc_list()
+    records        = _fetch_mbc_list()
     import_records = [r for r in records if (r.get('operation_type') or '').lower() == 'import']
     export_records = [r for r in records if (r.get('operation_type') or '').lower() != 'import']
     return render_template('mbc_sof/mbc_sof_list.html',
@@ -228,31 +371,34 @@ def mbc_sof_print(mbc_id):
         return "Record not found", 404
 
     op_type = (header.get('operation_type') or '').lower()
+
     if op_type == 'export':
-        sections = _build_export_sections(export_load)
+        activities = _build_export_activities(export_load)
     else:
-        sections = _build_import_sections(load_port, discharge_port)
+        activities = _build_import_activities(load_port, discharge_port)
 
-    mbc_name   = header.get('mbc_name', '')
-    mbc_no     = header.get('doc_num', '')
-    cargo_name = header.get('cargo_name', '') or header.get('cargo_type', '')
-    bl_qty     = header.get('bl_quantity') or 0
-    uom        = header.get('quantity_uom', 'MT')
+    delays = _build_delays(mbc_id)
 
-    banner_parts = []
-    if mbc_no:
-        banner_parts.append(f"MBC No: {mbc_no}")
-    banner_parts.append(f"{mbc_name} - {header.get('operation_type', '')} of {cargo_name}")
-    if bl_qty:
-        banner_parts.append(f"{fmt_qty(bl_qty)} {uom}")
-    banner = " - ".join(banner_parts)
+    mbc_name            = header.get('mbc_name', '')
+    mbc_no              = header.get('doc_num', '')
+    cargo_name          = header.get('cargo_name', '') or header.get('cargo_type', '')
+    bl_qty              = fmt_qty(header.get('bl_quantity') or 0)
+    uom                 = header.get('quantity_uom', 'MT')
+    load_port_name      = header.get('load_port', '')
+    discharge_port_name = header.get('discharge_port', '')
+    doc_date_display    = fmt_date_display(header.get('doc_date'))
 
     return render_template('mbc_sof/mbc_sof_print.html',
                            header=header,
                            mbc_name=mbc_name,
                            mbc_no=mbc_no,
                            op_type=header.get('operation_type', ''),
-                           sections=sections,
+                           activities=activities,
+                           delays=delays,
                            cargo_name=cargo_name,
-                           banner=banner,
+                           bl_qty=bl_qty,
+                           uom=uom,
+                           load_port_name=load_port_name,
+                           discharge_port_name=discharge_port_name,
+                           doc_date_display=doc_date_display,
                            mbc_id=mbc_id)

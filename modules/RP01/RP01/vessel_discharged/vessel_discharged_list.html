@@ -145,6 +145,177 @@
     .dl-btn:hover { background: #1e8449; }
     .dark-theme .dl-btn { background: #1e6b3a; }
     .dark-theme .dl-btn:hover { background: #27ae60; }
+
+    /* ── Download loader ─────────────────────────────────────────── */
+    .download-loader {
+        position: fixed;
+        inset: 0;
+        background: rgba(10,15,30,.72);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity .35s ease, visibility .35s ease;
+    }
+    .download-loader.show { opacity: 1; visibility: visible; }
+    .loader-box {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 20px;
+        padding: 32px 36px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        min-width: 300px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    }
+    .orbit-stage {
+        position: relative;
+        width: 120px;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .orbit-ring {
+        position: absolute;
+        top: 50%; left: 50%;
+        border-radius: 50%;
+        border: 1px dashed rgba(74,144,217,.25);
+        transform: translate(-50%,-50%);
+    }
+    .ring1 { width: 76px; height: 76px; }
+    .ring2 { width: 108px; height: 108px; }
+    .orbit-center {
+        width: 44px; height: 44px;
+        background: #1e3a5f;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        z-index: 2;
+        animation: orbitPulse 2.4s ease-in-out infinite, orbitGlow 2.8s ease-in-out infinite;
+    }
+    .orbiter {
+        position: absolute;
+        top: 50%; left: 50%;
+        margin-top: -10px; margin-left: -10px;
+        width: 20px; height: 20px;
+        border-radius: 50%;
+        background: #1e3a5f;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        animation: orbitA 2.4s linear infinite;
+    }
+    .orbiter.o2 { animation-delay: -0.8s; }
+    .orbiter.o3 { animation-delay: -1.6s; }
+    .orbiter2 {
+        position: absolute;
+        top: 50%; left: 50%;
+        margin-top: -8px; margin-left: -8px;
+        width: 16px; height: 16px;
+        border-radius: 50%;
+        background: #312e81;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        color: #a5b4fc;
+        animation: orbitB 4.8s linear infinite;
+    }
+    .orbiter2.o2r { animation-delay: -1.6s; background: #4c1d95; }
+    .orbiter2.o3r { animation-delay: -3.2s; background: #1e3a5f; }
+    @keyframes orbitA {
+        0%   { transform: rotate(0deg)   translateX(38px) rotate(0deg); }
+        100% { transform: rotate(360deg) translateX(38px) rotate(-360deg); }
+    }
+    @keyframes orbitB {
+        0%   { transform: rotate(0deg)    translateX(54px) rotate(0deg); }
+        100% { transform: rotate(-360deg) translateX(54px) rotate(360deg); }
+    }
+    @keyframes orbitPulse {
+        0%,100% { transform: scale(1); }
+        50%     { transform: scale(1.08); }
+    }
+    @keyframes orbitGlow {
+        0%,100% { opacity: .85; }
+        50%     { opacity: .45; }
+    }
+    .loader-title    { font-size: 15px; font-weight: 700; color: #e2e8f0; margin: 0; }
+    .loader-subtitle { font-size: 12px; color: #94a3b8; margin: 0; }
+    .pbar2-wrap {
+        width: 100%; height: 6px;
+        background: #1e293b;
+        border-radius: 99px;
+        overflow: hidden;
+        position: relative;
+    }
+    .pbar2-fill {
+        height: 100%; width: 0%;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #3b82f6, #06b6d4, #22c55e);
+        transition: width .8s ease;
+    }
+    .pbar2-shine {
+        position: absolute;
+        top: 0; left: -60px;
+        width: 60px; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent);
+        animation: shineSlide 1.5s ease-in-out infinite;
+    }
+    @keyframes shineSlide { 0% { left: -60px; } 100% { left: 110%; } }
+    .loader-pct { font-size: 11px; font-weight: 700; color: #60a5fa; }
+
+    /* ── Download popup ──────────────────────────────────────────── */
+    .download-popup {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+    }
+    .download-popup.show { display: flex; }
+    .download-popup-content {
+        width: 320px;
+        background: #fff;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+    .download-popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        border-bottom: 1px solid #ddd;
+    }
+    .download-popup-header h3 { margin: 0; font-size: 16px; }
+    .download-popup-header button { border: none; background: none; font-size: 22px; cursor: pointer; }
+    .download-popup-body {
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+    .popup-btn {
+        border: none;
+        border-radius: 6px;
+        padding: 12px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .popup-btn.blue  { background: #3498db; }
+    .popup-btn.green { background: #27ae60; }
 </style>
 {% endblock %}
 
@@ -183,8 +354,46 @@
 <!-- Row count -->
 <div class="row-count" id="row-count">Loading…</div>
 
+<!-- Download loader overlay -->
+<div id="download-loader" class="download-loader">
+    <div class="loader-box">
+        <div class="orbit-stage">
+            <div class="orbit-ring ring1"></div>
+            <div class="orbit-ring ring2"></div>
+            <div class="orbit-center">🚢</div>
+            <div class="orbiter">⚓</div>
+            <div class="orbiter o2">🔩</div>
+            <div class="orbiter o3">🏗️</div>
+            <div class="orbiter2">⦿</div>
+            <div class="orbiter2 o2r">⦿</div>
+            <div class="orbiter2 o3r">⦿</div>
+        </div>
+        <p class="loader-title">Preparing Download</p>
+        <p class="loader-subtitle" id="loader-msg">Initializing...</p>
+        <div class="pbar2-wrap">
+            <div class="pbar2-fill"></div>
+            <div class="pbar2-shine"></div>
+        </div>
+        <span class="loader-pct" id="loader-pct">0%</span>
+    </div>
+</div>
+
 <!-- Tabulator table -->
 <div id="vd-table"></div>
+
+<!-- Download popup -->
+<div id="download-popup" class="download-popup">
+    <div class="download-popup-content">
+        <div class="download-popup-header">
+            <h3>Download Options</h3>
+            <button onclick="closeDownloadPopup()">&times;</button>
+        </div>
+        <div class="download-popup-body">
+            <button id="open-sof-btn"       class="popup-btn blue">Open SOF</button>
+            <button id="download-excel-btn" class="popup-btn green">Download Excel</button>
+        </div>
+    </div>
+</div>
 
 <script>
 /* ── Formatters ──────────────────────────────────────── */
@@ -201,8 +410,14 @@ function statusFormatter(cell) {
 function dtFormatter(cell) {
     const v = cell.getValue();
     if (!v) return '<span style="color:var(--text-secondary)">—</span>';
-    // Display as-is (ISO datetime string from API)
-    return v;
+    const d = new Date(v);
+    if (isNaN(d)) return v;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}-${mm}-${yyyy} ${hh}:${mi}`;
 }
 
 function numFormatter(cell) {
@@ -219,81 +434,38 @@ function downloadBtnFormatter(cell) {
 function buildColumns() {
     return [
         {
-            title: 'Sr#',
-            field: '_sr',
-            width: 55,
-            hozAlign: 'center',
-            headerHozAlign: 'center',
-            formatter: function(cell, formatterParams, onRendered) {
-                return cell.getRow().getPosition(true);
-            },
+            title: 'Sr#', field: '_sr', width: 55,
+            hozAlign: 'center', headerHozAlign: 'center',
+            formatter: function(cell) { return cell.getRow().getPosition(true); },
             headerSort: false,
         },
+        { title: 'VCN#',    field: 'vcn_doc_num',         width: 120, headerHozAlign: 'center' },
+        { title: 'Doc#',    field: 'doc_num',              width: 120, headerHozAlign: 'center' },
+        { title: 'Vessel Name', field: 'vessel_name',      width: 180, headerHozAlign: 'center' },
+        { title: 'Cargo',   field: 'cargo_names',          width: 160, headerHozAlign: 'center' },
         {
-            title: 'VCN#',
-            field: 'vcn_doc_num',
-            width: 120,
-            headerHozAlign: 'center',
+            title: 'BL Qty MT', field: 'bl_qty', width: 110,
+            hozAlign: 'right', headerHozAlign: 'center', formatter: numFormatter,
         },
         {
-            title: 'Doc#',
-            field: 'doc_num',
-            width: 120,
-            headerHozAlign: 'center',
+            title: 'Discharge Commenced', field: 'discharge_commenced', width: 150,
+            headerHozAlign: 'center', formatter: dtFormatter,
         },
         {
-            title: 'Vessel Name',
-            field: 'vessel_name',
-            width: 180,
-            headerHozAlign: 'center',
+            title: 'Discharge Completed', field: 'discharge_completed', width: 150,
+            headerHozAlign: 'center', formatter: dtFormatter,
         },
         {
-            title: 'Cargo',
-            field: 'cargo_names',
-            width: 160,
-            headerHozAlign: 'center',
+            title: 'Status', field: 'doc_status', width: 100,
+            hozAlign: 'center', headerHozAlign: 'center', formatter: statusFormatter,
         },
         {
-            title: 'BL Qty MT',
-            field: 'bl_qty',
-            width: 110,
-            hozAlign: 'right',
-            headerHozAlign: 'center',
-            formatter: numFormatter,
-        },
-        {
-            title: 'Discharge Commenced',
-            field: 'discharge_commenced',
-            width: 150,
-            headerHozAlign: 'center',
-            formatter: dtFormatter,
-        },
-        {
-            title: 'Discharge Completed',
-            field: 'discharge_completed',
-            width: 150,
-            headerHozAlign: 'center',
-            formatter: dtFormatter,
-        },
-        {
-            title: 'Status',
-            field: 'doc_status',
-            width: 100,
-            hozAlign: 'center',
-            headerHozAlign: 'center',
-            formatter: statusFormatter,
-        },
-        {
-            title: 'Download',
-            field: '_download',
-            width: 120,
-            hozAlign: 'center',
-            headerHozAlign: 'center',
-            headerSort: false,
+            title: 'Download', field: '_download', width: 120,
+            hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
             formatter: downloadBtnFormatter,
             cellClick: function(e, cell) {
                 const d = cell.getRow().getData();
-                downloadExcel(d.id, d.vessel_name);
+                openDownloadPopup(d);
             },
         },
     ];
@@ -324,23 +496,16 @@ function applyFilters() {
     const fromDate  = document.getElementById('filter-from').value;
     const toDate    = document.getElementById('filter-to').value;
     const dateField = document.getElementById('filter-date-field').value;
-
     const params = new URLSearchParams();
     if (fromDate)  params.set('from_date',  fromDate);
     if (toDate)    params.set('to_date',    toDate);
     if (dateField) params.set('date_field', dateField);
-
     document.getElementById('row-count').textContent = 'Loading…';
-
     fetch('/api/module/RP01/vessel-discharged/data?' + params.toString())
         .then(r => r.json())
         .then(data => {
-            if (table) {
-                table.setData(data);
-                updateCount(data.length);
-            } else {
-                initTable(data);
-            }
+            if (table) { table.setData(data); updateCount(data.length); }
+            else       { initTable(data); }
         })
         .catch(err => {
             console.error(err);
@@ -349,7 +514,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    const now = new Date();
+    const now   = new Date();
     const year  = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day   = String(now.getDate()).padStart(2, '0');
@@ -389,9 +554,34 @@ function downloadAll() {
     const fromDate  = document.getElementById('filter-from').value;
     const toDate    = document.getElementById('filter-to').value;
     const dateField = document.getElementById('filter-date-field').value;
-    const btn = document.getElementById('dl-all-btn');
+    const btn       = document.getElementById('dl-all-btn');
+    const loader    = document.getElementById('download-loader');
+    const bar       = document.querySelector('.pbar2-fill');
+    const pct       = document.getElementById('loader-pct');
+    const msg       = document.getElementById('loader-msg');
+
     btn.disabled = true;
-    btn.textContent = 'Preparing…';
+    btn.textContent = 'Preparing...';
+    loader.classList.add('show');
+    bar.style.width = '0%';
+    pct.textContent = '0%';
+    msg.textContent = 'Initializing download...';
+
+    const steps = [
+        { pct: 18, msg: 'Fetching vessel records...' },
+        { pct: 42, msg: 'Preparing report sheets...' },
+        { pct: 73, msg: 'Generating Excel workbook...' },
+        { pct: 92, msg: 'Finalizing download...' },
+    ];
+    let step = 0;
+    const timer = setInterval(() => {
+        if (step >= steps.length) { clearInterval(timer); return; }
+        const s = steps[step];
+        bar.style.width  = s.pct + '%';
+        pct.textContent  = s.pct + '%';
+        msg.textContent  = s.msg;
+        step++;
+    }, 900);
 
     const params = new URLSearchParams();
     if (fromDate)  params.set('from_date',  fromDate);
@@ -407,22 +597,47 @@ function downloadAll() {
             return res.blob().then(blob => ({ blob, filename }));
         })
         .then(({ blob, filename }) => {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
+            clearInterval(timer);
+            bar.style.width = '100%';
+            pct.textContent = '100%';
+            msg.textContent = 'Download Ready';
+            setTimeout(() => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            }, 450);
         })
         .catch(err => {
+            clearInterval(timer);
             console.error(err);
+            msg.textContent = 'Download Failed';
+            pct.textContent = '0%';
+            bar.style.width = '0%';
             alert('Download failed. Please try again.');
         })
         .finally(() => {
-            btn.disabled = false;
-            btn.textContent = '\u2193 Download All';
+            setTimeout(() => {
+                loader.classList.remove('show');
+                btn.disabled = false;
+                btn.textContent = '↓ Download All';
+            }, 900);
         });
+}
+
+/* ── Download popup ──────────────────────────────────── */
+let selectedDownloadRow = null;
+
+function openDownloadPopup(data) {
+    selectedDownloadRow = data;
+    document.getElementById('download-popup').classList.add('show');
+}
+
+function closeDownloadPopup() {
+    document.getElementById('download-popup').classList.remove('show');
 }
 
 /* ── On load ─────────────────────────────────────────── */
@@ -431,11 +646,23 @@ document.addEventListener('DOMContentLoaded', function () {
     const year  = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day   = String(now.getDate()).padStart(2, '0');
-
     document.getElementById('filter-from').value = `${year}-${month}-01`;
     document.getElementById('filter-to').value   = `${year}-${month}-${day}`;
-
     applyFilters();
+
+    document.getElementById('open-sof-btn').onclick = function () {
+        if (!selectedDownloadRow) return;
+        window.open(
+            `/api/module/RP01/vessel-discharged/${selectedDownloadRow.id}/preview`,
+            '_blank'
+        );
+    };
+
+    document.getElementById('download-excel-btn').onclick = function () {
+        if (!selectedDownloadRow) return;
+        closeDownloadPopup();
+        downloadExcel(selectedDownloadRow.id, selectedDownloadRow.vessel_name);
+    };
 });
 </script>
 {% endblock %}

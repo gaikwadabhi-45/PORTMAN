@@ -135,7 +135,9 @@ def post_invoice_to_sap(payload, reference_type, reference_id, reference_number,
                                 response_status_code=resp.status_code,
                                 duration_ms=duration_ms)
             return {'ok': True, 'sap_document_number': sap_doc_no,
-                    'message': 'Posted to SAP successfully', 'log_id': log_id}
+                    'message': 'Posted to SAP successfully', 'log_id': log_id,
+                    'request_url': url, 'http_status': resp.status_code,
+                    'response_body': resp_body, 'duration_ms': duration_ms}
         else:
             error_msg = resp_body.get('message') or resp_body.get('error') or resp.text
             log_id = _write_log('SAP', reference_type, reference_id, reference_number,
@@ -145,7 +147,9 @@ def post_invoice_to_sap(payload, reference_type, reference_id, reference_number,
                                 response_status_code=resp.status_code,
                                 duration_ms=duration_ms)
             return {'ok': False, 'sap_document_number': None,
-                    'message': f'SAP returned {resp.status_code}: {error_msg}', 'log_id': log_id}
+                    'message': f'SAP returned {resp.status_code}: {error_msg}', 'log_id': log_id,
+                    'request_url': url, 'http_status': resp.status_code,
+                    'response_body': resp_body, 'duration_ms': duration_ms}
 
     except requests.RequestException as e:
         log_id = _write_log('SAP', reference_type, reference_id, reference_number,
