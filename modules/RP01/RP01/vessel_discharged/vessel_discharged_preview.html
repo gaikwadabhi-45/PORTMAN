@@ -1,278 +1,722 @@
 {% extends "base.html" %}
 
-{% block title %}Mother Vessel Discharged Preview{% endblock %}
+{% block title %}
+Mother Vessel Discharged Preview
+{% endblock %}
 
 {% block head %}
+
 <style>
     .preview-wrapper {
+
         width: 100%;
+
         min-height: 100vh;
+
         background: #dcdcdc;
+
         padding: 20px 0 40px;
     }
+
     .preview-topbar {
+
         width: 210mm;
+
         margin: 0 auto 10px;
+
         display: flex;
+
         gap: 12px;
     }
+
     .preview-btn {
+
         border: none;
+
         padding: 10px 18px;
+
         border-radius: 4px;
+
         font-size: 13px;
+
         font-weight: 600;
+
         cursor: pointer;
     }
-    .preview-btn.close { background: #f3f4f6; color: #111; }
-    .preview-btn.print { background: #2563eb; color: #fff; }
+
+    .preview-btn.close {
+
+        background: #f3f4f6;
+
+        color: #111;
+    }
+
+    .preview-btn.print {
+
+        background: #2563eb;
+
+        color: #fff;
+    }
 
     .report-sheet {
+
         width: 210mm;
+
         min-height: 297mm;
+
         background: #fff;
+
         margin: 0 auto;
+
         padding: 14mm 14mm 12mm;
+
         box-sizing: border-box;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+
         border-radius: 2px;
     }
-    .report-header { text-align: center; margin-bottom: 18px; }
-    .company-header { display: flex; justify-content: center; margin-bottom: 6px; }
-    .company-logo { width: 360px; max-width: 100%; height: auto; object-fit: contain; display: block; }
-    .report-company { font-size: 18px; font-weight: 700; margin-top: 2px; margin-bottom: 10px; letter-spacing: 0.5px; }
-    .report-vessel-name { font-size: 15px; font-weight: 700; margin-bottom: 6px; letter-spacing: 1px; }
+
+    .report-header {
+
+        text-align: center;
+
+        margin-bottom: 18px;
+    }
+
+    .company-header {
+
+        display: flex;
+
+        justify-content: center;
+
+        margin-bottom: 6px;
+    }
+
+    .company-logo {
+
+        width: 360px;
+
+        max-width: 100%;
+
+        height: auto;
+
+        object-fit: contain;
+
+        display: block;
+    }
+
+    .report-company {
+
+        font-size: 18px;
+
+        font-weight: 700;
+
+        margin-top: 2px;
+
+        margin-bottom: 10px;
+
+        letter-spacing: 0.5px;
+    }
+
+    .report-vessel-name {
+
+        font-size: 15px;
+
+        font-weight: 700;
+
+        margin-bottom: 6px;
+
+        letter-spacing: 1px;
+    }
+
     .report-doc-title {
-        font-size: 13px; font-weight: 700; letter-spacing: 3px;
-        text-transform: uppercase; margin-bottom: 12px;
+
+        font-size: 13px;
+
+        font-weight: 700;
+
+        letter-spacing: 3px;
+
+        text-transform: uppercase;
+
+        margin-bottom: 12px;
+    }
+
+
+    .report-table {
+
+        width: 100%;
+
+        border-collapse: collapse;
+
+
+        font-family: Arial, sans-serif;
+
+        font-size: 10px;
+
+        color: #111;
+    }
+
+
+    .report-table td,
+    .report-table th {
+
+        border: 1px solid #777;
+
+        padding: 5px 7px;
+
+        vertical-align: middle;
+
+        word-wrap: break-word;
+    }
+
+    .report-table th {
+
+        background: #efefef;
+
+        font-weight: 700;
+    }
+
+    .center {
+        text-align: center;
+    }
+
+    .right {
+        text-align: right;
+    }
+
+    .bold {
+        font-weight: 700;
+    }
+
+    .purple {
+        background: #d9eaf7;
+    }
+
+    .cyan {
+        background: #edf6fb;
+    }
+
+    .grey {
+        background: #f7f7f7;
+    }
+
+    .mt20 {
+        margin-top: 20px;
+    }
+
+    .remarks-cell {
+        height: 70px;
+    }
+
+    .report-note {
+
+        margin-top: 18px;
+
+        text-align: center;
+
+        font-size: 9px;
+
+        color: #444;
+
+        font-style: italic;
+    }
+
+    @page {
+
+        size: A4;
+
+        margin: 0;
+    }
+
+    @media print {
+
+        html,
+        body {
+
+            width: 210mm;
+            height: 297mm;
+
+            margin: 0 !important;
+            padding: 0 !important;
+
+            background: #fff !important;
+
+        }
+
+        /* HIDE EVERYTHING */
+
+        body * {
+
+            visibility: hidden !important;
+        }
+
+        /* SHOW ONLY REPORT */
+
+        .report-sheet,
+        .report-sheet * {
+
+            visibility: visible !important;
+        }
+
+        .report-sheet {
+
+            position: absolute;
+
+            left: 0;
+            top: 0;
+
+            width: 210mm;
+
+            min-height: 297mm;
+
+            margin: 0 !important;
+
+            padding: 10mm !important;
+
+            box-shadow: none !important;
+
+            border: none !important;
+
+            background: #fff !important;
+        }
+
+        /* HIDE SIDEBAR / NAVBAR */
+
+        .sidebar,
+        .navbar,
+        .topbar,
+        .header,
+        nav,
+        aside,
+        footer,
+        .preview-topbar {
+
+            display: none !important;
+        }
+    }
+
+    @media print {
+
+        .preview-wrapper {
+
+            background: #fff !important;
+
+            padding: 0 !important;
+        }
+    }
+
+    .report-table td:nth-child(6) {
+        width: 120px;
+    }
+
+    .report-table td:nth-child(7) {
+        width: 130px;
     }
 
     .report-table {
-        width: 100%;
+
         border-collapse: collapse;
-        font-family: Arial, sans-serif;
-        font-size: 10px;
-        color: #111;
+
+        border-spacing: 0;
     }
-    .report-table td, .report-table th {
+
+    .report-table td,
+    .report-table th {
+
         border: 1px solid #777;
-        padding: 5px 7px;
-        vertical-align: middle;
-        word-wrap: break-word;
-    }
-    .report-table th { background: #efefef; font-weight: 700; }
-    .center { text-align: center; }
-    .right  { text-align: right; }
-    .bold   { font-weight: 700; }
-    .purple { background: #ece7f7; }
-    .cyan   { background: #eafdfd; }
-    .grey   { background: #f4f4f4; }
-    .mt20   { margin-top: 20px; }
-    .remarks-cell { height: 70px; }
-    .report-note { margin-top: 18px; text-align: center; font-size: 9px; color: #444; font-style: italic; }
 
-    .report-table td:nth-child(6) { width: 120px; }
-    .report-table td:nth-child(7) { width: 130px; }
-
-    @page { size: A4; margin: 0; }
-    @media print {
-        html, body { width: 210mm; height: 297mm; margin: 0 !important; padding: 0 !important; background: #fff !important; }
-        body * { visibility: hidden !important; }
-        .report-sheet, .report-sheet * { visibility: visible !important; }
-        .report-sheet {
-            position: absolute; left: 0; top: 0;
-            width: 210mm; min-height: 297mm;
-            margin: 0 !important; padding: 10mm !important;
-            box-shadow: none !important; border: none !important; background: #fff !important;
-        }
-        .sidebar, .navbar, .topbar, .header, nav, aside, footer, .preview-topbar { display: none !important; }
-        .preview-wrapper { background: #fff !important; padding: 0 !important; }
+        box-sizing: border-box;
     }
+    .report-table td:nth-child(6){
+    width:120px;
+}
+
+.report-table td:nth-child(7){
+    width:130px;
+}
 </style>
+
 {% endblock %}
 
 {% block content %}
+
 <div class="preview-wrapper">
 
     <div class="preview-topbar">
-        <button class="preview-btn close" onclick="window.close()">✕ Close</button>
-        <button class="preview-btn print"  onclick="window.print()">🖨 Print / Save as PDF</button>
+
+        <button class="preview-btn close" onclick="window.close()">
+
+            ✕ Close
+
+        </button>
+
+        <button class="preview-btn print" onclick="window.print()">
+
+            🖨 Print / Save as PDF
+
+        </button>
+
     </div>
 
     <div class="report-sheet">
 
-        <!-- Header -->
+        <!-- HEADER -->
+
         <div class="report-header">
+
             <div class="company-header">
+
                 <img src="{{ url_for('static', filename='img/logo31.png') }}" class="company-logo">
+
             </div>
-            <div class="report-company">Dharamtar Port Pvt. Ltd.</div>
-            <div class="report-vessel-name">{{ vessel_name or '' }}</div>
-            <div class="report-doc-title">STATEMENT OF FACTS — BARGE</div>
+
+    
         </div>
 
-        <!-- Main details -->
+        <!-- MAIN DETAILS -->
+
         <table class="report-table">
+
             <tr>
-                <th colspan="7" class="center">MOTHER VESSSEL DISCHARGED REPORT</th>
+                <th colspan="7" class="center" style="font-size:16px;">
+                   MOTHER VESSSEL DISCHARGED REPORT 
+                </th>
             </tr>
+
             <tr>
                 <td colspan="2"><b>Mother Vessel</b></td>
                 <td colspan="3">{{ vessel_name }}</td>
+
                 <td><b>Mother Vessel Sr. No</b></td>
                 <td>{{ doc_num }}</td>
             </tr>
+
             <tr>
                 <td colspan="2"><b>Cargo Handler</b></td>
                 <td colspan="3">{{ cargo_handler }}</td>
+
                 <td><b>Stevedores</b></td>
                 <td>{{ stevedores }}</td>
             </tr>
+
             <tr>
                 <td colspan="2"><b>Cargo Type</b></td>
                 <td colspan="3">{{ cargo_type }}</td>
+
                 <td><b>Quantity as B/L</b></td>
                 <td>{{ bl_qty }}</td>
             </tr>
+
             <tr>
                 <td colspan="2"><b>Charter Type</b></td>
                 <td colspan="3">{{ charter_type }}</td>
+
                 <td><b>Custom Cleared</b></td>
                 <td>{{ custom_cleared }}</td>
+            
             </tr>
-            <tr>
+
                 <td><b>Arrived at PLA</b></td>
                 <td colspan="4">{{ arrived_pla }}</td>
+
                 <td><b>Arrived at MBPT</b></td>
                 <td>{{ arrived_mbpt }}</td>
-            </tr>
-            <tr>
+
+             <tr>
                 <td colspan="2"><b>Discharge Commenced</b></td>
                 <td colspan="3">{{ discharge_commenced }}</td>
+
                 <td><b>Discharge Completed</b></td>
                 <td>{{ discharge_completed }}</td>
             </tr>
+
             <tr>
-                <td colspan="2"><b>Committed Discharge Rate as per Charter Party Agreement</b></td>
+                <td colspan="2">
+                    <b>
+                        Committed Discharge Rate as per
+                        Charter Party Agreement
+                    </b>
+                </td>
+
                 <td colspan="3">{{ charter_party_rate }}</td>
+
                 <td><b>Demurrage Rate</b></td>
                 <td>{{ demurrage_rate }}</td>
             </tr>
+
             <tr>
-                <td colspan="2"><b>Committed Discharge Rate as per Barge Owner Agreement</b></td>
+                <td colspan="2">
+                    <b>
+                        Committed Discharge Rate
+                        as per Barge Owner Agreement
+                    </b>
+                </td>
+
                 <td colspan="3">{{ barge_owner_rate }}</td>
+
                 <td><b>Despatch Rate</b></td>
                 <td>{{ despatch_rate }}</td>
             </tr>
-        </table>
 
-        <!-- Day-wise -->
+        </table>
+        <!-- DAYWISE -->
+
         <table class="report-table mt20">
+
             <tr class="grey">
+
                 <th>Day Wise Discharge</th>
+
                 <th>M. V. Discharge</th>
+
                 <th>Remarks</th>
+
                 <th>Day Wise Barge Discharge</th>
+
                 <th>Jetty Discharge</th>
+
             </tr>
+
             {% for row in daywise_data %}
+
             <tr>
-                <td class="center">{{ row.mv_date }}</td>
-                <td class="center">{{ row.mv_qty }}</td>
+
+                <td class="center">
+                    {{ row.mv_date }}
+                </td>
+
+                <td class="center">
+                    {{ row.mv_qty }}
+                </td>
+
                 <td></td>
-                <td class="center">{{ row.barge_date }}</td>
-                <td class="center">{{ row.barge_qty }}</td>
+
+                <td class="center">
+                    {{ row.barge_date }}
+                </td>
+
+                <td class="center">
+                    {{ row.barge_qty }}
+                </td>
+
             </tr>
+
             {% endfor %}
+
             <tr>
+
                 <td></td>
-                <td class="center bold">{{ mv_total }}</td>
+
+                <td class="center bold">
+                    {{ mv_total }}
+                </td>
+
                 <td></td>
+
                 <td></td>
-                <td class="center bold">{{ barge_total }}</td>
+
+                <td class="center bold">
+                    {{ barge_total }}
+                </td>
+
             </tr>
+
         </table>
 
-        <!-- Delays -->
+        <!-- DELAYS -->
+
         <table class="report-table mt20">
+
             <tr class="purple">
-                <th colspan="4">Average Mother Vessel Delays</th>
+
+                <th colspan="4">
+                    Average Mother Vessel Delays
+                </th>
+
             </tr>
+
             <tr class="grey">
+
                 <th>Delay Type Name</th>
+
                 <th>Delay Description</th>
+
                 <th>MODU</th>
+
                 <th>Calculated Hrs</th>
+
             </tr>
+
             {% for d in delays %}
+
             <tr>
+
                 <td>{{ d.delay_type }}</td>
+
                 <td>{{ d.delay_description }}</td>
+
                 <td class="center">{{ d.modu }}</td>
+
                 <td class="center">{{ d.calc }}</td>
+
             </tr>
+
             {% endfor %}
+
             <tr class="purple">
-                <td colspan="2" class="right bold">Total Delays</td>
-                <td class="center bold">{{ total_delay }}</td>
-                <td class="center bold">{{ total_calc }}</td>
+
+                <td colspan="2" class="right bold">
+
+                    Total Delays
+
+                </td>
+
+                <td class="center bold">
+                    {{ total_delay }}
+                </td>
+
+                <td class="center bold">
+                    {{ total_calc }}
+                </td>
+
             </tr>
+
         </table>
 
-        <!-- Summary -->
+        <!-- SUMMARY -->
+
         <table class="report-table mt20">
+
             <tr class="purple">
-                <th colspan="4">Total Delays</th>
+
+                <th colspan="4">
+                    Total Delays
+                </th>
+
             </tr>
+
             <tr class="cyan">
+
                 <th>Delay Type Name</th>
+
                 <th>Delay Description</th>
+
                 <th>Total Hrs</th>
+
                 <th>Calculated Hrs</th>
+
             </tr>
+
             {% for s in summary %}
+
             <tr>
+
                 <td>{{ s.delay_type }}</td>
+
                 <td>{{ s.delay_description }}</td>
+
                 <td class="center">{{ s.total }}</td>
+
                 <td class="center">{{ s.calc }}</td>
+
             </tr>
+
             {% endfor %}
+
             <tr class="purple">
-                <td colspan="2" class="right bold">Total Delays</td>
-                <td class="center bold">{{ total_delay }}</td>
-                <td class="center bold">{{ total_calc }}</td>
+
+                <td colspan="2" class="right bold">
+
+                    Total Delays
+
+                </td>
+
+                <td class="center bold">
+                    {{ total_delay }}
+                </td>
+
+                <td class="center bold">
+                    {{ total_calc }}
+                </td>
+
             </tr>
+
         </table>
 
-        <!-- Performance -->
+        <!-- PERFORMANCE -->
+
         <table class="report-table mt20">
+
             <tr>
-                <td class="bold">Gross Discharge Days</td>
-                <td class="center">{{ gross_days }}</td>
-                <td class="bold">Gross Discharge Rate Achieved (A/G)</td>
-                <td class="center">{{ gross_rate }}</td>
+
+                <td class="bold">
+                    Gross Discharge Days
+                </td>
+
+                <td class="center">
+                    {{ gross_days }}
+                </td>
+
+                <td class="bold">
+                    Gross Discharge Rate Achieved (A/G)
+                </td>
+
+                <td class="center">
+                    {{ gross_rate }}
+                </td>
+
             </tr>
+
             <tr>
-                <td class="bold">Net Discharge Days</td>
-                <td class="center">{{ net_days }}</td>
-                <td class="bold">Net Discharge Rate Achieved (A/G)</td>
-                <td class="center">{{ net_rate }}</td>
+
+                <td class="bold">
+                    Net Discharge Days
+                </td>
+
+                <td class="center">
+                    {{ net_days }}
+                </td>
+
+                <td class="bold">
+                    Net Discharge Rate Achieved (A/G)
+                </td>
+
+                <td class="center">
+                    {{ net_rate }}
+                </td>
+
             </tr>
+
         </table>
 
-        <!-- Remarks -->
+        <!-- REMARKS -->
+
         <table class="report-table mt20">
+
             <tr class="purple">
-                <th>Remarks</th>
+
+                <th>
+                    Remarks
+                </th>
+
             </tr>
+
             <tr>
+
                 <td class="remarks-cell"></td>
+
             </tr>
+
         </table>
 
-        <div class="report-note">This is a system generated report. No signature required.</div>
+        <div class="report-note">
+            This is a system generated report. No signature required.
+        </div>
 
-    </div><!-- /report-sheet -->
-</div><!-- /preview-wrapper -->
+    </div>
+
+</div>
+
 {% endblock %}
