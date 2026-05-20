@@ -2,7 +2,9 @@ import io
 import json as _json
 import mimetypes
 import os
+import psycopg2
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, send_file
+from werkzeug.security import check_password_hash
 from functools import wraps
 from . import model
 from database import get_user_permissions, get_module_config, get_db, get_cursor
@@ -154,10 +156,10 @@ def close():
     # Verify password server-side
     conn = get_db()
     cur = get_cursor(conn)
-    cur.execute('SELECT id FROM users WHERE id=%s AND password=%s', [session.get('user_id'), password])
+    cur.execute('SELECT id, password FROM users WHERE id=%s', [session.get('user_id')])
     user = cur.fetchone()
     conn.close()
-    if not user:
+    if not user or not check_password_hash(user['password'], password):
         return jsonify({'error': 'Incorrect password'}), 403
 
     # Re-verify eligibility server-side
@@ -312,7 +314,13 @@ def save_barge_line():
     if not perms.get('can_add') and not perms.get('can_edit'):
         return jsonify({'error': 'No permission'}), 403
     data = request.json
-    row_id, trip_number = model.save_barge_line(data)
+    try:
+        row_id, trip_number = model.save_barge_line(data)
+    except psycopg2.errors.UniqueViolation:
+        return jsonify({
+            'error': f"Trip {data.get('trip_number')} already exists for barge "
+                     f"'{data.get('barge_name')}' on this LDUD document."
+        }), 400
     return jsonify({'id': row_id, 'success': True, 'trip_number': trip_number})
 
 @bp.route('/api/module/LDUD01/barge_lines/delete', methods=['POST'])

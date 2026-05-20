@@ -45,12 +45,20 @@ def login_required(f):
     return decorated
 
 
+# ---------------------------------------------------------------------------
+# Page route
+# ---------------------------------------------------------------------------
+
 @bp.route('/module/RP01/shift-report/')
 @login_required
 def shift_report_index():
     return render_template('shift_report/shift_report.html',
                            username=session.get('username'))
 
+
+# ---------------------------------------------------------------------------
+# Report API routes
+# ---------------------------------------------------------------------------
 
 @bp.route('/api/module/RP01/shift-report/preview')
 @login_required
@@ -64,6 +72,13 @@ def shift_report_preview():
     delays = _fetch_delays(entry_date, shift)
     delay_keys = _parse_delay_keys(request.args.get('delay_keys'))
     cargo_tables = _build_cargo_tables(entry_date, shift, cargo_pivot)
+
+    if _is_all_shifts(shift):
+        shift_pivot = _fetch_shift_pivot(entry_date, shift)
+        shift_wise = _build_shift_wise_table(entry_date, shift, shift_pivot)
+        if shift_wise:
+            cargo_tables.insert(0, shift_wise)
+
     delay_view = _build_delay_view(entry_date, shift, delays, delay_keys)
     return jsonify({
         'cargo_tables': cargo_tables,
@@ -93,6 +108,13 @@ def shift_report_download():
     delays = _fetch_delays(entry_date, shift)
     delay_keys = _parse_delay_keys(request.args.get('delay_keys'))
     cargo_tables = _build_cargo_tables(entry_date, shift, cargo_pivot)
+
+    if _is_all_shifts(shift):
+        shift_pivot = _fetch_shift_pivot(entry_date, shift)
+        shift_wise = _build_shift_wise_table(entry_date, shift, shift_pivot)
+        if shift_wise:
+            cargo_tables.insert(0, shift_wise)
+
     delay_view = _build_delay_view(entry_date, shift, delays, delay_keys)
     buf = _build_excel(cargo_tables, delay_view)
     fname = f'ShiftReport_{entry_date}_Shift{shift}.xlsx'
@@ -102,6 +124,132 @@ def shift_report_download():
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
 
+
+# ---------------------------------------------------------------------------
+# Saved report (user_delay_preferences) API routes
+# ---------------------------------------------------------------------------
+
+@bp.route('/api/module/RP01/save-report', methods=['POST'])
+@login_required
+def save_shift_report():
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        data = request.get_json()
+        preference_name = (data.get('preference_name') or '').strip()
+        delay_keys = data.get('delay_keys') or []
+
+        if not preference_name:
+            return jsonify({'success': False, 'message': 'Report name is required'}), 400
+        if not delay_keys:
+            return jsonify({'success': False, 'message': 'No delays selected'}), 400
+
+        # Upsert: update existing by name, otherwise insert
+        cur.execute("""
+            SELECT id FROM user_delay_preferences
+            WHERE LOWER(preference_name) = LOWER(%s)
+        """, (preference_name,))
+        existing = cur.fetchone()
+
+        if existing:
+            cur.execute("""
+                UPDATE user_delay_preferences
+                SET delay_keys = %s, updated_at = NOW()
+                WHERE id = %s
+            """, (json.dumps(delay_keys), existing['id']))
+            report_id = existing['id']
+        else:
+            cur.execute("""
+                INSERT INTO user_delay_preferences (preference_name, delay_keys, updated_at)
+                VALUES (%s, %s, NOW())
+                RETURNING id
+            """, (preference_name, json.dumps(delay_keys)))
+            report_id = cur.fetchone()['id']
+
+        conn.commit()
+        return jsonify({'success': True, 'id': report_id, 'message': 'Saved successfully'})
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@bp.route('/api/module/RP01/saved-reports')
+@login_required
+def get_saved_reports():
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        cur.execute("""
+            SELECT id, preference_name, delay_keys, updated_at
+            FROM user_delay_preferences
+            ORDER BY updated_at DESC
+        """)
+        rows = cur.fetchall()
+        result = []
+        for row in rows:
+            delay_keys = row['delay_keys'] or []
+            result.append({
+                'id': row['id'],
+                'preference_name': row['preference_name'],
+                'delay_keys': delay_keys,
+                'total_delays': len(delay_keys),
+                'created_at': row['updated_at'].isoformat() if row['updated_at'] else None,
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@bp.route('/api/module/RP01/saved-reports/<int:report_id>')
+@login_required
+def get_saved_report_by_id(report_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        cur.execute("""
+            SELECT id, preference_name, delay_keys, updated_at
+            FROM user_delay_preferences
+            WHERE id = %s
+        """, (report_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'message': 'Report not found'}), 404
+        return jsonify({
+            'id': row['id'],
+            'preference_name': row['preference_name'],
+            'delay_keys': row['delay_keys'] or [],
+            'created_at': row['updated_at'].isoformat() if row['updated_at'] else None,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@bp.route('/api/module/RP01/delete-saved-report/<int:report_id>', methods=['DELETE'])
+@login_required
+def delete_saved_report(report_id):
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        cur.execute("DELETE FROM user_delay_preferences WHERE id = %s", (report_id,))
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Report deleted successfully'})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# DB fetch helpers
+# ---------------------------------------------------------------------------
 
 def _fetch_cargo_pivot(entry_date, shift):
     conn = get_db()
@@ -150,6 +298,47 @@ def _fetch_cargo_pivot(entry_date, shift):
         'cargo_type_map': cargo_type_map,
         'equipments': sorted(equipment_set, key=_equipment_sort_key),
         'routes': sorted(route_set, key=_route_sort_key),
+    }
+
+
+def _fetch_shift_pivot(entry_date, shift):
+    conn = get_db()
+    cur = get_cursor(conn)
+    query = """
+        SELECT l.cargo_name, l.shift,
+               COALESCE(SUM(l.quantity), 0) AS qty
+        FROM lueu_lines l
+        WHERE l.entry_date = %s
+          AND l.quantity > 0
+          AND l.cargo_name IS NOT NULL AND l.cargo_name != ''
+          AND l.shift IS NOT NULL AND l.shift != ''
+    """
+    params = [entry_date]
+    if not _is_all_shifts(shift):
+        query += " AND l.shift = %s"
+        params.append(shift)
+    query += """
+        GROUP BY l.cargo_name, l.shift
+        ORDER BY l.cargo_name, l.shift
+    """
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+    conn.close()
+
+    shift_set = set()
+    pivot = {}
+
+    for row in rows:
+        cargo = row['cargo_name'] or 'Unknown'
+        s = row['shift'] or 'Unknown'
+        qty = float(row['qty'] or 0)
+        shift_set.add(s)
+        pivot.setdefault(cargo, {})
+        pivot[cargo][s] = pivot[cargo].get(s, 0) + qty
+
+    return {
+        'data': pivot,
+        'shifts': sorted(shift_set),
     }
 
 
@@ -233,6 +422,10 @@ def _fetch_delay_options(entry_date, shift):
         key=lambda item: (_delay_type_sort_key(item['delay_type']), _natural_sort_key(item['delay_name'])),
     )
 
+
+# ---------------------------------------------------------------------------
+# Utility / formatting helpers
+# ---------------------------------------------------------------------------
 
 def _calc_minutes(from_t, to_t):
     try:
@@ -389,6 +582,10 @@ def _parse_delay_keys(raw_value):
     return cleaned
 
 
+# ---------------------------------------------------------------------------
+# Table builders
+# ---------------------------------------------------------------------------
+
 def _make_matrix_table(title, row_header, column_headers, row_names, values):
     rows = []
     column_totals = [0] * len(column_headers)
@@ -454,7 +651,6 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
             location = _location_group(route)
             location_values[cargo][location] = location_values[cargo].get(location, 0) + route_total
 
-        # Accumulate location totals by cargo_type
         ctype = cargo_type_map.get(cargo, cargo)
         if ctype not in cargo_type_location_values:
             cargo_type_location_values[ctype] = {loc: 0 for loc in location_columns}
@@ -496,6 +692,31 @@ def _build_cargo_tables(entry_date, shift, cargo_pivot):
             route_wise_values,
         ),
     ]
+
+
+def _build_shift_wise_table(entry_date, shift, shift_pivot):
+    data = shift_pivot['data']
+    shifts = shift_pivot['shifts']
+    cargo_names = sorted(data.keys(), key=_natural_sort_key)
+
+    if not cargo_names or not shifts:
+        return None
+
+    shift_wise_values = {}
+    for s in shifts:
+        shift_wise_values[s] = {}
+        for cargo in cargo_names:
+            shift_wise_values[s][cargo] = data.get(cargo, {}).get(s, 0)
+
+    date_label = _report_date(entry_date)
+    shift_label = _shift_scope_label(shift)
+    return _make_matrix_table(
+        f'{shift_label} Wise Discharge: {date_label}',
+        'Shift',
+        cargo_names,
+        shifts,
+        shift_wise_values,
+    )
 
 
 def _build_delay_view(entry_date, shift, delays, delay_keys=None):
@@ -631,11 +852,14 @@ def _build_delay_view(entry_date, shift, delays, delay_keys=None):
     return view
 
 
+# ---------------------------------------------------------------------------
+# Excel export
+# ---------------------------------------------------------------------------
+
 def _build_excel(cargo_tables, delay_view):
     wb = Workbook()
     _build_cargo_sheet(wb, cargo_tables)
     _build_delay_sheet(wb, delay_view)
-
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -768,15 +992,6 @@ def _build_delay_sheet(wb, delay_view):
 
         row += 1
 
-    widths = {
-        'A': 18,
-        'B': 24,
-        'C': 16,
-        'D': 16,
-        'E': 20,
-        'F': 10,
-        'G': 10,
-        'H': 10,
-    }
+    widths = {'A': 18, 'B': 24, 'C': 16, 'D': 16, 'E': 20, 'F': 10, 'G': 10, 'H': 10}
     for letter, width in widths.items():
         ws.column_dimensions[letter].width = width

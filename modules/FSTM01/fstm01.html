@@ -60,7 +60,6 @@
             <th>Category</th>
             <th>GL Code</th>
             <th>SAP GL Account</th>
-            <th>SAP Tax Code</th>
             <th>SAP Profit Center</th>
             <th>SAP Cost Center</th>
             <th title="IGST GL Account for SAP staging">IGST GL</th>
@@ -95,7 +94,6 @@
             <td><input type="text" name="service_category[]" value="{{ row.service_category }}" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="gl_code[]" value="{{ row.gl_code }}" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_gl_account[]" value="{{ row.sap_gl_account or '' }}" placeholder="e.g. 4101076030" {% if locked %}readonly{% endif %}></td>
-            <td><input type="text" name="sap_tax_code[]" value="{{ row.sap_tax_code or '' }}" placeholder="e.g. 50" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_profit_center[]" value="{{ row.sap_profit_center or '' }}" placeholder="e.g. 5171000000" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_cost_center[]" value="{{ row.sap_cost_center or '' }}" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_igst_gl[]" value="{{ row.sap_igst_gl or '' }}" placeholder="IGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
@@ -258,7 +256,6 @@ function addRow() {
         <td><input type="text" name="service_category[]"></td>
         <td><input type="text" name="gl_code[]"></td>
         <td><input type="text" name="sap_gl_account[]" placeholder="e.g. 4101076030"></td>
-        <td><input type="text" name="sap_tax_code[]" placeholder="e.g. 50"></td>
         <td><input type="text" name="sap_profit_center[]" placeholder="e.g. 5171000000"></td>
         <td><input type="text" name="sap_cost_center[]"></td>
         <td><input type="text" name="sap_igst_gl[]" placeholder="IGST GL" style="width:90px;"></td>
@@ -322,7 +319,6 @@ async function saveAll() {
             service_category: row.querySelector('[name="service_category[]"]').value,
             gl_code: row.querySelector('[name="gl_code[]"]').value,
             sap_gl_account: row.querySelector('[name="sap_gl_account[]"]').value,
-            sap_tax_code: row.querySelector('[name="sap_tax_code[]"]').value,
             sap_profit_center: row.querySelector('[name="sap_profit_center[]"]').value,
             sap_cost_center: row.querySelector('[name="sap_cost_center[]"]').value,
             sap_igst_gl: row.querySelector('[name="sap_igst_gl[]"]').value,

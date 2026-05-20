@@ -157,11 +157,10 @@ def invoices():
 
     now = datetime.now()
     for row in data:
-        posted_dt = (
-            _parse_datetime(row.get('sap_posting_date')) or
-            _parse_datetime(row.get('posted_date')) or
-            _parse_datetime(row.get('created_date'))
-        )
+        # 24h FB08 window is anchored to sap_posting_date — set by /api/sap/callback
+        # when SAP confirms the posting. No fallback to posted_date / created_date,
+        # otherwise the Cancel button would appear before SAP has acknowledged.
+        posted_dt = _parse_datetime(row.get('sap_posting_date'))
         row['within_cancel_window'] = bool(
             posted_dt and (now - posted_dt) <= timedelta(hours=24)
         )
@@ -214,13 +213,16 @@ def _auto_post_to_sap(invoice_id, invoice_number):
         conn = get_db()
         cur = get_cursor(conn)
         if result['ok']:
+            # Staging push only — SAP returns Status='N' with no Document_Number yet.
+            # sap_document_number and sap_posting_date are intentionally left for
+            # /api/sap/callback to populate when SAP confirms the actual posting.
+            # The 24h FB08 window anchors on sap_posting_date, so it must reflect
+            # SAP's confirmation time, not our staging push time.
             cur.execute('''UPDATE invoice_header
-                SET sap_document_number=%s, sap_posting_date=%s,
-                    posted_by=%s, posted_date=%s,
+                SET posted_by=%s, posted_date=%s,
                     invoice_status='Posted to SAP'
                 WHERE id=%s''',
-                [result['sap_document_number'], now_ts,
-                 session.get('username'), now_ts, invoice_id])
+                [session.get('username'), now_ts, invoice_id])
         else:
             cur.execute('''UPDATE invoice_header
                 SET invoice_status='SAP Failed',
@@ -911,12 +913,17 @@ def cancel_invoice_sap():
     if invoice.get('invoice_status') == 'Cancelled':
         return jsonify({'success': False, 'error': 'Invoice is already cancelled'})
 
-    posted_dt = (
-        _parse_datetime(invoice.get('sap_posting_date')) or
-        _parse_datetime(invoice.get('posted_date')) or
-        _parse_datetime(invoice.get('created_date'))
-    )
-    if not posted_dt or datetime.now() - posted_dt > timedelta(hours=24):
+    # Anchor the 24h FB08 window on SAP's posting confirmation only.
+    # sap_posting_date is stamped by /api/sap/callback when SAP acknowledges
+    # the document — using posted_date / created_date here would let users
+    # cancel before SAP has actually confirmed the posting.
+    posted_dt = _parse_datetime(invoice.get('sap_posting_date'))
+    if not posted_dt:
+        return jsonify({
+            'success': False,
+            'error': 'SAP has not yet confirmed this invoice posting. Cancellation window starts after SAP callback.',
+        }), 400
+    if datetime.now() - posted_dt > timedelta(hours=24):
         return jsonify({
             'success': False,
             'error': 'FB08 reversal window (24 hours) has expired.',
@@ -963,7 +970,20 @@ def cancel_invoice_sap():
 
 @bp.route('/api/module/FINV01/invoice/create-cancellation-cn', methods=['POST'])
 def create_cancellation_cn():
-    """Create a full cancellation Credit Note when FB08 24hr window has passed"""
+    """Cancel an SAP-posted invoice via a Credit Note after the 24hr FB08
+    window has expired.
+
+    Two-layer design:
+    1. The SAP payload sent is the *original invoice's* payload with
+       Invoice_Credit='C' / Document_type='DG' — Reference stays the
+       original invoice_number so SAP can match it against the original.
+    2. On SAP success we also create an FDCN01 'CN' record with its own
+       unique doc_number (DPPLCN/...) — this is purely a Portbird-side
+       artifact for tracking + the FDCN invoice-print reference. It is NOT
+       what's pushed to SAP.
+
+    Posting-first / FDCN-second ordering keeps us idempotent: if SAP rejects,
+    no orphan FDCN row is left behind and the user can retry."""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Not logged in'}), 401
 
@@ -982,36 +1002,96 @@ def create_cancellation_cn():
     if not invoice.get('sap_document_number'):
         return jsonify({'success': False, 'error': 'Invoice not posted to SAP — use direct cancellation instead'})
 
-    # Check if a cancellation CN already exists
+    # Block duplicate cancellation CN against the same invoice.
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute("""SELECT doc_number FROM fdcn_header
         WHERE original_invoice_id = %s AND doc_type = 'CN'
-        AND remarks LIKE 'Full cancellation%%'
-        AND doc_status NOT IN ('Rejected', 'Cancelled')
+          AND creation_type = 'cancellation'
+          AND doc_status NOT IN ('Rejected', 'Cancelled')
         LIMIT 1""", [invoice_id])
     existing = cur.fetchone()
     conn.close()
-
     if existing:
         return jsonify({
             'success': False,
             'error': f'Cancellation CN already exists: {existing["doc_number"]}'
         })
 
+    # 1. Build SAP payload from the ORIGINAL invoice (not from the FDCN)
+    #    — sap_builder flips Invoice_Credit→C and Document_type→DG only.
+    invoice_lines = model.get_invoice_lines(invoice_id)
+    payload = sap_builder.build_invoice_credit_note_payload(invoice, invoice_lines)
+    result = sap_client.post_invoice_to_sap(
+        payload, 'InvoiceCreditNote', invoice_id,
+        invoice['invoice_number'], session.get('username')
+    )
+
+    if not result['ok']:
+        return jsonify({
+            'success': False,
+            'error': result.get('message') or 'SAP post failed',
+            'log_id': result.get('log_id'),
+        })
+
+    # 2. SAP accepted — create the Portbird-side FDCN CN record for tracking.
+    # The unique partial index `uniq_active_cancellation_cn_per_invoice` on
+    # fdcn_header guards against any race that slips past the SELECT above:
+    # a duplicate INSERT raises a uniqueness error which we translate to a
+    # clean message.
     from modules.FDCN01 import model as fdcn_model
+    username = session.get('username')
     try:
-        fdcn_id, doc_number = fdcn_model.create_cancellation_cn(
-            invoice_id, session.get('username')
-        )
+        fdcn_id, cn_doc_number = fdcn_model.create_cancellation_cn(invoice_id, username)
     except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({
+            'success': False,
+            'error': f'SAP posted but FDCN record failed: {str(e)}',
+            'sap_document_number': result.get('sap_document_number'),
+            'log_id': result.get('log_id'),
+        }), 500
+    except Exception as e:
+        msg = str(e).lower()
+        if 'uniq_active_cancellation_cn_per_invoice' in msg or 'unique' in msg:
+            return jsonify({
+                'success': False,
+                'error': 'A cancellation CN already exists for this invoice (concurrent request blocked).',
+                'sap_document_number': result.get('sap_document_number'),
+                'log_id': result.get('log_id'),
+            }), 409
+        raise
+
+    sap_doc = result.get('sap_document_number') or ''
+    if sap_doc:
+        fdcn_model.update_sap_details(fdcn_id, sap_doc, username)
+
+    # 3. Mark the original invoice as Cancelled, with cross-reference to the CN.
+    now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    original_sap_doc = invoice.get('sap_document_number') or ''
+    cn_note = (f"Cancelled via CN {cn_doc_number}. "
+               f"SAP original: {original_sap_doc}; SAP CN: {sap_doc}")
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('''UPDATE invoice_header
+        SET invoice_status='Cancelled',
+            posted_by=%s,
+            posted_date=%s,
+            remarks = CASE
+                WHEN COALESCE(remarks, '') = '' THEN %s
+                ELSE remarks || ' | ' || %s
+            END
+        WHERE id=%s''',
+        [username, now_ts, cn_note, cn_note, invoice_id])
+    conn.commit()
+    conn.close()
 
     return jsonify({
         'success': True,
         'fdcn_id': fdcn_id,
-        'doc_number': doc_number,
-        'message': f'Cancellation Credit Note {doc_number} created (Approved). Post to SAP from FDCN01.'
+        'cn_doc_number': cn_doc_number,
+        'sap_document_number': sap_doc,
+        'message': f'Credit Note {cn_doc_number} posted to SAP. Invoice cancelled.',
+        'log_id': result['log_id'],
     })
 
 
@@ -1027,7 +1107,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
         except ValueError:
             pass
 
-    total = float(invoice.get('total_amount') or 0)
+    total = sap_builder._total_invoice_amount(invoice, lines)
     gstin = invoice.get('customer_gstin') or ''
 
     cust_info = sap_builder._get_customer_sap_info(
@@ -1043,7 +1123,8 @@ def _build_sample_payload(invoice, lines, cancel=False):
     reference = inv_num
 
     items = []
-    if not cancel:
+    # Reversal payload uses the same items as the original invoice, only Cancellation_Flag changes.
+    if True:
         for l in lines:
             svc = svc_map.get(l.get('service_code') or '', {})
             cgst = float(l.get('cgst_amount') or 0)
@@ -1053,9 +1134,9 @@ def _build_sample_payload(invoice, lines, cancel=False):
             qty = l.get('quantity')
             items.append({
                 'Reference':        reference[:16],
-                'GL_account':       (svc.get('sap_gl_account') or l.get('service_code') or l.get('gl_code') or '')[:10],
+                'GL_account':       (svc.get('sap_gl_account') or l.get('gl_code') or '')[:10],
                 'Amount':           f'{float(l.get("line_amount") or 0):.2f}',
-                'Tax_Code':         l.get('sap_tax_code') or svc.get('sap_tax_code') or '',
+                'Tax_Code':         '',
                 'Cost_Center':      l.get('cost_center') or svc.get('sap_cost_center') or '',
                 'Plant':            company,
                 'Text':             (l.get('service_name') or '')[:25],
@@ -1070,9 +1151,9 @@ def _build_sample_payload(invoice, lines, cancel=False):
                 'UOM':              l.get('uom') or svc.get('uom') or '',
                 'Unit_Price':       f'{float(unit_price):.2f}' if unit_price is not None else '',
                 'Quantity':         f'{float(qty):.3f}' if qty is not None else '',
-                'TDS_GL':           svc.get('sap_tds_gl') or '',
+                'TDS_GL':           (svc.get('sap_tds_gl') or '') if (int(l.get('tds_applicable') or 0) or float(l.get('tds_amount') or 0) > 0) else '',
                 'TDS_amount':       f'{float(l.get("tds_amount") or 0):.2f}' if l.get('tds_amount') else '',
-                'TCS_GL':           svc.get('sap_tcs_gl') or '',
+                'TCS_GL':           (svc.get('sap_tcs_gl') or '') if (int(l.get('tcs_applicable') or 0) or float(l.get('tcs_amount') or 0) > 0) else '',
                 'TCS_amount':       f'{float(l.get("tcs_amount") or 0):.2f}' if l.get('tcs_amount') else '',
                 'Round_off_GL':     '',
                 'Round_off_Value':  '',
@@ -1084,7 +1165,7 @@ def _build_sample_payload(invoice, lines, cancel=False):
         'Invoice_date':          inv_date,
         'Posting_Date':          inv_date,
         'Reference':             (reference if not cancel else reference)[:16],
-        'Document_type':         'INV',
+        'Document_type':         'DR',
         'Customer_Code':         customer_code[:10],
         'Invoice_Amount':        f'{total:.2f}',
         'Business_place':        company,
@@ -1093,15 +1174,14 @@ def _build_sample_payload(invoice, lines, cancel=False):
         'Document_Header_Text':  (f"REV {inv_num}" if cancel else inv_num)[:25],
         'Payment_Term':          '',
         'Credit_Control_Area':   company,
-        'Cancellation_Flag':     'F' if cancel else '',
+        'Cancellation_Flag':     'X' if cancel else '',
         'Nature_of_transaction': 'B2B' if gstin else 'B2C',
         'Service_Sale':          sap_builder._service_sale_flag(lines, svc_map),
         'Currency':              invoice.get('currency_code') or 'INR',
         'Payment_term':          '',
         'Baseline_Date':         inv_date,
     }
-    if not cancel:
-        record['ITEM'] = items
+    record['ITEM'] = items
     return {'Record_Header': [record]}
 
 
