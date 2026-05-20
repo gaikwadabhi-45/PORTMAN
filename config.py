@@ -20,7 +20,7 @@ def _safe_db_url(url):
     return url
 
 
-DATABASE_URL = _safe_db_url(os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/portman'))
+DATABASE_URL = _safe_db_url(os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/portman'))
 SECRET_KEY   = os.environ.get('FLASK_SECRET_KEY', 'change-me-in-env')
 
 # Server runtime settings
