@@ -557,23 +557,23 @@ def _write_vessel_sheet(ws, data):
         height=24,
     )
 
-    _hdr2(
-        9,
-        "Committed Discharge Rate as per Charter Party Agreement",
-        "-",
-        "Demurrage Rate",
-        "-",
-        height=24,
-    )
+    # _hdr2(
+    #     9,
+    #     "Committed Discharge Rate as per Charter Party Agreement",
+    #     "-",
+    #     "Demurrage Rate",
+    #     "-",
+    #     height=24,
+    # )
 
-    _hdr2(
-        10,
-        "Committed Discharge Rate as per Barge Owner Agreement",
-        "-",
-        "Despatch Rate",
-        "-",
-        height=24,
-    )
+    # _hdr2(
+    #     10,
+    #     "Committed Discharge Rate as per Barge Owner Agreement",
+    #     "-",
+    #     "Despatch Rate",
+    #     "-",
+    #     height=24,
+    # )
 
     # ── Row 11: Blank separator ───────────────────────────────────────────────
     ws.row_dimensions[11].height = 6
