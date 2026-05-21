@@ -361,6 +361,88 @@
         cursor: pointer;
         padding: 2px 0;
     }
+    .type-cell.cell-no-top {
+
+    border-top: none !important;
+
+    border-bottom: none !important;
+
+    color: transparent;
+
+    background: #f1f6fb;
+}
+
+/* CENTER DELAY TYPE PERFECTLY */
+
+.type-cell {
+
+    position: relative;
+
+    vertical-align: middle !important;
+
+    text-align: center !important;
+}
+/* MAKE ONLY FIRST COLUMN BLUE IN TOTAL ROWS */
+
+.subtotal-row td:first-child,
+.type-total-row td:first-child,
+.grand-total-row td:first-child {
+
+    background: #f1f6fb  !important;
+
+    color: #1e3a8a !important;
+
+    border-color: #f1f6fb  !important;
+
+    font-weight: 700;
+}
+/* THIN BORDER ONLY FOR DELAY TYPE COLUMN */
+
+.type-cell {
+
+    border-right: 1px solid #d7dde5 !important;
+}
+
+/* TOTAL ROWS */
+
+.subtotal-row td:first-child,
+.type-total-row td:first-child,
+.grand-total-row td:first-child {
+
+    border-right: 1px solid #d7dde5 !important;
+}
+
+.type-cell {
+
+    text-align: center !important;
+
+    vertical-align: middle !important;
+
+    padding-top: 0 !important;
+
+    padding-bottom: 0 !important;
+}
+
+/* THIN LINE ABOVE & BELOW EACH NEW DELAY TYPE */
+
+.type-cell:not(.cell-no-top) {
+
+    border-top: 1px solid #d7dde5 !important;
+
+    border-bottom: 1px solid #d7dde5 !important;
+}
+/* FORCE LINE ABOVE RMHS Delays Total */
+
+.type-total-row td {
+
+    border-top: 1px solid #d7dde5 !important;
+}
+/* LINE BELOW DELAY TOTAL */
+
+.type-total-row td:first-child {
+
+    border-bottom: 1px solid #d7dde5 !important;
+}
     .delay-check-grid label:hover { color: #4a90d9; }
     .delay-type-heading {
         grid-column: 1 / -1;
@@ -929,11 +1011,10 @@ async function refreshDelayOptions() {
             );
 
         available.innerHTML = '';
-
         selected.innerHTML = '';
 
         // =====================================
-        // CURRENT AVAILABLE DELAYS
+        // CREATE MAP
         // =====================================
 
         const itemMap = {};
@@ -944,7 +1025,7 @@ async function refreshDelayOptions() {
         });
 
         // =====================================
-        // GET ACTIVE VIEW DELAYS
+        // SAVED DELAY KEYS
         // =====================================
 
         let selectedKeys = [];
@@ -964,57 +1045,130 @@ async function refreshDelayOptions() {
         }
 
         // =====================================
-        // APPLY SAVED DELAYS
-        // ONLY IF PRESENT IN CURRENT SHIFT
+        // GET SELECTED HEADERS
         // =====================================
 
-        selectedKeys.forEach(key => {
+        const selectedHeaders =
+    new Set();
 
-            if (itemMap[key]) {
+selectedKeys.forEach(key => {
+
+    const parts =
+        String(key)
+        .split('||');
+
+    const header =
+        parts[0]
+        ?.trim()
+        ?.toLowerCase();
+
+    if (header) {
+
+        selectedHeaders.add(
+            header
+        );
+    }
+});
+        // =====================================
+        // LOOP ALL DELAYS
+        // =====================================
+
+        items.forEach(item => {
+
+            const key =
+                item.key;
+
+            const parts =
+                key.split('||');
+
+            const header =
+    parts[0]
+    ?.trim()
+    ?.toLowerCase();
+
+            const option =
+                createDelayOption(item);
+
+            // =================================
+            // NO ACTIVE VIEW
+            // SELECT EVERYTHING
+            // =================================
+
+            if (!activeSavedReport) {
+
+                option.style.color =
+                    '#2d5f90';
+
+                option.style.backgroundColor =
+                    '#dbeafe';
+
+                option.style.fontWeight =
+                    '600';
 
                 selected.appendChild(
-
-                    createDelayOption(
-                        itemMap[key]
-                    )
+                    option
                 );
 
-                delete itemMap[key];
+                return;
+            }
+
+            // =================================
+            // HEADER WAS SELECTED
+            // AUTO SELECT ALL SUB DELAYS
+            // =================================
+
+            if (
+                selectedHeaders.has(
+                    header
+                )
+            ) {
+
+                option.style.color =
+                    '#2d5f90';
+
+                option.style.backgroundColor =
+                    '#dbeafe';
+
+                option.style.fontWeight =
+                    '600';
+
+                selected.appendChild(
+                    option
+                );
+
+                // STORE NEW SUB DELAY
+                if (
+                    !activeSavedReport.delay_keys.includes(
+                        key
+                    )
+                ) {
+
+                    activeSavedReport.delay_keys.push(
+                        key
+                    );
+                }
+            }
+
+            // =================================
+            // UNSELECTED HEADER
+            // =================================
+
+            else {
+
+                option.style.color =
+                    '#dc3545';
+
+                option.style.fontWeight =
+                    '600';
+
+                available.appendChild(
+                    option
+                );
             }
         });
 
-        // =====================================
-        // REMAINING DELAYS
-        // =====================================
-
-        Object.values(itemMap)
-
-            .forEach(item => {
-
-                available.appendChild(
-
-                    createDelayOption(item)
-                );
-            });
-
-        // =====================================
-        // IF NO ACTIVE REPORT
-        // SELECT ALL
-        // =====================================
-
-        if (!activeSavedReport) {
-
-            moveOptions(
-
-                'delay-available',
-
-                'delay-selected',
-
-                true
-            );
-        }
-
-        loadedDelaySignature = signature;
+        loadedDelaySignature =
+            signature;
 
         // =====================================
         // STATUS
@@ -1056,7 +1210,6 @@ async function refreshDelayOptions() {
         return false;
     }
 }
-
 async function ensureDelayOptionsLoaded(params) {
 
     const signature = getDelaySignature(
@@ -1985,7 +2138,7 @@ function deleteSavedReport(id, name) {
 // }
 
 
-function loadSavedReport(id) {
+async function loadSavedReport(id) {
 
     const entryDate =
         document.getElementById(
@@ -2006,154 +2159,82 @@ function loadSavedReport(id) {
         return;
     }
 
-    fetch(`/api/module/RP01/saved-reports/${id}`)
+    try {
 
-        .then(r => {
+        const response = await fetch(
 
-            if (!r.ok) {
+            `/api/module/RP01/saved-reports/${id}`
+        );
 
-                throw new Error(
-                    'Failed to load report'
-                );
-            }
+        if (!response.ok) {
 
-            return r.json();
-        })
-
-        .then(report => {
-
-            // ====================================
-            // STORE ACTIVE REPORT
-            // ====================================
-
-            activeSavedReport = report;
-
-            closeSavedReportsModal();
-
-            resetDelayLists();
-
-            loadedDelaySignature = '';
-
-            setDelayStatus(
-                `Loading "${report.preference_name}"...`
+            throw new Error(
+                'Failed to load report'
             );
+        }
 
-            // LOAD DELAYS FOR CURRENT DATE/SHIFT
-            fetch(
+        const report =
+            await response.json();
 
-                `/api/module/RP01/shift-report/delay-options?entry_date=${encodeURIComponent(entryDate)}&shift=${encodeURIComponent(shift)}`
-            )
+        // ====================================
+        // STORE ACTIVE REPORT
+        // ====================================
 
-            .then(r => {
+        activeSavedReport = report;
 
-                if (!r.ok) {
+        console.log(
+            'ACTIVE REPORT:',
+            activeSavedReport
+        );
 
-                    throw new Error(
-                        'Failed to load delays'
-                    );
-                }
+        // ====================================
+        // CLOSE MODAL
+        // ====================================
 
-                return r.json();
-            })
+        closeSavedReportsModal();
 
-            .then(items => {
+        // ====================================
+        // RESET
+        // ====================================
 
-                const itemMap = {};
+        resetDelayLists();
 
-                items.forEach(item => {
+        loadedDelaySignature = '';
 
-                    itemMap[item.key] = item;
-                });
+        setDelayStatus(
 
-                const available =
-                    document.getElementById(
-                        'delay-available'
-                    );
+            `Loading "${report.preference_name}"...`
+        );
 
-                const selected =
-                    document.getElementById(
-                        'delay-selected'
-                    );
+        // ====================================
+        // FORCE REFRESH DELAYS
+        // ====================================
 
-                available.innerHTML = '';
+        await refreshDelayOptions();
 
-                selected.innerHTML = '';
+        // ====================================
+        // UPDATE STATUS
+        // ====================================
 
-                const savedKeys =
-                    Array.isArray(
-                        report.delay_keys
-                    )
+        setDelayStatus(
 
-                    ? report.delay_keys
+            `Active View: ${report.preference_name}`
+        );
 
-                    : [];
+        // ====================================
+        // AUTO PREVIEW
+        // ====================================
 
-                // ====================================
-                // APPLY SAVED DELAYS
-                // ====================================
+        _triggerPreview();
 
-                savedKeys.forEach(key => {
+    } catch (err) {
 
-                    if (itemMap[key]) {
+        console.error(err);
 
-                        selected.appendChild(
-
-                            createDelayOption(
-                                itemMap[key]
-                            )
-                        );
-
-                        delete itemMap[key];
-                    }
-                });
-
-                // ====================================
-                // REMAINING DELAYS
-                // ====================================
-
-                Object.values(itemMap)
-
-                    .forEach(item => {
-
-                        available.appendChild(
-
-                            createDelayOption(item)
-                        );
-                    });
-
-                loadedDelaySignature =
-
-                    getDelaySignature(
-                        entryDate,
-                        shift
-                    );
-
-                setDelayStatus(
-
-                    `Active View: ${report.preference_name}`
-                );
-
-                console.log(
-                    'ACTIVE REPORT:',
-                    activeSavedReport
-                );
-
-                // ====================================
-                // AUTO PREVIEW
-                // ====================================
-
-                _triggerPreview();
-            });
-        })
-
-        .catch(err => {
-
-            console.error(err);
-
-            alert(
-                'Failed to load report.'
-            );
-        });
+        alert(
+            'Failed to load report.'
+        );
+    }
 }
  
 function _triggerPreview() {
@@ -2508,8 +2589,33 @@ function _renderDelayCheckboxes(items, selectedKeys = []) {
 
         groupItems.forEach(item => {
 
-            const isSelected =
-                selectedKeys.includes(item.key);
+            // =====================================
+// AUTO SELECT NEW SUB DELAYS
+// IF PARENT HEADER IS SELECTED
+// =====================================
+
+const itemHeader =
+    item.key
+    .split('||')[0]
+    ?.trim()
+    ?.toLowerCase();
+
+const isSelected =
+
+    selectedKeys.includes(item.key)
+
+    ||
+
+    selectedKeys.some(k => {
+
+        const savedHeader =
+            String(k)
+            .split('||')[0]
+            ?.trim()
+            ?.toLowerCase();
+
+        return savedHeader === itemHeader;
+    });
 
             html += `
                 <div class="delay-child-item ${isSelected ? 'selected' : ''}"
@@ -2948,78 +3054,183 @@ function buildMatrixTable(table) {
 }
  
 function buildDelayTable(view) {
+
     const block = document.createElement('div');
     block.className = 'report-block';
- 
+
     if (!view.rows || !view.rows.length) {
         block.innerHTML = '<div class="no-data">No delay data for this shift.</div>';
         return block;
     }
- 
-    let html = `<table class="report-table">
-        <thead>
-            <tr class="title-row"><th colspan="8">${escapeHtml(view.title || 'Shift Delays')}</th></tr>
-            <tr class="head-row">
-                <th>Delays Type</th><th>Activity</th><th>Equipment</th><th>System</th>
-                <th>Route</th><th>From</th><th>To</th><th>Total</th>
-            </tr>
-        </thead><tbody>`;
- 
+
+    // ── Track current group labels so we only print on first row ──
+    let lastType      = null;
+    let lastActivity  = null;
+    let lastEquipment = null;
+    let lastSystem    = null;
+
+    let html = `
+        <table class="report-table">
+            <thead>
+                <tr class="title-row">
+                    <th colspan="8">${escapeHtml(view.title || 'Shift Delays')}</th>
+                </tr>
+                <tr class="head-row">
+                    <th>Delays Type</th>
+                    <th>Activity</th>
+                    <th>Equipment</th>
+                    <th>System</th>
+                    <th>Route</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
     view.rows.forEach(row => {
+
+        // ═══════════════════════════════════════════════════════
+        // DETAIL ROW — all 8 columns always present
+        // ═══════════════════════════════════════════════════════
         if (row.kind === 'detail') {
-            html += '<tr>';
-            if (row.show_type)      html += `<td class="type-cell"  rowspan="${row.type_rowspan}">${escapeHtml(row.type_name)}</td>`;
-            if (row.show_activity)  html += `<td class="group-cell" rowspan="${row.activity_rowspan}">${escapeHtml(row.activity_name)}</td>`;
-            if (row.show_equipment) html += `<td class="group-cell" rowspan="${row.equipment_rowspan}">${escapeHtml(row.equipment_name)}</td>`;
-            if (row.show_system)    html += `<td class="group-cell" rowspan="${row.system_rowspan}">${escapeHtml(row.system_name)}</td>`;
-            html += `<td>${escapeHtml(row.route)}</td>
-                     <td>${escapeHtml(row.from_time)}</td>
-                     <td>${escapeHtml(row.to_time)}</td>
-                     <td><strong>${escapeHtml(row.total)}</strong></td></tr>`;
- 
-        } else if (row.kind === 'system_total') {
-            // 4 label cols (type+activity+equipment+system), then route/from/to merged = 3 cols, then total
-            html += `<tr class="subtotal-row">
-                <td colspan="7" class="subtotal-label">${escapeHtml(row.label)}</td>
-                <td>${escapeHtml(row.total)}</td>
-            </tr>`;
- 
-        } else if (row.kind === 'activity_total') {
-            html += `<tr class="subtotal-row">
-                <td colspan="7" class="subtotal-label">${escapeHtml(row.label)}</td>
-                <td>${escapeHtml(row.total)}</td>
-            </tr>`;
- 
-        } else if (row.kind === 'type_total') {
-            html += `<tr class="type-total-row">
-                <td colspan="7" class="subtotal-label">${escapeHtml(row.label)}</td>
-                <td>${escapeHtml(row.total)}</td>
-            </tr>`;
- 
-        } else if (row.kind === 'grand_total') {
-            html += `<tr class="grand-total-row">
-                <td colspan="7" class="subtotal-label">${escapeHtml(row.label)}</td>
-                <td>${escapeHtml(row.total)}</td>
-            </tr>`;
+
+            const typeVal = row.type_name || '';
+            const actVal   = row.show_activity  ? (row.activity_name  || '') : '';
+            const equipVal = row.show_equipment ? (row.equipment_name || '') : '';
+            const sysVal   = row.show_system    ? (row.system_name    || '') : '';
+
+            // Reset tracking when a new group starts
+            if (row.show_type)      lastType      = row.type_name;
+            if (row.show_activity)  lastActivity  = row.activity_name;
+            if (row.show_equipment) lastEquipment = row.equipment_name;
+            if (row.show_system)    lastSystem    = row.system_name;
+
+            const typeNoTop  = !row.show_type      ? 'cell-no-top' : '';
+            const actNoTop   = !row.show_activity  ? 'cell-no-top' : '';
+            const equipNoTop = !row.show_equipment ? 'cell-no-top' : '';
+            const sysNoTop   = !row.show_system    ? 'cell-no-top' : '';
+
+            html += `
+                <tr>
+                    <td class="type-cell  cell-group-label ${typeNoTop}">${escapeHtml(typeVal)}</td>
+                    <td class="group-cell cell-group-label ${actNoTop}">${escapeHtml(actVal)}</td>
+                    <td class="group-cell cell-group-label ${equipNoTop}">${escapeHtml(equipVal)}</td>
+                    <td class="group-cell cell-group-label ${sysNoTop}">${escapeHtml(sysVal)}</td>
+                    <td>${escapeHtml(row.route     || '')}</td>
+                    <td>${escapeHtml(row.from_time || '')}</td>
+                    <td>${escapeHtml(row.to_time   || '')}</td>
+                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
+                </tr>
+            `;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // SYSTEM TOTAL — reset system tracker
+        // ═══════════════════════════════════════════════════════
+        else if (row.kind === 'system_total') {
+            lastSystem = null;
+            html += `
+                <tr class="subtotal-row">
+                    <td class="cell-no-top"></td>
+                    <td class="cell-no-top"></td>
+                    <td class="cell-no-top"></td>
+                    <td class="subtotal-label"><strong>${escapeHtml(row.label || '')}</strong></td>
+                    <td></td><td></td><td></td>
+                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
+                </tr>
+            `;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // ACTIVITY TOTAL — reset activity + equipment + system
+        // ═══════════════════════════════════════════════════════
+        else if (row.kind === 'activity_total') {
+            lastActivity  = null;
+            lastEquipment = null;
+            lastSystem    = null;
+            html += `
+                <tr class="subtotal-row">
+                    <td class="cell-no-top"></td>
+                    <td class="subtotal-label"><strong>${escapeHtml(row.label || '')}</strong></td>
+                    <td></td><td></td><td></td><td></td><td></td>
+                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
+                </tr>
+            `;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // TYPE TOTAL — reset all trackers
+        // ═══════════════════════════════════════════════════════
+        else if (row.kind === 'type_total') {
+            lastType      = null;
+            lastActivity  = null;
+            lastEquipment = null;
+            lastSystem    = null;
+            html += `
+                <tr class="type-total-row">
+                    <td class="subtotal-label"><strong>${escapeHtml(row.label || '')}</strong></td>
+                    <td></td><td></td><td></td><td></td><td></td><td></td>
+                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
+                </tr>
+            `;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // GRAND TOTAL
+        // ═══════════════════════════════════════════════════════
+        else if (row.kind === 'grand_total') {
+            html += `
+                <tr class="grand-total-row">
+                    <td class="subtotal-label"><strong>${escapeHtml(row.label || '')}</strong></td>
+                    <td></td><td></td><td></td><td></td><td></td><td></td>
+                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
+                </tr>
+            `;
         }
     });
- 
-    html += '</tbody></table>';
+
+    html += `</tbody></table>`;
     block.innerHTML = html;
     return block;
 }
- 
-/* -------------------------------------------------------
-   INIT
-------------------------------------------------------- */
-document.addEventListener('DOMContentLoaded', function () {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    document.getElementById('entry-date').value = `${y}-${m}-${d}`;
-    document.getElementById('entry-date').addEventListener('change', refreshDelayOptions);
-    document.getElementById('shift-select').addEventListener('change', refreshDelayOptions);
-});
+// =====================================
+// AUTO REFRESH WHEN DATE CHANGES
+// =====================================
+
+document.getElementById('entry-date')
+
+    .addEventListener(
+
+        'change',
+
+        async function () {
+
+            if (activeSavedReport) {
+
+                await refreshDelayOptions();
+            }
+        }
+    );
+
+// =====================================
+// AUTO REFRESH WHEN SHIFT CHANGES
+// =====================================
+
+document.getElementById('shift-select')
+
+    .addEventListener(
+
+        'change',
+
+        async function () {
+
+            if (activeSavedReport) {
+
+                await refreshDelayOptions();
+            }
+        }
+    );
 </script>
 {% endblock %}

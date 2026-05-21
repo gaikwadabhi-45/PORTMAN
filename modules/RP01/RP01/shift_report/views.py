@@ -720,137 +720,297 @@ def _build_shift_wise_table(entry_date, shift, shift_pivot):
 
 
 def _build_delay_view(entry_date, shift, delays, delay_keys=None):
+
     shift_label = _shift_scope_label(shift)
+
     view = {
         'title': f'{shift_label} Jetty & RMHS Delays: {_report_date(entry_date)}',
         'rows': [],
         'grand_total': '',
     }
+
     if delay_keys is None:
         filtered_delays = list(delays)
         delay_order = {}
+
     else:
-        delay_order = {key: idx for idx, key in enumerate(delay_keys)}
+
+        delay_order = {
+            key: idx
+            for idx, key in enumerate(delay_keys)
+        }
+
         filtered_delays = [
             delay for delay in delays
-            if _delay_key(delay['delay_type'], delay['delay_name']) in delay_order
+            if _delay_key(
+                delay['delay_type'],
+                delay['delay_name']
+            ) in delay_order
         ]
 
     if not filtered_delays:
         return view
 
     grouped = {}
+
+    # =========================================================
+    # GROUP DATA
+    # =========================================================
     for delay in filtered_delays:
+
         delay_type = _blank_label(delay['delay_type'])
+
         activity = _blank_label(delay['delay_name'])
+
         equipment = _blank_label(delay['equipment_name'])
+
         system = _blank_label(delay['system_name'])
-        grouped.setdefault(delay_type, {}).setdefault(activity, {}).setdefault(equipment, {}).setdefault(system, []).append(delay)
+
+        grouped\
+            .setdefault(delay_type, {})\
+            .setdefault(activity, {})\
+            .setdefault(equipment, {})\
+            .setdefault(system, [])\
+            .append(delay)
 
     grand_total = 0
 
-    type_order = {}
-    if delay_order:
-        for delay in filtered_delays:
-            delay_type = _blank_label(delay['delay_type'])
-            key = _delay_key(delay['delay_type'], delay['delay_name'])
-            type_order[delay_type] = min(type_order.get(delay_type, 10**9), delay_order.get(key, 10**9))
+    # =========================================================
+    # DELAY TYPE LOOP
+    # =========================================================
+    for delay_type in sorted(
+        grouped,
+        key=_delay_type_sort_key
+    ):
 
-    for delay_type in sorted(grouped, key=lambda value: (type_order.get(value, 10**9),) + _delay_type_sort_key(value)):
         type_rows = []
+
         type_total = 0
 
+        # =====================================================
+        # ACTIVITY LOOP
+        # =====================================================
         for activity in sorted(
             grouped[delay_type],
-            key=lambda value: (delay_order.get(_delay_key(delay_type, value), 10**9), _natural_sort_key(value)),
+            key=_natural_sort_key
         ):
+
             activity_rows = []
+
             activity_total = 0
 
-            for equipment in sorted(grouped[delay_type][activity], key=_equipment_sort_key):
+            # =================================================
+            # EQUIPMENT LOOP
+            # =================================================
+            for equipment in sorted(
+                grouped[delay_type][activity],
+                key=_equipment_sort_key
+            ):
+
                 equipment_rows = []
+
                 systems = grouped[delay_type][activity][equipment]
 
-                for system in sorted(systems, key=_natural_sort_key):
+                # =============================================
+                # SYSTEM LOOP
+                # =============================================
+                for system in sorted(
+                    systems,
+                    key=_natural_sort_key
+                ):
+
                     system_items = sorted(
                         systems[system],
-                        key=lambda item: (_blank_label(item['route_name']).lower(), item['from_time'], item['to_time']),
+                        key=lambda item: (
+                            _blank_label(item['route_name']).lower(),
+                            item['from_time'],
+                            item['to_time'],
+                        ),
                     )
+
                     system_rows = []
+
                     system_total = 0
 
+                    # =========================================
+                    # DETAIL ROWS
+                    # =========================================
                     for item in system_items:
-                        system_total += int(item['total_minutes'] or 0)
+
+                        system_total += int(
+                            item['total_minutes'] or 0
+                        )
+
                         system_rows.append({
+
                             'kind': 'detail',
-                            'route': _blank_label(item['route_name']),
+
+                            'route': _blank_label(
+                                item['route_name']
+                            ),
+
                             'from_time': item['from_time'],
+
                             'to_time': item['to_time'],
-                            'total': _fmt_minutes(item['total_minutes']),
+
+                            'total': _fmt_minutes(
+                                item['total_minutes']
+                            ),
+
                             'system_name': system,
                         })
 
-                    if system_rows:
-                        system_rows[0]['show_system'] = True
-                        system_rows[0]['system_rowspan'] = len(system_rows)
-                        for row in system_rows[1:]:
-                            row['show_system'] = False
+                    # =========================================
+                    # SYSTEM ROWSPAN
+                    # =========================================
+                    detail_rows = [
+                        r for r in system_rows
+                        if r['kind'] == 'detail'
+                    ]
+
+                    if detail_rows:
+
+                        detail_rows[0]['show_system'] = True
+
+                        detail_rows[0]['system_name'] = system
+
+                        detail_rows[0]['system_rowspan'] = len(detail_rows)
+
+                        for r in detail_rows[1:]:
+
+                            r['show_system'] = False
 
                     equipment_rows.extend(system_rows)
+
+                    # =========================================
+                    # SYSTEM TOTAL
+                    # =========================================
                     equipment_rows.append({
+
                         'kind': 'system_total',
+
                         'label': _total_label(system),
+
                         'total': _fmt_minutes(system_total),
                     })
+
                     activity_total += system_total
 
-                if equipment_rows:
-                    equipment_rows[0]['show_equipment'] = True
-                    equipment_rows[0]['equipment_name'] = equipment
-                    equipment_rows[0]['equipment_rowspan'] = len(equipment_rows)
-                    for row in equipment_rows[1:]:
-                        row['show_equipment'] = False
+                # =============================================
+                # EQUIPMENT ROWSPAN
+                # =============================================
+                detail_rows = [
+                    r for r in equipment_rows
+                    if r['kind'] == 'detail'
+                ]
+
+                if detail_rows:
+
+                    detail_rows[0]['show_equipment'] = True
+
+                    detail_rows[0]['equipment_name'] = equipment
+
+                    detail_rows[0]['equipment_rowspan'] = len(detail_rows)
+
+                    for r in detail_rows[1:]:
+
+                        r['show_equipment'] = False
 
                 activity_rows.extend(equipment_rows)
 
-            if activity_rows:
-                activity_rows[0]['show_activity'] = True
-                activity_rows[0]['activity_name'] = activity
-                activity_rows[0]['activity_rowspan'] = len(activity_rows)
-                for row in activity_rows[1:]:
-                    row['show_activity'] = False
+            # =================================================
+            # ACTIVITY ROWSPAN
+            # =================================================
+            detail_rows = [
+                r for r in activity_rows
+                if r['kind'] == 'detail'
+            ]
 
-            activity_rows.append({
+            if detail_rows:
+
+                detail_rows[0]['show_activity'] = True
+
+                detail_rows[0]['activity_name'] = activity
+
+                detail_rows[0]['activity_rowspan'] = len(detail_rows)
+
+                for r in detail_rows[1:]:
+
+                    r['show_activity'] = False
+
+            # =================================================
+            # ADD ACTIVITY ROWS
+            # =================================================
+            type_rows.extend(activity_rows)
+
+            # =================================================
+            # ACTIVITY TOTAL
+            # =================================================
+            type_rows.append({
+
                 'kind': 'activity_total',
+
                 'label': _total_label(activity),
+
                 'total': _fmt_minutes(activity_total),
             })
-            type_rows.extend(activity_rows)
+
             type_total += activity_total
 
-        if type_rows:
-            type_rows[0]['show_type'] = True
-            type_rows[0]['type_name'] = delay_type
-            type_rows[0]['type_rowspan'] = len(type_rows)
-            for row in type_rows[1:]:
-                row['show_type'] = False
+        # =====================================================
+        # TYPE ROWSPAN
+        # =====================================================
+        detail_rows = [
+            r for r in type_rows
+            if r['kind'] == 'detail'
+        ]
 
+        if detail_rows:
+
+            detail_rows[0]['show_type'] = True
+
+            detail_rows[0]['type_name'] = delay_type
+
+            detail_rows[0]['type_rowspan'] = len(detail_rows)
+
+            for r in detail_rows[1:]:
+
+                r['show_type'] = False
+
+        # =====================================================
+        # ADD TYPE ROWS TO VIEW
+        # =====================================================
         view['rows'].extend(type_rows)
+
+        # =====================================================
+        # TYPE TOTAL
+        # =====================================================
         view['rows'].append({
+
             'kind': 'type_total',
+
             'label': _total_label(delay_type),
+
             'total': _fmt_minutes(type_total),
         })
+
         grand_total += type_total
 
+    # =========================================================
+    # GRAND TOTAL
+    # =========================================================
     view['rows'].append({
+
         'kind': 'grand_total',
+
         'label': 'Grand Total',
+
         'total': _fmt_minutes(grand_total),
     })
-    view['grand_total'] = _fmt_minutes(grand_total)
-    return view
 
+    view['grand_total'] = _fmt_minutes(grand_total)
+
+    return view
 
 # ---------------------------------------------------------------------------
 # Excel export
@@ -935,63 +1095,347 @@ def _set_merged_value(ws, row, start_col, end_col, value, fill_color, bold=True,
 
 
 def _build_delay_sheet(wb, delay_view):
+
     ws = wb.create_sheet('Delay Report')
 
-    headers = ['Delays Type', 'Activity', 'Equipment', 'System', 'Route', 'From', 'To', 'Total']
+    headers = [
+        'Delays Type',
+        'Activity',
+        'Equipment',
+        'System',
+        'Route',
+        'From',
+        'To',
+        'Total'
+    ]
+
     total_cols = len(headers)
 
     if not delay_view['rows']:
-        _cell(ws, 1, 1, 'No delay data found for this shift.', align=_left)
+
+        _cell(
+            ws,
+            1,
+            1,
+            'No delay data found for this shift.',
+            align=_left
+        )
+
         return
 
-    _merge_title(ws, 1, total_cols, delay_view['title'])
+    # =========================================================
+    # TITLE
+    # =========================================================
+    _merge_title(
+        ws,
+        1,
+        total_cols,
+        delay_view['title']
+    )
+
+    # =========================================================
+    # HEADERS
+    # =========================================================
     for idx, header in enumerate(headers, start=1):
-        _cell(ws, 2, idx, header, bold=True, fill_color=_HEADER_FILL, font_color=_TEXT)
+
+        _cell(
+            ws,
+            2,
+            idx,
+            header,
+            bold=True,
+            fill_color=_HEADER_FILL,
+            font_color=_TEXT
+        )
 
     row = 3
+
+    # =========================================================
+    # DATA ROWS
+    # =========================================================
     for item in delay_view['rows']:
+
         kind = item['kind']
 
+        # =====================================================
+        # DETAIL ROW
+        # =====================================================
         if kind == 'detail':
-            if item.get('show_type'):
-                ws.merge_cells(start_row=row, start_column=1, end_row=row + item['type_rowspan'] - 1, end_column=1)
-                _cell(ws, row, 1, item['type_name'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_TEXT)
 
-            if item.get('show_activity'):
-                ws.merge_cells(start_row=row, start_column=2, end_row=row + item['activity_rowspan'] - 1, end_column=2)
-                _cell(ws, row, 2, item['activity_name'], bold=True, fill_color=_GROUP_FILL, font_color=_TEXT)
+            # -------------------------------------------------
+            # DELAY TYPE
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                1,
+                item.get('type_name', '')
+                if item.get('show_type')
+                else '',
+                bold=True,
+                fill_color=_TYPE_TOTAL_FILL,
+                font_color=_TEXT
+            )
 
-            if item.get('show_equipment'):
-                ws.merge_cells(start_row=row, start_column=3, end_row=row + item['equipment_rowspan'] - 1, end_column=3)
-                _cell(ws, row, 3, item['equipment_name'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
+            # -------------------------------------------------
+            # ACTIVITY
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                2,
+                item.get('activity_name', '')
+                if item.get('show_activity')
+                else '',
+                bold=True,
+                fill_color=_GROUP_FILL,
+                font_color=_TEXT
+            )
 
-            if item.get('show_system'):
-                ws.merge_cells(start_row=row, start_column=4, end_row=row + item['system_rowspan'] - 1, end_column=4)
-                _cell(ws, row, 4, item['system_name'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
+            # -------------------------------------------------
+            # EQUIPMENT
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                3,
+                item.get('equipment_name', '')
+                if item.get('show_equipment')
+                else '',
+                bold=True,
+                fill_color=_BODY_FILL,
+                font_color=_TEXT
+            )
 
-            _cell(ws, row, 5, item['route'], fill_color=_BODY_FILL, font_color=_TEXT)
-            _cell(ws, row, 6, item['from_time'], fill_color=_BODY_FILL, font_color=_TEXT)
-            _cell(ws, row, 7, item['to_time'], fill_color=_BODY_FILL, font_color=_TEXT)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_BODY_FILL, font_color=_TEXT)
+            # -------------------------------------------------
+            # SYSTEM
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                4,
+                item.get('system_name', '')
+                if item.get('show_system')
+                else '',
+                bold=True,
+                fill_color=_BODY_FILL,
+                font_color=_TEXT
+            )
 
+            # -------------------------------------------------
+            # ROUTE
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                5,
+                item.get('route', ''),
+                fill_color=_BODY_FILL,
+                font_color=_TEXT
+            )
+
+            # -------------------------------------------------
+            # FROM
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                6,
+                item.get('from_time', ''),
+                fill_color=_BODY_FILL,
+                font_color=_TEXT
+            )
+
+            # -------------------------------------------------
+            # TO
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                7,
+                item.get('to_time', ''),
+                fill_color=_BODY_FILL,
+                font_color=_TEXT
+            )
+
+            # -------------------------------------------------
+            # TOTAL
+            # -------------------------------------------------
+            _cell(
+                ws,
+                row,
+                8,
+                item.get('total', ''),
+                bold=True,
+                fill_color=_BODY_FILL,
+                font_color=_TEXT,
+                align=_ctr
+            )
+
+        # =====================================================
+        # SYSTEM TOTAL
+        # =====================================================
         elif kind == 'system_total':
-            _set_merged_value(ws, row, 4, 7, item['label'], _SUBTOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_TEXT)
 
+            for col in range(1, 9):
+
+                _cell(
+                    ws,
+                    row,
+                    col,
+                    '',
+                    fill_color=_SUBTOTAL_FILL,
+                    font_color=_TEXT
+                )
+
+            _cell(
+                ws,
+                row,
+                4,
+                item.get('label', ''),
+                bold=True,
+                fill_color=_SUBTOTAL_FILL,
+                font_color=_TEXT
+            )
+
+            _cell(
+                ws,
+                row,
+                8,
+                item.get('total', ''),
+                bold=True,
+                fill_color=_SUBTOTAL_FILL,
+                font_color=_TEXT,
+                align=_ctr
+            )
+
+        # =====================================================
+        # ACTIVITY TOTAL
+        # =====================================================
         elif kind == 'activity_total':
-            _set_merged_value(ws, row, 2, 7, item['label'], _SUBTOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_SUBTOTAL_FILL, font_color=_TEXT)
 
+            for col in range(1, 9):
+
+                _cell(
+                    ws,
+                    row,
+                    col,
+                    '',
+                    fill_color=_SUBTOTAL_FILL,
+                    font_color=_TEXT
+                )
+
+            _cell(
+                ws,
+                row,
+                2,
+                item.get('label', ''),
+                bold=True,
+                fill_color=_SUBTOTAL_FILL,
+                font_color=_TEXT
+            )
+
+            _cell(
+                ws,
+                row,
+                8,
+                item.get('total', ''),
+                bold=True,
+                fill_color=_SUBTOTAL_FILL,
+                font_color=_TEXT,
+                align=_ctr
+            )
+
+        # =====================================================
+        # TYPE TOTAL
+        # =====================================================
         elif kind == 'type_total':
-            _set_merged_value(ws, row, 1, 7, item['label'], _TYPE_TOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TYPE_TOTAL_FILL, font_color=_TEXT)
 
+            for col in range(1, 9):
+
+                _cell(
+                    ws,
+                    row,
+                    col,
+                    '',
+                    fill_color=_TYPE_TOTAL_FILL,
+                    font_color=_TEXT
+                )
+
+            _cell(
+                ws,
+                row,
+                1,
+                item.get('label', ''),
+                bold=True,
+                fill_color=_TYPE_TOTAL_FILL,
+                font_color=_TEXT
+            )
+
+            _cell(
+                ws,
+                row,
+                8,
+                item.get('total', ''),
+                bold=True,
+                fill_color=_TYPE_TOTAL_FILL,
+                font_color=_TEXT,
+                align=_ctr
+            )
+
+        # =====================================================
+        # GRAND TOTAL
+        # =====================================================
         elif kind == 'grand_total':
-            _set_merged_value(ws, row, 1, 7, item['label'], _TOTAL_FILL)
-            _cell(ws, row, 8, item['total'], bold=True, fill_color=_TOTAL_FILL, font_color=_TEXT)
+
+            for col in range(1, 9):
+
+                _cell(
+                    ws,
+                    row,
+                    col,
+                    '',
+                    fill_color=_TOTAL_FILL,
+                    font_color=_TEXT
+                )
+
+            _cell(
+                ws,
+                row,
+                1,
+                item.get('label', ''),
+                bold=True,
+                fill_color=_TOTAL_FILL,
+                font_color=_TEXT
+            )
+
+            _cell(
+                ws,
+                row,
+                8,
+                item.get('total', ''),
+                bold=True,
+                fill_color=_TOTAL_FILL,
+                font_color=_TEXT,
+                align=_ctr
+            )
 
         row += 1
 
-    widths = {'A': 18, 'B': 24, 'C': 16, 'D': 16, 'E': 20, 'F': 10, 'G': 10, 'H': 10}
+    # =========================================================
+    # COLUMN WIDTHS
+    # =========================================================
+    widths = {
+        'A': 24,
+        'B': 30,
+        'C': 18,
+        'D': 18,
+        'E': 18,
+        'F': 12,
+        'G': 12,
+        'H': 14
+    }
+
     for letter, width in widths.items():
+
         ws.column_dimensions[letter].width = width
