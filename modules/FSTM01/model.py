@@ -1,3 +1,4 @@
+import psycopg2
 from database import get_db, get_cursor
 from datetime import datetime
 
@@ -54,99 +55,114 @@ def save_service_type(data):
     """Save service type record"""
     conn = get_db()
     cur = get_cursor(conn)
+    try:
+        tds_pct = data.get('tds_percent')
+        tds_pct = float(tds_pct) if tds_pct not in (None, '', 'null') else None
+        tcs_pct = data.get('tcs_percent')
+        tcs_pct = float(tcs_pct) if tcs_pct not in (None, '', 'null') else None
 
-    tds_pct = data.get('tds_percent')
-    tds_pct = float(tds_pct) if tds_pct not in (None, '', 'null') else None
-    tcs_pct = data.get('tcs_percent')
-    tcs_pct = float(tcs_pct) if tcs_pct not in (None, '', 'null') else None
+        # Convert empty strings to None for integer fields
+        for int_field in ('gst_rate_id', 'is_billable', 'is_active'):
+            val = data.get(int_field)
+            if val == '' or val is None:
+                data[int_field] = None
+            else:
+                data[int_field] = int(val)
 
-    # Convert empty strings to None for integer fields
-    for int_field in ('gst_rate_id', 'is_billable', 'is_active'):
-        val = data.get(int_field)
-        if val == '' or val is None:
-            data[int_field] = None
+        if data.get('id'):
+            cur.execute('''
+                UPDATE finance_service_types
+                SET service_name=%s, service_category=%s, gl_code=%s, sac_code=%s,
+                    gst_rate_id=%s, uom=%s, is_billable=%s, is_active=%s,
+                    sap_gl_account=%s, sap_profit_center=%s, sap_cost_center=%s,
+                    sap_igst_gl=%s, sap_cgst_gl=%s, sap_sgst_gl=%s, service_sale_flag=%s,
+                    sap_tds_gl=%s, sap_tcs_gl=%s,
+                    is_tds=%s, tds_percent=%s, is_tcs=%s, tcs_percent=%s, is_triplicate=%s
+                WHERE id=%s
+            ''', [
+                data.get('service_name'),
+                data.get('service_category'),
+                data.get('gl_code'),
+                data.get('sac_code'),
+                data.get('gst_rate_id'),
+                data.get('uom'),
+                data.get('is_billable', 1),
+                data.get('is_active', 1),
+                data.get('sap_gl_account'),
+                data.get('sap_profit_center'),
+                data.get('sap_cost_center'),
+                data.get('sap_igst_gl') or None,
+                data.get('sap_cgst_gl') or None,
+                data.get('sap_sgst_gl') or None,
+                data.get('service_sale_flag') or 'S',
+                data.get('sap_tds_gl') or None,
+                data.get('sap_tcs_gl') or None,
+                1 if data.get('is_tds') in (1, '1', 'Yes', True) else 0,
+                tds_pct,
+                1 if data.get('is_tcs') in (1, '1', 'Yes', True) else 0,
+                tcs_pct,
+                1 if data.get('is_triplicate') in (1, '1', 'Yes', True) else 0,
+                data['id']
+            ])
+            row_id = data['id']
         else:
-            data[int_field] = int(val)
+            # service_code is required and must be unique for new rows.
+            # The UI marks the field required, but saveAll() posts via fetch(),
+            # which bypasses HTML5 validation — so enforce it here too.
+            service_code = (data.get('service_code') or '').strip()
+            if not service_code:
+                raise ValueError('Service code is required')
+            data['service_code'] = service_code
 
-    if data.get('id'):
-        cur.execute('''
-            UPDATE finance_service_types
-            SET service_name=%s, service_category=%s, gl_code=%s, sac_code=%s,
-                gst_rate_id=%s, uom=%s, is_billable=%s, is_active=%s,
-                sap_gl_account=%s, sap_profit_center=%s, sap_cost_center=%s,
-                sap_igst_gl=%s, sap_cgst_gl=%s, sap_sgst_gl=%s, service_sale_flag=%s,
-                sap_tds_gl=%s, sap_tcs_gl=%s,
-                is_tds=%s, tds_percent=%s, is_tcs=%s, tcs_percent=%s, is_triplicate=%s
-            WHERE id=%s
-        ''', [
-            data.get('service_name'),
-            data.get('service_category'),
-            data.get('gl_code'),
-            data.get('sac_code'),
-            data.get('gst_rate_id'),
-            data.get('uom'),
-            data.get('is_billable', 1),
-            data.get('is_active', 1),
-            data.get('sap_gl_account'),
-            data.get('sap_profit_center'),
-            data.get('sap_cost_center'),
-            data.get('sap_igst_gl') or None,
-            data.get('sap_cgst_gl') or None,
-            data.get('sap_sgst_gl') or None,
-            data.get('service_sale_flag') or 'S',
-            data.get('sap_tds_gl') or None,
-            data.get('sap_tcs_gl') or None,
-            1 if data.get('is_tds') in (1, '1', 'Yes', True) else 0,
-            tds_pct,
-            1 if data.get('is_tcs') in (1, '1', 'Yes', True) else 0,
-            tcs_pct,
-            1 if data.get('is_triplicate') in (1, '1', 'Yes', True) else 0,
-            data['id']
-        ])
-        row_id = data['id']
-    else:
-        cur.execute('''
-            INSERT INTO finance_service_types
-            (service_code, service_name, service_category, gl_code, sac_code,
-             gst_rate_id, uom, is_billable, is_active,
-             sap_gl_account, sap_profit_center, sap_cost_center,
-             sap_igst_gl, sap_cgst_gl, sap_sgst_gl, service_sale_flag,
-             sap_tds_gl, sap_tcs_gl,
-             is_tds, tds_percent, is_tcs, tcs_percent, is_triplicate, created_by, created_date)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        ''', [
-            data.get('service_code'),
-            data.get('service_name'),
-            data.get('service_category'),
-            data.get('gl_code'),
-            data.get('sac_code'),
-            data.get('gst_rate_id'),
-            data.get('uom'),
-            data.get('is_billable', 1),
-            data.get('is_active', 1),
-            data.get('sap_gl_account'),
-            data.get('sap_profit_center'),
-            data.get('sap_cost_center'),
-            data.get('sap_igst_gl') or None,
-            data.get('sap_cgst_gl') or None,
-            data.get('sap_sgst_gl') or None,
-            data.get('service_sale_flag') or 'S',
-            data.get('sap_tds_gl') or None,
-            data.get('sap_tcs_gl') or None,
-            1 if data.get('is_tds') in (1, '1', 'Yes', True) else 0,
-            tds_pct,
-            1 if data.get('is_tcs') in (1, '1', 'Yes', True) else 0,
-            tcs_pct,
-            1 if data.get('is_triplicate') in (1, '1', 'Yes', True) else 0,
-            data.get('created_by'),
-            datetime.now().strftime('%Y-%m-%d')
-        ])
-        row_id = cur.fetchone()['id']
+            cur.execute('''
+                INSERT INTO finance_service_types
+                (service_code, service_name, service_category, gl_code, sac_code,
+                 gst_rate_id, uom, is_billable, is_active,
+                 sap_gl_account, sap_profit_center, sap_cost_center,
+                 sap_igst_gl, sap_cgst_gl, sap_sgst_gl, service_sale_flag,
+                 sap_tds_gl, sap_tcs_gl,
+                 is_tds, tds_percent, is_tcs, tcs_percent, is_triplicate, created_by, created_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', [
+                data.get('service_code'),
+                data.get('service_name'),
+                data.get('service_category'),
+                data.get('gl_code'),
+                data.get('sac_code'),
+                data.get('gst_rate_id'),
+                data.get('uom'),
+                data.get('is_billable', 1),
+                data.get('is_active', 1),
+                data.get('sap_gl_account'),
+                data.get('sap_profit_center'),
+                data.get('sap_cost_center'),
+                data.get('sap_igst_gl') or None,
+                data.get('sap_cgst_gl') or None,
+                data.get('sap_sgst_gl') or None,
+                data.get('service_sale_flag') or 'S',
+                data.get('sap_tds_gl') or None,
+                data.get('sap_tcs_gl') or None,
+                1 if data.get('is_tds') in (1, '1', 'Yes', True) else 0,
+                tds_pct,
+                1 if data.get('is_tcs') in (1, '1', 'Yes', True) else 0,
+                tcs_pct,
+                1 if data.get('is_triplicate') in (1, '1', 'Yes', True) else 0,
+                data.get('created_by'),
+                datetime.now().strftime('%Y-%m-%d')
+            ])
+            row_id = cur.fetchone()['id']
 
-    conn.commit()
-    conn.close()
-    return row_id
+        conn.commit()
+        return row_id
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise ValueError('Service code "%s" already exists' % data.get('service_code', ''))
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def delete_service_type(row_id):

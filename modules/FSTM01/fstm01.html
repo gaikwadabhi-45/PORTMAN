@@ -342,6 +342,14 @@ async function saveAll() {
 
         if (!data.service_name) continue;
 
+        // Service Code is required and must be unique. fetch() bypasses the
+        // input's HTML5 'required', so validate explicitly before posting.
+        if (!data.service_code || !data.service_code.trim()) {
+            alert('Service Code is required for "' + data.service_name + '". Please enter a unique code.');
+            row.querySelector('[name="service_code[]"]').focus();
+            return;
+        }
+
         const res = await fetch('/api/module/FSTM01/save', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -351,6 +359,10 @@ async function saveAll() {
         if (result.success) {
             saved++;
             if (!id) row.setAttribute('data-id', result.id);
+        } else {
+            alert('Could not save "' + data.service_name + '": ' + (result.error || 'Unknown error'));
+            row.querySelector('[name="service_code[]"]').focus();
+            return;
         }
     }
 

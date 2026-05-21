@@ -44,7 +44,14 @@ def save():
         return jsonify({'success': False, 'error': 'System rows can only be edited by admins'})
 
     data['created_by'] = session.get('username')
-    row_id = model.save_service_type(data)
+    try:
+        row_id = model.save_service_type(data)
+    except ValueError as e:
+        # Validation / unique-code errors raised by the model
+        return jsonify({'success': False, 'error': str(e)})
+    except Exception as e:
+        # Return JSON (not an HTML 500 page) so the client can parse it
+        return jsonify({'success': False, 'error': 'Save failed: ' + str(e)})
     return jsonify({'success': True, 'id': row_id})
 
 
