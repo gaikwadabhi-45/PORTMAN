@@ -2,6 +2,18 @@ from database import get_db, get_cursor
 from datetime import datetime
 
 
+# ===== CUTOVER SEED HELPERS =====
+
+def next_from_seed(existing_max, start_seq):
+    """Next sequence number given the highest already-used number and an
+    optional cutover floor. The seed is a floor only: once real documents
+    exceed it, normal incrementing wins, so a stale seed can never collide."""
+    base = (existing_max or 0) + 1
+    if start_seq:
+        return max(base, int(start_seq))
+    return base
+
+
 # ===== CARGO BILLING HELPERS =====
 
 def _mark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty, bill_id):
