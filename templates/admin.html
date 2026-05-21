@@ -21,6 +21,7 @@
     <button class="tab-btn" onclick="showTab('banks')">Bank Accounts</button>
     <button class="tab-btn" onclick="showTab('mail')">Mail</button>
     <button class="tab-btn" onclick="showTab('logs')">Logs</button>
+    <button class="tab-btn" onclick="showTab('cutover')">Cutover</button>
 </div>
 
 <!-- User Management Tab -->
@@ -590,6 +591,43 @@
             <button class="btn" onclick="hideAddUser()">Cancel</button>
             <button class="btn btn-add" onclick="addUser()">Add User</button>
         </div>
+    </div>
+</div>
+
+<div id="cutover-tab" class="tab-content">
+    <div class="admin-section">
+        <div id="cutover-locked-banner" style="display:none;background:#b00020;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:10px">
+            Cutover is LOCKED. Unlock to make changes.
+        </div>
+
+        <h3>Document numbers</h3>
+        <div>
+            <label>Series</label> <input id="cut-inv-series" placeholder="e.g. DPPL">
+            <label>FY</label> <input id="cut-inv-fy" placeholder="e.g. 26-27">
+            <label>Start at</label> <input id="cut-inv-start" type="number" min="1">
+            <button class="btn" onclick="cutSetInvoiceSeed()">Set invoice start</button>
+        </div>
+        <div style="margin-top:8px">
+            <label>Bill start at</label> <input id="cut-bill-start" type="number" min="1">
+            <button class="btn" onclick="cutSetBillSeed()">Set bill start</button>
+        </div>
+        <table class="admin-table" id="cutSeedTable" style="margin-top:10px">
+            <thead><tr><th>Type</th><th>Series</th><th>FY</th><th>Start</th><th>By</th></tr></thead>
+            <tbody></tbody>
+        </table>
+
+        <h3 style="margin-top:18px">Mark items billed (no invoice / no SAP)</h3>
+        <div>
+            <select id="cut-cust-type"><option>Customer</option><option>Agent</option></select>
+            <input id="cut-cust-id" type="number" placeholder="customer/agent id">
+            <button class="btn" onclick="cutLoadBillables()">Load items</button>
+        </div>
+        <div id="cut-billables" style="margin-top:10px"></div>
+        <button class="btn" onclick="cutMarkBilled(true)">Mark selected billed</button>
+        <button class="btn" onclick="cutMarkBilled(false)">Unmark selected</button>
+
+        <h3 style="margin-top:18px">Lock</h3>
+        <button class="btn" onclick="cutToggleLock()" id="cut-lock-btn">Mark cutover complete (lock)</button>
     </div>
 </div>
 
@@ -2030,8 +2068,75 @@ function spgViewInbound(id, reqBody, respBody) {
         </body></html>`);
 }
 
+// ===== Cutover / Migration =====
+async function cutLoadState() {
+    const r = await fetch('/admin/api/cutover/state');
+    const s = await r.json();
+    document.getElementById('cutover-locked-banner').style.display = s.locked ? 'block' : 'none';
+    document.getElementById('cut-lock-btn').textContent = s.locked ? 'Unlock cutover' : 'Mark cutover complete (lock)';
+    const tb = document.querySelector('#cutSeedTable tbody');
+    tb.innerHTML = (s.seeds || []).map(x =>
+        `<tr><td>${x.seed_type}</td><td>${x.doc_series||''}</td><td>${x.financial_year||''}</td><td>${x.start_seq}</td><td>${x.updated_by||x.created_by||''}</td></tr>`).join('');
+}
+
+async function _cutPost(url, body) {
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const j = await r.json();
+    if (!j.success) { alert(j.error || 'Failed'); return null; }
+    return j;
+}
+
+async function cutSetInvoiceSeed() {
+    const ok = await _cutPost('/admin/api/cutover/invoice-seed', {
+        doc_series: document.getElementById('cut-inv-series').value,
+        financial_year: document.getElementById('cut-inv-fy').value,
+        start_seq: parseInt(document.getElementById('cut-inv-start').value, 10),
+    });
+    if (ok) cutLoadState();
+}
+
+async function cutSetBillSeed() {
+    const ok = await _cutPost('/admin/api/cutover/bill-seed', {
+        start_seq: parseInt(document.getElementById('cut-bill-start').value, 10),
+    });
+    if (ok) cutLoadState();
+}
+
+async function cutLoadBillables() {
+    const type = document.getElementById('cut-cust-type').value;
+    const id = document.getElementById('cut-cust-id').value;
+    const r = await fetch(`/api/module/FIN01/customer-billables/${type}/${id}`);
+    const data = await r.json();
+    const cargo = data.cargo_handling || [];
+    const svcs = data.other_services || [];
+    let html = '<b>Cargo</b><br>';
+    html += cargo.map(c =>
+        `<label><input type="checkbox" class="cut-cargo" data-st="${c.cargo_source_type}" data-id="${c.cargo_source_id}"> ${c.doc_label||''} &mdash; ${c.cargo_name||''} (${c.billable_quantity})</label><br>`).join('');
+    html += '<br><b>Services</b><br>';
+    html += svcs.map(s =>
+        `<label><input type="checkbox" class="cut-svc" data-id="${s.id}"> ${s.service_name||''} (${s.id})</label><br>`).join('');
+    document.getElementById('cut-billables').innerHTML = html;
+}
+
+async function cutMarkBilled(billed) {
+    const cargo_items = [...document.querySelectorAll('.cut-cargo:checked')].map(e => ({source_type: e.dataset.st, id: parseInt(e.dataset.id,10)}));
+    const service_ids = [...document.querySelectorAll('.cut-svc:checked')].map(e => parseInt(e.dataset.id,10));
+    if (!cargo_items.length && !service_ids.length) { alert('Select at least one item'); return; }
+    if (!confirm(`${billed ? 'Mark' : 'Unmark'} ${cargo_items.length} cargo + ${service_ids.length} services?`)) return;
+    const ok = await _cutPost('/admin/api/cutover/mark-billed', {cargo_items, service_ids, billed});
+    if (ok) { alert('Done'); cutLoadBillables(); }
+}
+
+async function cutToggleLock() {
+    const locked = document.getElementById('cut-lock-btn').textContent.startsWith('Mark');
+    if (!confirm(locked ? 'Lock cutover? Writes will be blocked.' : 'Unlock cutover?')) return;
+    await _cutPost('/admin/api/cutover/lock', {locked});
+    cutLoadState();
+}
+
 // Initialize
 loadUsers().then(() => loadAllConfigs());
 loadModules();
+cutLoadState();
 </script>
 {% endblock %}
