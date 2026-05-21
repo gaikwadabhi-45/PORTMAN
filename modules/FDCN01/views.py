@@ -136,15 +136,6 @@ def entry():
                            is_approver=_is_approver(), fdcn_id=fdcn_id or '')
 
 
-@bp.route('/module/FDCN01/doc-series')
-@login_required
-def doc_series_view():
-    perms = get_perms()
-    if not perms.get('can_read'):
-        return render_template('no_access.html'), 403
-    return render_template('fdcn01_doc_series.html', permissions=perms)
-
-
 @bp.route('/module/FDCN01/print/<int:fdcn_id>')
 @login_required
 def print_view(fdcn_id):
@@ -390,34 +381,6 @@ def get_agreements(customer_type, customer_id):
 def get_agreement_rates(agreement_id):
     rows = model.get_agreement_rates(agreement_id)
     return jsonify(rows)
-
-
-# ===== API: Doc Series =====
-
-@bp.route('/api/module/FDCN01/doc-series/data')
-@login_required
-def doc_series_data():
-    return jsonify(model.get_doc_series_list())
-
-
-@bp.route('/api/module/FDCN01/doc-series/save', methods=['POST'])
-@login_required
-def doc_series_save():
-    perms = get_perms()
-    if not perms.get('can_add') and not perms.get('can_edit'):
-        return jsonify({'error': 'No permission'}), 403
-    ds_id = model.save_doc_series(request.json)
-    return jsonify({'success': True, 'id': ds_id})
-
-
-@bp.route('/api/module/FDCN01/doc-series/delete', methods=['POST'])
-@login_required
-def doc_series_delete():
-    perms = get_perms()
-    if not perms.get('can_delete'):
-        return jsonify({'error': 'No permission'}), 403
-    model.delete_doc_series(request.json.get('id'))
-    return jsonify({'success': True})
 
 
 # ===== API: SAP Integration =====

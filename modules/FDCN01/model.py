@@ -3,47 +3,6 @@ from datetime import datetime
 
 
 # ---------------------------------------------------------------------------
-# Doc Series
-# ---------------------------------------------------------------------------
-def get_doc_series_list():
-    conn = get_db()
-    cur = get_cursor(conn)
-    cur.execute('SELECT * FROM fdcn_doc_series ORDER BY type, name')
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
-    return rows
-
-
-def save_doc_series(data):
-    conn = get_db()
-    cur = get_cursor(conn)
-    ds_id = data.get('id')
-    if ds_id:
-        cur.execute('''UPDATE fdcn_doc_series
-            SET name=%s, prefix=%s, type=%s, is_default=%s, is_active=%s
-            WHERE id=%s''',
-            [data['name'], data['prefix'], data['type'],
-             data.get('is_default', False), data.get('is_active', True), ds_id])
-    else:
-        cur.execute('''INSERT INTO fdcn_doc_series (name, prefix, type, is_default, is_active)
-            VALUES (%s, %s, %s, %s, %s) RETURNING id''',
-            [data['name'], data['prefix'], data['type'],
-             data.get('is_default', False), data.get('is_active', True)])
-        ds_id = cur.fetchone()['id']
-    conn.commit()
-    conn.close()
-    return ds_id
-
-
-def delete_doc_series(ds_id):
-    conn = get_db()
-    cur = get_cursor(conn)
-    cur.execute('DELETE FROM fdcn_doc_series WHERE id = %s', [ds_id])
-    conn.commit()
-    conn.close()
-
-
-# ---------------------------------------------------------------------------
 # Financial Year helper
 # ---------------------------------------------------------------------------
 def get_financial_year(date_str):
@@ -68,19 +27,24 @@ def get_financial_year(date_str):
 # ---------------------------------------------------------------------------
 # Doc Number generation
 # ---------------------------------------------------------------------------
+# Fixed doc-number prefixes. The configurable DN/CN doc series was removed —
+# the SAP Reference now comes from the original invoice, so doc_number is only
+# the Portbird-side identifier (list/print/dedup/remarks), not a SAP field.
+FDCN_DOC_PREFIXES = {'DN': 'DPPLDN', 'CN': 'DPPLCN'}
+
+
+def fdcn_doc_prefix(doc_type):
+    """Resolve the fixed doc-number prefix for a DN/CN. Unknown types pass through."""
+    return FDCN_DOC_PREFIXES.get(doc_type, doc_type)
+
+
 def get_next_doc_number(doc_type, doc_date):
-    """Generate next doc number: PREFIX/FY/SEQ  e.g. DN/25-26/0001."""
-    conn = get_db()
-    cur = get_cursor(conn)
-
-    # Get default series for this type
-    cur.execute('''SELECT prefix FROM fdcn_doc_series
-        WHERE type=%s AND is_default=TRUE AND is_active=TRUE LIMIT 1''', [doc_type])
-    row = cur.fetchone()
-    prefix = row['prefix'] if row else doc_type
-
+    """Generate next doc number: PREFIX/FY/SEQ  e.g. DPPLCN/25-26/0001."""
+    prefix = fdcn_doc_prefix(doc_type)
     fy = get_financial_year(doc_date)
 
+    conn = get_db()
+    cur = get_cursor(conn)
     # Get max sequence for this prefix/FY
     cur.execute('''SELECT COALESCE(MAX(doc_series_seq), 0) AS max_seq
         FROM fdcn_header WHERE doc_series=%s AND financial_year=%s''', [prefix, fy])

@@ -251,12 +251,20 @@ def _build_items(lines, reference, amount_field='line_amount',
         else:
             tax_code = ''
 
-        # IGST_GL / CGST_GL / SGST_GL are all blank when no GST applies on the line.
-        # When ANY GST applies, all 3 GLs are sent together (per tested SAP payload).
-        any_gst = (igst + cgst + sgst) > 0
-        igst_gl_out = (igst_gl[:10] if igst_gl else '') if any_gst else ''
-        cgst_gl_out = (cgst_gl[:10] if cgst_gl else '') if any_gst else ''
-        sgst_gl_out = (sgst_gl[:10] if sgst_gl else '') if any_gst else ''
+        # GST GL accounts follow the transaction type (matches SAP-tested payloads):
+        #   inter-state (IGST)   → only IGST_GL; CGST_GL / SGST_GL stay blank
+        #   intra-state (C/SGST) → all three GLs sent together (incl. IGST_GL)
+        #   no GST               → all three blank
+        if igst > 0:
+            igst_gl_out = igst_gl[:10] if igst_gl else ''
+            cgst_gl_out = ''
+            sgst_gl_out = ''
+        elif (cgst + sgst) > 0:
+            igst_gl_out = igst_gl[:10] if igst_gl else ''
+            cgst_gl_out = cgst_gl[:10] if cgst_gl else ''
+            sgst_gl_out = sgst_gl[:10] if sgst_gl else ''
+        else:
+            igst_gl_out = cgst_gl_out = sgst_gl_out = ''
         profit_center = (
             line.get('profit_center')
             or svc.get('sap_profit_center')
@@ -433,6 +441,12 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
     doc_number    = fdcn_header.get('doc_number') or ''
     doc_type      = fdcn_header.get('doc_type', 'CN')   # 'DN' or 'CN'
 
+    # A CN/DN raised against an invoice carries the ORIGINAL invoice's Reference
+    # in both the header and the line items — same number as the invoice, with
+    # only Document_type (DG/DR) and Invoice_Credit (C/I) distinguishing it.
+    # Standalone notes with no parent invoice fall back to the FDCN doc_number.
+    reference = fdcn_header.get('original_invoice_number') or doc_number
+
     # PORTBIRD Document_type: DN → 'DR' (debit), CN → 'DG' (credit)
     # Invoice_Credit: DN → 'I' (adds to receivable), CN → 'C' (reduces receivable)
     document_type  = 'DR' if doc_type == 'DN' else 'DG'
@@ -458,9 +472,9 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         customer_code=customer_code,
         company=company,
         inv_date=doc_date,
-        reference=doc_number,
-        header_text=doc_number,
-        short_text=doc_number,
+        reference=reference,
+        header_text=reference,
+        short_text=reference,
         currency='INR',
         invoice_credit=invoice_credit,
         document_type=document_type,
@@ -469,7 +483,7 @@ def build_fdcn_payload(fdcn_header, fdcn_lines):
         invoice_amount=_total_invoice_amount(fdcn_header, enriched_lines),
     )
     record['ITEM'] = _build_items(
-        enriched_lines, doc_number,
+        enriched_lines, reference,
         config_defaults=config, svc_map=svc_map, doc_type=doc_type,
         round_off=float(fdcn_header.get('round_off') or 0),
     )
