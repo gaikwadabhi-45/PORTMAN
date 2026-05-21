@@ -959,3 +959,67 @@ def playground_inbound_logs():
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
     return jsonify({'data': rows, 'total': total, 'last_page': (total + size - 1) // size})
+
+
+# ===== Cutover / Migration (go-live) =====
+
+from modules.ADMIN import cutover as cutover_mod
+
+
+@bp.route('/api/cutover/state')
+@admin_required
+def cutover_state():
+    return jsonify({'locked': cutover_mod.is_locked(), 'seeds': cutover_mod.get_seeds()})
+
+
+@bp.route('/api/cutover/invoice-seed', methods=['POST'])
+@admin_required
+def cutover_invoice_seed():
+    d = request.json or {}
+    try:
+        start_seq = int(d.get('start_seq'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'start_seq must be an integer'}), 400
+    ok, msg = cutover_mod.set_invoice_seed(
+        (d.get('doc_series') or '').strip().upper(),
+        (d.get('financial_year') or '').strip(),
+        start_seq,
+        session.get('username'))
+    if ok:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': msg}), 403 if 'locked' in msg.lower() else 400
+
+
+@bp.route('/api/cutover/bill-seed', methods=['POST'])
+@admin_required
+def cutover_bill_seed():
+    d = request.json or {}
+    try:
+        start_seq = int(d.get('start_seq'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'start_seq must be an integer'}), 400
+    ok, msg = cutover_mod.set_bill_seed(start_seq, session.get('username'))
+    if ok:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': msg}), 403 if 'locked' in msg.lower() else 400
+
+
+@bp.route('/api/cutover/mark-billed', methods=['POST'])
+@admin_required
+def cutover_mark_billed():
+    d = request.json or {}
+    billed = bool(d.get('billed', True))
+    ok, msg, counts = cutover_mod.mark_items_billed(
+        d.get('cargo_items') or [], d.get('service_ids') or [],
+        session.get('username'), billed=billed)
+    if ok:
+        return jsonify({'success': True, 'counts': counts})
+    return jsonify({'success': False, 'error': msg}), 403 if 'locked' in msg.lower() else 400
+
+
+@bp.route('/api/cutover/lock', methods=['POST'])
+@admin_required
+def cutover_lock():
+    d = request.json or {}
+    cutover_mod.set_lock(bool(d.get('locked', True)), session.get('username'))
+    return jsonify({'success': True, 'locked': cutover_mod.is_locked()})
