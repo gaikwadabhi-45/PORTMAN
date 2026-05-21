@@ -83,3 +83,17 @@ def test_apply_billed_unknown_source_raises():
     cur = _FakeCursor()
     with pytest.raises(ValueError):
         cutover._apply_billed(cur, [{'source_type': 'XXX', 'id': 1}], [], billed=True)
+
+
+# --- Task 9: lock gate (monkeypatched, no DB) ------------------------------
+
+def test_set_invoice_seed_blocked_when_locked(monkeypatch):
+    monkeypatch.setattr(cutover, 'is_locked', lambda: True)
+    ok, msg = cutover.set_invoice_seed('DPPL', '26-27', 4568, 'tester')
+    assert ok is False and 'locked' in msg.lower()
+
+
+def test_mark_items_billed_blocked_when_locked(monkeypatch):
+    monkeypatch.setattr(cutover, 'is_locked', lambda: True)
+    ok, msg, counts = cutover.mark_items_billed([{'source_type': 'VCN_IMPORT', 'id': 1}], [], 'tester')
+    assert ok is False and 'locked' in msg.lower() and counts == {}
