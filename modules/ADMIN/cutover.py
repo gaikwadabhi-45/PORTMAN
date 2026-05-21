@@ -122,3 +122,56 @@ def set_bill_seed(start_seq, username):
     conn.close()
     write_audit('set_bill_seed', {'start_seq': start_seq}, username)
     return True, ''
+
+
+# ===== Mark / unmark items billed (pure flag, no invoice, no SAP) =====
+
+def _apply_billed(cur, cargo_items, service_ids, billed):
+    """Flip billed flags. cargo_items: list of {'source_type','id'}.
+    billed=True  -> is_billed=1, billed_quantity=<declared qty>
+    billed=False -> is_billed=0, billed_quantity=0
+    Returns counts dict. Raises ValueError on unknown source_type."""
+    cargo_done, svc_done = 0, 0
+    for item in cargo_items or []:
+        mapping = cargo_source(item.get('source_type'))
+        if not mapping:
+            raise ValueError(f"Unknown cargo source_type: {item.get('source_type')}")
+        table, qty_col = mapping
+        if billed:
+            # qty_col and table are trusted constants from CARGO_SOURCES (never user input)
+            cur.execute(
+                f"UPDATE {table} SET is_billed=1, billed_quantity={qty_col} WHERE id=%s",
+                [item.get('id')])
+        else:
+            cur.execute(
+                f"UPDATE {table} SET is_billed=0, billed_quantity=0 WHERE id=%s",
+                [item.get('id')])
+        cargo_done += cur.rowcount
+    for sid in service_ids or []:
+        if billed:
+            cur.execute("UPDATE service_records SET is_billed=1 WHERE id=%s", [sid])
+        else:
+            cur.execute("UPDATE service_records SET is_billed=0, bill_id=NULL WHERE id=%s", [sid])
+        svc_done += cur.rowcount
+    return {'cargo': cargo_done, 'services': svc_done}
+
+
+def mark_items_billed(cargo_items, service_ids, username, billed=True):
+    """Mark (or unmark) the given items as billed. Pure status flag - no bill,
+    no invoice, no SAP. Transactional. Returns (ok, message, counts)."""
+    if is_locked():
+        return False, 'Cutover is locked.', {}
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        counts = _apply_billed(cur, cargo_items, service_ids, billed)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        return False, str(e), {}
+    conn.close()
+    write_audit('mark_billed' if billed else 'unmark_billed',
+                {'cargo': cargo_items, 'services': service_ids, 'counts': counts},
+                username)
+    return True, '', counts

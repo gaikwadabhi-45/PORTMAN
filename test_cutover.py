@@ -51,3 +51,35 @@ def test_cargo_source_maps_known_types():
 
 def test_cargo_source_unknown_is_none():
     assert cutover.cargo_source('NOPE') is None
+
+
+# --- Task 6: mark/unmark dispatch (no DB, fake cursor) ----------------------
+
+class _FakeCursor:
+    def __init__(self):
+        self.calls = []
+        self.rowcount = 1
+
+    def execute(self, sql, params=None):
+        self.calls.append((' '.join(sql.split()), params))
+
+
+def test_apply_billed_marks_cargo_and_services():
+    cur = _FakeCursor()
+    counts = cutover._apply_billed(
+        cur,
+        [{'source_type': 'VCN_IMPORT', 'id': 7}],
+        [42],
+        billed=True,
+    )
+    assert counts == {'cargo': 1, 'services': 1}
+    sqls = [c[0] for c in cur.calls]
+    assert any("UPDATE vcn_cargo_declaration SET is_billed=1, billed_quantity=bl_quantity WHERE id=%s" in s for s in sqls)
+    assert any("UPDATE service_records SET is_billed=1 WHERE id=%s" in s for s in sqls)
+
+
+def test_apply_billed_unknown_source_raises():
+    import pytest
+    cur = _FakeCursor()
+    with pytest.raises(ValueError):
+        cutover._apply_billed(cur, [{'source_type': 'XXX', 'id': 1}], [], billed=True)
