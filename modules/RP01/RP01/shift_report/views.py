@@ -1150,6 +1150,9 @@ def _build_delay_sheet(wb, delay_view):
 
     row = 3
 
+    # STORE MERGES
+    merge_ranges = []
+
     # =========================================================
     # DATA ROWS
     # =========================================================
@@ -1177,6 +1180,15 @@ def _build_delay_sheet(wb, delay_view):
                 font_color=_TEXT
             )
 
+            if item.get('show_type') and item.get('type_rowspan', 0) > 1:
+
+                merge_ranges.append((
+                    row,
+                    1,
+                    row + item['type_rowspan'] - 1,
+                    1
+                ))
+
             # -------------------------------------------------
             # ACTIVITY
             # -------------------------------------------------
@@ -1191,6 +1203,15 @@ def _build_delay_sheet(wb, delay_view):
                 fill_color=_GROUP_FILL,
                 font_color=_TEXT
             )
+
+            if item.get('show_activity') and item.get('activity_rowspan', 0) > 1:
+
+                merge_ranges.append((
+                    row,
+                    2,
+                    row + item['activity_rowspan'] - 1,
+                    2
+                ))
 
             # -------------------------------------------------
             # EQUIPMENT
@@ -1207,6 +1228,15 @@ def _build_delay_sheet(wb, delay_view):
                 font_color=_TEXT
             )
 
+            if item.get('show_equipment') and item.get('equipment_rowspan', 0) > 1:
+
+                merge_ranges.append((
+                    row,
+                    3,
+                    row + item['equipment_rowspan'] - 1,
+                    3
+                ))
+
             # -------------------------------------------------
             # SYSTEM
             # -------------------------------------------------
@@ -1221,6 +1251,15 @@ def _build_delay_sheet(wb, delay_view):
                 fill_color=_BODY_FILL,
                 font_color=_TEXT
             )
+
+            if item.get('show_system') and item.get('system_rowspan', 0) > 1:
+
+                merge_ranges.append((
+                    row,
+                    4,
+                    row + item['system_rowspan'] - 1,
+                    4
+                ))
 
             # -------------------------------------------------
             # ROUTE
@@ -1422,6 +1461,56 @@ def _build_delay_sheet(wb, delay_view):
 
         row += 1
 
+    # =========================================================
+    # APPLY MERGES
+    # =========================================================
+    for start_row, start_col, end_row, end_col in merge_ranges:
+
+        ws.merge_cells(
+            start_row=start_row,
+            start_column=start_col,
+            end_row=end_row,
+            end_column=end_col
+        )
+
+        main_cell = ws.cell(start_row, start_col)
+
+        main_cell.alignment = Alignment(
+            horizontal='center',
+            vertical='center',
+            wrap_text=True
+        )
+
+        # =====================================================
+        # REMOVE INNER HORIZONTAL BORDERS
+        # =====================================================
+        for r in range(start_row, end_row + 1):
+
+            cell = ws.cell(r, start_col)
+
+            # LEFT + RIGHT ONLY
+            cell.border = Border(
+                left=_thin,
+                right=_thin
+            )
+
+        # =====================================================
+        # TOP BORDER ONLY FIRST CELL
+        # =====================================================
+        ws.cell(start_row, start_col).border = Border(
+            left=_thin,
+            right=_thin,
+            top=_thin
+        )
+
+        # =====================================================
+        # BOTTOM BORDER ONLY LAST CELL
+        # =====================================================
+        ws.cell(end_row, start_col).border = Border(
+            left=_thin,
+            right=_thin,
+            bottom=_thin
+        )
     # =========================================================
     # COLUMN WIDTHS
     # =========================================================
