@@ -14,6 +14,33 @@ def next_from_seed(existing_max, start_seq):
     return base
 
 
+def lookup_seed(cur, seed_type, doc_series='', financial_year=''):
+    """Return the cutover start_seq for this key, or None. Tolerates a missing
+    table (pre-migration) by returning None."""
+    try:
+        cur.execute(
+            '''SELECT start_seq FROM cutover_seed
+               WHERE seed_type=%s AND doc_series=%s AND financial_year=%s''',
+            [seed_type, doc_series or '', financial_year or ''])
+        row = cur.fetchone()
+        return row['start_seq'] if row else None
+    except Exception:
+        cur.connection.rollback()
+        return None
+
+
+def next_invoice_seq(cur, doc_series, financial_year):
+    """Next invoice doc_series_seq for (doc_series, fy), honouring a cutover seed
+    as a floor. Uses the SAME key as the existing MAX query."""
+    cur.execute(
+        'SELECT MAX(doc_series_seq) AS m FROM invoice_header WHERE doc_series=%s AND financial_year=%s',
+        [doc_series, financial_year])
+    row = cur.fetchone()
+    existing_max = (row['m'] if row else 0) or 0
+    seed = lookup_seed(cur, 'invoice', doc_series, financial_year)
+    return next_from_seed(existing_max, seed)
+
+
 # ===== CARGO BILLING HELPERS =====
 
 def _mark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qty, bill_id):
@@ -89,15 +116,16 @@ def _unmark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qt
 # ===== BILL FUNCTIONS =====
 
 def get_next_bill_number():
-    """Generate next bill number"""
+    """Generate next bill number, honouring a cutover bill seed as a floor."""
     conn = get_db()
     cur = get_cursor(conn)
     cur.execute(
         "SELECT MAX(CAST(SUBSTR(bill_number, 5) AS INTEGER)) FROM bill_header WHERE bill_number LIKE 'BILL%%'"
     )
-    result = cur.fetchone()['max']
+    existing_max = (cur.fetchone()['max'] or 0)
+    seed = lookup_seed(cur, 'bill')      # doc_series='', financial_year=''
     conn.close()
-    next_num = (result or 0) + 1
+    next_num = next_from_seed(existing_max, seed)
     return f"BILL{next_num:04d}"
 
 

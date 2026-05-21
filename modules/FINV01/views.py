@@ -285,12 +285,7 @@ def create_invoice():
         invoice_date = str(first_bill['bill_date'])[:10]
 
     fy_suffix = model.get_financial_year(invoice_date) if invoice_date else ''
-    cur_seq.execute(
-        'SELECT MAX(doc_series_seq) FROM invoice_header WHERE doc_series=%s AND financial_year=%s',
-        [doc_series_prefix, fy_suffix]
-    )
-    row_seq = cur_seq.fetchone()
-    next_seq = (row_seq['max'] or 0) + 1 if row_seq else 1
+    next_seq = model.next_invoice_seq(cur_seq, doc_series_prefix, fy_suffix)
     conn_seq.close()
     invoice_number_override = f'{doc_series_prefix}/{next_seq}'
 
