@@ -602,8 +602,8 @@
 
         <h3>Document numbers</h3>
         <div>
-            <label>Series</label> <input id="cut-inv-series" placeholder="e.g. DPPL">
-            <label>FY</label> <input id="cut-inv-fy" placeholder="e.g. 26-27">
+            <label>Series</label> <select id="cut-inv-series"></select>
+            <label>FY</label> <input id="cut-inv-fy" placeholder="e.g. 2026-27">
             <label>Start at</label> <input id="cut-inv-start" type="number" min="1">
             <button class="btn" onclick="cutSetInvoiceSeed()">Set invoice start</button>
         </div>
@@ -618,8 +618,8 @@
 
         <h3 style="margin-top:18px">Mark items billed (no invoice / no SAP)</h3>
         <div>
-            <select id="cut-cust-type"><option>Customer</option><option>Agent</option></select>
-            <input id="cut-cust-id" type="number" placeholder="customer/agent id">
+            <select id="cut-cust-type" onchange="cutLoadCustomers()"><option>Customer</option><option>Agent</option></select>
+            <select id="cut-cust-id"></select>
             <button class="btn" onclick="cutLoadBillables()">Load items</button>
         </div>
         <div id="cut-billables" style="margin-top:10px"></div>
@@ -2069,6 +2069,35 @@ function spgViewInbound(id, reqBody, respBody) {
 }
 
 // ===== Cutover / Migration =====
+async function cutLoadSeries() {
+    const sel = document.getElementById('cut-inv-series');
+    try {
+        const list = await (await fetch('/api/module/INVDS01/all')).json();
+        sel.innerHTML = (list || []).map(s =>
+            `<option value="${s.prefix}"${s.is_default ? ' selected' : ''}>${s.name} (${s.prefix})</option>`).join('')
+            || '<option value="">— no series configured —</option>';
+    } catch (e) { sel.innerHTML = '<option value="">— no series configured —</option>'; }
+}
+
+async function cutLoadCustomers() {
+    const type = document.getElementById('cut-cust-type').value;
+    const sel = document.getElementById('cut-cust-id');
+    sel.innerHTML = '<option value="">Loading…</option>';
+    try {
+        const r = await (await fetch(`/api/module/FIN01/customers/${type}`)).json();
+        sel.innerHTML = (r.data || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('')
+            || '<option value="">— none —</option>';
+    } catch (e) { sel.innerHTML = '<option value="">— none —</option>'; }
+}
+
+function cutInitFY() {
+    const d = new Date();
+    const y = d.getFullYear(), m = d.getMonth() + 1;
+    const fy = (m >= 4) ? `${y}-${String(y + 1).slice(2)}` : `${y - 1}-${String(y).slice(2)}`;
+    const el = document.getElementById('cut-inv-fy');
+    if (el && !el.value) el.value = fy;   // stored format e.g. "2026-27" (matches create_invoice)
+}
+
 async function cutLoadState() {
     const r = await fetch('/admin/api/cutover/state');
     const s = await r.json();
@@ -2138,5 +2167,8 @@ async function cutToggleLock() {
 loadUsers().then(() => loadAllConfigs());
 loadModules();
 cutLoadState();
+cutLoadSeries();
+cutLoadCustomers();
+cutInitFY();
 </script>
 {% endblock %}

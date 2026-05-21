@@ -981,7 +981,7 @@ def cutover_invoice_seed():
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'start_seq must be an integer'}), 400
     ok, msg = cutover_mod.set_invoice_seed(
-        (d.get('doc_series') or '').strip().upper(),
+        (d.get('doc_series') or '').strip().rstrip('/').upper(),
         (d.get('financial_year') or '').strip(),
         start_seq,
         session.get('username'))
