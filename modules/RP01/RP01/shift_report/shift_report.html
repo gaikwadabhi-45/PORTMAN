@@ -371,90 +371,381 @@
 
     background: #f1f6fb;
 }
-
-/* CENTER DELAY TYPE PERFECTLY */
+/* =========================================
+   DELAY TYPE COLUMN
+========================================= */
 
 .type-cell {
 
-    position: relative;
-
-    vertical-align: middle !important;
-
-    text-align: center !important;
-}
-/* MAKE ONLY FIRST COLUMN BLUE IN TOTAL ROWS */
-
-.subtotal-row td:first-child,
-.type-total-row td:first-child,
-.grand-total-row td:first-child {
-
-    background: #f1f6fb  !important;
+    background: #f1f6fb !important;
 
     color: #1e3a8a !important;
 
-    border-color: #f1f6fb  !important;
+    text-align: center !important;
 
-    font-weight: 700;
-}
-/* THIN BORDER ONLY FOR DELAY TYPE COLUMN */
+    vertical-align: middle !important;
 
-.type-cell {
+    position: relative !important;
 
-    border-right: 1px solid #d7dde5 !important;
-}
+    padding: 0 !important;
 
-/* TOTAL ROWS */
+    line-height: normal !important;
 
-.subtotal-row td:first-child,
-.type-total-row td:first-child,
-.grand-total-row td:first-child {
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
 
     border-right: 1px solid #d7dde5 !important;
 }
 
-.type-cell {
+/* =========================================
+   ACTIVITY / EQUIPMENT / SYSTEM
+========================================= */
+
+.group-cell {
+
+    background: #ffffff !important;
+
+    color: #000000 !important;
 
     text-align: center !important;
 
     vertical-align: middle !important;
 
-    padding-top: 0 !important;
+    position: relative !important;
 
-    padding-bottom: 0 !important;
+    padding: 0 !important;
+
+    line-height: normal !important;
+
+    border-bottom: 0 !important;
+
+    border-right: 1px solid #d7dde5 !important;
 }
 
-/* THIN LINE ABOVE & BELOW EACH NEW DELAY TYPE */
+/* =========================================
+   CONTINUED MERGED CELLS
+========================================= */
 
-.type-cell:not(.cell-no-top) {
+.type-cell.cell-no-top {
 
-    border-top: 1px solid #d7dde5 !important;
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
+
+    color: transparent !important;
+
+    background: #f1f6fb !important;
+}
+
+.group-cell.cell-no-top {
+
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
+
+    color: transparent !important;
+
+    background: #ffffff !important;
+}
+
+/* REMOVE INNER MERGE LINES */
+
+.type-cell.cell-no-top,
+.group-cell.cell-no-top {
+
+    border-top-color: transparent !important;
+}
+
+/* =========================================
+   PERFECT VERTICAL CENTER
+========================================= */
+
+.type-cell,
+.group-cell {
+
+    position: relative !important;
+
+    padding: 0 !important;
+
+    vertical-align: middle !important;
+
+    text-align: center !important;
+}
+
+/* =========================================
+   FAKE VERTICAL CENTER FOR MERGED CELLS
+========================================= */
+
+.type-cell,
+.group-cell {
+
+    position: relative !important;
+
+    text-align: center !important;
+
+    vertical-align: middle !important;
+
+    padding: 0 !important;
+}
+
+/* FIRST VISIBLE CELL */
+
+.type-cell:not(.cell-no-top) .cell-content,
+.group-cell:not(.cell-no-top) .cell-content {
+
+    padding-top: 120px !important;
+
+    padding-bottom: 120px !important;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    text-align: center;
+
+    font-weight: 600;
+
+    line-height: 1.4;
+
+    box-sizing: border-box;
+}
+
+/* HIDDEN CONTINUATION ROWS */
+
+.cell-no-top .cell-content {
+
+    display: none;
+}
+/* =========================================
+   TABLE BORDER CLEANUP
+========================================= */
+
+.report-table td,
+.report-table th {
+
+    border-color: #d7dde5 !important;
+}
+
+/* REMOVE EXTRA TYPE LINES */
+
+tr:has(.type-cell.cell-no-top) td.type-cell {
+
+    border-bottom: 0 !important;
+}
+
+/* REMOVE EXTRA GROUP LINES */
+
+tr:has(.group-cell.cell-no-top) td.group-cell {
+
+    border-bottom: 0 !important;
+}
+
+/* =========================================
+   TOTAL ROWS
+========================================= */
+
+.subtotal-row td,
+.type-total-row td,
+.grand-total-row td {
 
     border-bottom: 1px solid #d7dde5 !important;
 }
-/* FORCE LINE ABOVE RMHS Delays Total */
 
-.type-total-row td {
+/* FIRST COLUMN TOTALS */
 
-    border-top: 1px solid #d7dde5 !important;
+.subtotal-row td:first-child,
+.type-total-row td:first-child,
+.grand-total-row td:first-child {
+
+    background: #f1f6fb !important;
+
+    color: #1e3a8a !important;
+
+    font-weight: 700;
 }
-/* LINE BELOW DELAY TOTAL */
+
+/* =========================================
+   KEEP ONLY TYPE TOTAL LINES
+========================================= */
 
 .type-total-row td:first-child {
 
+    border-top: 1px solid #d7dde5 !important;
+
     border-bottom: 1px solid #d7dde5 !important;
 }
-    .delay-check-grid label:hover { color: #4a90d9; }
-    .delay-type-heading {
-        grid-column: 1 / -1;
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text-secondary);
-        padding: 6px 0 2px;
-        border-top: 1px solid var(--border-color, #d7dde5);
-        margin-top: 4px;
-    }
+
+/* GRAND TOTAL */
+
+.grand-total-row td:first-child {
+
+    border-top: 1px solid #d7dde5 !important;
+
+    border-bottom: 1px solid #d7dde5 !important;
+}
+
+/* =========================================
+   FORCE TABLE CELL MIDDLE
+========================================= */
+
+.report-table td {
+
+    vertical-align: middle !important;
+}
+
+/* =========================================
+   REMOVE ALL INNER LINES FROM TYPE COLUMN
+========================================= */
+
+/* REMOVE ALL ROW BORDERS */
+
+.type-cell {
+
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
+}
+
+/* CONTINUED CELLS */
+
+.type-cell.cell-no-top {
+
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
+}
+
+/* REMOVE EXTRA GENERATED LINES */
+
+tr td.type-cell {
+
+    box-shadow: none !important;
+}
+
+/* REMOVE ROW SEPARATORS */
+
+.report-table tr td.type-cell {
+
+    border-top-color: transparent !important;
+
+    border-bottom-color: transparent !important;
+}
+
+/* =========================================
+   KEEP ONLY TOTAL LINES
+========================================= */
+
+.type-total-row td:first-child,
+.grand-total-row td:first-child {
+
+    border-top: 1px solid #d7dde5 !important;
+
+    border-bottom: 1px solid #d7dde5 !important;
+}
+
+/* =========================================
+   REMOVE ALL HORIZONTAL LINES
+   FROM DELAY TYPE COLUMN
+========================================= */
+
+/* REMOVE ALL BORDERS */
+
+.type-cell,
+.type-cell.cell-no-top {
+
+    border-top: none !important;
+
+    border-bottom: none !important;
+}
+
+/* REMOVE ROW BORDER EFFECT */
+
+.report-table tr td.type-cell {
+
+    border-top-color: transparent !important;
+
+    border-bottom-color: transparent !important;
+}
+
+/* REMOVE GENERATED LINES */
+
+tr td.type-cell {
+
+    box-shadow: none !important;
+
+    outline: none !important;
+}
+
+/* REMOVE INNER SEPARATORS */
+
+tr:has(.type-cell) td.type-cell {
+
+    border-bottom: 0 !important;
+}
+
+/* REMOVE TOTAL ROW LINES ALSO */
+
+.type-total-row td:first-child,
+.grand-total-row td:first-child,
+.subtotal-row td:first-child {
+
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
+}
+
+/* =========================================
+   REMOVE ALL TYPE COLUMN LINES
+========================================= */
+
+.type-cell,
+.type-cell.cell-no-top {
+
+    border-top: 0 !important;
+
+    border-bottom: 0 !important;
+}
+
+/* REMOVE INNER GENERATED LINES */
+
+.report-table tr td.type-cell {
+
+    border-top-color: transparent !important;
+
+    border-bottom-color: transparent !important;
+
+    box-shadow: none !important;
+}
+
+/* =========================================
+   KEEP ONLY TOTAL LINES
+========================================= */
+
+/* DELAY TYPE TOTAL */
+
+.type-total-row td:first-child {
+
+    border-top: 1px solid #d7dde5 !important;
+
+    border-bottom: 1px solid #d7dde5 !important;
+
+    background: #dbeafe !important;
+}
+
+/* GRAND TOTAL */
+
+.grand-total-row td:first-child {
+
+    border-top: 1px solid #d7dde5 !important;
+
+    border-bottom: 1px solid #d7dde5 !important;
+
+    background: #dbeafe !important;
+}
+
 
     /* =========================
    COLLAPSE / EXPAND
@@ -2238,6 +2529,7 @@ async function loadSavedReport(id) {
 }
  
 function _triggerPreview() {
+    
     const btn  = document.getElementById('preview-btn');
     const area = document.getElementById('preview-area');
     btn.disabled    = true;
@@ -2247,17 +2539,20 @@ function _triggerPreview() {
     const entryDate = document.getElementById('entry-date').value;
     const shift     = document.getElementById('shift-select').value;
     const params    = { entryDate, shift };
+
+    
  
     fetch(`/api/module/RP01/shift-report/preview?${buildReportQuery(params)}`)
         .then(r => { if (!r.ok) throw new Error('Server error'); return r.json(); })
         .then(data => {
-            const stack = document.createElement('div');
-            stack.className = 'preview-stack';
-            stack.appendChild(buildCargoTables(data.cargo_tables || []));
-            stack.appendChild(buildDelayTable(data.delay_view   || { rows: [] }));
-            area.innerHTML = '';
-            area.appendChild(stack);
-        })
+    console.log('=== DELAY ROWS ===', JSON.stringify(data.delay_view.rows, null, 2));
+    const stack = document.createElement('div');
+    stack.className = 'preview-stack';
+    stack.appendChild(buildCargoTables(data.cargo_tables || []));
+    stack.appendChild(buildDelayTable(data.delay_view   || { rows: [] }));
+    area.innerHTML = '';
+    area.appendChild(stack);
+})
         .catch(err => {
             area.innerHTML = `<div class="no-data">${escapeHtml(err.message || 'Failed to load preview.')}</div>`;
         })
@@ -3114,10 +3409,27 @@ function buildDelayTable(view) {
 
             html += `
                 <tr>
-                    <td class="type-cell  cell-group-label ${typeNoTop}">${escapeHtml(typeVal)}</td>
-                    <td class="group-cell cell-group-label ${actNoTop}">${escapeHtml(actVal)}</td>
-                    <td class="group-cell cell-group-label ${equipNoTop}">${escapeHtml(equipVal)}</td>
-                    <td class="group-cell cell-group-label ${sysNoTop}">${escapeHtml(sysVal)}</td>
+                    <td class="type-cell ${!row.show_type ? 'cell-no-top' : ''}">
+
+    <div class="cell-content">
+
+        ${row.show_type ? escapeHtml(typeVal) : ''}
+
+    </div>
+
+</td>
+
+<td class="group-cell ${!row.show_activity ? 'cell-no-top' : ''}">
+    ${row.show_activity ? escapeHtml(actVal) : ''}
+</td>
+
+<td class="group-cell ${!row.show_equipment ? 'cell-no-top' : ''}">
+    ${row.show_equipment ? escapeHtml(equipVal) : ''}
+</td>
+
+<td class="group-cell ${!row.show_system ? 'cell-no-top' : ''}">
+    ${row.show_system ? escapeHtml(sysVal) : ''}
+</td>
                     <td>${escapeHtml(row.route     || '')}</td>
                     <td>${escapeHtml(row.from_time || '')}</td>
                     <td>${escapeHtml(row.to_time   || '')}</td>

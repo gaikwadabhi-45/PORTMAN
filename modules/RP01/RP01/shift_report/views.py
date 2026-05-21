@@ -1425,6 +1425,7 @@ def _build_delay_sheet(wb, delay_view):
     # =========================================================
     # COLUMN WIDTHS
     # =========================================================
+    # Adjust column widths based on content and importance
     widths = {
         'A': 24,
         'B': 30,
