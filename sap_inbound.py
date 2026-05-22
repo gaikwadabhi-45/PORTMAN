@@ -202,7 +202,7 @@ def _apply_record(rec):
 
     if not table:
         conn.close()
-        return False, 'Reference not found'
+        return True, 'Reference not found - accepted'
 
     existing_irn = (row.get('gst_irn') or '').strip()
     existing_sap = (row.get('sap_document_number') or '').strip()
