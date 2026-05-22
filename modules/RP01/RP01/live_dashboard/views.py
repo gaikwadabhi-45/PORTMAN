@@ -293,6 +293,61 @@ def live_dashboard_data():
         for r in cur.fetchall()
     ]
 
+    # ── Equipment × Delay matrix today ──────────────────────────────────────
+    cur.execute('''
+        SELECT
+            equipment_name,
+            delay_name,
+            ROUND(COALESCE(SUM(
+                CASE
+                    WHEN from_time IS NOT NULL AND to_time IS NOT NULL
+                         AND from_time != '' AND to_time != ''
+                    THEN
+                        CASE WHEN to_time > from_time
+                        THEN (
+                            (CAST(SPLIT_PART(to_time,  ':', 1) AS INT)*60 + CAST(SPLIT_PART(to_time,  ':', 2) AS INT))
+                          - (CAST(SPLIT_PART(from_time,':', 1) AS INT)*60 + CAST(SPLIT_PART(from_time,':', 2) AS INT))
+                        ) / 60.0
+                        ELSE (
+                            1440
+                          - (CAST(SPLIT_PART(from_time,':', 1) AS INT)*60 + CAST(SPLIT_PART(from_time,':', 2) AS INT))
+                          + (CAST(SPLIT_PART(to_time,  ':', 1) AS INT)*60 + CAST(SPLIT_PART(to_time,  ':', 2) AS INT))
+                        ) / 60.0
+                        END
+                    ELSE 0
+                END
+            ), 0)::numeric, 2) AS delay_hrs
+        FROM lueu_lines
+        WHERE entry_date = %s AND (is_deleted IS NOT TRUE)
+          AND equipment_name IS NOT NULL AND equipment_name != ''
+          AND delay_name     IS NOT NULL AND delay_name     != ''
+        GROUP BY equipment_name, delay_name
+        HAVING ROUND(COALESCE(SUM(
+            CASE
+                WHEN from_time IS NOT NULL AND to_time IS NOT NULL
+                     AND from_time != '' AND to_time != ''
+                THEN
+                    CASE WHEN to_time > from_time
+                    THEN (
+                        (CAST(SPLIT_PART(to_time,  ':', 1) AS INT)*60 + CAST(SPLIT_PART(to_time,  ':', 2) AS INT))
+                      - (CAST(SPLIT_PART(from_time,':', 1) AS INT)*60 + CAST(SPLIT_PART(from_time,':', 2) AS INT))
+                    ) / 60.0
+                    ELSE (
+                        1440
+                      - (CAST(SPLIT_PART(from_time,':', 1) AS INT)*60 + CAST(SPLIT_PART(from_time,':', 2) AS INT))
+                      + (CAST(SPLIT_PART(to_time,  ':', 1) AS INT)*60 + CAST(SPLIT_PART(to_time,  ':', 2) AS INT))
+                    ) / 60.0
+                    END
+                ELSE 0
+            END
+        ), 0)::numeric, 2) > 0
+        ORDER BY equipment_name, delay_hrs DESC
+    ''', [ops_today_s])
+    eq_delay_matrix = [
+        {'equipment': r['equipment_name'], 'delay': r['delay_name'], 'hrs': float(r['delay_hrs'] or 0)}
+        for r in cur.fetchall()
+    ]
+
     # ── Tide (last 32 h) ─────────────────────────────────────────────────────
     tide_from = (now - timedelta(hours=32)).strftime('%Y-%m-%dT%H:%M:%S')
     cur.execute('''
@@ -332,6 +387,7 @@ def live_dashboard_data():
         'yesterday_shifts': yesterday_shifts,
         'route_perf':       route_perf,
         'equipment_perf':   equipment_perf,
+        'eq_delay_matrix':  eq_delay_matrix,
         'tides':            tides,
         'mtd':              mtd,
         'today_total':      today_total,

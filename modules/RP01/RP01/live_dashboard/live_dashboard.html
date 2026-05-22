@@ -117,20 +117,20 @@ html, body {
   flex-shrink: 0;
   background: var(--surface);
 }
-/* Two equal columns of berths */
+/* Two-column auto-flowing grid, scrolls as one */
 #berth-grid {
-  flex: 1; overflow: hidden;
+  flex: 1;
+  overflow-y: auto; overflow-x: hidden;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0;
-}
-.berth-col {
-  display: flex; flex-direction: column;
-  padding: 6px 6px;
+  align-content: start;
   gap: 4px;
-  overflow: hidden;
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
 }
-.berth-col:first-child { border-right: 1px solid var(--border); }
+#berth-grid::-webkit-scrollbar { width: 4px; }
+#berth-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
 /* ── Berth card ─────────────────────────── */
 .bc {
@@ -328,6 +328,30 @@ html, body {
 .eq-qty   { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text2); width: 48px; text-align: right; flex-shrink: 0; }
 .eq-ops   { font-size: 8px; color: var(--text3); width: 32px; text-align: right; flex-shrink: 0; }
 
+/* ── Delay matrix heatmap ───────────────── */
+.dm-wrap { overflow-x: auto; padding: 6px 10px 10px; }
+.dm-wrap::-webkit-scrollbar { height: 3px; }
+.dm-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.dm-table { border-collapse: collapse; width: 100%; min-width: 300px; }
+.dm-table th, .dm-table td { padding: 4px 8px; font-size: 9px; white-space: nowrap; }
+.dm-table thead th {
+  font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--text3); border-bottom: 1px solid var(--border);
+  text-align: left; background: #FAFBFD;
+}
+.dm-table thead th:first-child { min-width: 90px; }
+.dm-table thead th:not(:first-child) { text-align: center; min-width: 60px; }
+.dm-table tbody tr { border-bottom: 1px solid var(--border); }
+.dm-table tbody tr:last-child { border-bottom: none; }
+.dm-eq { font-size: 10px; font-weight: 600; color: var(--text); padding-right: 14px !important; }
+.dm-cell { text-align: center; }
+.dm-chip {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500;
+  min-width: 36px; text-align: center;
+}
+.dm-zero { color: var(--border2); font-size: 9px; }
+
 /* ── Yesterday ──────────────────────────── */
 .yday {
   background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
@@ -382,8 +406,7 @@ html, body {
   <aside id="berth-panel">
     <div class="berth-panel-title">Berths &amp; Active Barges / Vessels</div>
     <div id="berth-grid">
-      <div class="berth-col" id="berth-col-1"><div style="padding:10px;font-size:11px;color:var(--text3)">Loading…</div></div>
-      <div class="berth-col" id="berth-col-2"></div>
+      <div style="grid-column:1/-1;padding:10px;font-size:11px;color:var(--text3)">Loading…</div>
     </div>
   </aside>
 
@@ -445,6 +468,16 @@ html, body {
       </div>
       <div class="eq-list" id="eq-list">
         <div class="cc-nodata">No equipment data</div>
+      </div>
+    </div>
+
+    <div class="cc">
+      <div class="cc-hdr">
+        <div class="cc-title">Delay Hours — Equipment Matrix</div>
+        <div class="cc-sub">Today · hours per delay type</div>
+      </div>
+      <div class="dm-wrap" id="dm-wrap">
+        <div class="cc-nodata">No delay data today</div>
       </div>
     </div>
 
@@ -599,16 +632,14 @@ function buildBerthCard(b) {
 }
 
 function renderBerths(berths) {
-  const col1 = document.getElementById('berth-col-1');
-  const col2 = document.getElementById('berth-col-2');
+  const grid = document.getElementById('berth-grid');
   if (!berths || !berths.length) {
-    col1.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">No berths</div>';
-    col2.innerHTML = ''; return;
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:10px;font-size:11px;color:var(--text3)">No berths</div>';
+    return;
   }
-  // Split berths into two columns: active berths first, then idle, split evenly
-  const mid  = Math.ceil(berths.length / 2);
-  col1.innerHTML = berths.slice(0, mid).map(buildBerthCard).join('');
-  col2.innerHTML = berths.slice(mid).map(buildBerthCard).join('');
+  // Active berths first, vacant last — then CSS grid auto-places into 2 columns
+  const sorted = [...berths].sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
+  grid.innerHTML = sorted.map(buildBerthCard).join('');
 }
 
 /* ─── KPIs ─── */
@@ -701,6 +732,64 @@ function renderTide(data) {
   });
 }
 
+/* ─── DELAY MATRIX ─── */
+function renderDelayMatrix(data) {
+  const el = document.getElementById('dm-wrap');
+  if (!data || !data.length) {
+    el.innerHTML = '<div class="cc-nodata">No delay data today</div>';
+    return;
+  }
+
+  // Collect unique equipments and delay types
+  const eqSet    = [...new Set(data.map(r => r.equipment))];
+  const delaySet = [...new Set(data.map(r => r.delay))];
+
+  // Build lookup: eq → delay → hrs
+  const map = {};
+  let maxHrs = 0;
+  data.forEach(r => {
+    if (!map[r.equipment]) map[r.equipment] = {};
+    map[r.equipment][r.delay] = r.hrs;
+    if (r.hrs > maxHrs) maxHrs = r.hrs;
+  });
+
+  // Color scale: amber light → red dark proportional to hours
+  function cellColor(hrs) {
+    if (!hrs) return null;
+    const t = Math.min(hrs / maxHrs, 1);
+    // interpolate: low → amber-lt (#FFFBEB) / amber, high → red-lt / red
+    if (t < 0.4)  return { bg: '#FFFBEB', color: '#D97706' };
+    if (t < 0.7)  return { bg: '#FEF3C7', color: '#B45309' };
+    return { bg: '#FEE2E2', color: '#DC2626' };
+  }
+
+  const thead = `<thead><tr>
+    <th>Equipment</th>
+    ${delaySet.map(d => `<th>${d}</th>`).join('')}
+    <th>Total</th>
+  </tr></thead>`;
+
+  const tbody = eqSet.map(eq => {
+    const rowData  = map[eq] || {};
+    const rowTotal = Object.values(rowData).reduce((s, v) => s + v, 0);
+    const cells = delaySet.map(d => {
+      const h = rowData[d] || 0;
+      if (!h) return `<td class="dm-cell"><span class="dm-zero">—</span></td>`;
+      const c = cellColor(h);
+      return `<td class="dm-cell"><span class="dm-chip" style="background:${c.bg};color:${c.color}">${h.toFixed(1)}h</span></td>`;
+    }).join('');
+    const totC = cellColor(rowTotal);
+    const totStyle = totC ? `background:${totC.bg};color:${totC.color};font-weight:600` : '';
+    return `<tr>
+      <td class="dm-eq">${eq}</td>
+      ${cells}
+      <td class="dm-cell"><span class="dm-chip" style="${totStyle}">${rowTotal.toFixed(1)}h</span></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<table class="dm-table">${thead}<tbody>${tbody}</tbody></table>`;
+}
+
 /* ─── YESTERDAY ─── */
 const STS = {A:'06–14',B:'14–22',C:'22–06'};
 function renderYday(yd) {
@@ -727,6 +816,7 @@ function loadData() {
       renderShift(d);
       renderRoute(d.route_perf);
       renderEquip(d.equipment_perf);
+      renderDelayMatrix(d.eq_delay_matrix);
       renderTide(d.tides);
       renderYday(d.yesterday_shifts);
     })
