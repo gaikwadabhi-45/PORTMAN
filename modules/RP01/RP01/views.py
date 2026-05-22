@@ -11,6 +11,7 @@ from .dashboard        import views as _dashboard_views           # noqa: regist
 from .daily_ops         import views as _daily_ops_views        # noqa: registers daily-ops routes on bp
 from .shift_report      import views as _shift_report_views    # noqa: registers shift-report routes on bp
 from .barge_report      import views as _barge_report_views    # noqa: registers barge-report routes on bp
+from .live_dashboard    import views as _live_dashboard_views  # noqa: registers live-dashboard routes on bp
 
 def login_required(f):
     @wraps(f)
