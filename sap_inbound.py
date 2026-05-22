@@ -169,8 +169,7 @@ def _apply_record(rec):
     irn, irn_trim   = _truncate(rec.get('IRN_No') or rec.get('IRN') or '', 64)
     ack, ack_trim   = _truncate(rec.get('Ack_No') or rec.get('Acknowledgement_No') or '', 20)
     irn_date_raw    = rec.get('IRN_Date') or rec.get('Ack_Date') or ''
-    irn_date_parsed = _parse_posting_date(irn_date_raw)
-    irn_date, _     = _truncate(irn_date_parsed, 10)
+    irn_date        = _parse_posting_date(irn_date_raw)  # already YYYY-MM-DD (10 chars) or None
     qr              = rec.get('QR_Code') or rec.get('QR') or ''
     sap_message     = (rec.get('Message') or '').strip()
     company_code, _ = _truncate(rec.get('Company_Code') or rec.get('Company_code') or '', 10)
