@@ -143,10 +143,14 @@ def _truncate(value, length):
 
 
 def _parse_posting_date(value):
-    """Parse SAP date string. Accepts dd.mm.yyyy or yyyy-mm-dd. Return YYYY-MM-DD or None."""
+    """Parse SAP date string. Accepts dd.mm.yyyy or yyyy-mm-dd. Return YYYY-MM-DD or None.
+    SAP null date (00.00.0000 or 0000-00-00) is treated as None."""
     if not value:
         return None
     s = str(value).strip()
+    # SAP null/zero date representations
+    if s in ('00.00.0000', '0000-00-00', '00/00/0000', '00-00-0000'):
+        return None
     for fmt in ('%d.%m.%Y', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y'):
         try:
             return datetime.strptime(s[:10], fmt).strftime('%Y-%m-%d')
@@ -165,7 +169,8 @@ def _apply_record(rec):
     irn, irn_trim   = _truncate(rec.get('IRN_No') or rec.get('IRN') or '', 64)
     ack, ack_trim   = _truncate(rec.get('Ack_No') or rec.get('Acknowledgement_No') or '', 20)
     irn_date_raw    = rec.get('IRN_Date') or rec.get('Ack_Date') or ''
-    irn_date, _     = _truncate(irn_date_raw, 10)
+    irn_date_parsed = _parse_posting_date(irn_date_raw)
+    irn_date, _     = _truncate(irn_date_parsed, 10)
     qr              = rec.get('QR_Code') or rec.get('QR') or ''
     sap_message     = (rec.get('Message') or '').strip()
     company_code, _ = _truncate(rec.get('Company_Code') or rec.get('Company_code') or '', 10)
