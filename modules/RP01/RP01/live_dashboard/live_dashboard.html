@@ -168,6 +168,14 @@ html, body {
   padding: 5px 10px;
   font-size: 9px; color: var(--text3); letter-spacing: 0.5px; text-align: center;
 }
+.bc-body {
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.bc-body::-webkit-scrollbar { width: 3px; }
+.bc-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
 /* ── Vessel/Barge row (compact) ─────────── */
 .vrow {
@@ -574,7 +582,7 @@ function buildBerthCard(b) {
   if (!b.vessels || !b.vessels.length) {
     body = '<div class="bc-empty">Vacant</div>';
   } else {
-    body = b.vessels.map(v => {
+    const rows = b.vessels.map(v => {
       const st      = v.source_type || 'VCN';
       const isMBC   = st === 'MBC';
       const isBarge = !isMBC && v.barge_name && v.barge_name.trim() !== '';
@@ -584,19 +592,20 @@ function buildBerthCard(b) {
 
       let displayName;
       if (isMBC) {
-        // MBC: just the vessel name (no barge_name prefix — MBC IS the vessel)
-        displayName = vesselPart || v.source_display || '—';
+        displayName = vesselPart || v.source_display || '';
       } else if (isBarge) {
-        // Barge: show barge name + parent vessel only if different
         displayName = v.barge_name;
         if (vesselPart && vesselPart !== v.barge_name) {
           displayName += ' · ' + vesselPart;
         }
       } else {
-        displayName = vesselPart || v.source_display || '—';
+        displayName = vesselPart || v.source_display || '';
       }
 
+      // Skip rows with no meaningful name (blank or same as type label)
       const pillType = isMBC ? 'MBC' : isBarge ? 'BARGE' : 'VCN';
+      if (!displayName || displayName === pillType) return '';
+
       const pct      = v.pct || 0;
       const cls      = pct >= 90 ? 'high' : pct >= 50 ? 'mid' : 'low';
       const bl       = v.bl_quantity ? fmt(v.bl_quantity)+' MT' : '—';
@@ -619,6 +628,10 @@ function buildBerthCard(b) {
         </div>
       </div>`;
     }).join('');
+
+    body = rows.trim()
+      ? `<div class="bc-body">${rows}</div>`
+      : '<div class="bc-empty">Vacant</div>';
   }
 
   return `<div class="bc${ac}">
