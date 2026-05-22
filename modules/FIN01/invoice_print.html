@@ -429,7 +429,11 @@
         <div class="footer-section">
             <div class="qr-code">
                 {% if invoice.gst_qr_code %}
-                <img src="{{ invoice.gst_qr_code }}" style="width:100%;height:100%;" alt="GST QR Code">
+                    {% if invoice.gst_qr_code.startswith('http') or invoice.gst_qr_code.startswith('data:') %}
+                    <img src="{{ invoice.gst_qr_code }}" style="width:100%;height:100%;" alt="GST QR Code">
+                    {% else %}
+                    <img src="data:image/png;base64,{{ invoice.gst_qr_code }}" style="width:100%;height:100%;" alt="GST QR Code">
+                    {% endif %}
                 {% else %}
                 [QR Code]<br>GST E-Invoice
                 {% endif %}

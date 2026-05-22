@@ -118,7 +118,13 @@
                 {% else %}-{% endif %}
             </td>
             <td>
-                <button class="btn btn-primary" onclick="printInvoice({{ row.id }})" style="font-size:10px;padding:3px 8px;">Print</button>
+                {% if row.gst_irn %}
+                <button class="btn btn-primary" onclick="printInvoice({{ row.id }})" style="font-size:10px;padding:3px 8px;" title="Print with GST/IRN details">Print</button>
+                {% elif row.sap_document_number %}
+                <button class="btn btn-primary" onclick="printInvoice({{ row.id }})" style="font-size:10px;padding:3px 8px;opacity:0.75;" title="GST details not yet received — print without IRN/QR">Print (no GST)</button>
+                {% else %}
+                <button class="btn btn-primary" onclick="printInvoice({{ row.id }})" style="font-size:10px;padding:3px 8px;opacity:0.75;" title="Invoice not yet posted to SAP">Print (draft)</button>
+                {% endif %}
                 {% if row.invoice_status in ('Generated', 'SAP Failed') and not row.sap_document_number %}
                 <button class="btn btn-success" onclick="pushToSAP({{ row.id }}, this)" style="font-size:10px;padding:3px 8px;">Push To SAP</button>
                 {% endif %}

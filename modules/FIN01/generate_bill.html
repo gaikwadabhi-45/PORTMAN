@@ -49,6 +49,8 @@
     .billed-section { background: #f8f9fa; }
     .billed-section h3 { color: #7f8c8d; }
     .billed-table { opacity: 0.7; }
+    .badge-no-sap { background: #7c3aed; color: white; padding: 2px 7px; border-radius: 8px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+    tr.cutover-row { background: #faf5ff !important; }
 
     /* Collapsible */
     .collapsible-header { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; }
@@ -198,6 +200,7 @@
         <h3 class="collapsible-header" onclick="toggleSection('billedHistory')">
             <span class="toggle-icon">▶</span>
             C. Already Billed (Reference)
+            <span id="billedHistoryBadge" style="font-size:10px;background:#7c3aed;color:white;padding:1px 7px;border-radius:10px;font-weight:normal;display:none;margin-left:4px;"></span>
         </h3>
         <div id="billedHistoryContent" class="collapsible-content">
             <table class="data-table billed-table" id="billedTable">
@@ -206,7 +209,7 @@
                         <th>Bill #</th>
                         <th>Bill Date</th>
                         <th>Agreement</th>
-                        <th>Service</th>
+                        <th>Source / Service</th>
                         <th>Qty</th>
                         <th>Rate</th>
                         <th>Amount</th>
@@ -515,11 +518,36 @@ function toggleAllServices(masterCb) {
 
 function renderBilledHistory(items) {
     const tbody = document.getElementById('billedBody');
+    const badge = document.getElementById('billedHistoryBadge');
+    const cutoverCount = items.filter(i => i.is_cutover_billed).length;
+
+    if (cutoverCount > 0) {
+        badge.textContent = cutoverCount + ' Bill Without SAP';
+        badge.style.display = 'inline';
+    } else {
+        badge.style.display = 'none';
+    }
+
     if (items.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No prior billing history</td></tr>';
         return;
     }
-    tbody.innerHTML = items.map(item => `
+    tbody.innerHTML = items.map(item => {
+        if (item.is_cutover_billed) {
+            const qty = parseFloat(item.billed_quantity || item.quantity || 0).toFixed(2);
+            return `
+            <tr class="cutover-row" title="Marked billed via admin Cutover tool — no bill document created">
+                <td><span class="badge-no-sap">Bill Without SAP</span></td>
+                <td style="color:#9ca3af;">—</td>
+                <td style="color:#9ca3af;">—</td>
+                <td style="font-size:10px;">${item.service_name || ''} ${item.cargo_name ? '· ' + item.cargo_name : ''}</td>
+                <td style="text-align:right;">${qty} ${item.uom || ''}</td>
+                <td style="color:#9ca3af;">—</td>
+                <td style="color:#9ca3af;">—</td>
+                <td><span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;">Billed</span></td>
+            </tr>`;
+        }
+        return `
         <tr>
             <td>${item.bill_number || ''}</td>
             <td>${formatDateDMY(item.bill_date || '')}</td>
@@ -529,8 +557,8 @@ function renderBilledHistory(items) {
             <td>${parseFloat(item.rate || 0).toFixed(2)}</td>
             <td>₹${parseFloat(item.line_amount || 0).toFixed(2)}</td>
             <td>${item.bill_status || ''}</td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
 }
 
 function validateBillQty(input) {

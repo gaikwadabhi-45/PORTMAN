@@ -400,6 +400,11 @@
 <div class="no-print">
     <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
     <button class="btn-back" onclick="location.href='/module/FINV01/invoices'">Back to Invoices</button>
+    {% if invoice.sap_document_number and not invoice.gst_irn %}
+    <span style="margin-left:16px;padding:5px 10px;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:4px;font-size:12px;">
+        &#9888; GST details not yet received — IRN and QR Code will appear once SAP posts to IRP
+    </span>
+    {% endif %}
 </div>
 
 {# ────────────────────────────────────────────────
@@ -446,7 +451,11 @@
             <div class="rule-text">TAX INVOICE ISSUED UNDER RULE<br>46 OF CGST RULES 2017</div>
             <div class="qr-area">
                 {% if invoice.gst_qr_code %}
-                <img src="{{ invoice.gst_qr_code }}" alt="QR Code">
+                    {% if invoice.gst_qr_code.startswith('http') or invoice.gst_qr_code.startswith('data:') %}
+                    <img src="{{ invoice.gst_qr_code }}" alt="QR Code">
+                    {% else %}
+                    <img src="data:image/png;base64,{{ invoice.gst_qr_code }}" alt="QR Code">
+                    {% endif %}
                 {% else %}
                 <div class="qr-placeholder">QR Code<br>(after IRN)</div>
                 {% endif %}

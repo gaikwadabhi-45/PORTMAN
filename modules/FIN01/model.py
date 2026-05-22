@@ -251,7 +251,7 @@ def save_bill_line(data):
     svc_id = data.get('service_type_id')
     if svc_id:
         cur.execute(
-            'SELECT service_code, is_tds, tds_percent, is_tcs, tcs_percent, gst_rate_id, sac_code FROM finance_service_types WHERE id = %s',
+            'SELECT service_code, is_tds, tds_percent, is_tcs, tcs_percent, gst_rate_id, sac_code, sap_gl_account, gl_code FROM finance_service_types WHERE id = %s',
             [svc_id]
         )
         svc = cur.fetchone()
@@ -259,6 +259,8 @@ def save_bill_line(data):
             service_code = service_code or (svc.get('service_code') or '')
             if not data.get('sac_code'):
                 data['sac_code'] = svc.get('sac_code') or ''
+            if not data.get('gl_code'):
+                data['gl_code'] = svc.get('sap_gl_account') or svc.get('gl_code') or ''
             # TDS — calculated on basic amount only
             if not data.get('tds_applicable') and svc.get('is_tds'):
                 tds_applicable = 1

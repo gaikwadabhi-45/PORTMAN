@@ -846,6 +846,67 @@ def get_customer_billables(customer_type, customer_id):
     """, [customer_type, customer_id])
     billed = [dict(r) for r in cur.fetchall()]
 
+    # --- C2. Cutover-marked items: flagged billed via admin tool, no bill record ---
+    # These have is_billed=1 but bill_id IS NULL on the source declaration row.
+    cutover_rows = []
+
+    cur.execute("""
+        SELECT cd.id, cd.cargo_name,
+               cd.bl_quantity AS quantity, cd.billed_quantity,
+               cd.quantity_uom AS uom,
+               (vh.vcn_doc_num || ' – VCN Import') AS service_name
+        FROM vcn_cargo_declaration cd
+        JOIN vcn_header vh ON cd.vcn_id = vh.id
+        WHERE cd.customer_name = %s
+          AND COALESCE(cd.is_billed, 0) = 1
+          AND cd.bill_id IS NULL
+    """, [customer_name])
+    for r in cur.fetchall():
+        d = dict(r)
+        d.update({'is_cutover_billed': True, 'bill_number': None, 'bill_date': None,
+                  'bill_status': 'Billed', 'agreement_display': None,
+                  'rate': None, 'line_amount': None})
+        cutover_rows.append(d)
+
+    cur.execute("""
+        SELECT cd.id, cd.cargo_name,
+               cd.bl_quantity AS quantity, cd.billed_quantity,
+               cd.quantity_uom AS uom,
+               (vh.vcn_doc_num || ' – VCN Export') AS service_name
+        FROM vcn_export_cargo_declaration cd
+        JOIN vcn_header vh ON cd.vcn_id = vh.id
+        WHERE cd.customer_name = %s
+          AND COALESCE(cd.is_billed, 0) = 1
+          AND cd.bill_id IS NULL
+    """, [customer_name])
+    for r in cur.fetchall():
+        d = dict(r)
+        d.update({'is_cutover_billed': True, 'bill_number': None, 'bill_date': None,
+                  'bill_status': 'Billed', 'agreement_display': None,
+                  'rate': None, 'line_amount': None})
+        cutover_rows.append(d)
+
+    cur.execute("""
+        SELECT cd.id, cd.cargo_name,
+               cd.quantity, cd.billed_quantity,
+               NULL AS uom,
+               (mh.doc_num || ' – MBC') AS service_name
+        FROM mbc_customer_details cd
+        JOIN mbc_header mh ON cd.mbc_id = mh.id
+        WHERE cd.customer_name = %s
+          AND COALESCE(cd.is_billed, 0) = 1
+          AND cd.bill_id IS NULL
+    """, [customer_name])
+    for r in cur.fetchall():
+        d = dict(r)
+        d.update({'is_cutover_billed': True, 'bill_number': None, 'bill_date': None,
+                  'bill_status': 'Billed', 'agreement_display': None,
+                  'rate': None, 'line_amount': None})
+        cutover_rows.append(d)
+
+    # Cutover items listed first so they're easy to spot
+    billed = cutover_rows + billed
+
     conn.close()
 
     return jsonify({
