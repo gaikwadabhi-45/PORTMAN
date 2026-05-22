@@ -977,6 +977,79 @@
             } : null;
         };
 
+        // Generic multi-select dropdown editor factory (mirrors LDUD01 pattern)
+        function makeMultiSelectEditor(optionsList, labelPrefix) {
+            return function(cell, onRendered, success, cancel) {
+                var currentVal = cell.getValue() || '';
+                var selected = currentVal ? currentVal.split(',').map(s => s.trim()) : [];
+                var wrapper = document.createElement('div');
+                wrapper.style.cssText = 'width:100%;height:100%;padding:4px;box-sizing:border-box;font-size:11px;cursor:pointer;';
+                wrapper.textContent = currentVal || 'Select...';
+                var dropdown = document.createElement('div');
+                dropdown.style.cssText = 'position:fixed;z-index:99999;background:white;border:1px solid #cbd5e0;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:8px;min-width:160px;max-height:240px;overflow-y:auto;display:none;';
+                optionsList.forEach(function(item) {
+                    var label = document.createElement('label');
+                    label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12px;cursor:pointer;border-radius:4px;';
+                    label.addEventListener('mouseenter', function() { label.style.background = '#f1f5f9'; });
+                    label.addEventListener('mouseleave', function() { label.style.background = 'none'; });
+                    var cb = document.createElement('input');
+                    cb.type = 'checkbox'; cb.value = item;
+                    cb.checked = selected.includes(item);
+                    cb.style.cssText = 'margin:0;cursor:pointer;width:14px;height:14px;';
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(labelPrefix ? labelPrefix + item : item));
+                    dropdown.appendChild(label);
+                });
+                var btnRow = document.createElement('div');
+                btnRow.style.cssText = 'display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;';
+                var confirmBtn = document.createElement('button');
+                confirmBtn.textContent = 'Apply';
+                confirmBtn.style.cssText = 'flex:1;padding:4px 8px;font-size:11px;background:#3182ce;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:500;';
+                confirmBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var vals = Array.from(dropdown.querySelectorAll('input[type=checkbox]:checked')).map(c => c.value);
+                    cleanup(); success(vals.join(', '));
+                });
+                var cancelBtn = document.createElement('button');
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.style.cssText = 'flex:1;padding:4px 8px;font-size:11px;background:#e2e8f0;color:#374151;border:none;border-radius:4px;cursor:pointer;font-weight:500;';
+                cancelBtn.addEventListener('click', function(e) { e.stopPropagation(); cleanup(); cancel(); });
+                btnRow.appendChild(confirmBtn); btnRow.appendChild(cancelBtn);
+                dropdown.appendChild(btnRow);
+                document.body.appendChild(dropdown);
+                function cleanup() { if (dropdown.parentNode) dropdown.parentNode.removeChild(dropdown); document.removeEventListener('mousedown', outsideClick); }
+                function outsideClick(e) { if (!dropdown.contains(e.target) && !wrapper.contains(e.target)) { cleanup(); cancel(); } }
+                onRendered(function() {
+                    var rect = cell.getElement().getBoundingClientRect();
+                    dropdown.style.left = rect.left + 'px';
+                    dropdown.style.top = (rect.bottom + 2) + 'px';
+                    dropdown.style.display = 'block';
+                    setTimeout(function() { document.addEventListener('mousedown', outsideClick); }, 10);
+                });
+                wrapper.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') { cleanup(); cancel(); }
+                    if (e.key === 'Enter') {
+                        var vals = Array.from(dropdown.querySelectorAll('input[type=checkbox]:checked')).map(c => c.value);
+                        cleanup(); success(vals.join(', '));
+                    }
+                });
+                return wrapper;
+            };
+        }
+
+        function multiBadgeFormatter(color) {
+            return function(cell) {
+                var val = cell.getValue();
+                if (!val) return '';
+                return val.split(',').map(function(v) {
+                    return '<span style="background:' + color + ';color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-right:2px;">' + v.trim() + '</span>';
+                }).join('');
+            };
+        }
+
+        var unloadedByMultiEditor = canEdit ? makeMultiSelectEditor(equipmentList, '') : false;
+        var unloadingBerthMultiEditor = canEdit ? makeMultiSelectEditor(berthList, '') : false;
+
         if (operationType === 'Export') {
             // Export Load Port Details table
             subTables[mbcId].export_load_port = new Tabulator(`#export_load_port-table-${mbcId}`, {
@@ -1040,10 +1113,10 @@
                     {title: "Unloading Completed", field: "unloading_completed", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                     {title: "MBC Cast Off", field: "vessel_cast_off", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                     {title: "Sailed Out From Discharge Port", field: "sailed_out_load_port", width: 190, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
-                    {title: "Unloaded By", field: "vessel_unloaded_by", width: 130, editor: canEdit ? "list" : false,
-                        editorParams: {values: equipOptions, autocomplete: true, allowEmpty: true}},
-                    {title: "Unloading Berth", field: "vessel_unloading_berth", width: 110, editor: canEdit ? "list" : false,
-                        editorParams: {values: berthOptions, autocomplete: true, allowEmpty: true}},
+                    {title: "Unloaded By", field: "vessel_unloaded_by", width: 160, editor: unloadedByMultiEditor,
+                        formatter: multiBadgeFormatter('#3182ce')},
+                    {title: "Unloading Berth", field: "vessel_unloading_berth", width: 160, editor: unloadingBerthMultiEditor,
+                        formatter: multiBadgeFormatter('#38a169')},
                     {title: "Discharge Stop", field: "discharge_stop_shifting", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                     {title: "Discharge Start", field: "discharge_start_shifting", width: 140, editor: canEdit ? datetimeEditor : false, formatter: dtFmt},
                     delBtn('discharge_port')
