@@ -55,18 +55,24 @@ def live_dashboard_data():
     berths_raw = [r['berth_name'] for r in cur.fetchall()]
 
     # ── Active (source, barge) combinations per berth today ─────────────────
-    # Group by barge_name so each barge at a berth is its own row
+    # VCN entries without a barge_name are excluded — the vessel stays at
+    # anchorage; only barges (and MBCs) physically come to the berth.
     cur.execute('''
         SELECT
             berth_name,
             source_type,
             source_id,
-            MAX(source_display)       AS source_display,
-            COALESCE(barge_name, '')  AS barge_name,
+            MAX(source_display)           AS source_display,
+            COALESCE(barge_name, '')      AS barge_name,
             COALESCE(MAX(cargo_name), '') AS cargo_name
         FROM lueu_lines
         WHERE entry_date = %s AND (is_deleted IS NOT TRUE)
           AND berth_name IS NOT NULL AND berth_name != ''
+          AND (
+              source_type = 'MBC'
+              OR (source_type = 'VCN' AND barge_name IS NOT NULL AND barge_name != '')
+              OR (source_type NOT IN ('VCN','MBC'))
+          )
         GROUP BY berth_name, source_type, source_id, barge_name
         ORDER BY berth_name, barge_name
     ''', [ops_today_s])

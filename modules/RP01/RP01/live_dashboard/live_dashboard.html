@@ -100,7 +100,7 @@ html, body {
 }
 
 /* ══════════════════════════════════════════
-   LEFT PANEL — BERTHS (50%, no scroll)
+   LEFT PANEL — BERTHS (50% = two 25% cols)
 ══════════════════════════════════════════ */
 #berth-panel {
   width: 50%; flex-shrink: 0;
@@ -117,12 +117,20 @@ html, body {
   flex-shrink: 0;
   background: var(--surface);
 }
+/* Two equal columns of berths */
 #berth-grid {
   flex: 1; overflow: hidden;
-  display: flex; flex-direction: column;
-  padding: 6px 8px;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
 }
+.berth-col {
+  display: flex; flex-direction: column;
+  padding: 6px 6px;
+  gap: 4px;
+  overflow: hidden;
+}
+.berth-col:first-child { border-right: 1px solid var(--border); }
 
 /* ── Berth card ─────────────────────────── */
 .bc {
@@ -374,7 +382,8 @@ html, body {
   <aside id="berth-panel">
     <div class="berth-panel-title">Berths &amp; Active Barges / Vessels</div>
     <div id="berth-grid">
-      <div style="padding:12px;font-size:11px;color:var(--text3)">Loading…</div>
+      <div class="berth-col" id="berth-col-1"><div style="padding:10px;font-size:11px;color:var(--text3)">Loading…</div></div>
+      <div class="berth-col" id="berth-col-2"></div>
     </div>
   </aside>
 
@@ -522,69 +531,84 @@ function vesselBar(pct, sourceType, bargeName) {
 }
 
 /* ─── BERTHS ─── */
+function buildBerthCard(b) {
+  const ac    = b.active ? ' active' : '';
+  const badge = b.active
+    ? '<span class="bc-tag active">ACTIVE</span>'
+    : '<span class="bc-tag idle">IDLE</span>';
+
+  let body = '';
+  if (!b.vessels || !b.vessels.length) {
+    body = '<div class="bc-empty">Vacant</div>';
+  } else {
+    body = b.vessels.map(v => {
+      const st      = v.source_type || 'VCN';
+      const isMBC   = st === 'MBC';
+      const isBarge = !isMBC && v.barge_name && v.barge_name.trim() !== '';
+
+      // Vessel part = text after the last '/' in source_display
+      const vesselPart = (v.source_display || '').split('/').pop().trim();
+
+      let displayName;
+      if (isMBC) {
+        // MBC: just the vessel name (no barge_name prefix — MBC IS the vessel)
+        displayName = vesselPart || v.source_display || '—';
+      } else if (isBarge) {
+        // Barge: show barge name + parent vessel only if different
+        displayName = v.barge_name;
+        if (vesselPart && vesselPart !== v.barge_name) {
+          displayName += ' · ' + vesselPart;
+        }
+      } else {
+        displayName = vesselPart || v.source_display || '—';
+      }
+
+      const pillType = isMBC ? 'MBC' : isBarge ? 'BARGE' : 'VCN';
+      const pct      = v.pct || 0;
+      const cls      = pct >= 90 ? 'high' : pct >= 50 ? 'mid' : 'low';
+      const bl       = v.bl_quantity ? fmt(v.bl_quantity)+' MT' : '—';
+      const done     = v.actual     ? fmt(v.actual)    +' MT' : '—';
+      const topRoute = v.routes && v.routes.length ? v.routes[0] : null;
+
+      return `<div class="vrow">
+        <div class="vrow-top">
+          <span class="v-pill ${pillType}">${pillType}</span>
+          <span class="v-name">${displayName}</span>
+          <span class="v-pct ${cls}">${pct}%</span>
+        </div>
+        <div class="v-bar-wrap">${vesselBar(pct, st, v.barge_name)}</div>
+        <div class="vrow-meta">
+          ${v.cargo_name ? `<div class="vm-item"><span class="vm-lbl">Cargo</span><span class="vm-val">${v.cargo_name}</span></div>` : ''}
+          ${v.equipment  ? `<div class="vm-item"><span class="vm-lbl">Equip</span><span class="vm-val teal">${v.equipment}</span></div>` : ''}
+          <div class="vm-item"><span class="vm-lbl">B/L</span><span class="vm-val">${bl}</span></div>
+          <div class="vm-item"><span class="vm-lbl">Done</span><span class="vm-val green">${done}</span></div>
+          ${topRoute ? `<div class="vm-item"><span class="vm-lbl">Route</span><span class="vm-val">${topRoute.route} (${fmt(topRoute.qty)})</span></div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  return `<div class="bc${ac}">
+    <div class="bc-hdr">
+      <div class="bc-dot"></div>
+      <div class="bc-name">${b.berth_name}</div>
+      ${badge}
+    </div>
+    ${body}
+  </div>`;
+}
+
 function renderBerths(berths) {
-  const grid = document.getElementById('berth-grid');
-  if (!berths || !berths.length) { grid.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">No berths</div>'; return; }
-
-  const html = berths.map(b => {
-    const ac = b.active ? ' active' : '';
-    const badge = b.active
-      ? '<span class="bc-tag active">ACTIVE</span>'
-      : '<span class="bc-tag idle">IDLE</span>';
-
-    let body = '';
-    if (!b.vessels || !b.vessels.length) {
-      body = '<div class="bc-empty">Vacant</div>';
-    } else {
-      body = b.vessels.map(v => {
-        const st        = v.source_type || 'VCN';
-        const isBarge   = v.barge_name && v.barge_name.trim() !== '';
-        const isMBC     = st === 'MBC';
-
-        // Display name: barge name first, then vessel name from source_display
-        const vesselPart = (v.source_display || '').split('/').pop().trim();
-        const displayName = isBarge
-          ? v.barge_name + (vesselPart ? ' · ' + vesselPart : '')
-          : (vesselPart || v.source_display || '—');
-
-        const pillType = isMBC ? 'MBC' : isBarge ? 'BARGE' : 'VCN';
-        const pct      = v.pct || 0;
-        const cls      = pct >= 90 ? 'high' : pct >= 50 ? 'mid' : 'low';
-        const bl       = v.bl_quantity ? fmt(v.bl_quantity)+' MT' : '—';
-        const done     = v.actual ? fmt(v.actual)+' MT' : '—';
-
-        // Top route only
-        const topRoute = v.routes && v.routes.length ? v.routes[0] : null;
-
-        return `<div class="vrow">
-          <div class="vrow-top">
-            <span class="v-pill ${pillType}">${pillType}</span>
-            <span class="v-name">${displayName}</span>
-            <span class="v-pct ${cls}">${pct}%</span>
-          </div>
-          <div class="v-bar-wrap">${vesselBar(pct, st, v.barge_name)}</div>
-          <div class="vrow-meta">
-            ${v.cargo_name ? `<div class="vm-item"><span class="vm-lbl">Cargo</span><span class="vm-val">${v.cargo_name}</span></div>` : ''}
-            ${v.equipment  ? `<div class="vm-item"><span class="vm-lbl">Equip</span><span class="vm-val teal">${v.equipment}</span></div>` : ''}
-            <div class="vm-item"><span class="vm-lbl">B/L</span><span class="vm-val">${bl}</span></div>
-            <div class="vm-item"><span class="vm-lbl">Done</span><span class="vm-val green">${done}</span></div>
-            ${topRoute ? `<div class="vm-item"><span class="vm-lbl">Route</span><span class="vm-val">${topRoute.route} (${fmt(topRoute.qty)})</span></div>` : ''}
-          </div>
-        </div>`;
-      }).join('');
-    }
-
-    return `<div class="bc${ac}">
-      <div class="bc-hdr">
-        <div class="bc-dot"></div>
-        <div class="bc-name">${b.berth_name}</div>
-        ${badge}
-      </div>
-      ${body}
-    </div>`;
-  }).join('');
-
-  grid.innerHTML = html;
+  const col1 = document.getElementById('berth-col-1');
+  const col2 = document.getElementById('berth-col-2');
+  if (!berths || !berths.length) {
+    col1.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">No berths</div>';
+    col2.innerHTML = ''; return;
+  }
+  // Split berths into two columns: active berths first, then idle, split evenly
+  const mid  = Math.ceil(berths.length / 2);
+  col1.innerHTML = berths.slice(0, mid).map(buildBerthCard).join('');
+  col2.innerHTML = berths.slice(mid).map(buildBerthCard).join('');
 }
 
 /* ─── KPIs ─── */
