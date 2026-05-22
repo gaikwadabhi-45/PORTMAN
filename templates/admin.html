@@ -2138,13 +2138,22 @@ async function cutLoadBillables() {
     const data = await r.json();
     const cargo = data.cargo_handling || [];
     const svcs = data.other_services || [];
-    let html = '<b>Cargo</b><br>';
+    let html = '';
+    if (cargo.length || svcs.length) {
+        html += '<label style="font-weight:600"><input type="checkbox" id="cut-select-all" onclick="cutToggleAll(this)"> Select all</label><br><br>';
+    }
+    html += '<b>Cargo</b><br>';
     html += cargo.map(c =>
         `<label><input type="checkbox" class="cut-cargo" data-st="${c.cargo_source_type}" data-id="${c.cargo_source_id}"> ${c.doc_label||''} &mdash; ${c.cargo_name||''} (${c.billable_quantity})</label><br>`).join('');
     html += '<br><b>Services</b><br>';
     html += svcs.map(s =>
         `<label><input type="checkbox" class="cut-svc" data-id="${s.id}"> ${s.service_name||''} (${s.id})</label><br>`).join('');
     document.getElementById('cut-billables').innerHTML = html;
+}
+
+function cutToggleAll(master) {
+    document.querySelectorAll('#cut-billables .cut-cargo, #cut-billables .cut-svc')
+        .forEach(cb => { cb.checked = master.checked; });
 }
 
 async function cutMarkBilled(billed) {
