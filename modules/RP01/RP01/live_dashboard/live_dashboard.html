@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -483,13 +484,27 @@ html, body {
       </div>
     </div>
 
-    <div class="cc">
-      <div class="cc-hdr">
-        <div class="cc-title">Equipment Performance</div>
-        <div class="cc-sub">Today · MT handled</div>
+    <div style="display:flex;gap:7px;flex-shrink:0">
+      <div class="cc" style="flex:1;min-width:0">
+        <div class="cc-hdr">
+          <div class="cc-title">Equipment Performance</div>
+          <div class="cc-sub">Today · MT share</div>
+        </div>
+        <div class="cc-body">
+          <canvas id="equipChart" height="160"></canvas>
+          <div class="cc-nodata" id="equip-nd" style="display:none">No equipment data today</div>
+        </div>
       </div>
-      <div class="eq-list" id="eq-list">
-        <div class="cc-nodata">No equipment data</div>
+
+      <div class="cc" style="flex:1;min-width:0">
+        <div class="cc-hdr">
+          <div class="cc-title">Tide Level — Dharamtar</div>
+          <div class="cc-sub">Last 32 hours · meters</div>
+        </div>
+        <div class="cc-body">
+          <canvas id="tideChart" height="160"></canvas>
+          <div class="cc-nodata" id="tide-nd" style="display:none">No tide data</div>
+        </div>
       </div>
     </div>
 
@@ -500,17 +515,6 @@ html, body {
       </div>
       <div class="dm-wrap" id="dm-wrap">
         <div class="cc-nodata">No delay data today</div>
-      </div>
-    </div>
-
-    <div class="cc">
-      <div class="cc-hdr">
-        <div class="cc-title">Tide Level — Dharamtar</div>
-        <div class="cc-sub">Last 32 hours · meters</div>
-      </div>
-      <div class="cc-body">
-        <canvas id="tideChart" height="90"></canvas>
-        <div class="cc-nodata" id="tide-nd" style="display:none">No tide data</div>
       </div>
     </div>
 
@@ -541,7 +545,7 @@ html, body {
 <script>
 /* ─── CONFIG ─── */
 const REFRESH = 30;
-let cd = REFRESH, rChart = null, tChart = null;
+let cd = REFRESH, rChart = null, tChart = null, eChart = null;
 
 /* ─── CLOCK ─── */
 function tick() {
@@ -710,7 +714,11 @@ function renderRoute(data) {
     data:{ labels, datasets:[{ data:vals, backgroundColor:bg, borderRadius:3, borderSkipped:false }] },
     options:{
       responsive:true, maintainAspectRatio:false, indexAxis:'y',
-      plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#fff', borderColor:'#E2E8F0', borderWidth:1, titleColor:'#0F172A', bodyColor:'#475569', titleFont:{family:'DM Mono',size:10}, bodyFont:{family:'DM Mono',size:10}, callbacks:{label:c=>` ${c.raw.toLocaleString()} MT`} } },
+      plugins:{
+        legend:{display:false},
+        tooltip:{ backgroundColor:'#fff', borderColor:'#E2E8F0', borderWidth:1, titleColor:'#0F172A', bodyColor:'#475569', titleFont:{family:'DM Mono',size:10}, bodyFont:{family:'DM Mono',size:10}, callbacks:{label:c=>` ${c.raw.toLocaleString()} MT`} },
+        datalabels:{ anchor:'end', align:'end', color:'#475569', font:{family:'DM Mono',size:8}, formatter:v=>v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(1) }
+      },
       scales:{
         x:{ grid:{color:'#F1F5F9'}, ticks:{color:'#94A3B8',font:{family:'DM Mono',size:8},callback:v=>v>=1000?(v/1000).toFixed(1)+'k':v}, border:{color:'#E2E8F0'} },
         y:{ grid:{display:false}, ticks:{color:'#475569',font:{family:'Outfit',size:9}}, border:{color:'#E2E8F0'} }
@@ -720,20 +728,45 @@ function renderRoute(data) {
 }
 
 /* ─── EQUIPMENT ─── */
+const EQ_COLS = ['#2563EB','#0891B2','#059669','#D97706','#7C3AED','#DB2777','#EA580C','#65A30D','#0EA5E9','#F43F5E'];
 function renderEquip(data) {
-  const el = document.getElementById('eq-list');
+  const cv = document.getElementById('equipChart');
+  const nd = document.getElementById('equip-nd');
   const raw = (data||[]).filter(r=>r.qty>0);
-  if (!raw.length) { el.innerHTML='<div class="cc-nodata">No equipment data today</div>'; return; }
-  const max = Math.max(...raw.map(r=>r.qty));
-  el.innerHTML = raw.map(r=>{
-    const p = Math.round(r.qty/max*100);
-    return `<div class="eq-row">
-      <div class="eq-name">${r.equipment}</div>
-      <div class="eq-track"><div class="eq-fill" style="width:${p}%"></div></div>
-      <div class="eq-qty">${fmt(r.qty)} MT</div>
-      <div class="eq-ops">${r.ops}op</div>
-    </div>`;
-  }).join('');
+  if (!raw.length) { cv.style.display='none'; nd.style.display='flex'; return; }
+  cv.style.display='block'; nd.style.display='none';
+  const labels = raw.map(r=>r.equipment);
+  const vals   = raw.map(r=>r.qty);
+  const total  = vals.reduce((a,b)=>a+b,0);
+  const bg     = raw.map((_,i)=>EQ_COLS[i%EQ_COLS.length]);
+  if (eChart) {
+    eChart.data.labels = labels;
+    eChart.data.datasets[0].data = vals;
+    eChart.data.datasets[0].backgroundColor = bg;
+    eChart.update('none'); return;
+  }
+  eChart = new Chart(cv, {
+    type: 'pie',
+    data: { labels, datasets:[{ data:vals, backgroundColor:bg, borderWidth:1, borderColor:'#fff' }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend:{ display:false },
+        tooltip:{ backgroundColor:'#fff', borderColor:'#E2E8F0', borderWidth:1, titleColor:'#0F172A', bodyColor:'#475569', titleFont:{family:'Outfit',size:10}, bodyFont:{family:'DM Mono',size:10}, callbacks:{label:c=>`  ${fmt(c.raw)} MT (${(c.raw/total*100).toFixed(1)}%)`} },
+        datalabels:{
+          color:'#fff',
+          font:{ family:'DM Mono', size:8, weight:'bold' },
+          textAlign:'center',
+          display: ctx => (ctx.dataset.data[ctx.dataIndex]/total) > 0.04,
+          formatter:(v,ctx)=>{
+            const name = ctx.chart.data.labels[ctx.dataIndex];
+            const pct  = (v/total*100).toFixed(0)+'%';
+            return name.length > 8 ? name.slice(0,8)+'\n'+pct : name+'\n'+pct;
+          }
+        }
+      }
+    }
+  });
 }
 
 /* ─── TIDE ─── */
@@ -750,7 +783,7 @@ function renderTide(data) {
     data:{ labels, datasets:[{ data:vals, borderColor:'#0891B2', backgroundColor:'rgba(8,145,178,0.07)', fill:true, tension:.4, pointRadius:0, pointHoverRadius:3, borderWidth:1.5 }] },
     options:{
       responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#fff', borderColor:'#E2E8F0', borderWidth:1, titleColor:'#0891B2', bodyColor:'#475569', titleFont:{family:'DM Mono',size:9}, bodyFont:{family:'DM Mono',size:10}, callbacks:{label:c=>` ${c.raw.toFixed(2)} m`} } },
+      plugins:{ datalabels:{display:false}, legend:{display:false}, tooltip:{ backgroundColor:'#fff', borderColor:'#E2E8F0', borderWidth:1, titleColor:'#0891B2', bodyColor:'#475569', titleFont:{family:'DM Mono',size:9}, bodyFont:{family:'DM Mono',size:10}, callbacks:{label:c=>` ${c.raw.toFixed(2)} m`} } },
       scales:{
         x:{ grid:{color:'#F1F5F9'}, ticks:{color:'#94A3B8',font:{family:'DM Mono',size:8},maxTicksLimit:8,maxRotation:0}, border:{color:'#E2E8F0'} },
         y:{ grid:{color:'#F1F5F9'}, ticks:{color:'#475569',font:{family:'DM Mono',size:8},callback:v=>v.toFixed(1)+'m'}, border:{color:'#E2E8F0'} }
@@ -869,6 +902,7 @@ function fmt(v) {
   return parseFloat(v).toLocaleString(undefined,{maximumFractionDigits:1});
 }
 
+Chart.register(ChartDataLabels);
 Chart.defaults.color='#94A3B8';
 Chart.defaults.font.family="'Outfit', system-ui, sans-serif";
 
