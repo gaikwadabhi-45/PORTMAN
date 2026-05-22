@@ -29,6 +29,8 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         'bill_lines': 'Bill Lines',
         'fdcn_header': 'Debit/Credit Notes',
         'fdcn_lines': 'Debit/Credit Note Lines',
+        'cutover_seed': 'Cutover Seeds',
+        'cutover_audit': 'Cutover Audit Entries',
     }
 
     print('\n=== Current Record Counts ===')
@@ -70,7 +72,7 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         srv_billed = 0
 
     if not skip_confirm:
-        print('\nThis will DELETE all bills, invoices, and debit/credit notes.')
+        print('\nThis will DELETE all bills, invoices, debit/credit notes, and cutover settings.')
         if delete_eu:
             print('EU lines will be PERMANENTLY DELETED (cannot be undone).')
         else:
@@ -114,7 +116,31 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         cur.execute('ROLLBACK TO SAVEPOINT sp_service_records')
         print('  (service_records table not found, skipping)')
 
-    # Step 3: Delete debit/credit notes (child tables cascade)
+    # Step 3a: Reset cutover settings
+    for tbl in ['cutover_audit', 'cutover_seed']:
+        try:
+            cur.execute(f'SAVEPOINT sp_{tbl}')
+            cur.execute(f'DELETE FROM {tbl}')
+            print(f'  Deleted {cur.rowcount} rows from {tbl}')
+        except Exception as e:
+            cur.execute(f'ROLLBACK TO SAVEPOINT sp_{tbl}')
+            print(f'  ({tbl} not found, skipping)')
+
+    try:
+        cur.execute("SAVEPOINT sp_cutover_lock")
+        cur.execute("""
+            UPDATE module_config
+            SET config_json = (config_json::jsonb - 'cutover_locked')::text
+            WHERE module_code = 'ADMIN'
+              AND config_json::jsonb ? 'cutover_locked'
+        """)
+        if cur.rowcount:
+            print('  Cleared cutover_locked flag from ADMIN module config')
+    except Exception as e:
+        cur.execute("ROLLBACK TO SAVEPOINT sp_cutover_lock")
+        print(f'  (cutover_locked reset failed: {e})')
+
+    # Step 3b: Delete debit/credit notes (child tables cascade)
     for tbl in ['fdcn_lines', 'fdcn_header']:
         try:
             cur.execute(f'DELETE FROM {tbl}')
@@ -158,6 +184,8 @@ def reset_billing(skip_confirm=False, delete_eu=False):
         'invoice_bill_mapping_id_seq',
         'fdcn_header_id_seq',
         'fdcn_lines_id_seq',
+        'cutover_seed_id_seq',
+        'cutover_audit_id_seq',
     ]
     if delete_eu:
         # Table may have been created as eu_lines originally; try both sequence names
@@ -176,9 +204,9 @@ def reset_billing(skip_confirm=False, delete_eu=False):
 
     print('\n=== Done ===')
     if delete_eu:
-        print('All bills, invoices, and EU lines permanently deleted.')
+        print('All bills, invoices, EU lines, and cutover settings permanently deleted.')
     else:
-        print('All bills and invoices deleted. Declaration tables and service records restored to unbilled state.')
+        print('All bills, invoices, and cutover settings deleted. Declaration tables and service records restored to unbilled state.')
     print('Sequences reset - next bill/invoice will start from ID 1.')
 
 
