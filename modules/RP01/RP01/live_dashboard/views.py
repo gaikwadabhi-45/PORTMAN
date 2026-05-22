@@ -321,7 +321,7 @@ def live_dashboard_data():
         WHERE entry_date = %s AND (is_deleted IS NOT TRUE)
           AND equipment_name IS NOT NULL AND equipment_name != ''
           AND delay_name     IS NOT NULL AND delay_name     != ''
-          AND LOWER(delay_name) NOT LIKE '%unloading%'
+          AND LOWER(delay_name) NOT LIKE '%%unloading%%'
         GROUP BY equipment_name, delay_name
         HAVING ROUND(COALESCE(SUM(
             CASE
