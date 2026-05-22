@@ -12,20 +12,38 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-_thin = Side(style='thin', color='C7CDD4')
-_bdr = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
-_ctr = Alignment(horizontal='center', vertical='center', wrap_text=True)
-_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+_thin  = Side(style='thin', color='C7CDD4')
 
-_TITLE_FILL = 'F6F8FB'
-_HEADER_FILL = 'EEF4FB'
-_BODY_FILL = 'FFFFFF'
-_GROUP_FILL = 'F8FAFC'
+_FULL_BDR = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+_LR_BDR   = Border(left=_thin, right=_thin)
+_LRT_BDR  = Border(left=_thin, right=_thin, top=_thin)
+_LRB_BDR  = Border(left=_thin, right=_thin, bottom=_thin)
+
+_bdr  = _FULL_BDR   # alias so _build_cargo_sheet still works
+
+_ctr  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+_left = Alignment(horizontal='left',   vertical='center', wrap_text=True)
+_lctr = Alignment(horizontal='left',   vertical='center', wrap_text=False)
+
+# Delay sheet palette
+_TITLE_BG      = 'C0392B'
+_HEADER_BG     = '2C3E50'
+_TYPE_BG       = 'D6EAF8'
+_ACTIVITY_BG   = 'D6E4F0'
+_SUBTOTAL_BG   = 'BDD7EE'
+_TYPE_TOTAL_BG = 'AED6F1'
+_GRAND_BG      = '2980B9'
+
+# Cargo sheet palette (keep existing names so _build_cargo_sheet works)
+_TITLE_FILL    = 'F6F8FB'
+_HEADER_FILL   = 'EEF4FB'
+_BODY_FILL     = 'FFFFFF'
+_GROUP_FILL    = 'F8FAFC'
 _SUBTOTAL_FILL = 'F6F7F9'
-_TOTAL_FILL = 'E9EEF5'
+_TOTAL_FILL    = 'E9EEF5'
 _TYPE_TOTAL_FILL = 'F1F6FB'
-_TEXT = '2C3E50'
-
+_TEXT  = '2C3E50'
+_WHITE = 'FFFFFF'
 
 def _fill(hex_color):
     return PatternFill('solid', fgColor=hex_color)
@@ -1026,13 +1044,15 @@ def _build_excel(cargo_tables, delay_view):
     return buf
 
 
-def _cell(ws, row, col, value='', bold=False, fill_color='FFFFFF', align=_ctr, font_color='000000'):
-    cell = ws.cell(row, col, value)
-    cell.font = _font(bold=bold, color=font_color)
-    cell.fill = _fill(fill_color)
-    cell.alignment = align
-    cell.border = _bdr
-    return cell
+def _cell(ws, row, col, value='', bold=False, fill_color='FFFFFF',
+          align=None, font_color='000000', size=11, border=None):
+    align = align or _ctr
+    c = ws.cell(row, col, value)
+    c.font      = Font(name='Calibri', bold=bold, size=size, color=font_color)
+    c.fill      = _fill(fill_color)
+    c.alignment = align
+    c.border    = border or _FULL_BDR
+    return c
 
 
 def _merge_title(ws, row, total_cols, title):
@@ -1095,436 +1115,194 @@ def _set_merged_value(ws, row, start_col, end_col, value, fill_color, bold=True,
 
 
 def _build_delay_sheet(wb, delay_view):
-
     ws = wb.create_sheet('Delay Report')
 
-    headers = [
-        'Delays Type',
-        'Activity',
-        'Equipment',
-        'System',
-        'Route',
-        'From',
-        'To',
-        'Total'
-    ]
-
+    headers = ['Delays Type', 'Activity', 'Equipment', 'System',
+               'Route', 'From', 'To', 'Total']
     total_cols = len(headers)
 
     if not delay_view['rows']:
-
-        _cell(
-            ws,
-            1,
-            1,
-            'No delay data found for this shift.',
-            align=_left
-        )
-
+        _cell(ws, 1, 1, 'No delay data found for this shift.', align=_left)
         return
 
-    # =========================================================
-    # TITLE
-    # =========================================================
-    _merge_title(
-        ws,
-        1,
-        total_cols,
-        delay_view['title']
-    )
+    # Title
+    _merge_title(ws, 1, total_cols, delay_view['title'])
 
-    # =========================================================
-    # HEADERS
-    # =========================================================
+    # Headers
     for idx, header in enumerate(headers, start=1):
-
-        _cell(
-            ws,
-            2,
-            idx,
-            header,
-            bold=True,
-            fill_color=_HEADER_FILL,
-            font_color=_TEXT
-        )
+        _cell(ws, 2, idx, header, bold=True,
+              fill_color=_HEADER_FILL, font_color=_TEXT)
 
     row = 3
+    merge_queue   = []   # cols 2-4 (activity, equipment, system)
+    detail_row_index = 0
 
-    # STORE MERGES
-    merge_ranges = []
+    # Use a dict so nested function can mutate without UnboundLocalError
+    type_group = {'start': None, 'name': None}
 
-    # =========================================================
-    # DATA ROWS
-    # =========================================================
+    def _flush_type_merge(end_row):
+        if type_group['start'] is None:
+            return
+        start_r = type_group['start']
+        if start_r != end_row:
+            ws.merge_cells(start_row=start_r, start_column=1,
+                        end_row=end_row,   end_column=1)
+        tc = ws.cell(start_r, 1)
+        tc.value     = type_group['name']   # e.g. "RMHS Delays"
+        tc.fill      = _fill(_TYPE_BG)
+        tc.font = _font(bold=True, size=11, color='C0392B')
+        tc.alignment = Alignment(horizontal='center', vertical='center',
+                                wrap_text=True)
+        for r in range(start_r, end_row + 1):
+            c = ws.cell(r, 1)
+            c.fill = _fill(_TYPE_BG)
+            if start_r == end_row:
+                c.border = _FULL_BDR
+            elif r == start_r:
+                c.border = _LRT_BDR
+            elif r == end_row:
+                c.border = _LRB_BDR
+            else:
+                c.border = _LR_BDR
+
     for item in delay_view['rows']:
-
         kind = item['kind']
 
-        # =====================================================
-        # DETAIL ROW
-        # =====================================================
         if kind == 'detail':
+            bg = 'FFFFFF' if detail_row_index % 2 == 0 else 'F4F9FD'
+            detail_row_index += 1
 
-            # -------------------------------------------------
-            # DELAY TYPE
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                1,
-                item.get('type_name', '')
-                if item.get('show_type')
-                else '',
-                bold=True,
-                fill_color=_TYPE_TOTAL_FILL,
-                font_color=_TEXT
-            )
+            if item.get('show_type'):
+                type_group['start'] = row
+                type_group['name']  = item.get('type_name', '')
 
-            if item.get('show_type') and item.get('type_rowspan', 0) > 1:
+            # Col 1 — blue fill, value set later by _flush_type_merge
+            _cell(ws, row, 1, '', bold=True,
+                  fill_color=_TYPE_BG, font_color=_WHITE, align=_ctr)
 
-                merge_ranges.append((
-                    row,
-                    1,
-                    row + item['type_rowspan'] - 1,
-                    1
-                ))
-
-            # -------------------------------------------------
-            # ACTIVITY
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                2,
-                item.get('activity_name', '')
-                if item.get('show_activity')
-                else '',
-                bold=True,
-                fill_color=_GROUP_FILL,
-                font_color=_TEXT
-            )
-
+            # Col 2 — Activity
+            _cell(ws, row, 2,
+                  item.get('activity_name', '') if item.get('show_activity') else '',
+                  bold=True, fill_color=_ACTIVITY_BG, font_color=_TEXT, align=_lctr)
             if item.get('show_activity') and item.get('activity_rowspan', 0) > 1:
+                merge_queue.append((row, 2,
+                                    row + item['activity_rowspan'] - 1,
+                                    _ACTIVITY_BG,
+                                    item.get('activity_name', '')))
 
-                merge_ranges.append((
-                    row,
-                    2,
-                    row + item['activity_rowspan'] - 1,
-                    2
-                ))
-
-            # -------------------------------------------------
-            # EQUIPMENT
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                3,
-                item.get('equipment_name', '')
-                if item.get('show_equipment')
-                else '',
-                bold=True,
-                fill_color=_BODY_FILL,
-                font_color=_TEXT
-            )
-
+            # Col 3 — Equipment
+            _cell(ws, row, 3,
+                  item.get('equipment_name', '') if item.get('show_equipment') else '',
+                  bold=True, fill_color=bg, font_color=_TEXT, align=_ctr)
             if item.get('show_equipment') and item.get('equipment_rowspan', 0) > 1:
+                merge_queue.append((row, 3,
+                                    row + item['equipment_rowspan'] - 1,
+                                    bg,
+                                    item.get('equipment_name', '')))
 
-                merge_ranges.append((
-                    row,
-                    3,
-                    row + item['equipment_rowspan'] - 1,
-                    3
-                ))
-
-            # -------------------------------------------------
-            # SYSTEM
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                4,
-                item.get('system_name', '')
-                if item.get('show_system')
-                else '',
-                bold=True,
-                fill_color=_BODY_FILL,
-                font_color=_TEXT
-            )
-
+            # Col 4 — System
+            _cell(ws, row, 4,
+                  item.get('system_name', '') if item.get('show_system') else '',
+                  bold=False, fill_color=bg, font_color=_TEXT, align=_ctr)
             if item.get('show_system') and item.get('system_rowspan', 0) > 1:
+                merge_queue.append((row, 4,
+                                    row + item['system_rowspan'] - 1,
+                                    bg,
+                                    item.get('system_name', '')))
 
-                merge_ranges.append((
-                    row,
-                    4,
-                    row + item['system_rowspan'] - 1,
-                    4
-                ))
+            _cell(ws, row, 5, item.get('route', ''),
+                  fill_color=bg, font_color=_TEXT, align=_ctr)
+            _cell(ws, row, 6, item.get('from_time', ''),
+                  fill_color=bg, font_color=_TEXT, align=_ctr)
+            _cell(ws, row, 7, item.get('to_time', ''),
+                  fill_color=bg, font_color=_TEXT, align=_ctr)
+            _cell(ws, row, 8, item.get('total', ''),
+                  bold=True, fill_color=bg, font_color=_TEXT, align=_ctr)
 
-            # -------------------------------------------------
-            # ROUTE
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                5,
-                item.get('route', ''),
-                fill_color=_BODY_FILL,
-                font_color=_TEXT
-            )
-
-            # -------------------------------------------------
-            # FROM
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                6,
-                item.get('from_time', ''),
-                fill_color=_BODY_FILL,
-                font_color=_TEXT
-            )
-
-            # -------------------------------------------------
-            # TO
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                7,
-                item.get('to_time', ''),
-                fill_color=_BODY_FILL,
-                font_color=_TEXT
-            )
-
-            # -------------------------------------------------
-            # TOTAL
-            # -------------------------------------------------
-            _cell(
-                ws,
-                row,
-                8,
-                item.get('total', ''),
-                bold=True,
-                fill_color=_BODY_FILL,
-                font_color=_TEXT,
-                align=_ctr
-            )
-
-        # =====================================================
-        # SYSTEM TOTAL
-        # =====================================================
         elif kind == 'system_total':
-
             for col in range(1, 9):
+                _cell(ws, row, col, '', fill_color=_SUBTOTAL_BG, font_color=_TEXT)
+            _cell(ws, row, 1, '', bold=True, fill_color=_TYPE_BG, font_color=_WHITE)
+            _cell(ws, row, 4, item.get('label', ''), bold=True,
+                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_left)
+            _cell(ws, row, 8, item.get('total', ''), bold=True,
+                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
 
-                _cell(
-                    ws,
-                    row,
-                    col,
-                    '',
-                    fill_color=_SUBTOTAL_FILL,
-                    font_color=_TEXT
-                )
-
-            _cell(
-                ws,
-                row,
-                4,
-                item.get('label', ''),
-                bold=True,
-                fill_color=_SUBTOTAL_FILL,
-                font_color=_TEXT
-            )
-
-            _cell(
-                ws,
-                row,
-                8,
-                item.get('total', ''),
-                bold=True,
-                fill_color=_SUBTOTAL_FILL,
-                font_color=_TEXT,
-                align=_ctr
-            )
-
-        # =====================================================
-        # ACTIVITY TOTAL
-        # =====================================================
         elif kind == 'activity_total':
-
             for col in range(1, 9):
+                _cell(ws, row, col, '', fill_color=_SUBTOTAL_BG, font_color=_TEXT)
+            _cell(ws, row, 1, '', bold=True, fill_color=_TYPE_BG, font_color=_WHITE)
+            _cell(ws, row, 2, item.get('label', ''), bold=True,
+                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_left)
+            _cell(ws, row, 8, item.get('total', ''), bold=True,
+                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
 
-                _cell(
-                    ws,
-                    row,
-                    col,
-                    '',
-                    fill_color=_SUBTOTAL_FILL,
-                    font_color=_TEXT
-                )
-
-            _cell(
-                ws,
-                row,
-                2,
-                item.get('label', ''),
-                bold=True,
-                fill_color=_SUBTOTAL_FILL,
-                font_color=_TEXT
-            )
-
-            _cell(
-                ws,
-                row,
-                8,
-                item.get('total', ''),
-                bold=True,
-                fill_color=_SUBTOTAL_FILL,
-                font_color=_TEXT,
-                align=_ctr
-            )
-
-        # =====================================================
-        # TYPE TOTAL
-        # =====================================================
         elif kind == 'type_total':
-
             for col in range(1, 9):
+                _cell(ws, row, col, '', fill_color=_TYPE_TOTAL_BG, font_color=_TEXT)
+            # Col 1 stays blue (no text)
+            _cell(ws, row, 1, '', bold=True,
+      fill_color=_TYPE_BG, font_color='C0392B', align=_ctr)
+            # Merge cols 2-7 and put the label there
+            ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=7)
+            _cell(ws, row, 2, item.get('label', ''), bold=True,
+                fill_color=_TYPE_TOTAL_BG, font_color=_TEXT, align=_ctr)
+            for col in range(3, 8):
+                ws.cell(row, col).fill   = _fill(_TYPE_TOTAL_BG)
+                ws.cell(row, col).border = _FULL_BDR
+            # Col 8 — total value
+            _cell(ws, row, 8, item.get('total', ''), bold=True,
+                fill_color=_TYPE_TOTAL_BG, font_color=_TEXT, align=_ctr)
+            # Flush col-1 merge (no label needed, col 1 just stays blue)
+            _flush_type_merge(row)
+            type_group['start'] = None
+            type_group['name']  = None
 
-                _cell(
-                    ws,
-                    row,
-                    col,
-                    '',
-                    fill_color=_TYPE_TOTAL_FILL,
-                    font_color=_TEXT
-                )
-
-            _cell(
-                ws,
-                row,
-                1,
-                item.get('label', ''),
-                bold=True,
-                fill_color=_TYPE_TOTAL_FILL,
-                font_color=_TEXT
-            )
-
-            _cell(
-                ws,
-                row,
-                8,
-                item.get('total', ''),
-                bold=True,
-                fill_color=_TYPE_TOTAL_FILL,
-                font_color=_TEXT,
-                align=_ctr
-            )
-
-        # =====================================================
-        # GRAND TOTAL
-        # =====================================================
         elif kind == 'grand_total':
-
+            if type_group['start'] is not None:
+                _flush_type_merge(row - 1)
+                type_group['start'] = None
             for col in range(1, 9):
-
-                _cell(
-                    ws,
-                    row,
-                    col,
-                    '',
-                    fill_color=_TOTAL_FILL,
-                    font_color=_TEXT
-                )
-
-            _cell(
-                ws,
-                row,
-                1,
-                item.get('label', ''),
-                bold=True,
-                fill_color=_TOTAL_FILL,
-                font_color=_TEXT
-            )
-
-            _cell(
-                ws,
-                row,
-                8,
-                item.get('total', ''),
-                bold=True,
-                fill_color=_TOTAL_FILL,
-                font_color=_TEXT,
-                align=_ctr
-            )
+                _cell(ws, row, col, '', fill_color=_GRAND_BG,
+                      font_color=_WHITE, bold=True)
+            _cell(ws, row, 1, item.get('label', ''), bold=True,
+                  fill_color=_GRAND_BG, font_color=_WHITE, align=_left)
+            _cell(ws, row, 8, item.get('total', ''), bold=True,
+                  fill_color=_GRAND_BG, font_color=_WHITE, align=_ctr)
 
         row += 1
 
-    # =========================================================
-    # APPLY MERGES
-    # =========================================================
-    for start_row, start_col, end_row, end_col in merge_ranges:
+    # Flush any unclosed type group
+    if type_group['start'] is not None:
+        _flush_type_merge(row - 1)
 
-        ws.merge_cells(
-            start_row=start_row,
-            start_column=start_col,
-            end_row=end_row,
-            end_column=end_col
-        )
+    # Apply cols 2-4 vertical merges
+    for start_r, col, end_r, bg, label in merge_queue:
+        ws.merge_cells(start_row=start_r, start_column=col,
+                       end_row=end_r,     end_column=col)
+        tc = ws.cell(start_r, col)
+        tc.value     = label
+        tc.fill      = _fill(bg)
+        tc.font      = _font(bold=True, size=11, color=_TEXT)
+        tc.alignment = Alignment(
+            horizontal='left' if col == 2 else 'center',
+            vertical='center', wrap_text=True)
+        for r in range(start_r, end_r + 1):
+            c = ws.cell(r, col)
+            if start_r == end_r:
+                c.border = _FULL_BDR
+            elif r == start_r:
+                c.border = _LRT_BDR
+            elif r == end_r:
+                c.border = _LRB_BDR
+            else:
+                c.border = _LR_BDR
 
-        main_cell = ws.cell(start_row, start_col)
-
-        main_cell.alignment = Alignment(
-            horizontal='center',
-            vertical='center',
-            wrap_text=True
-        )
-
-        # =====================================================
-        # REMOVE INNER HORIZONTAL BORDERS
-        # =====================================================
-        for r in range(start_row, end_row + 1):
-
-            cell = ws.cell(r, start_col)
-
-            # LEFT + RIGHT ONLY
-            cell.border = Border(
-                left=_thin,
-                right=_thin
-            )
-
-        # =====================================================
-        # TOP BORDER ONLY FIRST CELL
-        # =====================================================
-        ws.cell(start_row, start_col).border = Border(
-            left=_thin,
-            right=_thin,
-            top=_thin
-        )
-
-        # =====================================================
-        # BOTTOM BORDER ONLY LAST CELL
-        # =====================================================
-        ws.cell(end_row, start_col).border = Border(
-            left=_thin,
-            right=_thin,
-            bottom=_thin
-        )
-    # =========================================================
-    # COLUMN WIDTHS
-    # =========================================================
-    widths = {
-        'A': 24,
-        'B': 30,
-        'C': 18,
-        'D': 18,
-        'E': 18,
-        'F': 12,
-        'G': 12,
-        'H': 14
-    }
-
-    for letter, width in widths.items():
-
+    # Column widths
+    for letter, width in [('A', 22), ('B', 32), ('C', 20), ('D', 20),
+                           ('E', 18), ('F', 10), ('G', 10), ('H', 12)]:
         ws.column_dimensions[letter].width = width
+
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[2].height = 18
+    ws.freeze_panes = 'A3'
