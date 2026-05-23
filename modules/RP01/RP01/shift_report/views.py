@@ -1306,3 +1306,5 @@ def _build_delay_sheet(wb, delay_view):
     ws.row_dimensions[1].height = 22
     ws.row_dimensions[2].height = 18
     ws.freeze_panes = 'A3'
+
+    
