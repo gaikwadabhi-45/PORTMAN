@@ -1229,13 +1229,87 @@ def _build_delay_sheet(wb, delay_view):
                   fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
 
         elif kind == 'activity_total':
+
+            # =========================================
+            # CLEAR + STYLE ROW
+            # =========================================
             for col in range(1, 9):
-                _cell(ws, row, col, '', fill_color=_SUBTOTAL_BG, font_color=_TEXT)
-            _cell(ws, row, 1, '', bold=True, fill_color=_TYPE_BG, font_color=_WHITE)
-            _cell(ws, row, 2, item.get('label', ''), bold=True,
-                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_left)
-            _cell(ws, row, 8, item.get('total', ''), bold=True,
-                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
+
+                ws.cell(row, col).value = None
+
+                ws.cell(row, col).fill = _fill(_SUBTOTAL_BG)
+
+                ws.cell(row, col).border = _FULL_BDR
+
+            # =========================================
+            # KEEP TYPE COLUMN
+            # =========================================
+            ws.cell(row, 1).fill = _fill(_TYPE_BG)
+
+            # =========================================
+            # ACTIVITY COLUMN EMPTY
+            # =========================================
+            ws.cell(row, 2).fill = _fill(_SUBTOTAL_BG)
+
+            # =========================================
+            # MERGE C:G
+            # =========================================
+            ws.merge_cells(
+                start_row=row,
+                start_column=3,
+                end_row=row,
+                end_column=7
+            )
+
+            # =========================================
+            # LABEL
+            # =========================================
+            c = ws.cell(row, 3)
+
+            c.value = item.get('label', '')
+
+            c.font = _font(
+                bold=True,
+                size=11,
+                color=_TEXT
+            )
+
+            c.fill = _fill(_SUBTOTAL_BG)
+
+            c.alignment = Alignment(
+                horizontal='left',
+                vertical='center'
+            )
+
+            c.border = _FULL_BDR
+
+            # =========================================
+            # STYLE MERGED CELLS
+            # =========================================
+            for col in range(4, 8):
+
+                ws.cell(row, col).fill = _fill(_SUBTOTAL_BG)
+
+                ws.cell(row, col).border = _FULL_BDR
+
+            # =========================================
+            # TOTAL VALUE
+            # =========================================
+            total_cell = ws.cell(row, 8)
+
+            total_cell.value = item.get('total', '')
+
+            total_cell.font = _font(
+                bold=True,
+                size=11,
+                color=_TEXT
+            )
+
+            total_cell.fill = _fill(_SUBTOTAL_BG)
+
+            total_cell.alignment = _ctr
+
+            total_cell.border = _FULL_BDR
 
         elif kind == 'type_total':
             for col in range(1, 9):
@@ -1306,5 +1380,3 @@ def _build_delay_sheet(wb, delay_view):
     ws.row_dimensions[1].height = 22
     ws.row_dimensions[2].height = 18
     ws.freeze_panes = 'A3'
-
-    
