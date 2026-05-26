@@ -2,6 +2,57 @@
 
 {% block title %}Anchorage Master - PORTMAN{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+.map-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 9000;
+    align-items: center; justify-content: center;
+}
+.map-modal-overlay.open { display: flex; }
+.map-modal {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    width: 560px; max-width: 95vw;
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.map-modal-hdr {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #E2E8F0; gap: 10px;
+}
+.map-modal-hdr h3 { margin: 0; font-size: 13px; font-weight: 700; color: #0F172A; flex: 1; }
+.map-modal-hdr button { border: none; background: none; cursor: pointer; font-size: 18px; color: #94A3B8; }
+#picker-map { height: 320px; border-bottom: 1px solid #E2E8F0; }
+.map-modal-body { padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+.map-modal-body label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #64748B; display: block; margin-bottom: 3px; }
+.map-modal-body input {
+    font-family: monospace; font-size: 11px;
+    border: 1px solid #CBD5E1; border-radius: 5px;
+    padding: 5px 8px; width: 150px; outline: none;
+}
+.map-modal-body input:focus { border-color: #2563EB; }
+.map-modal-body input.err { border-color: #DC2626; background: #FEF2F2; }
+.map-modal-foot { padding: 10px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #E2E8F0; }
+.map-modal-foot button {
+    padding: 6px 16px; border-radius: 5px; font-size: 11px; font-weight: 600;
+    cursor: pointer; border: 1px solid #CBD5E1; background: #F8FAFC; color: #475569;
+}
+.map-modal-foot .btn-confirm { background: #2563EB; color: #fff; border-color: #2563EB; }
+.map-modal-foot .btn-confirm:hover { background: #1D4ED8; }
+.hint { font-size: 9px; color: #94A3B8; padding: 4px 16px 0; }
+.map-pin-btn {
+    background: none; border: 1px solid #CBD5E1; border-radius: 4px;
+    cursor: pointer; padding: 2px 7px; font-size: 11px; color: #2563EB;
+}
+.map-pin-btn:hover { background: #EFF6FF; }
+.coord-valid { font-size: 8px; margin-top: 2px; }
+.coord-valid.ok  { color: #059669; }
+.coord-valid.bad { color: #DC2626; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="module-header">
     <h2>Anchorage Master</h2>
@@ -16,78 +67,229 @@
 </div>
 
 <div id="table"></div>
+
+<!-- MAP PICKER MODAL -->
+<div class="map-modal-overlay" id="map-modal-overlay">
+  <div class="map-modal">
+    <div class="map-modal-hdr">
+      <h3>⚓ Set Anchorage Location</h3>
+      <span id="picker-anch-name" style="font-size:11px;color:#64748B;font-weight:500"></span>
+      <button onclick="closeMapPicker()">✕</button>
+    </div>
+    <div id="picker-map"></div>
+    <p class="hint">Click on the map to place the anchor pin, or type coordinates below. Drag pin to fine-tune.</p>
+    <div class="map-modal-body">
+      <div>
+        <label>Latitude <span id="lat-hint" class="coord-valid"></span></label>
+        <input id="picker-lat" placeholder="18.834000" oninput="onManualInput()">
+      </div>
+      <div>
+        <label>Longitude <span id="lon-hint" class="coord-valid"></span></label>
+        <input id="picker-lon" placeholder="72.896800" oninput="onManualInput()">
+      </div>
+    </div>
+    <div class="map-modal-foot">
+      <button onclick="closeMapPicker()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmPicker()">Use These Coordinates</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    addToRecent('VANM01', 'Anchorage Master');
-    let table;
-    const canEdit = {{ permissions.can_edit|default(0) }} || {{ permissions.can_add|default(0) }};
+addToRecent('VANM01', 'Anchorage Master');
+let table;
+const canEdit = {{ permissions.can_edit|default(0) }} || {{ permissions.can_add|default(0) }};
+const PORT_CENTER = [18.7053, 73.0281];
 
-    function initTable() {
-        table = new Tabulator("#table", {
-            height: "calc(100vh - 160px)",
-            layout: "fitColumns",
-            columns: [
-                {formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", headerSort: false, width: 40},
-                {title: "Anchorage Name", field: "name", editor: canEdit ? "input" : false, widthGrow: 2},
-                {title: "Latitude", field: "latitude", editor: canEdit ? "input" : false, widthGrow: 1},
-                {title: "Longitude", field: "longitude", editor: canEdit ? "input" : false, widthGrow: 1}
-            ],
-            pagination: true,
-            paginationMode: "remote",
-            paginationSize: 20,
-            ajaxURL: "/api/module/VANM01/data",
-            ajaxResponse: function(url, params, response) {
-                document.getElementById('rowCount').textContent = response.data.length;
-                document.getElementById('totalCount').textContent = response.total;
-                return response;
+function initTable() {
+    table = new Tabulator("#table", {
+        height: "calc(100vh - 160px)",
+        layout: "fitColumns",
+        columns: [
+            {formatter:"rowSelection", titleFormatter:"rowSelection", hozAlign:"center", headerSort:false, width:40},
+            {title:"Anchorage Name", field:"name",      editor: canEdit ? "input" : false, widthGrow:2},
+            {title:"Latitude",       field:"latitude",  editor: canEdit ? "input" : false, width:130,
+             formatter: c => {
+                 const v = c.getValue();
+                 if (v == null || v === '') return '<span style="color:#94A3B8">—</span>';
+                 const n = parseFloat(v);
+                 return isNaN(n) ? `<span style="color:#DC2626">${v}</span>` : n.toFixed(6);
+             },
+             cellEdited: cell => validateCoordCell(cell, -90, 90)
             },
-            selectable: true
-        });
-        if (localStorage.getItem('theme') === 'dark') {
-            document.getElementById('table').classList.add('tabulator-dark');
-        }
-    }
-
-    function addRow() { table.addRow({}, false); }
-
-    function deleteSelected() {
-        const selected = table.getSelectedRows();
-        if (selected.length === 0) { alert('Select rows to delete'); return; }
-        if (!confirm(`Delete ${selected.length} row(s)?`)) return;
-        selected.forEach(row => {
-            const id = row.getData().id;
-            if (id) {
-                fetch("/api/module/VANM01/delete", {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({id: id})
-                });
-            }
-            row.delete();
-        });
-    }
-
-    async function saveAll() {
-        const rows = table.getRows();
-        for (const row of rows) {
-            const data = row.getData();
-            const res = await fetch("/api/module/VANM01/save", {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            const result = await res.json();
-            if (result.id) row.update({id: result.id});
-        }
-        table.setData("/api/module/VANM01/data");
-    }
-
-    document.addEventListener('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveAll(); }
+            {title:"Longitude",      field:"longitude", editor: canEdit ? "input" : false, width:130,
+             formatter: c => {
+                 const v = c.getValue();
+                 if (v == null || v === '') return '<span style="color:#94A3B8">—</span>';
+                 const n = parseFloat(v);
+                 return isNaN(n) ? `<span style="color:#DC2626">${v}</span>` : n.toFixed(6);
+             },
+             cellEdited: cell => validateCoordCell(cell, -180, 180)
+            },
+            ...(canEdit ? [{
+                title:"📍", headerSort:false, width:45, hozAlign:"center",
+                formatter: () => `<button class="map-pin-btn">📍</button>`,
+                cellClick: (e, cell) => { e.stopPropagation(); openMapPickerForRow(cell.getRow()); }
+            }] : [])
+        ],
+        pagination: true, paginationMode: "remote", paginationSize: 20,
+        ajaxURL: "/api/module/VANM01/data",
+        ajaxResponse: function(url, params, response) {
+            document.getElementById('rowCount').textContent  = response.data.length;
+            document.getElementById('totalCount').textContent = response.total;
+            return response;
+        },
+        selectable: true
     });
+    if (localStorage.getItem('theme') === 'dark') document.getElementById('table').classList.add('tabulator-dark');
+}
 
-    initTable();
+function validateCoordCell(cell, min, max) {
+    const v = parseFloat(cell.getValue());
+    const el = cell.getElement();
+    if (isNaN(v) || v < min || v > max) {
+        el.style.background = '#FEF2F2';
+        el.style.color = '#DC2626';
+    } else {
+        el.style.background = '';
+        el.style.color = '';
+    }
+}
+
+function addRow() { table.addRow({}, false); }
+
+function deleteSelected() {
+    const selected = table.getSelectedRows();
+    if (selected.length === 0) { alert('Select rows to delete'); return; }
+    if (!confirm(`Delete ${selected.length} row(s)?`)) return;
+    selected.forEach(row => {
+        const id = row.getData().id;
+        if (id) fetch("/api/module/VANM01/delete", {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+        row.delete();
+    });
+}
+
+async function saveAll() {
+    const rows = table.getRows();
+    for (const row of rows) {
+        const data = row.getData();
+        const res = await fetch("/api/module/VANM01/save", {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.id) row.update({id: result.id});
+    }
+    table.setData("/api/module/VANM01/data");
+}
+
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveAll(); }
+});
+
+/* ── Map Picker ── */
+let pickerMap = null, pickerMarker = null, pickerRow = null;
+
+function openMapPickerForRow(row) {
+    pickerRow = row;
+    const d = row.getData();
+    document.getElementById('picker-anch-name').textContent = d.name || '';
+    document.getElementById('picker-lat').value = d.latitude  != null ? d.latitude  : '';
+    document.getElementById('picker-lon').value = d.longitude != null ? d.longitude : '';
+    document.getElementById('lat-hint').textContent = '';
+    document.getElementById('lon-hint').textContent = '';
+    document.getElementById('picker-lat').classList.remove('err');
+    document.getElementById('picker-lon').classList.remove('err');
+    document.getElementById('map-modal-overlay').classList.add('open');
+
+    setTimeout(() => {
+        if (!pickerMap) {
+            pickerMap = L.map('picker-map').setView(PORT_CENTER, 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution:'© OpenStreetMap contributors', maxZoom:19
+            }).addTo(pickerMap);
+            // Known reference points
+            L.circleMarker([18.834, 72.897], {radius:6, color:'#059669', fillColor:'#D1FAE5', fillOpacity:1, weight:2})
+             .bindTooltip('Gull Island', {permanent:false}).addTo(pickerMap);
+            L.circleMarker([18.717324, 73.018150], {radius:6, color:'#0891B2', fillColor:'#CFFAFE', fillOpacity:1, weight:2})
+             .bindTooltip('Yellow Crane', {permanent:false}).addTo(pickerMap);
+            pickerMap.on('click', e => setPickerPin(e.latlng.lat, e.latlng.lng));
+        } else {
+            pickerMap.invalidateSize();
+        }
+        const lat = parseFloat(d.latitude), lon = parseFloat(d.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+            setPickerPin(lat, lon);
+            pickerMap.setView([lat, lon], 14);
+        } else {
+            pickerMap.setView(PORT_CENTER, 12);
+        }
+    }, 80);
+}
+
+function setPickerPin(lat, lon) {
+    document.getElementById('picker-lat').value = lat.toFixed(6);
+    document.getElementById('picker-lon').value = lon.toFixed(6);
+    validateInputs();
+    if (pickerMarker) {
+        pickerMarker.setLatLng([lat, lon]);
+    } else {
+        pickerMarker = L.marker([lat, lon], {draggable:true}).addTo(pickerMap);
+        pickerMarker.on('dragend', e => {
+            const p = e.target.getLatLng();
+            document.getElementById('picker-lat').value = p.lat.toFixed(6);
+            document.getElementById('picker-lon').value = p.lng.toFixed(6);
+            validateInputs();
+        });
+    }
+}
+
+function validateInputs() {
+    const lat = parseFloat(document.getElementById('picker-lat').value);
+    const lon = parseFloat(document.getElementById('picker-lon').value);
+    const lh = document.getElementById('lat-hint');
+    const lnH = document.getElementById('lon-hint');
+    if (!isNaN(lat) && lat >= -90 && lat <= 90) {
+        lh.textContent = '✓ valid'; lh.className = 'coord-valid ok';
+        document.getElementById('picker-lat').classList.remove('err');
+    } else {
+        lh.textContent = lat !== lat ? '' : '✗ must be −90 to 90'; lh.className = 'coord-valid bad';
+    }
+    if (!isNaN(lon) && lon >= -180 && lon <= 180) {
+        lnH.textContent = '✓ valid'; lnH.className = 'coord-valid ok';
+        document.getElementById('picker-lon').classList.remove('err');
+    } else {
+        lnH.textContent = lon !== lon ? '' : '✗ must be −180 to 180'; lnH.className = 'coord-valid bad';
+    }
+}
+
+function onManualInput() {
+    validateInputs();
+    const lat = parseFloat(document.getElementById('picker-lat').value);
+    const lon = parseFloat(document.getElementById('picker-lon').value);
+    if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 && pickerMap) {
+        setPickerPin(lat, lon);
+        pickerMap.setView([lat, lon], pickerMap.getZoom());
+    }
+}
+
+function confirmPicker() {
+    const lat = parseFloat(document.getElementById('picker-lat').value);
+    const lon = parseFloat(document.getElementById('picker-lon').value);
+    let ok = true;
+    if (isNaN(lat) || lat < -90  || lat > 90)  { document.getElementById('picker-lat').classList.add('err'); ok = false; }
+    if (isNaN(lon) || lon < -180 || lon > 180) { document.getElementById('picker-lon').classList.add('err'); ok = false; }
+    if (!ok) return;
+    pickerRow.update({ latitude: lat, longitude: lon });
+    closeMapPicker();
+}
+
+function closeMapPicker() {
+    document.getElementById('map-modal-overlay').classList.remove('open');
+    pickerRow = null;
+}
+
+initTable();
 </script>
 {% endblock %}
