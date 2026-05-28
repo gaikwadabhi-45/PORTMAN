@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Port Traffic Map — RP01</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #F1F5F9; --surface: #FFFFFF; --border: #E2E8F0; --border2: #CBD5E1;
+  --text:  #0F172A; --text2: #475569; --text3: #94A3B8;
+  --blue:  #2563EB; --blue-lt:  #EFF6FF; --blue-bd:  #BFDBFE;
+  --green: #059669; --green-lt: #ECFDF5; --green-bd: #6EE7B7;
+  --amber: #D97706; --amber-lt: #FFFBEB; --amber-bd: #FCD34D;
+  --teal:  #0891B2; --teal-lt:  #ECFEFF; --teal-bd:  #A5F3FC;
+  --red:   #DC2626; --red-lt:   #FEF2F2;
+  --hdr-h: 50px; --ftr-h: 30px; --panel-w: 270px;
+}
+html, body { width:100vw; height:100vh; overflow:hidden; font-family:'Outfit',system-ui,sans-serif; }
+
+/* ── HEADER ── */
+#hdr {
+  position:fixed; top:0; left:0; right:0; height:var(--hdr-h);
+  background:var(--surface); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 14px; gap:10px; z-index:1000;
+  box-shadow:0 1px 3px rgba(0,0,0,.05);
+}
+#hdr-logo { height:28px; width:auto; object-fit:contain; }
+.hdr-sep  { width:1px; height:22px; background:var(--border); }
+.hdr-tag  { font-size:9px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+            color:var(--blue); background:var(--blue-lt); border:1px solid var(--blue-bd); padding:2px 7px; border-radius:4px; }
+.hdr-live { display:flex; align-items:center; gap:5px; font-size:10px; font-weight:600; color:var(--green); }
+.hdr-live-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.5)} 50%{box-shadow:0 0 0 4px rgba(5,150,105,0)} }
+.hdr-flex { flex:1; }
+.hdr-clock { font-family:'DM Mono',monospace; font-size:16px; font-weight:500; color:var(--text); letter-spacing:1px; }
+.hdr-date  { font-size:9px; color:var(--text3); font-family:'DM Mono',monospace; }
+.hdr-btn {
+  border:1px solid var(--border2); background:var(--surface); color:var(--text2);
+  font-family:'Outfit',sans-serif; font-size:10px; font-weight:500;
+  padding:4px 10px; border-radius:5px; cursor:pointer; transition:all .15s; white-space:nowrap;
+}
+.hdr-btn:hover, .hdr-btn.active { border-color:var(--blue); color:var(--blue); background:var(--blue-lt); }
+
+/* ── LAYOUT ── */
+#app { position:fixed; top:var(--hdr-h); bottom:var(--ftr-h); left:0; right:0; display:flex; }
+
+/* ── LEFT PANEL ── */
+#side-panel {
+  width:var(--panel-w); flex-shrink:0; height:100%;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; overflow:hidden; z-index:500;
+  transition:width .25s;
+}
+#side-panel.collapsed { width:0; }
+.sp-section { border-bottom:1px solid var(--border); }
+.sp-hdr { padding:7px 12px; font-size:8px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+          color:var(--text3); background:#FAFBFD; }
+.sp-body { padding:8px 12px; }
+
+/* Layer toggles */
+.layer-row { display:flex; align-items:center; gap:8px; padding:4px 0; }
+.layer-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.layer-label { font-size:11px; color:var(--text2); flex:1; }
+.layer-count { font-family:'DM Mono',monospace; font-size:10px; color:var(--text3); }
+input[type=checkbox] { accent-color:var(--blue); width:14px; height:14px; }
+
+/* Stats */
+.stat-row { display:flex; justify-content:space-between; padding:3px 0; }
+.stat-lbl { font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--text3); font-weight:700; }
+.stat-val { font-family:'DM Mono',monospace; font-size:11px; color:var(--text); font-weight:500; }
+
+/* Legend */
+.leg-item { display:flex; align-items:center; gap:6px; padding:2px 0; }
+.leg-icon { width:22px; height:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+.leg-lbl  { font-size:10px; color:var(--text2); }
+
+/* Info box for selected marker */
+#info-box {
+  flex:1; overflow-y:auto; padding:10px 12px;
+  scrollbar-width:thin; scrollbar-color:var(--border2) transparent;
+}
+#info-box::-webkit-scrollbar { width:3px; }
+#info-box .info-empty { font-size:10px; color:var(--text3); text-align:center; padding:16px 0; }
+.info-card { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin-bottom:6px; }
+.info-title { font-size:11px; font-weight:700; color:var(--text); margin-bottom:4px; }
+.info-row { display:flex; justify-content:space-between; padding:2px 0; }
+.info-lbl { font-size:8px; text-transform:uppercase; letter-spacing:1px; color:var(--text3); font-weight:700; }
+.info-val { font-family:'DM Mono',monospace; font-size:9px; color:var(--text2); text-align:right; max-width:60%; }
+.info-pill { display:inline-block; font-size:8px; font-weight:700; padding:1px 6px; border-radius:8px; border:1px solid; }
+.info-pill.MBC   { color:var(--teal);  border-color:var(--teal-bd);  background:var(--teal-lt); }
+.info-pill.BARGE { color:var(--amber); border-color:var(--amber-bd); background:var(--amber-lt); }
+.prog-bar { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:3px 0; }
+.prog-fill { height:100%; border-radius:2px; }
+.prog-fill.low  { background:linear-gradient(90deg,#F59E0B,#FCD34D); }
+.prog-fill.mid  { background:linear-gradient(90deg,#2563EB,#60A5FA); }
+.prog-fill.high { background:linear-gradient(90deg,#059669,#34D399); }
+
+/* ── MAP ── */
+#map { flex:1; height:100%; }
+
+/* ── FOOTER ── */
+#ftr {
+  position:fixed; bottom:0; left:0; right:0; height:var(--ftr-h);
+  background:var(--surface); border-top:1px solid var(--border);
+  display:flex; align-items:center; padding:0 14px; gap:12px; z-index:1000;
+}
+.ftr-lbl { font-size:8px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text3); }
+.ftr-val { font-family:'DM Mono',monospace; font-size:10px; color:var(--text2); }
+.ftr-sep { width:1px; height:12px; background:var(--border); }
+.ftr-bar { flex:1; height:3px; background:var(--border); border-radius:2px; overflow:hidden; }
+.ftr-fill { height:100%; background:linear-gradient(90deg,var(--blue),#93C5FD); transition:width 1s linear; }
+#panel-toggle { background:var(--bg); border:1px solid var(--border); border-radius:4px;
+                cursor:pointer; font-size:11px; padding:3px 8px; color:var(--text2); margin-left:auto; }
+#panel-toggle:hover { background:var(--blue-lt); color:var(--blue); border-color:var(--blue); }
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-popup-content-wrapper {
+  border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.15);
+  border:1px solid var(--border); font-family:'Outfit',system-ui,sans-serif;
+}
+.leaflet-popup-content { margin:10px 12px; font-size:11px; min-width:160px; }
+.popup-title { font-weight:700; font-size:12px; color:var(--text); margin-bottom:6px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+.popup-row { display:flex; justify-content:space-between; padding:2px 0; gap:12px; }
+.popup-lbl { font-size:9px; text-transform:uppercase; letter-spacing:.8px; color:var(--text3); font-weight:700; }
+.popup-val { font-family:'DM Mono',monospace; font-size:9px; color:var(--text2); }
+.popup-pill { display:inline-block; font-size:8px; font-weight:700; padding:1px 6px; border-radius:8px; border:1px solid; }
+.popup-pill.MBC   { color:var(--teal);  border-color:var(--teal-bd);  background:var(--teal-lt); }
+.popup-pill.BARGE { color:var(--amber); border-color:var(--amber-bd); background:var(--amber-lt); }
+.popup-pill.VCN   { color:var(--blue);  border-color:var(--blue-bd);  background:var(--blue-lt); }
+.popup-prog { height:5px; background:var(--border); border-radius:3px; margin:4px 0; overflow:hidden; }
+.popup-prog-fill { height:100%; border-radius:3px; }
+
+/* ── CUSTOM MAP MARKERS ── */
+.m-vessel { cursor:pointer; }
+.m-vessel svg { filter:drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+.m-badge {
+  position:absolute; top:-4px; right:-4px;
+  background:var(--blue); color:#fff; border:1.5px solid #fff;
+  border-radius:50%; width:14px; height:14px;
+  font-size:8px; font-weight:700; display:flex; align-items:center; justify-content:center;
+}
+.m-anchorage { cursor:pointer; }
+.m-anchorage-ring {
+  border:2px dashed var(--blue); border-radius:50%;
+  background:rgba(37,99,235,.06);
+  width:36px; height:36px;
+  display:flex; align-items:center; justify-content:center;
+  animation:spin-slow 20s linear infinite;
+}
+@keyframes spin-slow { to { transform:rotate(360deg); } }
+.m-berth { cursor:pointer; }
+.m-berth-dot {
+  width:14px; height:14px; border-radius:50%;
+  background:var(--surface); border:2.5px solid var(--border2);
+  display:flex; align-items:center; justify-content:center;
+}
+.m-berth.active .m-berth-dot { border-color:var(--green); background:var(--green-lt); animation:pulse 2.5s ease-in-out infinite; }
+.m-barge-wrap { cursor:pointer; }
+.m-barge {
+  width:34px; height:11px; border-radius:2px; position:relative;
+  border:1.5px solid var(--amber-bd); background:var(--amber-lt); overflow:hidden;
+}
+.m-barge-fill { position:absolute; left:0; top:0; bottom:0; background:var(--amber); opacity:.6; }
+.m-mbc-wrap { cursor:pointer; }
+.m-mbc {
+  width:28px; height:11px; position:relative; overflow:hidden;
+  clip-path:polygon(0 0,92% 0,100% 50%,92% 100%,0 100%);
+  border:1.5px solid var(--teal-bd); background:var(--teal-lt);
+}
+.m-mbc-fill { position:absolute; left:0; top:0; bottom:0; background:var(--teal); opacity:.6; }
+.m-transit { cursor:pointer; animation:transit-pulse 2s ease-in-out infinite; }
+@keyframes transit-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(.85)} }
+.m-wp { cursor:pointer; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header id="hdr">
+  <img id="hdr-logo" src="{{ url_for('static', filename='img/logo31.png') }}" alt="Logo">
+  <div class="hdr-sep"></div>
+  <div class="hdr-tag">RP01</div>
+  <div class="hdr-live"><div class="hdr-live-dot"></div>PORT MAP</div>
+  <div class="hdr-flex"></div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+    <div class="hdr-clock" id="hdr-clock">--:--:--</div>
+    <div class="hdr-date"  id="hdr-date"></div>
+  </div>
+  <div class="hdr-sep"></div>
+  <button class="hdr-btn" id="fs-btn" onclick="toggleFS()">⛶ Fullscreen</button>
+  <button class="hdr-btn" onclick="reload()">⟳ Refresh</button>
+</header>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- SIDE PANEL -->
+  <aside id="side-panel">
+
+    <div class="sp-section">
+      <div class="sp-hdr">Layers</div>
+      <div class="sp-body" style="display:flex;flex-direction:column;gap:0">
+        <div class="layer-row"><input type="checkbox" id="lyr-anch" checked onchange="toggleLayer('anchorages')">
+          <span class="layer-dot" style="background:#2563EB"></span>
+          <span class="layer-label">Anchorages</span>
+          <span class="layer-count" id="cnt-anch">—</span></div>
+        <div class="layer-row"><input type="checkbox" id="lyr-berth" checked onchange="toggleLayer('berths')">
+          <span class="layer-dot" style="background:#059669"></span>
+          <span class="layer-label">Berths</span>
+          <span class="layer-count" id="cnt-berth">—</span></div>
+        <div class="layer-row"><input type="checkbox" id="lyr-assets" checked onchange="toggleLayer('assets')">
+          <span class="layer-dot" style="background:#D97706"></span>
+          <span class="layer-label">Barges / MBCs</span>
+          <span class="layer-count" id="cnt-assets">—</span></div>
+        <div class="layer-row"><input type="checkbox" id="lyr-transit" checked onchange="toggleLayer('transit')">
+          <span class="layer-dot" style="background:#7C3AED"></span>
+          <span class="layer-label">In Transit</span>
+          <span class="layer-count" id="cnt-transit">—</span></div>
+        <div class="layer-row"><input type="checkbox" id="lyr-channel" checked onchange="toggleLayer('channel')">
+          <span class="layer-dot" style="background:#0891B2;border-radius:0"></span>
+          <span class="layer-label">Channel Route</span>
+          <span class="layer-count"></span></div>
+        <div class="layer-row"><input type="checkbox" id="lyr-wp" checked onchange="toggleLayer('waypoints')">
+          <span class="layer-dot" style="background:#64748B"></span>
+          <span class="layer-label">Waypoints</span>
+          <span class="layer-count"></span></div>
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-hdr">Summary</div>
+      <div class="sp-body">
+        <div class="stat-row"><span class="stat-lbl">Vessels at Anchor</span><span class="stat-val" id="st-vessels">—</span></div>
+        <div class="stat-row"><span class="stat-lbl">Barges at Berth</span><span class="stat-val" id="st-barges">—</span></div>
+        <div class="stat-row"><span class="stat-lbl">MBCs at Berth</span><span class="stat-val" id="st-mbcs">—</span></div>
+        <div class="stat-row"><span class="stat-lbl">In Transit</span><span class="stat-val" id="st-transit">—</span></div>
+      </div>
+    </div>
+
+    <div class="sp-section">
+      <div class="sp-hdr">Legend</div>
+      <div class="sp-body" style="display:flex;flex-direction:column;gap:2px">
+        <div class="leg-item"><div class="leg-icon"><svg width="16" height="20" viewBox="0 0 16 20"><path d="M8 1L1 18l7-5 7 5Z" fill="#2563EB"/></svg></div><span class="leg-lbl">Vessel at anchor</span></div>
+        <div class="leg-item"><div class="leg-icon"><div style="width:14px;height:14px;border-radius:50%;border:2.5px dashed #2563EB;background:rgba(37,99,235,.08)"></div></div><span class="leg-lbl">Anchorage zone</span></div>
+        <div class="leg-item"><div class="leg-icon"><div style="width:14px;height:14px;border-radius:50%;border:2.5px solid #059669;background:#ECFDF5"></div></div><span class="leg-lbl">Active berth</span></div>
+        <div class="leg-item"><div class="leg-icon"><div style="width:20px;height:8px;border-radius:2px;border:1.5px solid #FCD34D;background:#FFFBEB"></div></div><span class="leg-lbl">Barge</span></div>
+        <div class="leg-item"><div class="leg-icon"><div style="width:18px;height:8px;clip-path:polygon(0 0,92% 0,100% 50%,92% 100%,0 100%);border:1.5px solid #A5F3FC;background:#ECFEFF"></div></div><span class="leg-lbl">MBC</span></div>
+        <div class="leg-item"><div class="leg-icon"><div style="width:10px;height:10px;border-radius:50%;border:2px solid #7C3AED;background:#EDE9FE;animation:transit-pulse 2s ease-in-out infinite"></div></div><span class="leg-lbl">In transit</span></div>
+      </div>
+    </div>
+
+    <div class="sp-hdr">Selected</div>
+    <div id="info-box"><p class="info-empty">Click a marker to see details</p></div>
+
+  </aside>
+
+  <!-- MAP -->
+  <div id="map"></div>
+
+</div>
+
+<!-- FOOTER -->
+<footer id="ftr">
+  <div style="display:flex;align-items:center;gap:5px">
+    <span class="ftr-lbl">Refresh in</span>
+    <span class="ftr-val" id="ftr-cd">60s</span>
+  </div>
+  <div class="ftr-bar"><div class="ftr-fill" id="ftr-fill" style="width:0%"></div></div>
+  <div class="ftr-sep"></div>
+  <span class="ftr-lbl">Updated</span>
+  <span class="ftr-val" id="ftr-upd">—</span>
+  <div class="ftr-sep"></div>
+  <span class="ftr-val" style="color:var(--text3)">RP01 · Port Traffic Map</span>
+  <button id="panel-toggle" onclick="togglePanel()">◀ Panel</button>
+</footer>
+
+<script>
+/* ── CONFIG ── */
+const REFRESH = 60;
+const PORT_CENTER = [18.7053, 73.0281];
+const PORT_ZOOM   = 13;
+
+// Channel route: Gull Island → Berth 1, traced on geojson.io
+const CHANNEL_GEOJSON = {"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[72.89658266480782,18.833811110744946],[72.94714951195965,18.831363735004487],[72.95433230274907,18.818310462360472],[72.96869788432545,18.79655275599687],[72.99656711258618,18.782952761098727],[72.99886560563786,18.778600530807466],[72.98622389385054,18.75738179880021],[72.98536195895602,18.752484789224084],[72.98708582874505,18.743234494568583],[72.99714173584877,18.727725510770668],[73.0069103313206,18.719834428796773],[73.0212759128982,18.71466420986846],[73.02644752226664,18.708949573483594],[73.02845784852622,18.70133101074053]]}};
+
+let cd = REFRESH;
+
+/* ── CLOCK ── */
+(function tick() {
+  const n = new Date();
+  const p = v => String(v).padStart(2,'0');
+  document.getElementById('hdr-clock').textContent = `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  const D=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('hdr-date').textContent = `${D[n.getDay()]} ${p(n.getDate())} ${M[n.getMonth()]} ${n.getFullYear()}`;
+  setTimeout(tick, 1000);
+})();
+
+/* ── FULLSCREEN ── */
+function toggleFS() {
+  const btn = document.getElementById('fs-btn');
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+    btn.textContent='✕ Exit'; btn.classList.add('active');
+  } else {
+    document.exitFullscreen().catch(()=>{});
+    btn.textContent='⛶ Fullscreen'; btn.classList.remove('active');
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    document.getElementById('fs-btn').textContent='⛶ Fullscreen';
+    document.getElementById('fs-btn').classList.remove('active');
+  }
+});
+
+/* ── PANEL TOGGLE ── */
+function togglePanel() {
+  const p = document.getElementById('side-panel');
+  const btn = document.getElementById('panel-toggle');
+  p.classList.toggle('collapsed');
+  btn.textContent = p.classList.contains('collapsed') ? '▶ Panel' : '◀ Panel';
+  map.invalidateSize();
+}
+
+// Bounding box for the Dharamtar port area (from user-provided GeoJSON)
+// SW: 72.70°E 18.69°N  →  NE: 73.15°E 18.97°N
+const AREA_BOUNDS = L.latLngBounds([18.69, 72.70], [18.97, 73.15]);
+
+/* ── MAP INIT ── */
+const map = L.map('map', {
+  zoomControl: true, attributionControl: true
+});
+map.fitBounds(AREA_BOUNDS);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+/* ── LAYER GROUPS ── */
+const layers = {
+  anchorages: L.layerGroup().addTo(map),
+  berths:     L.layerGroup().addTo(map),
+  assets:     L.layerGroup().addTo(map),
+  transit:    L.layerGroup().addTo(map),
+  channel:    L.layerGroup().addTo(map),
+  waypoints:  L.layerGroup().addTo(map),
+};
+
+function toggleLayer(name) {
+  const lyr = layers[name];
+  if (map.hasLayer(lyr)) map.removeLayer(lyr);
+  else map.addLayer(lyr);
+}
+
+/* ── CHANNEL POLYLINE ── */
+function drawChannel() {
+  layers.channel.clearLayers();
+  L.geoJSON(CHANNEL_GEOJSON, {
+    style: { color: '#0891B2', weight: 3, dashArray: '8 5', opacity: 0.65 }
+  }).bindTooltip('Dharamtar Channel — Gull Island to Berth 1', {sticky: true})
+    .addTo(layers.channel);
+  // Port area circle
+  L.circle(PORT_CENTER, {
+    radius: 800, color: '#2563EB', weight: 1,
+    fillColor: '#2563EB', fillOpacity: 0.04, dashArray: '4 4'
+  }).addTo(layers.channel).bindTooltip('Dharamtar Port Area', {permanent: false});
+}
+
+/* ── ICON FACTORIES ── */
+function vesselIcon(barge_count) {
+  const badge = barge_count > 0
+    ? `<div class="m-badge">${barge_count}</div>`
+    : '';
+  return L.divIcon({
+    html: `<div class="m-vessel" style="position:relative;width:24px;height:30px">
+      <svg viewBox="0 0 24 30" width="24" height="30">
+        <path d="M12 2L3 26l9-6 9 6Z" fill="#2563EB" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="12" cy="14" r="2.5" fill="#fff" opacity=".8"/>
+      </svg>
+      ${badge}
+    </div>`,
+    className: '', iconAnchor: [12, 28], iconSize: [24, 30]
+  });
+}
+
+function anchorageIcon() {
+  return L.divIcon({
+    html: `<div class="m-anchorage"><div class="m-anchorage-ring">
+      <svg width="14" height="14" viewBox="0 0 14 14">
+        <circle cx="7" cy="4" r="2.5" stroke="#2563EB" stroke-width="1.5" fill="none"/>
+        <line x1="7" y1="6.5" x2="7" y2="12" stroke="#2563EB" stroke-width="1.5"/>
+        <line x1="3" y1="10.5" x2="7" y2="12" stroke="#2563EB" stroke-width="1.5"/>
+        <line x1="11" y1="10.5" x2="7" y2="12" stroke="#2563EB" stroke-width="1.5"/>
+      </svg>
+    </div></div>`,
+    className: '', iconAnchor: [18, 18], iconSize: [36, 36]
+  });
+}
+
+function berthIcon(active) {
+  return L.divIcon({
+    html: `<div class="m-berth ${active ? 'active' : ''}"><div class="m-berth-dot"></div></div>`,
+    className: '', iconAnchor: [7, 7], iconSize: [14, 14]
+  });
+}
+
+function bargeIcon(pct) {
+  const w = Math.round(pct);
+  return L.divIcon({
+    html: `<div class="m-barge-wrap"><div class="m-barge">
+      <div class="m-barge-fill" style="width:${w}%"></div>
+    </div></div>`,
+    className: '', iconAnchor: [17, 5], iconSize: [34, 11]
+  });
+}
+
+function mbcIcon(pct) {
+  const w = Math.round(pct);
+  return L.divIcon({
+    html: `<div class="m-mbc-wrap"><div class="m-mbc">
+      <div class="m-mbc-fill" style="width:${w}%"></div>
+    </div></div>`,
+    className: '', iconAnchor: [14, 5], iconSize: [28, 11]
+  });
+}
+
+function waypointIcon(type) {
+  const colors = {transit:'#64748B', terminal:'#0891B2'};
+  const c = colors[type] || '#64748B';
+  return L.divIcon({
+    html: `<div class="m-wp">
+      <svg width="18" height="18" viewBox="0 0 18 18">
+        <polygon points="9,1 17,17 1,17" fill="${c}" stroke="#fff" stroke-width="1.5"/>
+      </svg>
+    </div>`,
+    className: '', iconAnchor: [9, 17], iconSize: [18, 18]
+  });
+}
+
+function transitIcon(type) {
+  const c = type === 'MBC' ? '#0891B2' : '#7C3AED';
+  return L.divIcon({
+    html: `<div class="m-transit">
+      <svg width="14" height="14" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="5" fill="${c}" stroke="#fff" stroke-width="2" opacity=".85"/>
+        <circle cx="7" cy="7" r="2" fill="#fff"/>
+      </svg>
+    </div>`,
+    className: '', iconAnchor: [7, 7], iconSize: [14, 14]
+  });
+}
+
+/* ── POPUP HELPERS ── */
+function fmtNum(v) {
+  if (v == null || isNaN(v)) return '—';
+  if (v >= 1000) return (v/1000).toFixed(1)+'k';
+  return parseFloat(v).toFixed(1);
+}
+
+function progColor(pct) { return pct >= 90 ? '#059669' : pct >= 50 ? '#2563EB' : '#D97706'; }
+
+function assetPopup(asset) {
+  const pct = asset.pct || 0;
+  const pc  = progColor(pct);
+  return `<div class="popup-title">
+      <span class="popup-pill ${asset.type}">${asset.type}</span> ${asset.name}
+    </div>
+    ${asset.vessel_name ? `<div class="popup-row"><span class="popup-lbl">Vessel</span><span class="popup-val">${asset.vessel_name}</span></div>` : ''}
+    <div class="popup-row"><span class="popup-lbl">Cargo</span><span class="popup-val">${asset.cargo || '—'}</span></div>
+    <div class="popup-row"><span class="popup-lbl">Equipment</span><span class="popup-val">${asset.equipment || '—'}</span></div>
+    <div class="popup-row"><span class="popup-lbl">B/L</span><span class="popup-val">${fmtNum(asset.bl_qty)} MT</span></div>
+    <div class="popup-row"><span class="popup-lbl">Discharged</span><span class="popup-val">${fmtNum(asset.actual)} MT</span></div>
+    <div class="popup-prog"><div class="popup-prog-fill" style="width:${pct}%;background:${pc}"></div></div>
+    <div style="font-family:'DM Mono',monospace;font-size:9px;color:${pc};text-align:right">${pct}%</div>`;
+}
+
+function vesselPopup(vessel) {
+  return `<div class="popup-title"><span class="popup-pill VCN">VCN</span> ${vessel.vessel_name}</div>
+    <div class="popup-row"><span class="popup-lbl">Doc #</span><span class="popup-val">${vessel.doc_num || '—'}</span></div>
+    <div class="popup-row"><span class="popup-lbl">Arrived</span><span class="popup-val">${vessel.arrived ? vessel.arrived.slice(0,16) : '—'}</span></div>`;
+}
+
+/* ── INFO BOX (sidebar) ── */
+function showInfo(html) {
+  document.getElementById('info-box').innerHTML = html || '<p class="info-empty">Click a marker to see details</p>';
+}
+
+function infoCard(title, rows) {
+  return `<div class="info-card"><div class="info-title">${title}</div>
+    ${rows.map(r => `<div class="info-row"><span class="info-lbl">${r[0]}</span><span class="info-val">${r[1]}</span></div>`).join('')}
+  </div>`;
+}
+
+/* ── RENDER ── */
+let lastData = null;
+
+function render(d) {
+  lastData = d;
+
+  // Clear all layers
+  Object.values(layers).forEach(l => l.clearLayers());
+  drawChannel();
+
+  // Add waypoints back (they're static-ish)
+  let allVessels = 0, allBarges = 0, allMBCs = 0, allTransit = 0;
+
+  // ── Waypoints ──
+  (d.waypoints || []).forEach(wp => {
+    L.marker([wp.lat, wp.lon], {icon: waypointIcon(wp.type), zIndexOffset: 100})
+     .bindPopup(`<div class="popup-title">${wp.name}</div>
+       <div class="popup-row"><span class="popup-lbl">Type</span><span class="popup-val">${wp.type}</span></div>
+       <div class="popup-row"><span class="popup-lbl">Coords</span><span class="popup-val">${wp.lat.toFixed(4)}, ${wp.lon.toFixed(4)}</span></div>`)
+     .bindTooltip(wp.name, {permanent: true, direction: 'top', className: 'leaflet-tooltip', offset: [0, -10]})
+     .addTo(layers.waypoints);
+  });
+
+  // ── Anchorages ──
+  (d.anchorages || []).forEach(anch => {
+    const vcount = anch.vessels.length;
+    allVessels += vcount;
+
+    // Anchorage zone circle
+    L.circleMarker([anch.lat, anch.lon], {
+      radius: 22, color: '#2563EB', weight: 1.5, dashArray: '5 4',
+      fillColor: '#2563EB', fillOpacity: 0.05
+    }).addTo(layers.anchorages);
+
+    // Anchorage label marker
+    L.marker([anch.lat, anch.lon], {icon: anchorageIcon(), zIndexOffset: 200})
+     .bindTooltip(anch.name, {permanent: true, direction: 'top', offset: [0, -22],
+       className: 'leaflet-tooltip'})
+     .bindPopup(`<div class="popup-title">⚓ ${anch.name}</div>
+       ${vcount > 0
+         ? anch.vessels.map(v => vesselPopup(v)).join('<hr style="margin:5px 0;border-color:#E2E8F0">')
+         : '<div style="font-size:10px;color:#94A3B8;padding:4px 0">No vessels at anchor</div>'}`)
+     .on('click', () => {
+       showInfo(vcount > 0
+         ? anch.vessels.map(v => infoCard(`⚓ ${v.vessel_name}`, [
+             ['Anchorage', anch.name],
+             ['Doc #', v.doc_num || '—'],
+             ['Arrived', v.arrived ? v.arrived.slice(0,16) : '—'],
+           ])).join('')
+         : infoCard(`⚓ ${anch.name}`, [['Status', 'Vacant']]));
+     })
+     .addTo(layers.anchorages);
+
+    // Individual vessel markers — offset slightly around the anchorage
+    anch.vessels.forEach((v, i) => {
+      const angle = (i / Math.max(anch.vessels.length, 1)) * 2 * Math.PI;
+      const r = 0.0014;
+      const vlat = anch.lat + r * Math.cos(angle);
+      const vlon = anch.lon + r * Math.sin(angle) / Math.cos(anch.lat * Math.PI/180);
+      L.marker([vlat, vlon], {icon: vesselIcon(0), zIndexOffset: 300})
+       .bindPopup(`${vesselPopup(v)}`)
+       .bindTooltip(v.vessel_name, {sticky: true})
+       .on('click', () => showInfo(infoCard(`🚢 ${v.vessel_name}`, [
+           ['Anchorage', anch.name],
+           ['Doc #', v.doc_num || '—'],
+           ['Arrived', v.arrived ? v.arrived.slice(0,16) : '—'],
+         ])))
+       .addTo(layers.anchorages);
+    });
+  });
+
+  // ── Berths ──
+  (d.berths || []).forEach(b => {
+    const active = b.active;
+    allBarges += (b.assets || []).filter(a => a.type === 'BARGE').length;
+    allMBCs   += (b.assets || []).filter(a => a.type === 'MBC').length;
+
+    // Berth dot
+    L.marker([b.lat, b.lon], {icon: berthIcon(active), zIndexOffset: 400})
+     .bindTooltip(b.berth_name, {permanent: true, direction: 'right', offset: [8, 0],
+       className: 'leaflet-tooltip'})
+     .bindPopup(`<div class="popup-title">🏗 ${b.berth_name}</div>
+       <div class="popup-row"><span class="popup-lbl">Status</span>
+         <span class="popup-val" style="color:${active ? 'var(--green)' : 'var(--text3)'}">
+           ${active ? 'ACTIVE' : 'IDLE'}</span></div>
+       <div class="popup-row"><span class="popup-lbl">Today</span><span class="popup-val">${fmtNum(b.today_qty)} MT</span></div>
+       <div class="popup-row"><span class="popup-lbl">Ops</span><span class="popup-val">${b.today_ops}</span></div>
+       <div class="popup-row"><span class="popup-lbl">Assets</span><span class="popup-val">${(b.assets||[]).length}</span></div>`)
+     .on('click', () => {
+       const rows = [
+         ['Status', active ? 'Active' : 'Idle'],
+         ['Today qty', `${fmtNum(b.today_qty)} MT`],
+         ['Operations', String(b.today_ops)],
+       ];
+       showInfo(
+         infoCard(`🏗 ${b.berth_name}`, rows) +
+         (b.assets||[]).map(a => infoCard(
+           `<span class="info-pill ${a.type}">${a.type}</span> ${a.name}`,
+           [['Cargo', a.cargo||'—'],['Equipment',a.equipment||'—'],
+            ['B/L', `${fmtNum(a.bl_qty)} MT`],['Done',`${fmtNum(a.actual)} MT`],['%',`${a.pct}%`]]
+         )).join('')
+       );
+     })
+     .addTo(layers.berths);
+
+    // Asset markers (barges / MBCs at this berth)
+    (b.assets || []).forEach((asset, i) => {
+      const alat = b.lat + i * 0.00009;
+      const alon = b.lon;
+      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct) : bargeIcon(asset.pct);
+      L.marker([alat, alon], {icon, zIndexOffset: 500})
+       .bindPopup(assetPopup(asset))
+       .bindTooltip(`${asset.name} (${asset.pct}%)`, {sticky: true})
+       .on('click', () => showInfo(infoCard(
+         `<span class="info-pill ${asset.type}">${asset.type}</span> ${asset.name}`,
+         [['Cargo', asset.cargo||'—'],['Equipment',asset.equipment||'—'],
+          ['B/L',`${fmtNum(asset.bl_qty)} MT`],['Done',`${fmtNum(asset.actual)} MT`],
+          ['Progress',`${asset.pct}%`],['Berth', b.berth_name]]
+       )))
+       .addTo(layers.assets);
+    });
+  });
+
+  // ── Transit markers ──
+  (d.transit || []).forEach(t => {
+    allTransit++;
+    const STAGE_LABELS = {
+      TRANSIT_VESSEL_TO_GULL: 'Vessel → Gull Island',
+      AT_GULL:                'Waiting at Gull Island',
+      TRANSIT_GULL_TO_BERTH:  'Gull Island → Berth',
+      RETURNING:              'Returning to Vessel',
+    };
+    L.marker([t.lat, t.lon], {icon: transitIcon(t.type), zIndexOffset: 600})
+     .bindPopup(`<div class="popup-title">
+         <span class="popup-pill ${t.type}">${t.type}</span> ${t.name}
+       </div>
+       <div class="popup-row"><span class="popup-lbl">Stage</span><span class="popup-val">${STAGE_LABELS[t.stage]||t.stage}</span></div>
+       <div class="popup-row"><span class="popup-lbl">Cargo</span><span class="popup-val">${t.cargo||'—'}</span></div>
+       ${t.vessel_name ? `<div class="popup-row"><span class="popup-lbl">Vessel</span><span class="popup-val">${t.vessel_name}</span></div>` : ''}`)
+     .bindTooltip(`${t.name} — ${STAGE_LABELS[t.stage]||t.stage}`, {sticky:true})
+     .on('click', () => showInfo(infoCard(`🔄 ${t.name}`, [
+         ['Type', t.type],
+         ['Stage', STAGE_LABELS[t.stage]||t.stage],
+         ['Cargo', t.cargo||'—'],
+         ...(t.vessel_name ? [['Vessel', t.vessel_name]] : []),
+         ...(t.bl_qty ? [['B/L', `${fmtNum(t.bl_qty)} MT`],['Done',`${fmtNum(t.actual)} MT`]] : []),
+       ])))
+     .addTo(layers.transit);
+  });
+
+  // ── Update counters ──
+  document.getElementById('cnt-anch').textContent   = d.anchorages.length;
+  document.getElementById('cnt-berth').textContent  = d.berths.length;
+  document.getElementById('cnt-assets').textContent = allBarges + allMBCs;
+  document.getElementById('cnt-transit').textContent = allTransit;
+  document.getElementById('st-vessels').textContent = allVessels;
+  document.getElementById('st-barges').textContent  = allBarges;
+  document.getElementById('st-mbcs').textContent    = allMBCs;
+  document.getElementById('st-transit').textContent = allTransit;
+  document.getElementById('ftr-upd').textContent    = d.as_of || '—';
+}
+
+/* ── LOAD DATA ── */
+function loadData() {
+  fetch('/api/module/RP01/port-map/data')
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => render(d))
+    .catch(e => console.error('Port map error:', e));
+}
+
+function reload() { cd = REFRESH; loadData(); }
+
+/* ── COUNTDOWN ── */
+setInterval(() => {
+  cd--;
+  if (cd <= 0) { cd = REFRESH; loadData(); }
+  document.getElementById('ftr-cd').textContent  = cd + 's';
+  document.getElementById('ftr-fill').style.width = ((REFRESH - cd) / REFRESH * 100) + '%';
+}, 1000);
+
+/* ── INIT ── */
+drawChannel();
+loadData();
+</script>
+</body>
+</html>

@@ -2,6 +2,54 @@
 
 {% block title %}Port Berth Master - PORTMAN{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+.map-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 9000;
+    align-items: center; justify-content: center;
+}
+.map-modal-overlay.open { display: flex; }
+.map-modal {
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    width: 580px; max-width: 95vw;
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.map-modal-hdr {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #E2E8F0; gap: 10px;
+}
+.map-modal-hdr h3 { margin: 0; font-size: 13px; font-weight: 700; color: #0F172A; flex: 1; }
+.map-modal-hdr button { border: none; background: none; cursor: pointer; font-size: 18px; color: #94A3B8; }
+#picker-map { height: 340px; border-bottom: 1px solid #E2E8F0; }
+.map-modal-body { padding: 12px 16px; display: flex; gap: 10px; align-items: flex-end; }
+.map-modal-body label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #64748B; display: block; margin-bottom: 3px; }
+.map-modal-body input {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    border: 1px solid #CBD5E1; border-radius: 5px;
+    padding: 5px 8px; width: 130px; outline: none;
+}
+.map-modal-body input:focus { border-color: #2563EB; }
+.map-modal-body input.err { border-color: #DC2626; }
+.map-modal-foot { padding: 10px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #E2E8F0; }
+.map-modal-foot button {
+    padding: 6px 16px; border-radius: 5px; font-size: 11px; font-weight: 600;
+    cursor: pointer; border: 1px solid #CBD5E1; background: #F8FAFC; color: #475569;
+}
+.map-modal-foot .btn-confirm { background: #2563EB; color: #fff; border-color: #2563EB; }
+.map-modal-foot .btn-confirm:hover { background: #1D4ED8; }
+.hint { font-size: 9px; color: #94A3B8; padding: 4px 16px 0; }
+.map-pin-btn {
+    background: none; border: 1px solid #CBD5E1; border-radius: 4px;
+    cursor: pointer; padding: 2px 6px; font-size: 11px; color: #2563EB;
+}
+.map-pin-btn:hover { background: #EFF6FF; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="module-header">
     <h2>Port Berth Master</h2>
@@ -15,79 +63,184 @@
 </div>
 
 <div id="table"></div>
+
+<!-- MAP PICKER MODAL -->
+<div class="map-modal-overlay" id="map-modal-overlay">
+  <div class="map-modal">
+    <div class="map-modal-hdr">
+      <h3>📍 Set Berth Location</h3>
+      <span id="picker-berth-name" style="font-size:11px;color:#64748B;font-weight:500"></span>
+      <button onclick="closeMapPicker()">✕</button>
+    </div>
+    <div id="picker-map"></div>
+    <p class="hint">Click on the map to place the berth pin, or type coordinates manually below. Drag pin to adjust.</p>
+    <div class="map-modal-body">
+      <div>
+        <label>Latitude</label>
+        <input id="picker-lat" placeholder="18.705300" oninput="onManualInput()">
+      </div>
+      <div>
+        <label>Longitude</label>
+        <input id="picker-lon" placeholder="73.028056" oninput="onManualInput()">
+      </div>
+      <div>
+        <label>Sequence (river order)</label>
+        <input id="picker-seq" placeholder="1" style="width:70px" type="number" min="0">
+      </div>
+    </div>
+    <div class="map-modal-foot">
+      <button onclick="closeMapPicker()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmPicker()">Use These Coordinates</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    addToRecent('PBM01', 'Port Berth Master');
+addToRecent('PBM01', 'Port Berth Master');
 
-    const permissions = {
-        can_edit: {{ permissions.can_edit|default(0) }},
-        can_add: {{ permissions.can_add|default(0) }},
-        can_delete: {{ permissions.can_delete|default(0) }}
-    };
+const permissions = {
+    can_edit:   {{ permissions.can_edit|default(0) }},
+    can_add:    {{ permissions.can_add|default(0) }},
+    can_delete: {{ permissions.can_delete|default(0) }}
+};
+const canEdit = permissions.can_edit || permissions.can_add;
 
-    const canEdit = permissions.can_edit || permissions.can_add;
+/* ── Tabulator ── */
+const table = new Tabulator("#table", {
+    height: "calc(100vh - 160px)",
+    layout: "fitColumns",
+    ajaxURL: "/api/module/PBM01/data",
+    pagination: true, paginationMode: "remote", paginationSize: 20,
+    ajaxResponse: (url, params, resp) => resp,
+    columns: [
+        {formatter:"rowSelection", titleFormatter:"rowSelection", hozAlign:"center", headerSort:false, width:40},
+        {title:"ID", field:"id", width:55},
+        {title:"Berth Name",     field:"berth_name",     editor: canEdit ? "input" : false, widthGrow:2},
+        {title:"Location",       field:"berth_location",  editor: canEdit ? "input" : false, widthGrow:1},
+        {title:"Remarks",        field:"remarks",         editor: canEdit ? "input" : false, widthGrow:1},
+        {title:"Latitude",       field:"latitude",        editor: canEdit ? "input" : false, width:110, hozAlign:"right",
+         formatter: c => c.getValue() != null && c.getValue() !== '' ? parseFloat(c.getValue()).toFixed(6) : '<span style="color:#94A3B8">—</span>'},
+        {title:"Longitude",      field:"longitude",       editor: canEdit ? "input" : false, width:110, hozAlign:"right",
+         formatter: c => c.getValue() != null && c.getValue() !== '' ? parseFloat(c.getValue()).toFixed(6) : '<span style="color:#94A3B8">—</span>'},
+        {title:"Seq",            field:"berth_sequence",  editor: canEdit ? "input" : false, width:55, hozAlign:"center"},
+        ...(canEdit ? [{
+            title:"📍", headerSort:false, width:45, hozAlign:"center",
+            formatter: cell => `<button class="map-pin-btn" onclick="openMapPicker(event)">📍</button>`,
+            cellClick: (e, cell) => { e.stopPropagation(); openMapPickerForRow(cell.getRow()); }
+        }] : [])
+    ],
+    selectable: true
+});
 
-    const table = new Tabulator("#table", {
-        height: "calc(100vh - 160px)",
-        layout: "fitColumns",
-        ajaxURL: "/api/module/PBM01/data",
-        pagination: true,
-        paginationMode: "remote",
-        paginationSize: 20,
-        ajaxResponse: function(url, params, response) {
-            return response;
-        },
-        columns: [
-            {formatter: "rowSelection", titleFormatter: "rowSelection", hozAlign: "center", headerSort: false, width: 40},
-            {title: "ID", field: "id", width: 60},
-            {title: "Berth Name", field: "berth_name", editor: canEdit ? "input" : false, widthGrow: 1},
-            {title: "Location", field: "berth_location", editor: canEdit ? "input" : false, widthGrow: 1},
-            {title: "Remarks", field: "remarks", editor: canEdit ? "input" : false, widthGrow: 1}
-        ],
-        selectable: true
+if (localStorage.getItem('theme') === 'dark') document.getElementById('table').classList.add('tabulator-dark');
+
+function addRow()  { table.addRow({}, false); }
+
+function deleteSelected() {
+    const rows = table.getSelectedRows();
+    if (!rows.length) { alert('Select rows to delete'); return; }
+    if (!confirm(`Delete ${rows.length} row(s)?`)) return;
+    rows.forEach(row => {
+        const id = row.getData().id;
+        if (id) fetch('/api/module/PBM01/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id})});
+        row.delete();
     });
+}
 
-    if (localStorage.getItem('theme') === 'dark') {
-        document.getElementById('table').classList.add('tabulator-dark');
+async function saveAll() {
+    for (const row of table.getRows()) {
+        const data = row.getData();
+        if (data.berth_name) {
+            const res  = await fetch('/api/module/PBM01/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+            const result = await res.json();
+            row.update({id: result.id});
+        }
     }
+    alert('Saved');
+}
 
-    function addRow() {
-        table.addRow({}, false);
-    }
+/* ── Map Picker ── */
+let pickerMap = null, pickerMarker = null, pickerRow = null;
+const PORT_CENTER = [18.7053, 73.0281];
 
-    function deleteSelected() {
-        const rows = table.getSelectedRows();
-        if (!rows.length) { alert('Select rows to delete'); return; }
-        if (!confirm(`Delete ${rows.length} row(s)?`)) return;
-        rows.forEach(row => {
-            const id = row.getData().id;
-            if (id) {
-                fetch('/api/module/PBM01/delete', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({id})
-                });
-            }
-            row.delete();
+function openMapPickerForRow(row) {
+    pickerRow = row;
+    const d = row.getData();
+    document.getElementById('picker-berth-name').textContent = d.berth_name || '';
+    document.getElementById('picker-lat').value = d.latitude  != null ? d.latitude  : '';
+    document.getElementById('picker-lon').value = d.longitude != null ? d.longitude : '';
+    document.getElementById('picker-seq').value = d.berth_sequence != null ? d.berth_sequence : '';
+    document.getElementById('picker-lat').classList.remove('err');
+    document.getElementById('picker-lon').classList.remove('err');
+    document.getElementById('map-modal-overlay').classList.add('open');
+
+    setTimeout(() => {
+        if (!pickerMap) {
+            pickerMap = L.map('picker-map').setView(PORT_CENTER, 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution:'© OpenStreetMap contributors', maxZoom:19
+            }).addTo(pickerMap);
+            pickerMap.on('click', e => setPickerPin(e.latlng.lat, e.latlng.lng));
+        } else {
+            pickerMap.invalidateSize();
+        }
+        // Place existing pin if coords already set
+        const lat = parseFloat(d.latitude), lon = parseFloat(d.longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+            setPickerPin(lat, lon);
+            pickerMap.setView([lat, lon], 15);
+        } else {
+            pickerMap.setView(PORT_CENTER, 14);
+        }
+    }, 80);
+}
+
+function setPickerPin(lat, lon) {
+    document.getElementById('picker-lat').value = lat.toFixed(6);
+    document.getElementById('picker-lon').value = lon.toFixed(6);
+    document.getElementById('picker-lat').classList.remove('err');
+    document.getElementById('picker-lon').classList.remove('err');
+    if (pickerMarker) {
+        pickerMarker.setLatLng([lat, lon]);
+    } else {
+        pickerMarker = L.marker([lat, lon], {draggable: true}).addTo(pickerMap);
+        pickerMarker.on('dragend', e => {
+            const p = e.target.getLatLng();
+            document.getElementById('picker-lat').value = p.lat.toFixed(6);
+            document.getElementById('picker-lon').value = p.lng.toFixed(6);
         });
     }
+}
 
-    async function saveAll() {
-        for (const row of table.getRows()) {
-            const data = row.getData();
-            if (data.berth_name) {
-                const res = await fetch('/api/module/PBM01/save', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(data)
-                });
-                const result = await res.json();
-                row.update({id: result.id});
-            }
-        }
-        alert('Saved');
+function onManualInput() {
+    const lat = parseFloat(document.getElementById('picker-lat').value);
+    const lon = parseFloat(document.getElementById('picker-lon').value);
+    if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+        setPickerPin(lat, lon);
+        pickerMap.setView([lat, lon], pickerMap.getZoom());
     }
+}
+
+function confirmPicker() {
+    const latEl = document.getElementById('picker-lat');
+    const lonEl = document.getElementById('picker-lon');
+    const lat = parseFloat(latEl.value), lon = parseFloat(lonEl.value);
+    let ok = true;
+    if (isNaN(lat) || lat < -90  || lat > 90)  { latEl.classList.add('err'); ok = false; }
+    else latEl.classList.remove('err');
+    if (isNaN(lon) || lon < -180 || lon > 180) { lonEl.classList.add('err'); ok = false; }
+    else lonEl.classList.remove('err');
+    if (!ok) return;
+    const seq = document.getElementById('picker-seq').value;
+    pickerRow.update({ latitude: lat, longitude: lon, berth_sequence: seq !== '' ? parseInt(seq) : null });
+    closeMapPicker();
+}
+
+function closeMapPicker() {
+    document.getElementById('map-modal-overlay').classList.remove('open');
+    pickerRow = null;
+}
 </script>
 {% endblock %}
