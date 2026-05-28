@@ -319,14 +319,6 @@
                         <span class="code">FDCN01</span>
                         <span class="name">Debit / Credit Note</span>
                     </div>
-                    <div class="module-item" onclick="goToModule('FSAP01', 'SAP Financial Integration')">
-                        <span class="code">FSAP01</span>
-                        <span class="name">SAP Financial Integration</span>
-                    </div>
-                    <div class="module-item" onclick="goToModule('FLOG01', 'Integration Logs')">
-                        <span class="code">FLOG01</span>
-                        <span class="name">Integration Logs</span>
-                    </div>
                     {% if session.is_admin %}
                     <div class="module-item" onclick="goToModule('GSTCFG', 'GST API Configuration')" style="border-top:1px solid rgba(255,255,255,0.1)">
                         <span class="code">GSTCFG</span>
@@ -452,6 +444,20 @@
                     <div class="module-item" onclick="goToModule('AUD01', 'Audit Logs')">
                         <span class="code">AUD01</span>
                         <span class="name">Audit Logs</span>
+                    </div>
+                </div>
+            </div>
+            <!-- SAP Integration Accordion -->
+            <div class="accordion-section sap">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <img src="{{ url_for('static', filename='img/sap.png') }}" alt="SAP" class="icon">
+                    <span>SAP Integration</span>
+                    <span class="arrow">&#9654;</span>
+                </div>
+                <div class="accordion-content">
+                    <div class="module-item" onclick="goToModule('FSAP01', 'SAP Integration')">
+                        <span class="code">FSAP01</span>
+                        <span class="name">SAP Integration</span>
                     </div>
                 </div>
             </div>
