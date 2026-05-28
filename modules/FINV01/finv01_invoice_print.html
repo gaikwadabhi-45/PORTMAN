@@ -479,7 +479,7 @@
                 <td style="width:60px;"><span class="ack-label">ACK NO</span></td>
                 <td>{{ invoice.gst_ack_number or '—' }}</td>
                 <td style="width:70px;"><span class="ack-label">ACK Date</span></td>
-                <td>{{ invoice.gst_ack_date[8:10] ~ '-' ~ invoice.gst_ack_date[5:7] ~ '-' ~ invoice.gst_ack_date[0:4] if invoice.gst_ack_date else '—' }}</td>
+                <td>{{ invoice.gst_ack_date.strftime('%d-%m-%Y') if invoice.gst_ack_date else '—' }}</td>
             </tr>
         </table>
     </div>
