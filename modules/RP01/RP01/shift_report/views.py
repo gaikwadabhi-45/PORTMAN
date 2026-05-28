@@ -1261,6 +1261,10 @@ def _build_delay_sheet(wb, delay_view):
             _cell(ws, row, 4, item.get('label', ''), bold=True, fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_lctr)
 
         elif kind == 'activity_total':
+
+            # =========================================
+            # CLEAR + STYLE ROW
+            # =========================================
             for col in range(1, 9):
 
                 ws.cell(row, col).value = None
@@ -1408,5 +1412,3 @@ def _build_delay_sheet(wb, delay_view):
     ws.row_dimensions[1].height = 22
     ws.row_dimensions[2].height = 18
     ws.freeze_panes = 'A3'
-
-    
