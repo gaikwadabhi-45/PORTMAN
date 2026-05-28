@@ -17,7 +17,7 @@
 
         body {
             font-family: Arial, sans-serif;
-            font-size: 9px;
+            font-size: 16px;
             color: #000;
             background: #fff;
         }
@@ -31,7 +31,7 @@
         }
         .no-print button {
             padding: 6px 14px;
-            font-size: 11px;
+            font-size: 18px;
             border: none;
             border-radius: 3px;
             cursor: pointer;
@@ -64,7 +64,7 @@
             background: #fdf0f0;
             color: #c0392b;
             padding: 4px 8px;
-            font-size: 9px;
+            font-size: 16px;
             font-weight: 700;
             text-align: center;
             text-transform: uppercase;
@@ -88,19 +88,19 @@
             text-align: center;
         }
         .header-logo img {
-            max-height: 42px;
+            height: 65px;
             width: auto;
             display: block;
             margin-bottom: 3px;
         }
         .company-address {
-            font-size: 7.5px;
+            font-size: 14.5px;
             line-height: 1.45;
             color: #000;
             text-align: center;
         }
         .company-tax-title {
-            font-size: 11px;
+            font-size: 18px;
             font-weight: 700;
             letter-spacing: 1px;
             margin-top: 3px;
@@ -116,24 +116,25 @@
             align-items: flex-end;
         }
         .copy-type {
-            font-size: 8px;
+            font-size: 15px;
             font-weight: 700;
             text-align: right;
         }
         .rule-text {
-            font-size: 7px;
+            font-size: 14px;
             text-align: right;
             color: #333;
             line-height: 1.4;
         }
         .qr-area { text-align: right; }
-        .qr-area img { width: 60px; height: 60px; }
+        .qr-area img { width: 100px; height: 100px; }
+        .qr-canvas canvas { width: 100px !important; height: 100px !important; display: block; margin-left: auto; }
         .qr-placeholder {
-            width: 60px; height: 60px;
+            width: 100px; height: 100px;
             border: 1px dashed #999;
             display: inline-flex;
             align-items: center; justify-content: center;
-            font-size: 6px; color: #999; text-align: center;
+            font-size: 13px; color: #999; text-align: center;
         }
 
         /* ── Single outer border wrapper — all sections live inside this ── */
@@ -161,7 +162,7 @@
             border-bottom: 1px solid #000;
             text-align: center;
             padding: 4px;
-            font-size: 14px;
+            font-size: 21px;
             font-weight: 700;
             letter-spacing: 2px;
         }
@@ -170,7 +171,7 @@
         .irn-row {
             border-bottom: 1px solid #000;
             padding: 3px 6px;
-            font-size: 7.5px;
+            font-size: 14.5px;
             word-break: break-all;
         }
         .irn-row strong { font-weight: 700; }
@@ -182,7 +183,7 @@
         .ack-table { width: 100%; border-collapse: collapse; }
         .ack-table td {
             padding: 3px 6px;
-            font-size: 8px;
+            font-size: 15px;
             border-right: 1px solid #000;
         }
         .ack-table td:last-child { border-right: none; }
@@ -198,11 +199,11 @@
             padding: 5px 7px;
         }
         .party-col + .party-col { border-left: 1px solid #000; }
-        .party-heading { font-size: 8.5px; font-weight: 700; margin-bottom: 3px; }
-        .party-name    { font-size: 9px; font-weight: 700; margin-bottom: 1px; }
-        .party-line    { font-size: 8px; line-height: 1.5; }
-        .party-kv      { display: flex; font-size: 8px; line-height: 1.6; }
-        .party-kv .pk  { font-weight: 700; min-width: 90px; }
+        .party-heading { font-size: 15.5px; font-weight: 700; margin-bottom: 3px; }
+        .party-name    { font-size: 16px; font-weight: 700; margin-bottom: 1px; }
+        .party-line    { font-size: 15px; line-height: 1.5; }
+        .party-kv      { display: flex; font-size: 15px; line-height: 1.6; }
+        .party-kv .pk  { font-weight: 700; min-width: 120px; }
 
         /* ── Vessel / Invoice metadata grid (4 columns: label|value|label|value) ── */
         .vessel-section {
@@ -211,7 +212,7 @@
         .vessel-table { width: 100%; border-collapse: collapse; }
         .vessel-table td {
             padding: 3px 6px;
-            font-size: 8px;
+            font-size: 15px;
             border-right: 1px solid #000;
             border-bottom: 1px solid #000;
             vertical-align: middle;
@@ -219,7 +220,7 @@
         .vessel-table tr:last-child td { border-bottom: none; }
         .vessel-table td:last-child { border-right: none; }
         .vl { font-weight: 700; white-space: nowrap; }
-        .vv { font-size: 8.5px; }
+        .vv { font-size: 15.5px; }
 
         /* ── Line items ── */
         .items-section {
@@ -229,7 +230,7 @@
         .items-table th {
             background: #ebebeb;
             padding: 3px 5px;
-            font-size: 8px;
+            font-size: 15px;
             font-weight: 700;
             border-right: 1px solid #000;
             border-bottom: 1px solid #000;
@@ -238,7 +239,7 @@
         .items-table th:last-child { border-right: none; }
         .items-table td {
             padding: 3px 5px;
-            font-size: 8.5px;
+            font-size: 15.5px;
             border-right: 1px solid #000;
             border-bottom: 1px solid #ccc;
             vertical-align: top;
@@ -247,7 +248,7 @@
         .items-table tbody tr:last-child td { border-bottom: 1px solid #000; }
         .subtotal-row td {
             font-weight: 700;
-            font-size: 9px;
+            font-size: 16px;
             border-top: 1px solid #000 !important;
             border-bottom: none !important;
         }
@@ -263,14 +264,14 @@
             flex: 1;
             padding: 5px 7px;
             border-right: 1px solid #000;
-            font-size: 8px;
+            font-size: 15px;
         }
         .rem-label { font-weight: 700; margin-bottom: 2px; }
         .totals-col { width: 230px; }
         .totals-table { width: 100%; border-collapse: collapse; }
         .totals-table td {
             padding: 2px 6px;
-            font-size: 8.5px;
+            font-size: 15.5px;
             border-bottom: 1px solid #e0e0e0;
             vertical-align: middle;
         }
@@ -281,7 +282,7 @@
         }
         .totals-table .total-row td {
             font-weight: 700;
-            font-size: 9px;
+            font-size: 16px;
             border-top: 1.5px solid #000;
             border-bottom: 1.5px solid #000;
             background: #f0f0f0;
@@ -291,7 +292,7 @@
         .words-row {
             border-bottom: 1px solid #000;
             padding: 4px 7px;
-            font-size: 8.5px;
+            font-size: 15.5px;
         }
         .words-label { font-weight: 700; display: block; margin-bottom: 1px; }
 
@@ -304,44 +305,44 @@
             flex: 1;
             padding: 5px 7px;
             border-right: 1px solid #000;
-            font-size: 8px;
+            font-size: 15px;
         }
         .pay-intro {
             font-weight: 700;
-            font-size: 7.5px;
+            font-size: 14.5px;
             margin-bottom: 4px;
         }
         .pay-line {
             display: flex;
             line-height: 1.7;
-            font-size: 8px;
+            font-size: 15px;
         }
-        .pay-line .pl { font-weight: 700; min-width: 100px; }
+        .pay-line .pl { font-weight: 700; min-width: 130px; }
         .sig-col {
-            width: 160px;
+            width: 245px;
             padding: 5px 8px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
         }
-        .sig-company { font-size: 8px; font-weight: 700; white-space: nowrap; }
+        .sig-company { font-size: 15px; font-weight: 700; white-space: nowrap; }
         .sig-line {
             border-top: 1px solid #000;
             padding-top: 3px;
-            font-size: 7.5px;
+            font-size: 14.5px;
             text-align: center;
         }
 
         /* ── Corporate footer ── */
         .corp-footer {
             padding: 3px 7px;
-            font-size: 7.5px;
+            font-size: 14.5px;
             color: #333;
             text-align: center;
         }
 
         /* ── SAC summary mini-table ── */
-        .sac-table { width: 100%; border-collapse: collapse; font-size: 7.5px; margin-top: 5px; }
+        .sac-table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin-top: 5px; }
         .sac-table th, .sac-table td { padding: 2px 4px; border: 1px solid #ccc; }
         .sac-table th { background: #f0f0f0; }
         .sac-table td:not(:first-child) { text-align: right; }
@@ -356,24 +357,24 @@
         .cargo-appendix-header {
             text-align: center;
             padding: 6px 8px 2px;
-            font-size: 10px;
+            font-size: 17px;
             font-weight: 700;
         }
         .cargo-appendix-sub {
             text-align: center;
-            font-size: 9px;
+            font-size: 16px;
             font-weight: 600;
             padding: 0 8px 6px;
         }
         .cargo-detail-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 8px;
+            font-size: 15px;
         }
         .cargo-detail-table th {
             background: #ebebeb;
             padding: 4px 5px;
-            font-size: 7.5px;
+            font-size: 14.5px;
             font-weight: 700;
             border: 1px solid #000;
             text-align: center;
@@ -383,7 +384,7 @@
             padding: 3px 5px;
             border: 1px solid #000;
             vertical-align: middle;
-            font-size: 8px;
+            font-size: 15px;
         }
         .cargo-detail-table td.num {
             text-align: right;
@@ -437,8 +438,8 @@
     <!-- ══ 1. Header: Logo | Copy type + Rule text + QR ══ -->
     <div class="inv-header">
         <div class="header-logo">
-            <img src="/static/img/invoice_header.png" alt="JSW Dharamtar Port Pvt. Ltd." style="max-height:52px; width:auto; display:block; margin:0 auto;">
-            <div style="font-size:7.5px;color:#2d3748;line-height:1.55;margin-top:4px;text-align:center;">
+            <img src="/static/img/invoice_header.png" alt="JSW Dharamtar Port Pvt. Ltd." style="height:65px; width:auto; display:block; margin:0 auto;">
+            <div style="font-size:14.5px;color:#2d3748;line-height:1.55;margin-top:4px;text-align:center;">
                 At:Dharamtar, Post:Dolvi, Tal: Pen, Dist:Raigad,<br>
                 Mumbai, Maharashtra, India - 402107<br>
                 Phone: 02143-277620 &nbsp;&nbsp; Fax: 02143-277800<br>
@@ -454,7 +455,7 @@
                     {% if invoice.gst_qr_code.startswith('http') or invoice.gst_qr_code.startswith('data:') %}
                     <img src="{{ invoice.gst_qr_code }}" alt="QR Code">
                     {% else %}
-                    <img src="data:image/png;base64,{{ invoice.gst_qr_code }}" alt="QR Code">
+                    <div class="qr-canvas"></div>
                     {% endif %}
                 {% else %}
                 <div class="qr-placeholder">QR Code<br>(after IRN)</div>
@@ -479,7 +480,7 @@
                 <td style="width:60px;"><span class="ack-label">ACK NO</span></td>
                 <td>{{ invoice.gst_ack_number or '—' }}</td>
                 <td style="width:70px;"><span class="ack-label">ACK Date</span></td>
-                <td>{{ invoice.gst_ack_date[8:10] ~ '-' ~ invoice.gst_ack_date[5:7] ~ '-' ~ invoice.gst_ack_date[0:4] if invoice.gst_ack_date else '—' }}</td>
+                <td>{{ invoice.gst_ack_date.strftime('%d-%m-%Y') if invoice.gst_ack_date else '—' }}</td>
             </tr>
         </table>
     </div>
@@ -581,7 +582,7 @@
             <div>{{ invoice.remarks }}</div>
             {% endif %}
             {% if sac_summary %}
-            <div style="font-weight:700; margin-top:6px; margin-bottom:2px; font-size:8px;">HSN/SAC Summary:</div>
+            <div style="font-weight:700; margin-top:6px; margin-bottom:2px; font-size:15px;">HSN/SAC Summary:</div>
             <table class="sac-table">
                 <thead>
                     <tr>
@@ -691,7 +692,7 @@
                 <span>: {{ payment_bank.cin or '—' }}</span>
             </div>
             {% else %}
-            <div style="font-size:8px;color:#999;font-style:italic;">
+            <div style="font-size:15px;color:#999;font-style:italic;">
                 No bank account configured. Please set up details in Admin &rarr; Port Bank Accounts.
             </div>
             {% endif %}
@@ -732,6 +733,7 @@
                 <th>Cargo</th>
                 <th>Quantity (MT)</th>
                 <th>MV/MBC</th>
+                <th>Material PO</th>
                 <th>Disch./Load. Started</th>
                 <th>Disch./Load. Completed</th>
             </tr>
@@ -745,6 +747,7 @@
                 <td>{{ cd.cargo }}</td>
                 <td class="num">{{ "%.2f"|format(cd.quantity) }}</td>
                 <td style="text-align:center;">{{ cd.source_type_label }}</td>
+                <td>{{ cd.material_po }}</td>
                 <td>{{ cd.start }}</td>
                 <td>{{ cd.end }}</td>
             </tr>
@@ -754,7 +757,7 @@
             <tr class="total-row">
                 <td colspan="4" style="text-align:right;">Total</td>
                 <td class="num">{{ "%.2f"|format(cargo_details|sum(attribute='quantity')) }}</td>
-                <td colspan="3"></td>
+                <td colspan="4"></td>
             </tr>
         </tfoot>
     </table>
@@ -771,5 +774,21 @@
 {{ render_copy("TRIPLICATE FOR TRANSPORTER") }}
 {% endif %}
 
+{% if invoice.gst_qr_code and not (invoice.gst_qr_code.startswith('http') or invoice.gst_qr_code.startswith('data:')) %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+document.querySelectorAll('.qr-canvas').forEach(function(el) {
+    new QRCode(el, {
+        text: {{ invoice.gst_qr_code | tojson }},
+        width: 256,
+        height: 256,
+        correctLevel: QRCode.CorrectLevel.M
+    });
+    // Use canvas (high-res); hide the low-res img copy qrcodejs also creates
+    var img = el.querySelector('img');
+    if (img) img.style.display = 'none';
+});
+</script>
+{% endif %}
 </body>
 </html>

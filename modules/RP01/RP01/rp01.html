@@ -105,6 +105,18 @@
 
 <div class="report-cards">
 
+    <!-- Port Traffic Map -->
+    <a class="report-card" href="/module/RP01/port-map/" target="_blank" rel="noopener">
+        <div class="card-icon">
+            <img src="{{ url_for('static', filename='img/map.png') }}" alt="Port Traffic Map" onerror="this.style.fontSize='32px';this.outerHTML='<span style=&quot;font-size:32px&quot;>🗺</span>'">
+        </div>
+        <div class="card-title">Port Traffic Map</div>
+        <div class="card-desc">
+            Live marine traffic map of Dharamtar Port. Real-time vessel positions at anchorage, barge and MBC movements, berth status, and transit tracking on an interactive Leaflet map.
+        </div>
+        <div class="card-arrow">Open Map &rarr;</div>
+    </a>
+
     <!-- Live Port Monitor -->
     <a class="report-card" href="/module/RP01/live-dashboard/" target="_blank" rel="noopener">
         <div class="card-icon">
@@ -197,6 +209,32 @@
         </div>
         <div class="card-arrow">Open &rarr;</div>
     </a>
+
+       <!-- Cargo Handling Report -->
+<a class="report-card" href="/module/RP01/cargo-report/">
+
+    <div class="card-icon">
+        <img
+            src="{{ url_for('static', filename='img/cargo_report.png') }}"
+            alt="Cargo Handling Report Logo">
+    </div>
+
+    <div class="card-title">
+        Cargo Handling Report
+    </div>
+
+    <div class="card-desc">
+        View and download cargo handling reports with date-wise filtering.
+        Analyze vessel discharge operations, cargo quantities, ports,
+        discharge timelines, and customer details through an interactive
+        report dashboard.
+    </div>
+
+    <div class="card-arrow">
+        Open &rarr;
+    </div>
+
+</a>
 
     <!-- Custom Report Designer -->
     <a class="report-card" href="/module/RP01/custom-report/">

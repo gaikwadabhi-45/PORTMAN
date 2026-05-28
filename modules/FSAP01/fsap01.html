@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}SAP / GST Integration Logs - PORTMAN{% endblock %}
+{% block title %}SAP Integration - PORTMAN{% endblock %}
 
 {% block content %}
 <style>
@@ -14,8 +14,8 @@
     .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
     .badge-posted   { background: #d5f5e3; color: #1e8449; }
     .badge-pending  { background: #fef9e7; color: #7d6608; }
+    .badge-error    { background: #fde8e8; color: #9b1c1c; }
     .badge-none     { background: #f5f5f5; color: #999; }
-    .badge-irn      { background: #d6eaf8; color: #1a5276; }
     .json-btn { border: 0; background: #2d6cdf; color: white; border-radius: 4px; padding: 3px 8px; font-size: 10px; cursor: pointer; }
     .json-modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; align-items: center; justify-content: center; padding: 18px; }
     .json-modal-card { background: white; color: #1f2933; width: min(1100px, 96vw); max-height: 92vh; border-radius: 6px; display: flex; flex-direction: column; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
@@ -28,79 +28,61 @@
     .json-pane h4 { margin: 0 0 6px; font-size: 12px; }
     .json-pane pre { margin: 0; background: #0f172a; color: #e2e8f0; border-radius: 4px; padding: 10px; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; min-height: 360px; }
 
-    /* Dark theme */
-    .dark-theme #sapInvTable .tabulator,
-    .dark-theme #sapCnTable .tabulator,
-    .dark-theme #gstTable .tabulator { background: #1e1e1e; color: #e0e0e0; border-color: #444; }
-    .dark-theme .tabulator .tabulator-header { background: #2d2d2d; color: #e0e0e0; border-bottom-color: #444; }
-    .dark-theme .tabulator .tabulator-row { background: #1e1e1e; color: #e0e0e0; border-bottom-color: #333; }
-    .dark-theme .tabulator .tabulator-row:nth-child(even) { background: #252525; }
-    .dark-theme .tabulator .tabulator-row:hover { background: #2a2a2a; }
-    .dark-theme .tabulator .tabulator-footer { background: #2d2d2d; color: #ccc; border-top-color: #444; }
     .dark-theme .json-modal-card { background: #1f2933; color: #f7fafc; }
     .dark-theme .json-modal-head,
     .dark-theme .json-meta { border-color: #384454; }
 </style>
 
 <div class="module-header">
-    <h2>SAP / GST Integration Logs</h2>
+    <h2>SAP Integration</h2>
     <span class="module-code">FSAP01</span>
 </div>
 
 <div class="tabs">
-    <button class="tab active" onclick="showTab('sapInv')">SAP – Invoices</button>
-    <button class="tab" onclick="showTab('sapCn')">SAP – Credit Notes</button>
-    <button class="tab" onclick="showTab('gst')">GST e-Invoice</button>
+    <button class="tab active" onclick="showTab('sapInv')">SAP Invoices</button>
+    <button class="tab" onclick="showTab('callbacks')">SAP Callbacks</button>
 </div>
 
 <!-- SAP Invoice Logs -->
 <div id="sapInvPanel" class="tab-panel active">
     <div class="toolbar">
-        <span style="font-size:11px;color:#7f8c8d">Read-only view — SAP posting is triggered from <strong>FIN01 / FINV01</strong></span>
+        <span style="font-size:11px;color:#7f8c8d">Read-only — SAP posting triggered from <strong>FINV01</strong></span>
         <span class="row-info">Rows: <span id="sapInvCount">0</span> / <span id="sapInvTotal">0</span></span>
     </div>
     <div id="sapInvTable"></div>
 </div>
 
-<!-- SAP Credit Note Logs -->
-<div id="sapCnPanel" class="tab-panel">
+<!-- SAP Callback Logs -->
+<div id="callbacksPanel" class="tab-panel">
     <div class="toolbar">
-        <span style="font-size:11px;color:#7f8c8d">Read-only view — SAP posting is triggered from <strong>FCN01</strong></span>
-        <span class="row-info">Rows: <span id="sapCnCount">0</span> / <span id="sapCnTotal">0</span></span>
+        <span style="font-size:11px;color:#7f8c8d">Inbound callbacks from SAP — each row is one POST to <strong>/api/sap/callback</strong></span>
+        <span class="row-info">Rows: <span id="cbCount">0</span> / <span id="cbTotal">0</span></span>
     </div>
-    <div id="sapCnTable"></div>
+    <div id="callbacksTable"></div>
 </div>
 
-<!-- GST e-Invoice Logs -->
-<div id="gstPanel" class="tab-panel">
-    <div class="toolbar">
-        <span style="font-size:11px;color:#7f8c8d">Read-only view — GST e-invoice is triggered from <strong>FIN01 / FINV01</strong></span>
-        <span class="row-info">Rows: <span id="gstCount">0</span> / <span id="gstTotal">0</span></span>
-    </div>
-    <div id="gstTable"></div>
-</div>
-
+<!-- JSON detail modal (shared) -->
 <div id="sapLogModal" class="json-modal" style="display:none;">
     <div class="json-modal-card">
         <div class="json-modal-head">
-            <h3>SAP Request / Response</h3>
+            <h3 id="modalTitle">SAP Callback Detail</h3>
             <button class="json-modal-close" onclick="closeSapLogModal()">Close</button>
         </div>
         <div class="json-meta">
-            <div><span>Document</span><strong id="sapLogDoc">-</strong></div>
             <div><span>Log ID</span><strong id="sapLogId">-</strong></div>
             <div><span>Status</span><strong id="sapLogStatus">-</strong></div>
             <div><span>HTTP</span><strong id="sapLogHttp">-</strong></div>
-            <div><span>Duration</span><strong id="sapLogDuration">-</strong></div>
-            <div><span>Logged At</span><strong id="sapLogDate">-</strong></div>
+            <div><span>Token</span><strong id="sapLogToken">-</strong></div>
+            <div><span>From IP</span><strong id="sapLogIp">-</strong></div>
+            <div><span>Received At</span><strong id="sapLogDate">-</strong></div>
         </div>
         <div class="json-body">
             <div class="json-pane">
-                <h4>Sent JSON</h4>
+                <h4>Payload Received from SAP</h4>
                 <pre id="sapLogRequest">-</pre>
             </div>
             <div class="json-pane">
-                <h4>Received Response</h4>
+                <h4>Response Sent Back</h4>
                 <pre id="sapLogResponse">-</pre>
             </div>
         </div>
@@ -111,7 +93,7 @@
 
 {% block scripts %}
 <script>
-addToRecent('FSAP01', 'SAP/GST Integration Logs');
+addToRecent('FSAP01', 'SAP Integration');
 
 const isDark = localStorage.getItem('theme') === 'dark';
 
@@ -119,44 +101,59 @@ function sapBadge(val) {
     if (val) return `<span class="badge badge-posted">${val}</span>`;
     return `<span class="badge badge-none">Not Posted</span>`;
 }
-function irnBadge(val) {
-    if (val) return `<span class="badge badge-irn">${val.substring(0, 20)}…</span>`;
-    return `<span class="badge badge-none">No IRN</span>`;
-}
 function statusBadge(val) {
     if (!val) return '';
-    const cls = ['Posted', 'Approved', 'Posted to SAP', 'SAP Posted', 'Success'].includes(val) ? 'badge-posted' : 'badge-pending';
+    const ok = ['Posted', 'Approved', 'Posted to SAP', 'SAP Posted', 'Posted to GST', 'Success'].includes(val);
+    const err = ['SAP Failed', 'Cancelled', 'Error'].includes(val);
+    const cls = ok ? 'badge-posted' : err ? 'badge-error' : 'badge-pending';
     return `<span class="badge ${cls}">${val}</span>`;
 }
-function sapLogButton(cell) {
-    return cell.getValue() ? '<button class="json-btn">View JSON</button>' : '<span class="badge badge-none">No Log</span>';
+function cbStatusBadge(val) {
+    if (!val) return '';
+    const cls = val === 'Success' ? 'badge-posted' : 'badge-error';
+    return `<span class="badge ${cls}">${val}</span>`;
 }
 function parseBody(value) {
     if (!value) return '-';
     try { return JSON.stringify(JSON.parse(value), null, 2); }
     catch (e) { return String(value); }
 }
+function extractIpFromCreatedBy(createdBy) {
+    if (!createdBy) return '-';
+    const m = createdBy.match(/@(.+)$/);
+    return m ? m[1] : createdBy;
+}
+
+// ── SAP Log modal ─────────────────────────────────────────────────────────────
 function openSapLogModal(row) {
-    const docNo = row.invoice_number || row.credit_note_number || '-';
-    document.getElementById('sapLogDoc').textContent = docNo;
-    document.getElementById('sapLogId').textContent = row.sap_log_id || '-';
-    document.getElementById('sapLogStatus').textContent = row.sap_log_status || '-';
-    document.getElementById('sapLogHttp').textContent = row.sap_response_status_code || '-';
-    document.getElementById('sapLogDuration').textContent = row.sap_duration_ms ? `${row.sap_duration_ms} ms` : '-';
-    document.getElementById('sapLogDate').textContent = row.sap_log_date || '-';
-    document.getElementById('sapLogRequest').textContent = parseBody(row.sap_request_body);
-    document.getElementById('sapLogResponse').textContent = row.sap_response_body ? parseBody(row.sap_response_body) : (row.sap_error_message || '-');
+    document.getElementById('modalTitle').textContent = 'SAP Posting Log — ' + (row.invoice_number || '-');
+    document.getElementById('sapLogId').textContent      = row.sap_log_id || '-';
+    document.getElementById('sapLogStatus').textContent  = row.sap_log_status || '-';
+    document.getElementById('sapLogHttp').textContent    = row.sap_response_status_code || '-';
+    document.getElementById('sapLogToken').textContent   = '-';
+    document.getElementById('sapLogIp').textContent      = '-';
+    document.getElementById('sapLogDate').textContent    = row.sap_log_date || '-';
+    document.getElementById('sapLogRequest').textContent  = parseBody(row.sap_request_body);
+    document.getElementById('sapLogResponse').textContent = parseBody(row.sap_response_body) || row.sap_error_message || '-';
     document.getElementById('sapLogModal').style.display = 'flex';
 }
-function openSapLogFromCell(e, cell) {
-    const row = cell.getRow().getData();
-    if (row.sap_log_id) openSapLogModal(row);
+function openCallbackModal(row) {
+    document.getElementById('modalTitle').textContent    = 'SAP Inbound Callback — Log #' + row.id;
+    document.getElementById('sapLogId').textContent      = row.id || '-';
+    document.getElementById('sapLogStatus').textContent  = row.status || '-';
+    document.getElementById('sapLogHttp').textContent    = row.response_status_code || '-';
+    document.getElementById('sapLogToken').textContent   = row.token_label || '-';
+    document.getElementById('sapLogIp').textContent      = extractIpFromCreatedBy(row.created_by);
+    document.getElementById('sapLogDate').textContent    = row.created_date || '-';
+    document.getElementById('sapLogRequest').textContent  = parseBody(row.request_body);
+    document.getElementById('sapLogResponse').textContent = parseBody(row.response_body);
+    document.getElementById('sapLogModal').style.display = 'flex';
 }
 function closeSapLogModal() {
     document.getElementById('sapLogModal').style.display = 'none';
 }
 
-// SAP Invoice table
+// ── SAP Invoice table ─────────────────────────────────────────────────────────
 const sapInvTable = new Tabulator('#sapInvTable', {
     height: 'calc(100vh - 210px)',
     layout: 'fitData',
@@ -170,107 +167,80 @@ const sapInvTable = new Tabulator('#sapInvTable', {
         return resp;
     },
     columns: [
-        {title: 'Invoice #',      field: 'invoice_number',     width: 140},
-        {title: 'Date',           field: 'invoice_date',        width: 100},
-        {title: 'FY',             field: 'financial_year',      width: 80},
-        {title: 'Party',          field: 'customer_name',       minWidth: 160},
-        {title: 'Type',           field: 'customer_type',       width: 90},
-        {title: 'Amount',         field: 'total_amount',        width: 110, hozAlign: 'right',
+        {title: 'Invoice #',     field: 'invoice_number',     width: 145, frozen: true},
+        {title: 'Date',          field: 'invoice_date',        width: 100},
+        {title: 'Party',         field: 'customer_name',       minWidth: 170},
+        {title: 'Amount',        field: 'total_amount',        width: 110, hozAlign: 'right',
             formatter: 'money', formatterParams: {precision: 2}},
-        {title: 'Inv Status',     field: 'invoice_status',      width: 110,
+        {title: 'Status',        field: 'invoice_status',      width: 120,
             formatter: function(cell) { return statusBadge(cell.getValue()); }},
-        {title: 'SAP Doc #',      field: 'sap_document_number', width: 130,
+        {title: 'SAP Doc #',     field: 'sap_document_number', width: 130,
             formatter: function(cell) { return sapBadge(cell.getValue()); }},
-        {title: 'SAP Log',        field: 'sap_log_id',          width: 95,
-            formatter: sapLogButton, cellClick: openSapLogFromCell},
-        {title: 'SAP Post Date',  field: 'sap_posting_date',    width: 120},
-        {title: 'SAP FY',         field: 'sap_fiscal_year',     width: 80},
-        {title: 'SAP Co. Code',   field: 'sap_company_code',    width: 110},
-        {title: 'Posted By',      field: 'posted_by',           width: 110},
-        {title: 'Posted Date',    field: 'posted_date',         width: 110},
+        {title: 'SAP Post Date', field: 'sap_posting_date',    width: 130},
+        {title: 'SAP Co. Code',  field: 'sap_company_code',    width: 110},
+        {title: 'SAP Log',       field: 'sap_log_id',          width: 90,
+            formatter: function(cell) {
+                return cell.getValue()
+                    ? '<button class="json-btn">View</button>'
+                    : '<span class="badge badge-none">No Log</span>';
+            },
+            cellClick: function(e, cell) {
+                if (cell.getValue()) openSapLogModal(cell.getRow().getData());
+            }
+        },
     ]
 });
-if (isDark) document.getElementById('sapInvTable').classList.add('tabulator-dark');
 
-// SAP Credit Note table
-const sapCnTable = new Tabulator('#sapCnTable', {
+// ── SAP Callbacks table ───────────────────────────────────────────────────────
+const callbacksTable = new Tabulator('#callbacksTable', {
     height: 'calc(100vh - 210px)',
     layout: 'fitData',
     pagination: true,
     paginationMode: 'remote',
     paginationSize: 50,
-    ajaxURL: '/api/module/FSAP01/sap-cn-logs',
+    ajaxURL: '/api/module/FSAP01/callback-logs',
     ajaxResponse: function(url, params, resp) {
-        document.getElementById('sapCnCount').textContent = resp.data.length;
-        document.getElementById('sapCnTotal').textContent = resp.total;
+        document.getElementById('cbCount').textContent = resp.data.length;
+        document.getElementById('cbTotal').textContent = resp.total;
         return resp;
     },
     columns: [
-        {title: 'CN Number',      field: 'credit_note_number',      width: 140},
-        {title: 'Date',           field: 'credit_note_date',         width: 100},
-        {title: 'FY',             field: 'financial_year',           width: 80},
-        {title: 'Party',          field: 'party_name',               minWidth: 160},
-        {title: 'Orig. Invoice',  field: 'original_invoice_number',  width: 140},
-        {title: 'Amount',         field: 'total_amount',             width: 110, hozAlign: 'right',
-            formatter: 'money', formatterParams: {precision: 2}},
-        {title: 'Status',         field: 'credit_note_status',       width: 100,
-            formatter: function(cell) { return statusBadge(cell.getValue()); }},
-        {title: 'SAP Doc #',      field: 'sap_document_number',      width: 130,
-            formatter: function(cell) { return sapBadge(cell.getValue()); }},
-        {title: 'SAP Log',        field: 'sap_log_id',               width: 95,
-            formatter: sapLogButton, cellClick: openSapLogFromCell},
-        {title: 'SAP Post Date',  field: 'sap_posting_date',         width: 120},
-        {title: 'SAP FY',         field: 'sap_fiscal_year',          width: 80},
-        {title: 'Posted By',      field: 'posted_by',                width: 110},
-        {title: 'Posted Date',    field: 'posted_date',              width: 110},
-        {title: 'Created By',     field: 'created_by',               width: 110},
-        {title: 'Created Date',   field: 'created_date',             width: 110},
+        {title: 'Log #',       field: 'id',                  width: 70},
+        {title: 'Received At', field: 'created_date',         width: 150},
+        {title: 'Status',      field: 'status',               width: 100,
+            formatter: function(cell) { return cbStatusBadge(cell.getValue()); }},
+        {title: 'Token',       field: 'token_label',          width: 130},
+        {title: 'From IP',     field: 'created_by',           width: 130,
+            formatter: function(cell) { return extractIpFromCreatedBy(cell.getValue()); }},
+        {title: 'HTTP',        field: 'response_status_code', width: 70},
+        {title: 'References Updated', field: 'response_body', minWidth: 260,
+            formatter: function(cell) {
+                const raw = cell.getValue();
+                if (!raw) return '-';
+                try {
+                    const parsed = JSON.parse(raw);
+                    const records = parsed.Record || [];
+                    return records.map(r => {
+                        const ok = r.Status === 'S';
+                        const cls = ok ? 'badge-posted' : 'badge-error';
+                        return `<span class="badge ${cls}" style="margin-right:4px;">${r.Reference} — ${r.Message}</span>`;
+                    }).join('');
+                } catch(e) { return raw; }
+            }
+        },
+        {title: 'Detail',      field: 'id',                   width: 75,
+            formatter: function() { return '<button class="json-btn">View</button>'; },
+            cellClick: function(e, cell) { openCallbackModal(cell.getRow().getData()); }
+        },
     ]
 });
-if (isDark) document.getElementById('sapCnTable').classList.add('tabulator-dark');
-
-// GST e-Invoice table
-const gstTable = new Tabulator('#gstTable', {
-    height: 'calc(100vh - 210px)',
-    layout: 'fitData',
-    pagination: true,
-    paginationMode: 'remote',
-    paginationSize: 50,
-    ajaxURL: '/api/module/FSAP01/gst-logs',
-    ajaxResponse: function(url, params, resp) {
-        document.getElementById('gstCount').textContent = resp.data.length;
-        document.getElementById('gstTotal').textContent = resp.total;
-        return resp;
-    },
-    columns: [
-        {title: 'Invoice #',    field: 'invoice_number',  width: 140},
-        {title: 'Date',         field: 'invoice_date',     width: 100},
-        {title: 'FY',           field: 'financial_year',   width: 80},
-        {title: 'Party',        field: 'customer_name',    minWidth: 160},
-        {title: 'Type',         field: 'customer_type',    width: 90},
-        {title: 'Amount',       field: 'total_amount',     width: 110, hozAlign: 'right',
-            formatter: 'money', formatterParams: {precision: 2}},
-        {title: 'Status',       field: 'invoice_status',   width: 110,
-            formatter: function(cell) { return statusBadge(cell.getValue()); }},
-        {title: 'GST IRN',      field: 'gst_irn',          minWidth: 180,
-            formatter: function(cell) { return irnBadge(cell.getValue()); }},
-        {title: 'Ack Number',   field: 'gst_ack_number',   width: 140},
-        {title: 'Ack Date',     field: 'gst_ack_date',     width: 110},
-        {title: 'Created By',   field: 'created_by',       width: 110},
-    ]
-});
-if (isDark) document.getElementById('gstTable').classList.add('tabulator-dark');
 
 function showTab(name) {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById(name + 'Panel').classList.add('active');
-    const idx = {sapInv: 0, sapCn: 1, gst: 2}[name];
-    document.querySelectorAll('.tab')[idx].classList.add('active');
-
-    // Trigger data load on first switch
-    if (name === 'sapCn') sapCnTable.setData('/api/module/FSAP01/sap-cn-logs');
-    if (name === 'gst')   gstTable.setData('/api/module/FSAP01/gst-logs');
+    document.querySelectorAll('.tab')[{sapInv: 0, callbacks: 1}[name]].classList.add('active');
+    if (name === 'callbacks') callbacksTable.setData('/api/module/FSAP01/callback-logs');
 }
 </script>
 {% endblock %}
