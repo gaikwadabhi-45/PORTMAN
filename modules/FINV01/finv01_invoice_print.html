@@ -128,6 +128,7 @@
         }
         .qr-area { text-align: right; }
         .qr-area img { width: 60px; height: 60px; }
+        .qr-canvas img { width: 60px !important; height: 60px !important; }
         .qr-placeholder {
             width: 60px; height: 60px;
             border: 1px dashed #999;
@@ -454,7 +455,7 @@
                     {% if invoice.gst_qr_code.startswith('http') or invoice.gst_qr_code.startswith('data:') %}
                     <img src="{{ invoice.gst_qr_code }}" alt="QR Code">
                     {% else %}
-                    <img src="data:image/png;base64,{{ invoice.gst_qr_code }}" alt="QR Code">
+                    <div class="qr-canvas"></div>
                     {% endif %}
                 {% else %}
                 <div class="qr-placeholder">QR Code<br>(after IRN)</div>
@@ -771,5 +772,21 @@
 {{ render_copy("TRIPLICATE FOR TRANSPORTER") }}
 {% endif %}
 
+{% if invoice.gst_qr_code and not (invoice.gst_qr_code.startswith('http') or invoice.gst_qr_code.startswith('data:')) %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+document.querySelectorAll('.qr-canvas').forEach(function(el) {
+    new QRCode(el, {
+        text: {{ invoice.gst_qr_code | tojson }},
+        width: 60,
+        height: 60,
+        correctLevel: QRCode.CorrectLevel.M
+    });
+    // qrcodejs inserts an img + canvas; hide the canvas for cleaner print
+    var canvas = el.querySelector('canvas');
+    if (canvas) canvas.style.display = 'none';
+});
+</script>
+{% endif %}
 </body>
 </html>
