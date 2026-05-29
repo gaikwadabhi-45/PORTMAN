@@ -286,6 +286,17 @@ const PORT_ZOOM   = 13;
 // Only these two landmarks are plotted; others from DB are ignored.
 const SHOW_LANDMARKS = new Set(['Gull Island', 'Yellow Crane']);
 
+// Channel path [lat, lon] — Gull Island (index 0) → Port Berths (last index)
+const CHANNEL_PATH = [
+  [18.834827, 72.8969706],[18.8354596, 72.9247071],[18.8334565, 72.9466511],
+  [18.8017991, 72.9675145],[18.7937695, 72.9733326],[18.7886392, 72.9860553],
+  [18.7848473, 72.9951261],[18.7802745, 72.9987785],[18.7771514, 72.9986609],
+  [18.7677822, 72.9928883],[18.7589903, 72.9872398],[18.7533791, 72.9852222],
+  [18.7487672, 72.9856042],[18.7429794, 72.9879918],[18.7370105, 72.9913344],
+  [18.7288627, 72.9966572],[18.7244485, 73.0002426],[18.7210529, 73.0063377],
+  [18.7176572, 73.0142754],[18.7150071, 73.0203541],[18.7118085, 73.0239242],
+];
+
 let cd = REFRESH;
 
 /* ── CLOCK ── */
@@ -341,6 +352,54 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
   maxZoom: 20, subdomains: 'abcd'
 }).addTo(map);
 
+/* ── CHANNEL PATH HELPERS ── */
+// Pre-compute segment lengths once Leaflet is ready
+const _segLens = [];
+let   _pathLen = 0;
+for (let i = 1; i < CHANNEL_PATH.length; i++) {
+  const d = L.latLng(CHANNEL_PATH[i-1]).distanceTo(L.latLng(CHANNEL_PATH[i]));
+  _segLens.push(d);
+  _pathLen += d;
+}
+
+// Interpolate a point at fraction (0=Gull, 1=Berths) along CHANNEL_PATH
+function pathPosition(frac) {
+  frac = Math.max(0, Math.min(1, frac));
+  const target = frac * _pathLen;
+  let acc = 0;
+  for (let i = 0; i < _segLens.length; i++) {
+    if (acc + _segLens[i] >= target || i === _segLens.length - 1) {
+      const t = _segLens[i] > 0 ? Math.min((target - acc) / _segLens[i], 1) : 0;
+      return [
+        CHANNEL_PATH[i][0] + t * (CHANNEL_PATH[i+1][0] - CHANNEL_PATH[i][0]),
+        CHANNEL_PATH[i][1] + t * (CHANNEL_PATH[i+1][1] - CHANNEL_PATH[i][1]),
+      ];
+    }
+    acc += _segLens[i];
+  }
+  return CHANNEL_PATH[CHANNEL_PATH.length - 1];
+}
+
+// Return [lat, lon] for a transit item based on stage + fraction
+function transitPosition(t) {
+  const f = t.fraction || 0;
+  if (t.stage === 'AT_GULL') return CHANNEL_PATH[0];
+  if (t.stage === 'TRANSIT_GULL_TO_BERTH') return pathPosition(f);
+  if (t.stage === 'TRANSIT_VESSEL_TO_GULL' && t.anch_lat != null) {
+    const [gLat, gLon] = CHANNEL_PATH[0];
+    return [t.anch_lat + f*(gLat - t.anch_lat), t.anch_lon + f*(gLon - t.anch_lon)];
+  }
+  return [t.lat, t.lon];  // fallback
+}
+
+// Format ETA minutes → "2h 15m" or "43m"
+function fmtEta(mins) {
+  if (mins == null) return '—';
+  if (mins <= 0)    return 'Arriving';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 /* ── LAYER GROUPS ── */
 const layers = {
   anchorages: L.layerGroup().addTo(map),
@@ -394,23 +453,38 @@ function berthIcon(active) {
   });
 }
 
-function bargeIcon(pct) {
-  const w = Math.round(pct);
+// bearing: compass degrees (0=N). The MBC chevron default points East (CSS 0°).
+// CSS rotation = bearing - 90° converts compass bearing to CSS east-origin rotation.
+function _cssRot(bearing) {
+  return ((bearing - 90) % 360 + 360) % 360;
+}
+
+function bargeIcon(pct, bearing) {
+  const w   = Math.round(pct);
+  const rot = _cssRot(bearing);
   return L.divIcon({
-    html: `<div class="m-barge-wrap"><div class="m-barge">
-      <div class="m-barge-fill" style="width:${w}%"></div>
-    </div></div>`,
-    className: '', iconAnchor: [17, 5], iconSize: [34, 11]
+    // Outer wrapper is larger so rotation doesn't clip; anchor at its centre.
+    html: `<div style="width:44px;height:22px;display:flex;align-items:center;
+                       justify-content:center;overflow:visible">
+      <div class="m-barge-wrap" style="transform:rotate(${rot}deg);transform-origin:center">
+        <div class="m-barge"><div class="m-barge-fill" style="width:${w}%"></div></div>
+      </div>
+    </div>`,
+    className: '', iconAnchor: [22, 11], iconSize: [44, 22]
   });
 }
 
-function mbcIcon(pct) {
-  const w = Math.round(pct);
+function mbcIcon(pct, bearing) {
+  const w   = Math.round(pct);
+  const rot = _cssRot(bearing);
   return L.divIcon({
-    html: `<div class="m-mbc-wrap"><div class="m-mbc">
-      <div class="m-mbc-fill" style="width:${w}%"></div>
-    </div></div>`,
-    className: '', iconAnchor: [14, 5], iconSize: [28, 11]
+    html: `<div style="width:40px;height:20px;display:flex;align-items:center;
+                       justify-content:center;overflow:visible">
+      <div class="m-mbc-wrap" style="transform:rotate(${rot}deg);transform-origin:center">
+        <div class="m-mbc"><div class="m-mbc-fill" style="width:${w}%"></div></div>
+      </div>
+    </div>`,
+    className: '', iconAnchor: [20, 10], iconSize: [40, 20]
   });
 }
 
@@ -606,10 +680,11 @@ function render(d) {
      .addTo(layers.berths);
 
     // Asset markers (barges / MBCs at this berth)
+    const chBrg = b.channel_bearing || 270;
     (b.assets || []).forEach((asset, i) => {
-      const alat = b.lat + i * 0.00009;
-      const alon = b.lon;
-      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct) : bargeIcon(asset.pct);
+      const alat = asset.lat ?? b.lat;
+      const alon = asset.lon ?? b.lon;
+      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, chBrg) : bargeIcon(asset.pct, chBrg);
       L.marker([alat, alon], {icon, zIndexOffset: 500})
        .bindPopup(assetPopup(asset))
        .bindTooltip(`${asset.name} (${asset.pct}%)`, {sticky: true})
@@ -629,23 +704,36 @@ function render(d) {
     const STAGE_LABELS = {
       TRANSIT_VESSEL_TO_GULL: 'Vessel → Gull Island',
       AT_GULL:                'Waiting at Gull Island',
-      TRANSIT_GULL_TO_BERTH:  'Gull Island → Berth',
+      TRANSIT_GULL_TO_BERTH:  'Gull Island → Port',
       RETURNING:              'Returning to Vessel',
     };
-    L.marker([t.lat, t.lon], {icon: transitIcon(t.type), zIndexOffset: 600})
+    const pos    = transitPosition(t);
+    const stgLbl = STAGE_LABELS[t.stage] || t.stage;
+    const etaStr = fmtEta(t.eta_minutes);
+    const pctBar = t.pct != null
+      ? `<div class="popup-prog"><div class="popup-prog-fill" style="width:${t.pct}%;background:${progColor(t.pct)}"></div></div>
+         <div style="font-family:'DM Mono',monospace;font-size:9px;color:${progColor(t.pct)};text-align:right">${t.pct}%</div>`
+      : '';
+
+    L.marker(pos, {icon: transitIcon(t.type), zIndexOffset: 600})
      .bindPopup(`<div class="popup-title">
          <span class="popup-pill ${t.type}">${t.type}</span> ${t.name}
        </div>
-       <div class="popup-row"><span class="popup-lbl">Stage</span><span class="popup-val">${STAGE_LABELS[t.stage]||t.stage}</span></div>
+       <div class="popup-row"><span class="popup-lbl">Stage</span><span class="popup-val">${stgLbl}</span></div>
+       <div class="popup-row"><span class="popup-lbl">${t.eta_label||'ETA'}</span>
+         <span class="popup-val" style="color:var(--green);font-weight:600">${etaStr}</span></div>
        <div class="popup-row"><span class="popup-lbl">Cargo</span><span class="popup-val">${t.cargo||'—'}</span></div>
-       ${t.vessel_name ? `<div class="popup-row"><span class="popup-lbl">Vessel</span><span class="popup-val">${t.vessel_name}</span></div>` : ''}`)
-     .bindTooltip(`${t.name} — ${STAGE_LABELS[t.stage]||t.stage}`, {sticky:true})
+       ${t.vessel_name ? `<div class="popup-row"><span class="popup-lbl">Vessel</span><span class="popup-val">${t.vessel_name}</span></div>` : ''}
+       ${t.bl_qty ? `<div class="popup-row"><span class="popup-lbl">B/L</span><span class="popup-val">${fmtNum(t.bl_qty)} MT</span></div>
+       <div class="popup-row"><span class="popup-lbl">Done</span><span class="popup-val">${fmtNum(t.actual)} MT</span></div>${pctBar}` : ''}`)
+     .bindTooltip(`${t.name} — ${stgLbl} · ${t.eta_label||'ETA'}: ${etaStr}`, {sticky:true})
      .on('click', () => showInfo(infoCard(`🔄 ${t.name}`, [
-         ['Type', t.type],
-         ['Stage', STAGE_LABELS[t.stage]||t.stage],
+         ['Type',  t.type],
+         ['Stage', stgLbl],
+         [t.eta_label||'ETA', etaStr],
          ['Cargo', t.cargo||'—'],
          ...(t.vessel_name ? [['Vessel', t.vessel_name]] : []),
-         ...(t.bl_qty ? [['B/L', `${fmtNum(t.bl_qty)} MT`],['Done',`${fmtNum(t.actual)} MT`]] : []),
+         ...(t.bl_qty ? [['B/L',`${fmtNum(t.bl_qty)} MT`],['Done',`${fmtNum(t.actual)} MT`],['%',`${t.pct}%`]] : []),
        ])))
      .addTo(layers.transit);
   });
