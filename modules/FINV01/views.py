@@ -508,7 +508,11 @@ def _get_cargo_handling_details(invoice_id):
                     if not val:
                         return ''
                     s = str(val).strip()
-                    return (s[:10] + ' ' + s[11:16]).strip() if len(s) >= 16 else s[:10]
+                    date_s = s[:10]
+                    time_s = s[11:16] if len(s) >= 16 else ''
+                    if len(date_s) == 10:
+                        date_s = date_s[8:10] + '-' + date_s[5:7] + '-' + date_s[0:4]
+                    return (date_s + ' ' + time_s).strip()
 
                 rows.append({
                     'source_type':       'VCN',
@@ -548,7 +552,11 @@ def _get_cargo_handling_details(invoice_id):
                     if not val:
                         return ''
                     s = str(val).strip()
-                    return (s[:10] + ' ' + s[11:16]).strip() if len(s) >= 16 else s[:10]
+                    date_s = s[:10]
+                    time_s = s[11:16] if len(s) >= 16 else ''
+                    if len(date_s) == 10:
+                        date_s = date_s[8:10] + '-' + date_s[5:7] + '-' + date_s[0:4]
+                    return (date_s + ' ' + time_s).strip()
 
                 if 'export' in op_type:
                     # Load port: loading_commenced → start, loading_completed → end

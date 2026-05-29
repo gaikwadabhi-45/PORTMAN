@@ -319,7 +319,7 @@
         }
         .pay-line .pl { font-weight: 700; min-width: 130px; }
         .sig-col {
-            width: 245px;
+            width: 320px;
             padding: 5px 8px;
             display: flex;
             flex-direction: column;
@@ -560,15 +560,15 @@
                     <td>{{ line.service_name }}</td>
                     <td>{{ line.sac_code or '—' }}</td>
                     <td class="num">{{ "%.2f"|format(line.quantity|float) }}</td>
-                    <td class="num">{{ "%.2f"|format(line.rate|float) }}</td>
-                    <td class="num">{{ "%.2f"|format(line.line_amount|float) }}</td>
+                    <td class="num">{{ line.rate|float|indian_number }}</td>
+                    <td class="num">{{ line.line_amount|float|indian_number }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr class="subtotal-row">
                     <td colspan="5" style="text-align:right; border-right:1px solid #000;">Sub Total</td>
-                    <td class="num">{{ "%.2f"|format(sub) }}</td>
+                    <td class="num">{{ sub|indian_number }}</td>
                 </tr>
             </tfoot>
         </table>
@@ -597,10 +597,10 @@
                     {% for sac in sac_summary %}
                     <tr>
                         <td>{{ sac.sac_code or '—' }}</td>
-                        <td>{{ "%.2f"|format(sac.taxable_value|float) }}</td>
-                        <td>{{ "%.2f"|format(sac.cgst|float) }}</td>
-                        <td>{{ "%.2f"|format(sac.sgst|float) }}</td>
-                        <td>{{ "%.2f"|format(sac.igst|float) }}</td>
+                        <td>{{ sac.taxable_value|float|indian_number }}</td>
+                        <td>{{ sac.cgst|float|indian_number }}</td>
+                        <td>{{ sac.sgst|float|indian_number }}</td>
+                        <td>{{ sac.igst|float|indian_number }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -611,26 +611,26 @@
             <table class="totals-table">
                 <tr>
                     <td>CGST {{ cgst_pct }}%</td>
-                    <td>{{ "%.2f"|format(cgst_a) }}</td>
+                    <td>{{ cgst_a|indian_number }}</td>
                 </tr>
                 <tr>
                     <td>SGST {{ sgst_pct }}%</td>
-                    <td>{{ "%.2f"|format(sgst_a) }}</td>
+                    <td>{{ sgst_a|indian_number }}</td>
                 </tr>
                 <tr>
                     <td>IGST {{ igst_pct }}%</td>
-                    <td>{{ "%.2f"|format(igst_a) }}</td>
+                    <td>{{ igst_a|indian_number }}</td>
                 </tr>
                 {% if tds_a > 0 %}
                 <tr>
                     <td>TDS Deducted</td>
-                    <td>(-) {{ "%.2f"|format(tds_a) }}</td>
+                    <td>(-) {{ tds_a|indian_number }}</td>
                 </tr>
                 {% endif %}
                 {% if tcs_a > 0 %}
                 <tr>
                     <td>TCS Collected</td>
-                    <td>(+) {{ "%.2f"|format(tcs_a) }}</td>
+                    <td>(+) {{ tcs_a|indian_number }}</td>
                 </tr>
                 {% endif %}
                 <tr>
@@ -639,11 +639,11 @@
                 </tr>
                 <tr>
                     <td>Rounding Off :</td>
-                    <td>{{ "%.2f"|format(rnd_off) }}</td>
+                    <td>{{ rnd_off|indian_number }}</td>
                 </tr>
                 <tr class="total-row">
                     <td>Total in INR is :</td>
-                    <td>{{ "%.2f"|format(total_a) }}</td>
+                    <td>{{ total_a|indian_number }}</td>
                 </tr>
             </table>
         </div>
@@ -706,7 +706,7 @@
     <!-- ══ 11. Corporate office footer ══ -->
     <div class="corp-footer">
         {% if payment_bank and payment_bank.corporate_office_address %}
-        Corporate Off: {{ payment_bank.corporate_office_address }}
+        {{ payment_bank.corporate_office_address }}
         {% else %}
         Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), Mumbai, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
         {% endif %}
@@ -734,8 +734,8 @@
                 <th>Quantity (MT)</th>
                 <th>MV/MBC</th>
                 <th>Material PO</th>
-                <th>Disch./Load. Started</th>
-                <th>Disch./Load. Completed</th>
+                <th>Disch./Load Started</th>
+                <th>Disch./Load Completed</th>
             </tr>
         </thead>
         <tbody>
