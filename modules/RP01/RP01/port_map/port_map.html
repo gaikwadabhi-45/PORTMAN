@@ -245,9 +245,9 @@ input[type=checkbox] { accent-color:var(--blue); width:14px; height:14px; }
         <div class="leg-item"><div class="leg-icon"><svg width="16" height="20" viewBox="0 0 16 20"><path d="M8 1L1 18l7-5 7 5Z" fill="#2563EB"/></svg></div><span class="leg-lbl">Vessel at anchor</span></div>
         <div class="leg-item"><div class="leg-icon"><div style="width:14px;height:14px;border-radius:50%;border:2.5px dashed #2563EB;background:rgba(37,99,235,.08)"></div></div><span class="leg-lbl">Anchorage zone</span></div>
         <div class="leg-item"><div class="leg-icon"><div style="width:14px;height:14px;border-radius:50%;border:2.5px solid #059669;background:#ECFDF5"></div></div><span class="leg-lbl">Active berth</span></div>
-        <div class="leg-item"><div class="leg-icon"><div style="width:20px;height:8px;border-radius:2px;border:1.5px solid #FCD34D;background:#FFFBEB"></div></div><span class="leg-lbl">Barge</span></div>
-        <div class="leg-item"><div class="leg-icon"><div style="width:18px;height:8px;clip-path:polygon(0 0,92% 0,100% 50%,92% 100%,0 100%);border:1.5px solid #A5F3FC;background:#ECFEFF"></div></div><span class="leg-lbl">MBC</span></div>
-        <div class="leg-item"><div class="leg-icon"><div style="width:10px;height:10px;border-radius:50%;border:2px solid #7C3AED;background:#EDE9FE;animation:transit-pulse 2s ease-in-out infinite"></div></div><span class="leg-lbl">In transit</span></div>
+        <div class="leg-item"><div class="leg-icon"><svg width="9" height="16" viewBox="0 0 16 34"><polygon points="8,1 14,11 14,32 2,32 2,11" fill="#86efac" stroke="#16a34a" stroke-width="1.4"/></svg></div><span class="leg-lbl">Barge</span></div>
+        <div class="leg-item"><div class="leg-icon"><svg width="9" height="16" viewBox="0 0 16 34"><polygon points="8,1 14,11 14,32 2,32 2,11" fill="#5eead4" stroke="#0d9488" stroke-width="1.4"/></svg></div><span class="leg-lbl">MBC</span></div>
+        <div class="leg-item"><div class="leg-icon"><svg width="9" height="16" viewBox="0 0 16 34"><polygon points="8,1 14,11 14,32 2,32 2,11" fill="#22c55e" stroke="#15803d" stroke-width="1.4"/></svg></div><span class="leg-lbl">Completed (100%)</span></div>
         <div class="leg-item"><div class="leg-icon"><svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#64748B" stroke="#fff" stroke-width="1.5"/></svg></div><span class="leg-lbl">Landmark</span></div>
       </div>
     </div>
@@ -346,8 +346,9 @@ const map = L.map('map', {
 });
 map.fitBounds(AREA_BOUNDS);
 
-// Plain light tile — white land, blue water, no foliage/labels
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+// Plain light tile with place labels (Amba, Dharamtar) — marine-traffic style:
+// pale land, light water, no foliage, minimal labels for the river & places.
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
   maxZoom: 20, subdomains: 'abcd'
 }).addTo(map);
@@ -390,6 +391,30 @@ function transitPosition(t) {
     return [t.anch_lat + f*(gLat - t.anch_lat), t.anch_lon + f*(gLon - t.anch_lon)];
   }
   return [t.lat, t.lon];  // fallback
+}
+
+// Compass bearing (0=N clockwise) between two [lat,lon] points
+function bearingJS(a, b) {
+  const r = Math.PI/180;
+  const y = Math.sin((b[1]-a[1])*r) * Math.cos(b[0]*r);
+  const x = Math.cos(a[0]*r)*Math.sin(b[0]*r)
+          - Math.sin(a[0]*r)*Math.cos(b[0]*r)*Math.cos((b[1]-a[1])*r);
+  return (Math.atan2(y, x) * 180/Math.PI + 360) % 360;
+}
+
+// Heading (bow direction) for a transit vessel, along its travel direction
+function transitHeading(t) {
+  const f = t.fraction || 0;
+  if (t.stage === 'TRANSIT_GULL_TO_BERTH') {
+    const p0 = pathPosition(Math.max(0, f - 0.02));
+    const p1 = pathPosition(Math.min(1, f + 0.02));
+    return bearingJS(p0, p1);
+  }
+  if (t.stage === 'TRANSIT_VESSEL_TO_GULL' && t.anch_lat != null) {
+    return bearingJS([t.anch_lat, t.anch_lon], CHANNEL_PATH[0]);
+  }
+  if (t.stage === 'AT_GULL') return bearingJS(CHANNEL_PATH[0], CHANNEL_PATH[1]);
+  return 0;
 }
 
 // Format ETA minutes → "2h 15m" or "43m"
@@ -464,48 +489,29 @@ function berthIcon(active) {
   });
 }
 
-// bearing: compass degrees (0=N). The MBC chevron default points East (CSS 0°).
-// CSS rotation = bearing - 90° converts compass bearing to CSS east-origin rotation.
-function _cssRot(bearing) {
-  return ((bearing - 90) % 360 + 360) % 360;
-}
-
-// Completed (100%) assets turn green; otherwise keep their type colour.
-function _assetColors(type, pct) {
-  if (pct >= 100) return {border: '#059669', bg: '#ECFDF5', fill: '#059669'};
-  return type === 'MBC'
-    ? {border: '#A5F3FC', bg: '#ECFEFF', fill: '#0891B2'}
-    : {border: '#FCD34D', bg: '#FFFBEB', fill: '#D97706'};
-}
-
-function bargeIcon(pct, bearing) {
-  const w = Math.round(pct), rot = _cssRot(bearing), c = _assetColors('BARGE', pct);
+// Marine-traffic-style vessel hull. Drawn bow-UP (north) inside the SVG, then
+// rotated clockwise by the compass `bearing` so the bow points along heading.
+// Colour: green like marine-traffic; brighter green when 100% complete; MBCs a
+// teal-green to distinguish from barges.
+function vesselHullIcon(pct, bearing, type) {
+  pct = pct || 0;
+  const done = pct >= 100;
+  const fill   = done ? '#22c55e' : (type === 'MBC' ? '#5eead4' : '#86efac');
+  const stroke = done ? '#15803d' : (type === 'MBC' ? '#0d9488' : '#16a34a');
+  const rot = ((bearing % 360) + 360) % 360;
+  // 16×34 hull centred in a 36×36 wrapper so rotation never clips.
   return L.divIcon({
-    // Outer wrapper is larger so rotation doesn't clip; anchor at its centre.
-    html: `<div style="width:44px;height:22px;display:flex;align-items:center;
+    html: `<div style="width:36px;height:36px;display:flex;align-items:center;
                        justify-content:center;overflow:visible">
-      <div class="m-barge-wrap" style="transform:rotate(${rot}deg);transform-origin:center">
-        <div class="m-barge" style="border-color:${c.border};background:${c.bg}">
-          <div class="m-barge-fill" style="width:${w}%;background:${c.fill};opacity:.6"></div>
-        </div>
-      </div>
+      <svg width="16" height="34" viewBox="0 0 16 34"
+           style="transform:rotate(${rot}deg);transform-origin:center;
+                  filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">
+        <polygon points="8,1 14,11 14,32 2,32 2,11"
+                 fill="${fill}" stroke="${stroke}" stroke-width="1.4" stroke-linejoin="round"/>
+        <circle cx="8" cy="22" r="1.7" fill="${stroke}" opacity=".75"/>
+      </svg>
     </div>`,
-    className: '', iconAnchor: [22, 11], iconSize: [44, 22]
-  });
-}
-
-function mbcIcon(pct, bearing) {
-  const w = Math.round(pct), rot = _cssRot(bearing), c = _assetColors('MBC', pct);
-  return L.divIcon({
-    html: `<div style="width:40px;height:20px;display:flex;align-items:center;
-                       justify-content:center;overflow:visible">
-      <div class="m-mbc-wrap" style="transform:rotate(${rot}deg);transform-origin:center">
-        <div class="m-mbc" style="border-color:${c.border};background:${c.bg}">
-          <div class="m-mbc-fill" style="width:${w}%;background:${c.fill};opacity:.6"></div>
-        </div>
-      </div>
-    </div>`,
-    className: '', iconAnchor: [20, 10], iconSize: [40, 20]
+    className: '', iconAnchor: [18, 18], iconSize: [36, 36]
   });
 }
 
@@ -707,11 +713,11 @@ function render(d) {
     // Asset markers — barges AND MBCs both follow the berth-line slope (same
     // orientation, long axis parallel to the berth). Double-banked assets are
     // offset perpendicular (toward the channel) so they sit side-by-side.
-    const slopeBrg = b.berth_bearing ?? 149;  // along berth line (long axis)
+    const slopeBrg = b.berth_bearing ?? 149;  // along berth line (long axis = hull length)
     (b.assets || []).forEach((asset, i) => {
       const alat = asset.lat ?? b.lat;
       const alon = asset.lon ?? b.lon;
-      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, slopeBrg) : bargeIcon(asset.pct, slopeBrg);
+      const icon = vesselHullIcon(asset.pct, slopeBrg, asset.type);
       L.marker([alat, alon], {icon, zIndexOffset: 500})
        .bindPopup(assetPopup(asset))
        .bindTooltip(`${asset.name} (${asset.pct}%)`, {sticky: true})
@@ -735,6 +741,7 @@ function render(d) {
       RETURNING:              'Returning to Vessel',
     };
     const pos    = transitPosition(t);
+    const heading = transitHeading(t);
     const stgLbl = STAGE_LABELS[t.stage] || t.stage;
     const etaStr = fmtEta(t.eta_minutes);
     const pctBar = t.pct != null
@@ -742,7 +749,7 @@ function render(d) {
          <div style="font-family:'DM Mono',monospace;font-size:9px;color:${progColor(t.pct)};text-align:right">${t.pct}%</div>`
       : '';
 
-    L.marker(pos, {icon: transitIcon(t.type), zIndexOffset: 600})
+    L.marker(pos, {icon: vesselHullIcon(Math.min(t.pct ?? 0, 99), heading, t.type), zIndexOffset: 600})
      .bindPopup(`<div class="popup-title">
          <span class="popup-pill ${t.type}">${t.type}</span> ${t.name}
        </div>
