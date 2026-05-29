@@ -149,8 +149,8 @@ def port_map_data():
         JOIN ldud_header lh ON lh.id = la.ldud_id
         JOIN vcn_header  vh ON vh.id = lh.vcn_id
         WHERE lh.doc_status NOT IN ('Closed')
-          AND la.anchored IS NOT NULL AND la.anchored != ''
-          AND (la.anchor_aweigh IS NULL OR la.anchor_aweigh = '')
+          AND la.anchored IS NOT NULL
+          AND la.anchor_aweigh IS NULL
         ORDER BY lh.vcn_id, la.anchored DESC
     ''')
     anchored_vessels_raw = cur.fetchall()
@@ -200,7 +200,7 @@ def port_map_data():
             'vessel_name':  r['vessel_name'],
             'doc_num':      r['vcn_doc_num'],
             'ldud_doc_num': r['ldud_doc_num'],
-            'arrived':      r['anchored_time'] or None,
+            'arrived':      str(r['anchored_time']) if r['anchored_time'] else None,
             'cargo':        cargo_map.get(lid, r['anch_cargo'] or ''),
             'bl_qty':       round(bl, 2),
             'ops_qty':      round(ops, 2),
