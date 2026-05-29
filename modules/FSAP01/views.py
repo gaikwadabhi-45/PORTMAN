@@ -40,6 +40,15 @@ def sap_invoice_logs():
     return jsonify({'data': data, 'last_page': (total + size - 1) // size, 'total': total})
 
 
+@bp.route('/api/module/FSAP01/callback-logs')
+@login_required
+def callback_logs():
+    page = int(request.args.get('page', 1))
+    size = int(request.args.get('size', 50))
+    data, total = model.get_callback_logs(page, size)
+    return jsonify({'data': data, 'last_page': (total + size - 1) // size, 'total': total})
+
+
 @bp.route('/api/module/FSAP01/sap-cn-logs')
 @login_required
 def sap_cn_logs():

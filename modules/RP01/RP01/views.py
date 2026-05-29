@@ -13,6 +13,8 @@ from .shift_report      import views as _shift_report_views    # noqa: registers
 from .barge_report      import views as _barge_report_views    # noqa: registers barge-report routes on bp
 from .mv_mbc_month_report import views as _mv_monthly_report_views  # noqa: registers mv-monthly-report routes on bp
 from .live_dashboard    import views as _live_dashboard_views  # noqa: registers live-dashboard routes on bp
+from .cargo_report import views as _cargo_report_views
+from .port_map          import views as _port_map_views        # noqa: registers port-map routes on bp
 
 def login_required(f):
     @wraps(f)

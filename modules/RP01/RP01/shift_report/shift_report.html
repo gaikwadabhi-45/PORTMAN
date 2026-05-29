@@ -222,8 +222,9 @@
         font-weight: 700;
     }
     .report-table .type-total-row td {
-        background: #eef4fb;
-        font-weight: 700;
+    background: #dbeafe !important;
+    color: #1e3a8a !important;
+    font-weight: 700;
     }
     .report-table .grand-total-row td {
         background: #e9eef5;
@@ -489,36 +490,7 @@
     padding: 0 !important;
 }
 
-/* FIRST VISIBLE CELL */
 
-.type-cell:not(.cell-no-top) .cell-content,
-.group-cell:not(.cell-no-top) .cell-content {
-
-    padding-top: 120px !important;
-
-    padding-bottom: 120px !important;
-
-    display: flex;
-
-    align-items: center;
-
-    justify-content: center;
-
-    text-align: center;
-
-    font-weight: 600;
-
-    line-height: 1.4;
-
-    box-sizing: border-box;
-}
-
-/* HIDDEN CONTINUATION ROWS */
-
-.cell-no-top .cell-content {
-
-    display: none;
-}
 /* =========================================
    TABLE BORDER CLEANUP
 ========================================= */
@@ -547,12 +519,6 @@ tr:has(.group-cell.cell-no-top) td.group-cell {
    TOTAL ROWS
 ========================================= */
 
-.subtotal-row td,
-.type-total-row td,
-.grand-total-row td {
-
-    border-bottom: 1px solid #d7dde5 !important;
-}
 
 /* FIRST COLUMN TOTALS */
 
@@ -565,6 +531,18 @@ tr:has(.group-cell.cell-no-top) td.group-cell {
     color: #1e3a8a !important;
 
     font-weight: 700;
+}
+
+.report-table tbody tr td:first-child {
+    border-top: none !important;
+    border-bottom: none !important;
+    border-top-color: transparent !important;
+    border-bottom-color: transparent !important;
+}
+
+.report-table tbody tr {
+    border-top: none !important;
+    border-bottom: none !important;
 }
 
 /* =========================================
@@ -3409,7 +3387,7 @@ function buildDelayTable(view) {
 
             html += `
                 <tr>
-                    <td class="type-cell ${!row.show_type ? 'cell-no-top' : ''}">
+                    <td class="type-cell ${!row.show_type ? 'cell-no-top' : ''}" style="border-top:none !important; border-bottom:none !important;">
 
     <div class="cell-content">
 
@@ -3441,37 +3419,42 @@ function buildDelayTable(view) {
         // ═══════════════════════════════════════════════════════
         // SYSTEM TOTAL — reset system tracker
         // ═══════════════════════════════════════════════════════
-        else if (row.kind === 'system_total') {
-            lastSystem = null;
-            html += `
-                <tr class="subtotal-row">
-                    <td class="cell-no-top"></td>
-                    <td class="cell-no-top"></td>
-                    <td class="cell-no-top"></td>
-                    <td class="subtotal-label"><strong>${escapeHtml(row.label || '')}</strong></td>
-                    <td></td><td></td><td></td>
-                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
-                </tr>
-            `;
-        }
+else if (row.kind === 'system_total') {
+    lastSystem = null;
+    html += `
+        <tr>
+            <td style="background:#f0f6ff; border:none !important;"></td>
+            <td style="background:#ffff; border:none !important;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;color:#1e3a8a;"><strong>${escapeHtml(row.label || '')}</strong></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;color:#1e3a8a;"><strong>${escapeHtml(row.total || '')}</strong></td>
+        </tr>
+    `;
+}
 
         // ═══════════════════════════════════════════════════════
         // ACTIVITY TOTAL — reset activity + equipment + system
         // ═══════════════════════════════════════════════════════
         else if (row.kind === 'activity_total') {
-            lastActivity  = null;
-            lastEquipment = null;
-            lastSystem    = null;
-            html += `
-                <tr class="subtotal-row">
-                    <td class="cell-no-top"></td>
-                    <td class="subtotal-label"><strong>${escapeHtml(row.label || '')}</strong></td>
-                    <td></td><td></td><td></td><td></td><td></td>
-                    <td><strong>${escapeHtml(row.total || '')}</strong></td>
-                </tr>
-            `;
-        }
-
+    lastActivity  = null;
+    lastEquipment = null;
+    lastSystem    = null;
+    html += `
+        <tr>
+            <td style="background:#f0f6ff; border:none !important;"></td>
+            <td style="background:#dbeafe;color:#1e3a8a;"><strong>${escapeHtml(row.label || '')}</strong></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;"></td>
+            <td style="background:#dbeafe;color:#1e3a8a;"><strong>${escapeHtml(row.total || '')}</strong></td>
+        </tr>
+    `;
+}
         // ═══════════════════════════════════════════════════════
         // TYPE TOTAL — reset all trackers
         // ═══════════════════════════════════════════════════════

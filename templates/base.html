@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}PORTBIRD DPPL{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon_io/favicon.ico') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon_io/favicon-16x16.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon_io/favicon-32x32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/favicon_io/apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='img/favicon_io/site.webmanifest') }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
@@ -319,14 +324,6 @@
                         <span class="code">FDCN01</span>
                         <span class="name">Debit / Credit Note</span>
                     </div>
-                    <div class="module-item" onclick="goToModule('FSAP01', 'SAP Financial Integration')">
-                        <span class="code">FSAP01</span>
-                        <span class="name">SAP Financial Integration</span>
-                    </div>
-                    <div class="module-item" onclick="goToModule('FLOG01', 'Integration Logs')">
-                        <span class="code">FLOG01</span>
-                        <span class="name">Integration Logs</span>
-                    </div>
                     {% if session.is_admin %}
                     <div class="module-item" onclick="goToModule('GSTCFG', 'GST API Configuration')" style="border-top:1px solid rgba(255,255,255,0.1)">
                         <span class="code">GSTCFG</span>
@@ -452,6 +449,20 @@
                     <div class="module-item" onclick="goToModule('AUD01', 'Audit Logs')">
                         <span class="code">AUD01</span>
                         <span class="name">Audit Logs</span>
+                    </div>
+                </div>
+            </div>
+            <!-- SAP Integration Accordion -->
+            <div class="accordion-section sap">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <img src="{{ url_for('static', filename='img/sap.png') }}" alt="SAP" class="icon">
+                    <span>SAP Integration</span>
+                    <span class="arrow">&#9654;</span>
+                </div>
+                <div class="accordion-content">
+                    <div class="module-item" onclick="goToModule('FSAP01', 'SAP Integration')">
+                        <span class="code">FSAP01</span>
+                        <span class="name">SAP Integration</span>
                     </div>
                 </div>
             </div>

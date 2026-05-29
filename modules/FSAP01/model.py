@@ -42,6 +42,31 @@ def get_sap_invoice_logs(page=1, size=50):
     return [dict(r) for r in rows], total
 
 
+def get_callback_logs(page=1, size=50):
+    """SAP inbound callbacks — integration_logs where integration_type = SAP_INBOUND."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute("SELECT COUNT(*) as cnt FROM integration_logs WHERE integration_type = 'SAP_INBOUND'")
+    total = cur.fetchone()['cnt']
+    cur.execute('''
+        SELECT il.id,
+               il.created_date,
+               il.status,
+               il.source_reference  AS token_label,
+               il.created_by,
+               il.response_status_code,
+               il.request_body,
+               il.response_body
+        FROM integration_logs il
+        WHERE il.integration_type = 'SAP_INBOUND'
+        ORDER BY il.id DESC
+        LIMIT %s OFFSET %s
+    ''', [size, (page - 1) * size])
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return rows, total
+
+
 def get_sap_cn_logs(page=1, size=50):
     """FDCN01 credit notes with SAP posting data."""
     conn = get_db()

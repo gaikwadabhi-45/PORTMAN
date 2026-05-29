@@ -377,7 +377,7 @@ def _fetch_delays(entry_date, shift):
         query += " AND l.shift = %s"
         params.append(shift)
     query += """
-        ORDER BY d.type, l.delay_name, l.equipment_name, l.system_name, l.route_name, l.from_time
+        ORDER BY d.type, l.delay_name, l.equipment_name, l.system_name, l.route_name
     """
     cur.execute(query, tuple(params))
     rows = cur.fetchall()
@@ -531,6 +531,16 @@ def _route_sort_key(value):
     else:
         group = 5
     return (group, _natural_sort_key(value))
+
+def _shift_time_sort_key(from_time):
+    """Sort times starting from 06:00 (Shift A), then 14:00 (B), then 22:00 (C)."""
+    try:
+        h, m = map(int, from_time.strip().split(':'))
+        minutes = h * 60 + m
+        # Rotate: 06:00 (360 mins) becomes 0
+        return (minutes - 360) % (24 * 60)
+    except Exception:
+        return 9999
 
 
 def _location_group(route_name):
@@ -838,13 +848,13 @@ def _build_delay_view(entry_date, shift, delays, delay_keys=None):
                 ):
 
                     system_items = sorted(
-                        systems[system],
-                        key=lambda item: (
-                            _blank_label(item['route_name']).lower(),
-                            item['from_time'],
-                            item['to_time'],
-                        ),
-                    )
+                    systems[system],
+                    key=lambda item: (
+                        _blank_label(item['route_name']).lower(),
+                        _shift_time_sort_key(item['from_time']),
+                        item['to_time'],
+                    ),
+                )
 
                     system_rows = []
 
@@ -950,7 +960,7 @@ def _build_delay_view(entry_date, shift, delays, delay_keys=None):
 
                 detail_rows[0]['activity_name'] = activity
 
-                detail_rows[0]['activity_rowspan'] = len(detail_rows)
+                detail_rows[0]['activity_rowspan'] = len(activity_rows) + 1
 
                 for r in detail_rows[1:]:
 
@@ -1165,6 +1175,30 @@ def _build_delay_sheet(wb, delay_view):
             else:
                 c.border = _LR_BDR
 
+                detail_rows = []
+                other_rows = []
+
+                for item in delay_view['rows']:
+
+                    if item.get('kind') == 'detail':
+
+                        detail_rows.append(item)
+
+                    else:
+
+                        other_rows.append(item)
+
+
+                detail_rows = sorted(
+                    detail_rows,
+                    key=lambda x: (
+                        x.get('from_time', '')
+                    )
+                )
+
+                delay_view['rows'] = detail_rows + other_rows
+    
+
     for item in delay_view['rows']:
         kind = item['kind']
 
@@ -1223,12 +1257,14 @@ def _build_delay_sheet(wb, delay_view):
             for col in range(1, 9):
                 _cell(ws, row, col, '', fill_color=_SUBTOTAL_BG, font_color=_TEXT)
             _cell(ws, row, 1, '', bold=True, fill_color=_TYPE_BG, font_color=_WHITE)
-            _cell(ws, row, 4, item.get('label', ''), bold=True,
-                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_left)
-            _cell(ws, row, 8, item.get('total', ''), bold=True,
-                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
+            _cell(ws, row, 2, '', fill_color=_ACTIVITY_BG, font_color=_TEXT)   # ← ADD THIS
+            _cell(ws, row, 4, item.get('label', ''), bold=True, fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_lctr)
 
         elif kind == 'activity_total':
+
+            # =========================================
+            # CLEAR + STYLE ROW
+            # =========================================
             for col in range(1, 9):
                 _cell(ws, row, col, '', fill_color=_SUBTOTAL_BG, font_color=_TEXT)
             _cell(ws, row, 1, '', bold=True, fill_color=_TYPE_BG, font_color=_WHITE)
@@ -1236,6 +1272,82 @@ def _build_delay_sheet(wb, delay_view):
                   fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_left)
             _cell(ws, row, 8, item.get('total', ''), bold=True,
                   fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
+
+                ws.cell(row, col).value = None
+
+                ws.cell(row, col).fill = _fill(_SUBTOTAL_BG)
+
+                ws.cell(row, col).border = _FULL_BDR
+
+            # =========================================
+            # KEEP TYPE COLUMN
+            # =========================================
+            ws.cell(row, 1).fill = _fill(_TYPE_BG)
+
+            # =========================================
+            # ACTIVITY COLUMN EMPTY
+            # =========================================
+            ws.cell(row, 2).fill = _fill(_ACTIVITY_BG)
+
+            # =========================================
+            # MERGE C:G
+            # =========================================
+            ws.merge_cells(
+                start_row=row,
+                start_column=3,
+                end_row=row,
+                end_column=7
+            )
+
+            # =========================================
+            # LABEL
+            # =========================================
+            c = ws.cell(row, 3)
+
+            c.value = item.get('label', '')
+
+            c.font = _font(
+                bold=True,
+                size=11,
+                color=_TEXT
+            )
+
+            c.fill = _fill(_SUBTOTAL_BG)
+
+            c.alignment = Alignment(
+                horizontal='left',
+                vertical='center'
+            )
+
+            c.border = _FULL_BDR
+
+            # =========================================
+            # STYLE MERGED CELLS
+            # =========================================
+            for col in range(4, 8):
+
+                ws.cell(row, col).fill = _fill(_SUBTOTAL_BG)
+
+                ws.cell(row, col).border = _FULL_BDR
+
+            # =========================================
+            # TOTAL VALUE
+            # =========================================
+            total_cell = ws.cell(row, 8)
+
+            total_cell.value = item.get('total', '')
+
+            total_cell.font = _font(
+                bold=True,
+                size=11,
+                color=_TEXT
+            )
+
+            total_cell.fill = _fill(_SUBTOTAL_BG)
+
+            total_cell.alignment = _ctr
+
+            total_cell.border = _FULL_BDR
 
         elif kind == 'type_total':
             for col in range(1, 9):
@@ -1306,5 +1418,3 @@ def _build_delay_sheet(wb, delay_view):
     ws.row_dimensions[1].height = 22
     ws.row_dimensions[2].height = 18
     ws.freeze_panes = 'A3'
-
-    

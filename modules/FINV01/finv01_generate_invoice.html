@@ -47,6 +47,12 @@
     .btn-primary { background: #4a90d9; color: #fff; }
     .btn-primary:hover { background: #2d72c0; }
     .btn-secondary { background: var(--border-color); color: var(--text-secondary); }
+
+    #genLoader { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:99999; align-items:center; justify-content:center; flex-direction:column; gap:16px; }
+    #genLoader.active { display:flex; }
+    .gen-spinner { width:48px; height:48px; border:5px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; }
+    .gen-loader-text { color:#fff; font-size:14px; font-weight:600; letter-spacing:0.3px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
 </style>
 
 <div class="module-header">
@@ -289,6 +295,12 @@
             <button type="button" class="btn btn-primary" onclick="confirmGenerateInvoice()">Confirm & Generate</button>
         </div>
     </div>
+</div>
+
+<!-- Generate loader overlay -->
+<div id="genLoader">
+    <div class="gen-spinner"></div>
+    <div class="gen-loader-text">Generating Invoice…</div>
 </div>
 
 {% endblock %}
@@ -567,8 +579,10 @@ function closeRemarksPopup() {
 
 async function confirmGenerateInvoice() {
     closeRemarksPopup();
-    // Sync popup remarks back to form field
     document.getElementById('remarks').value = document.getElementById('remarksPopupInput').value;
+
+    const loader = document.getElementById('genLoader');
+    loader.classList.add('active');
 
     const selected = document.querySelectorAll('.bill-select:checked');
     const prefix = document.getElementById('docSeriesSelect').value;
@@ -627,20 +641,23 @@ async function confirmGenerateInvoice() {
         amount_in_words: amountInWords(total),
     };
 
-    const res = await fetch('/api/module/FINV01/invoice/create', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-    });
-    const result = await res.json();
-    if (result.success) {
-        if (confirm(`Invoice ${result.invoice_number} generated!\nOpen print view now?`)) {
-            location.href = `/module/FINV01/invoice/print/${result.id}`;
-        } else {
+    try {
+        const res = await fetch('/api/module/FINV01/invoice/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        loader.classList.remove('active');
+        if (result.success) {
+            window.open(`/module/FINV01/invoice/print/${result.id}`, '_blank');
             location.href = '/module/FINV01/invoices';
+        } else {
+            alert('Error: ' + (result.error || 'Failed to generate invoice'));
         }
-    } else {
-        alert('Error: ' + (result.error || 'Failed to generate invoice'));
+    } catch (err) {
+        loader.classList.remove('active');
+        alert('Network error — please try again.');
     }
 }
 
