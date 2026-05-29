@@ -1047,3 +1047,5 @@ def daily_ops_download():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
+
+    
