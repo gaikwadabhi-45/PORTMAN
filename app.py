@@ -7,6 +7,33 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
+
+@app.template_filter('indian_number')
+def indian_number_filter(value):
+    """Format a number in Indian comma style: 1,23,45,678.90"""
+    try:
+        f = float(value)
+        negative = f < 0
+        f = abs(f)
+        int_part = int(f)
+        dec_part = round((f - int_part) * 100)
+        s = str(int_part)
+        if len(s) <= 3:
+            formatted = s
+        else:
+            last3 = s[-3:]
+            rest = s[:-3]
+            groups = []
+            while rest:
+                groups.append(rest[-2:])
+                rest = rest[:-2]
+            groups.reverse()
+            formatted = ','.join(groups) + ',' + last3
+        result = formatted + '.' + f'{dec_part:02d}'
+        return ('-' if negative else '') + result
+    except Exception:
+        return str(value)
+
 # ── App-level logging ─────────────────────────────────────────────────────────
 import logging
 import os
