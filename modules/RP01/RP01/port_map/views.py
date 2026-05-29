@@ -15,6 +15,13 @@ def _ang_diff(a, b):
     d = abs(a - b) % 360
     return d if d <= 180 else 360 - d
 
+def _bare_barge(name):
+    """LUEU stores barge_name as 'BARGE / trip'; ldud_barge_lines stores the bare
+    name. Strip the ' / trip' suffix so the two sources join correctly."""
+    if not name:
+        return ''
+    return name.split(' / ')[0].strip() if ' / ' in name else name.strip()
+
 # Berth alignment line (lat, lon) — runs NNW→SSE along the port berth face.
 # Barge icons align along this tangent; MBC icons face perpendicular toward channel.
 _BERTH_LINE = [
@@ -195,6 +202,11 @@ def port_map_data():
         ops = ops_map.get(lid, 0)
         balance = round(bl - ops, 2)
         pct = min(round(ops / bl * 100, 1) if bl > 0 else 0, 100)
+        # Only show vessels that have begun discharge at anchor (Total Disch > 0).
+        # Vessels anchored but not yet discharging show "0 MT" and have nothing
+        # to display progress for.
+        if ops <= 0:
+            continue
         vessels_by_anchorage.setdefault(an, []).append({
             'vcn_id':       vid,
             'vessel_name':  r['vessel_name'],
@@ -254,18 +266,23 @@ def port_map_data():
 
     # ── Most-recent berth assignment per barge from LUEU ─────────────────────
     # No date filter: a barge AT_BERTH may have started yesterday; the most    ─
-    # recent LUEU entry tells us which berth it is currently operating at.     ─
+    # recent LUEU entry (highest id) tells us its current berth. LUEU barge    ─
+    # names carry a ' / trip' suffix, so normalise to the bare name to match   ─
+    # ldud_barge_lines.barge_name.                                             ─
     cur.execute('''
-        SELECT DISTINCT ON (source_id, barge_name)
-            source_id, barge_name, berth_name, equipment_name, cargo_name
+        SELECT source_id, barge_name, berth_name, equipment_name, cargo_name
         FROM lueu_lines
         WHERE is_deleted IS NOT TRUE
           AND source_type = 'VCN'
           AND barge_name  IS NOT NULL AND barge_name  != ''
           AND berth_name  IS NOT NULL AND berth_name  != ''
-        ORDER BY source_id, barge_name, id DESC
+        ORDER BY id DESC
     ''')
-    barge_berth_map = {(r['source_id'], r['barge_name']): r for r in cur.fetchall()}
+    barge_berth_map = {}
+    for r in cur.fetchall():
+        key = (r['source_id'], _bare_barge(r['barge_name']))
+        if key not in barge_berth_map:        # first seen = most recent (id DESC)
+            barge_berth_map[key] = r
 
     # ── BL quantities from ldud_barge_lines ──────────────────────────────────
     cur.execute('''
@@ -278,7 +295,7 @@ def port_map_data():
     ''')
     barge_bl_map = {(r['vcn_id'], r['barge_name']): float(r['bl_qty']) for r in cur.fetchall()}
 
-    # ── Actual discharged per (vcn, barge) ───────────────────────────────────
+    # ── Actual discharged per (vcn, bare-barge) — summed across all trips ─────
     cur.execute('''
         SELECT source_id, barge_name, COALESCE(SUM(quantity), 0) AS actual
         FROM lueu_lines
@@ -286,7 +303,10 @@ def port_map_data():
           AND barge_name IS NOT NULL AND barge_name != ''
         GROUP BY source_id, barge_name
     ''')
-    barge_actual_map = {(r['source_id'], r['barge_name']): float(r['actual']) for r in cur.fetchall()}
+    barge_actual_map = {}
+    for r in cur.fetchall():
+        key = (r['source_id'], _bare_barge(r['barge_name']))
+        barge_actual_map[key] = barge_actual_map.get(key, 0) + float(r['actual'])
 
     # ── Fleet-wide average transit times (all historical LDUD barge trips) ──────
     cur.execute('''
