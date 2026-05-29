@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_from_directory
 from functools import wraps
 from database import get_db, get_cursor
 from config import SECRET_KEY, FLASK_ENV, SERVER_HOST, SERVER_PORT
@@ -6,6 +6,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        app.static_folder + '/img/favicon_io',
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon'
+    )
 
 
 @app.template_filter('indian_number')
