@@ -4,16 +4,48 @@ from flask import render_template, session, redirect, url_for, jsonify
 from functools import wraps
 from datetime import datetime, date, timedelta
 
-# Fixed reference point in the centre of the Dharamtar channel near the port berths.
-# Used to compute the compass bearing each berth faces toward the channel.
-_CHANNEL_LAT, _CHANNEL_LON = 18.710, 72.990
-
 def _bearing(lat1, lon1, lat2, lon2):
     """Great-circle bearing (°, 0=N clockwise) from point-1 to point-2."""
     r1, o1, r2, o2 = map(_math.radians, [lat1, lon1, lat2, lon2])
     x = _math.sin(o2 - o1) * _math.cos(r2)
     y = _math.cos(r1)*_math.sin(r2) - _math.sin(r1)*_math.cos(r2)*_math.cos(o2 - o1)
     return (_math.degrees(_math.atan2(x, y)) + 360) % 360
+
+def _ang_diff(a, b):
+    d = abs(a - b) % 360
+    return d if d <= 180 else 360 - d
+
+# Berth alignment line (lat, lon) — runs NNW→SSE along the port berth face.
+# Barge icons align along this tangent; MBC icons face perpendicular toward channel.
+_BERTH_LINE = [
+    (18.714818171878463, 73.02094596215585),
+    (18.712901266818648, 73.02293947956420),
+    (18.710932950718330, 73.02435357541219),
+    (18.709178365309256, 73.02578767430785),
+    (18.706735123742760, 73.02683431310976),
+    (18.704735312868834, 73.02751933948753),
+]
+
+def _berth_bearings(lat, lon):
+    """Return (berth_tangent_bearing, channel_facing_bearing) for a berth at (lat, lon).
+
+    berth_tangent: bearing along the nearest segment of _BERTH_LINE (barge long-axis)
+    channel_facing: perpendicular direction toward the water/channel (MBC bow)
+    """
+    best_d, best_brg = float('inf'), 0.0
+    for i in range(len(_BERTH_LINE) - 1):
+        mlat = (_BERTH_LINE[i][0] + _BERTH_LINE[i+1][0]) / 2
+        mlon = (_BERTH_LINE[i][1] + _BERTH_LINE[i+1][1]) / 2
+        d = (lat - mlat)**2 + (lon - mlon)**2
+        if d < best_d:
+            best_d   = d
+            best_brg = _bearing(_BERTH_LINE[i][0], _BERTH_LINE[i][1],
+                                 _BERTH_LINE[i+1][0], _BERTH_LINE[i+1][1])
+    # Two perpendicular candidates; pick the one facing west (toward channel ~270°)
+    p1 = (best_brg + 90) % 360
+    p2 = (best_brg - 90 + 360) % 360
+    ch_brg = p1 if _ang_diff(p1, 270) <= _ang_diff(p2, 270) else p2
+    return round(best_brg, 1), round(ch_brg, 1)
 
 from .. import bp
 from database import get_db, get_cursor
@@ -98,105 +130,82 @@ def port_map_data():
                                        'seq': r['berth_sequence']}
                     for r in berth_rows if r['lat'] is not None}
 
-    # ── Step 1: All vessels currently at anchorage ───────────────────────────
+    # ── Vessels currently at anchor: sourced from ldud_anchorage (discharge    ──
+    # anchorage recording sub-table of LDUD01).                                 ──
+    # A vessel is "at anchor" when it has an ldud_anchorage row with             ──
+    # anchored != '' and anchor_aweigh is null/empty (hasn't weighed anchor).   ──
+    # vcn_anchorage tracks port entry/exit; ldud_anchorage tracks discharge.    ──
     cur.execute('''
-        SELECT
-            vh.id           AS vcn_id,
+        SELECT DISTINCT ON (lh.vcn_id)
+            vh.id            AS vcn_id,
             vh.vessel_name,
             vh.vcn_doc_num,
-            va.anchorage_name,
-            va.anchorage_arrival
-        FROM vcn_anchorage va
-        JOIN vcn_header vh ON vh.id = va.vcn_id
-        WHERE va.anchorage_arrival IS NOT NULL
-          AND (va.anchorage_departure IS NULL OR va.anchorage_departure = '')
-        ORDER BY va.anchorage_arrival DESC
+            lh.id            AS ldud_id,
+            lh.doc_num       AS ldud_doc_num,
+            la.anchorage_name,
+            la.anchored      AS anchored_time,
+            la.cargo_name    AS anch_cargo
+        FROM ldud_anchorage la
+        JOIN ldud_header lh ON lh.id = la.ldud_id
+        JOIN vcn_header  vh ON vh.id = lh.vcn_id
+        WHERE lh.doc_status NOT IN ('Closed')
+          AND la.anchored IS NOT NULL AND la.anchored != ''
+          AND (la.anchor_aweigh IS NULL OR la.anchor_aweigh = '')
+        ORDER BY lh.vcn_id, la.anchored DESC
     ''')
     anchored_vessels_raw = cur.fetchall()
-    anchored_vcn_ids = list({r['vcn_id'] for r in anchored_vessels_raw if r['vcn_id']})
 
-    # ── Step 2: Enrich with LDUD progress data ───────────────────────────────
-    ldud_by_vcn = {}
+    anchored_vcn_ids  = list({r['vcn_id']  for r in anchored_vessels_raw if r['vcn_id']})
+    anchored_ldud_ids = list({r['ldud_id'] for r in anchored_vessels_raw if r['ldud_id']})
+
+    # Batch-fetch BL and ops progress for enrichment
+    bl_map  = {}
+    ops_map = {}
+    cargo_map = {}
     if anchored_vcn_ids:
-        # Most-recent non-Closed LDUD per VCN
-        cur.execute('''
-            SELECT id, vcn_id, doc_num
-            FROM ldud_header
-            WHERE vcn_id = ANY(%s) AND doc_status NOT IN ('Closed')
-            ORDER BY id DESC
-        ''', (anchored_vcn_ids,))
-        for row in cur.fetchall():
-            ldud_by_vcn.setdefault(row['vcn_id'],
-                                   {'ldud_id': row['id'], 'ldud_doc_num': row['doc_num']})
+        cur.execute('''SELECT vcn_id, COALESCE(SUM(bl_quantity),0) AS bl_total
+                       FROM vcn_cargo_declaration
+                       WHERE vcn_id = ANY(%s) GROUP BY vcn_id''', (anchored_vcn_ids,))
+        bl_map = {r['vcn_id']: float(r['bl_total']) for r in cur.fetchall()}
 
-        if ldud_by_vcn:
-            ldud_ids = [v['ldud_id'] for v in ldud_by_vcn.values()]
+        cur.execute('''SELECT vcn_id, COALESCE(SUM(bl_quantity),0) AS bl_total
+                       FROM vcn_export_cargo_declaration
+                       WHERE vcn_id = ANY(%s) GROUP BY vcn_id''', (anchored_vcn_ids,))
+        for r in cur.fetchall():
+            bl_map[r['vcn_id']] = bl_map.get(r['vcn_id'], 0) + float(r['bl_total'])
 
-            # BL from import cargo declarations
-            cur.execute('''
-                SELECT vcn_id, COALESCE(SUM(bl_quantity), 0) AS bl_total
-                FROM vcn_cargo_declaration
-                WHERE vcn_id = ANY(%s) GROUP BY vcn_id
-            ''', (anchored_vcn_ids,))
-            bl_map = {r['vcn_id']: float(r['bl_total']) for r in cur.fetchall()}
+    if anchored_ldud_ids:
+        cur.execute('''SELECT ldud_id, COALESCE(SUM(quantity),0) AS ops_total
+                       FROM ldud_vessel_operations
+                       WHERE ldud_id = ANY(%s) GROUP BY ldud_id''', (anchored_ldud_ids,))
+        ops_map = {r['ldud_id']: float(r['ops_total']) for r in cur.fetchall()}
 
-            # BL from export cargo declarations (add to import totals)
-            cur.execute('''
-                SELECT vcn_id, COALESCE(SUM(bl_quantity), 0) AS bl_total
-                FROM vcn_export_cargo_declaration
-                WHERE vcn_id = ANY(%s) GROUP BY vcn_id
-            ''', (anchored_vcn_ids,))
-            for r in cur.fetchall():
-                bl_map[r['vcn_id']] = bl_map.get(r['vcn_id'], 0) + float(r['bl_total'])
+        cur.execute('''SELECT ldud_id, STRING_AGG(DISTINCT cargo_name, ', ') AS cargo_str
+                       FROM ldud_anchorage
+                       WHERE ldud_id = ANY(%s) AND cargo_name IS NOT NULL
+                       GROUP BY ldud_id''', (anchored_ldud_ids,))
+        cargo_map = {r['ldud_id']: r['cargo_str'] for r in cur.fetchall()}
 
-            # Actual discharged from vessel operations
-            cur.execute('''
-                SELECT ldud_id, COALESCE(SUM(quantity), 0) AS ops_total
-                FROM ldud_vessel_operations
-                WHERE ldud_id = ANY(%s) GROUP BY ldud_id
-            ''', (ldud_ids,))
-            ops_map = {r['ldud_id']: float(r['ops_total']) for r in cur.fetchall()}
-
-            # Cargo names from anchorage recording sub-table
-            cur.execute('''
-                SELECT ldud_id, STRING_AGG(DISTINCT cargo_name, ', ') AS cargo_str
-                FROM ldud_anchorage
-                WHERE ldud_id = ANY(%s) AND cargo_name IS NOT NULL
-                GROUP BY ldud_id
-            ''', (ldud_ids,))
-            cargo_map = {r['ldud_id']: r['cargo_str'] for r in cur.fetchall()}
-
-            for vid, info in ldud_by_vcn.items():
-                lid = info['ldud_id']
-                bl  = bl_map.get(vid, 0)
-                ops = ops_map.get(lid, 0)
-                balance = round(bl - ops, 2)
-                pct = min(round(ops / bl * 100, 1) if bl > 0 else 0, 100)
-                info.update({
-                    'bl_qty':  round(bl, 2),
-                    'ops_qty': round(ops, 2),
-                    'balance': balance,
-                    'pct':     pct,
-                    'cargo':   cargo_map.get(lid, ''),
-                })
-
-    # ── Group by anchorage (all anchored vessels shown, LDUD data merged in) ─
     vessels_by_anchorage = {}
     for r in anchored_vessels_raw:
         an  = r['anchorage_name'] or ''
         vid = r['vcn_id']
-        info = ldud_by_vcn.get(vid, {})
+        lid = r['ldud_id']
+        bl  = bl_map.get(vid, 0)
+        ops = ops_map.get(lid, 0)
+        balance = round(bl - ops, 2)
+        pct = min(round(ops / bl * 100, 1) if bl > 0 else 0, 100)
         vessels_by_anchorage.setdefault(an, []).append({
             'vcn_id':       vid,
             'vessel_name':  r['vessel_name'],
             'doc_num':      r['vcn_doc_num'],
-            'ldud_doc_num': info.get('ldud_doc_num'),
-            'arrived':      str(r['anchorage_arrival']) if r['anchorage_arrival'] else None,
-            'cargo':        info.get('cargo', ''),
-            'bl_qty':       info.get('bl_qty', 0),
-            'ops_qty':      info.get('ops_qty', 0),
-            'balance':      info.get('balance', 0),
-            'pct':          info.get('pct', 0),
+            'ldud_doc_num': r['ldud_doc_num'],
+            'arrived':      r['anchored_time'] or None,
+            'cargo':        cargo_map.get(lid, r['anch_cargo'] or ''),
+            'bl_qty':       round(bl, 2),
+            'ops_qty':      round(ops, 2),
+            'balance':      balance,
+            'pct':          pct,
         })
 
     # Build anchorage list
@@ -243,17 +252,19 @@ def port_map_data():
     ''')
     barge_lines = cur.fetchall()
 
-    # ── Today's berth assignments from LUEU (for barges at berth) ────────────
+    # ── Most-recent berth assignment per barge from LUEU ─────────────────────
+    # No date filter: a barge AT_BERTH may have started yesterday; the most    ─
+    # recent LUEU entry tells us which berth it is currently operating at.     ─
     cur.execute('''
         SELECT DISTINCT ON (source_id, barge_name)
             source_id, barge_name, berth_name, equipment_name, cargo_name
         FROM lueu_lines
-        WHERE entry_date = %s AND is_deleted IS NOT TRUE
+        WHERE is_deleted IS NOT TRUE
           AND source_type = 'VCN'
-          AND barge_name IS NOT NULL AND barge_name != ''
-          AND berth_name IS NOT NULL
+          AND barge_name  IS NOT NULL AND barge_name  != ''
+          AND berth_name  IS NOT NULL AND berth_name  != ''
         ORDER BY source_id, barge_name, id DESC
-    ''', [today_s])
+    ''')
     barge_berth_map = {(r['source_id'], r['barge_name']): r for r in cur.fetchall()}
 
     # ── BL quantities from ldud_barge_lines ──────────────────────────────────
@@ -527,10 +538,10 @@ def port_map_data():
         if lat is None:
             continue
 
-        # Bearing from this berth toward the channel centre
-        ch_brg = _bearing(lat, lon, _CHANNEL_LAT, _CHANNEL_LON)
-        # Assets bank along the berth face (perpendicular to channel bearing ≈ +90°)
-        face_brg = _math.radians((ch_brg + 90) % 360)
+        # Tangent along berth alignment line and perpendicular toward channel
+        bt_brg, ch_brg = _berth_bearings(lat, lon)
+        # Assets bank along the berth face (tangent direction = along berth line)
+        face_brg = _math.radians(bt_brg)
         step = 0.00011  # ~12 m between banks
 
         assets = berth_assets.get(bn, [])
@@ -553,7 +564,8 @@ def port_map_data():
             'lat':             lat,
             'lon':             lon,
             'berth_sequence':  row['berth_sequence'],
-            'channel_bearing': round(ch_brg, 1),
+            'berth_bearing':   bt_brg,   # along berth line → barge long-axis
+            'channel_bearing': ch_brg,   # perpendicular toward water → MBC bow
             'active':          len(assets) > 0,
             'assets':          assets,
             'today_qty':       round(float(perf['today_qty'] or 0), 2),

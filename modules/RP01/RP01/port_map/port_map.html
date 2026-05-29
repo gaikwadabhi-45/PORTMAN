@@ -402,12 +402,23 @@ function fmtEta(mins) {
 
 /* ── LAYER GROUPS ── */
 const layers = {
+  channel:    L.layerGroup().addTo(map),
   anchorages: L.layerGroup().addTo(map),
   berths:     L.layerGroup().addTo(map),
   assets:     L.layerGroup().addTo(map),
   transit:    L.layerGroup().addTo(map),
   waypoints:  L.layerGroup().addTo(map),
 };
+
+// Draw channel route once — cleared & redrawn on each render()
+function drawChannelRoute() {
+  layers.channel.clearLayers();
+  L.polyline(CHANNEL_PATH, {
+    color: '#0891B2', weight: 4, opacity: 0.55, dashArray: '10 7',
+    lineJoin: 'round', lineCap: 'round'
+  }).bindTooltip('Dharamtar Channel — Gull Island → Port Berths', {sticky: true})
+    .addTo(layers.channel);
+}
 
 function toggleLayer(name) {
   const lyr = layers[name];
@@ -570,8 +581,9 @@ let lastData = null;
 function render(d) {
   lastData = d;
 
-  // Clear all layers
+  // Clear all layers then redraw static elements
   Object.values(layers).forEach(l => l.clearLayers());
+  drawChannelRoute();
 
   // Add waypoints back (they're static-ish)
   let allVessels = 0, allBarges = 0, allMBCs = 0, allTransit = 0;
@@ -679,12 +691,13 @@ function render(d) {
      })
      .addTo(layers.berths);
 
-    // Asset markers (barges / MBCs at this berth)
-    const chBrg = b.channel_bearing || 270;
+    // Asset markers — barges align along berth line, MBCs face toward channel
+    const btBrg = b.berth_bearing   || 149;  // along berth line (barge long-axis)
+    const chBrg = b.channel_bearing || 239;  // perpendicular toward water (MBC bow)
     (b.assets || []).forEach((asset, i) => {
       const alat = asset.lat ?? b.lat;
       const alon = asset.lon ?? b.lon;
-      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, chBrg) : bargeIcon(asset.pct, chBrg);
+      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, chBrg) : bargeIcon(asset.pct, btBrg);
       L.marker([alat, alon], {icon, zIndexOffset: 500})
        .bindPopup(assetPopup(asset))
        .bindTooltip(`${asset.name} (${asset.pct}%)`, {sticky: true})
@@ -769,6 +782,7 @@ setInterval(() => {
 }, 1000);
 
 /* ── INIT ── */
+drawChannelRoute();
 loadData();
 </script>
 </body>
