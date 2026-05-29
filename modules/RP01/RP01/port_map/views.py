@@ -22,19 +22,40 @@ def _bare_barge(name):
         return ''
     return name.split(' / ')[0].strip() if ' / ' in name else name.strip()
 
-# The port berths lie in a near-straight line along the east bank; the channel
-# (water) is to the WEST of them. Assets are oriented PERPENDICULAR to the berth
-# line, pointing toward the channel (~west).
+# Berth alignment line (lat, lon) — the port berth face. Assets are oriented to
+# FOLLOW THE SLOPE of this line (long axis parallel to it); double-banked assets
+# offset PERPENDICULAR to it (toward the channel, ~west).
+_BERTH_LINE = [
+    (18.714818171878463, 73.02094596215585),
+    (18.712901266818648, 73.02293947956420),
+    (18.710932950718330, 73.02435357541219),
+    (18.709178365309256, 73.02578767430785),
+    (18.706735123742760, 73.02683431310976),
+    (18.704735312868834, 73.02751933948753),
+]
 _CHANNEL_SIDE_BEARING = 270.0  # due west — water side of the berths
 
-def _berth_bearings_from_line(lat, lon, tangent_brg):
-    """Given a berth's position and the berth-line tangent bearing, return
-    (tangent_bearing, channel_facing_bearing). channel_facing is the perpendicular
-    closest to the water side (west)."""
-    p1 = (tangent_brg + 90) % 360
-    p2 = (tangent_brg - 90 + 360) % 360
+def _berth_bearings(lat, lon):
+    """Return (slope_bearing, channel_facing_bearing) for a berth at (lat, lon).
+
+    slope_bearing  : bearing along the nearest segment of _BERTH_LINE — assets
+                     follow this slope (long axis parallel to the berth line).
+    channel_facing : perpendicular to the slope, toward the water side (~west) —
+                     the direction double-banked assets offset outward.
+    """
+    best_d, slope = float('inf'), 0.0
+    for i in range(len(_BERTH_LINE) - 1):
+        mlat = (_BERTH_LINE[i][0] + _BERTH_LINE[i+1][0]) / 2
+        mlon = (_BERTH_LINE[i][1] + _BERTH_LINE[i+1][1]) / 2
+        d = (lat - mlat)**2 + (lon - mlon)**2
+        if d < best_d:
+            best_d = d
+            slope  = _bearing(_BERTH_LINE[i][0], _BERTH_LINE[i][1],
+                              _BERTH_LINE[i+1][0], _BERTH_LINE[i+1][1])
+    p1 = (slope + 90) % 360
+    p2 = (slope - 90 + 360) % 360
     ch_brg = p1 if _ang_diff(p1, _CHANNEL_SIDE_BEARING) <= _ang_diff(p2, _CHANNEL_SIDE_BEARING) else p2
-    return round(tangent_brg, 1), round(ch_brg, 1)
+    return round(slope, 1), round(ch_brg, 1)
 
 from .. import bp
 from database import get_db, get_cursor
@@ -531,34 +552,6 @@ def port_map_data():
             'eta_label':   eta_label,
         })
 
-    # ── Berth-line tangent per berth (from neighbouring berths) ──────────────
-    # Order berths by sequence (fallback latitude N→S) so consecutive berths are
-    # geographic neighbours, then take the bearing between neighbours as the
-    # local berth-line tangent. This adapts to wherever the berths actually are
-    # instead of a hardcoded line.
-    line_berths = sorted(
-        [r for r in berth_rows if r['lat'] is not None],
-        key=lambda r: (r['berth_sequence'] if r['berth_sequence'] is not None else 9999,
-                       -float(r['lat']))
-    )
-    tangent_by_berth = {}
-    L = len(line_berths)
-    for i, r in enumerate(line_berths):
-        prev_r = line_berths[i-1] if i > 0 else None
-        next_r = line_berths[i+1] if i < L - 1 else None
-        if prev_r and next_r:
-            tb = _bearing(float(prev_r['lat']), float(prev_r['lon']),
-                          float(next_r['lat']), float(next_r['lon']))
-        elif next_r:
-            tb = _bearing(float(r['lat']), float(r['lon']),
-                          float(next_r['lat']), float(next_r['lon']))
-        elif prev_r:
-            tb = _bearing(float(prev_r['lat']), float(prev_r['lon']),
-                          float(r['lat']), float(r['lon']))
-        else:
-            tb = 0.0  # single berth — arbitrary tangent
-        tangent_by_berth[r['berth_name']] = tb
-
     # ── Assign bank indices for double-banked berths ─────────────────────────
     berths_out = []
     for row in berth_rows:
@@ -568,20 +561,18 @@ def port_map_data():
         if lat is None:
             continue
 
-        # Tangent from neighbouring berths; assets face the channel (ch_brg,
-        # perpendicular to the berth line) and spread ALONG the berth line so
-        # double-banked barges/MBCs sit side-by-side, centred on the berth.
-        bt_brg, ch_brg = _berth_bearings_from_line(lat, lon, tangent_by_berth.get(bn, 0.0))
-        face_brg = _math.radians(bt_brg)
+        # Assets follow the berth-line slope (bt_brg = long axis). Double-banked
+        # assets offset PERPENDICULAR (ch_brg, toward the channel) so they sit
+        # side-by-side / banked outward instead of strung along one line.
+        bt_brg, ch_brg = _berth_bearings(lat, lon)
+        bank_brg = _math.radians(ch_brg)
         step = 0.00015  # ~17 m between banks
 
         assets = berth_assets.get(bn, [])
-        n = len(assets)
         for i, asset in enumerate(assets):
-            centered = (i - (n - 1) / 2) if n > 1 else 0   # centre the row on the berth
             asset['bank_index'] = i
-            asset['lat'] = round(lat + centered * step * _math.cos(face_brg), 6)
-            asset['lon'] = round(lon + centered * step * _math.sin(face_brg) /
+            asset['lat'] = round(lat + i * step * _math.cos(bank_brg), 6)
+            asset['lon'] = round(lon + i * step * _math.sin(bank_brg) /
                                   _math.cos(_math.radians(lat)), 6)
 
         # Today's totals from LUEU

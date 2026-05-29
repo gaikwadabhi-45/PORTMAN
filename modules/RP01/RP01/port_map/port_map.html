@@ -704,14 +704,14 @@ function render(d) {
      })
      .addTo(layers.berths);
 
-    // Asset markers — barges AND MBCs both face the channel (same orientation).
-    // Multiples on one berth are offset along the berth line (perpendicular to
-    // their facing), so they sit side-by-side instead of stacked in one line.
-    const chBrg = b.channel_bearing || 239;  // perpendicular toward water (bow)
+    // Asset markers — barges AND MBCs both follow the berth-line slope (same
+    // orientation, long axis parallel to the berth). Double-banked assets are
+    // offset perpendicular (toward the channel) so they sit side-by-side.
+    const slopeBrg = b.berth_bearing ?? 149;  // along berth line (long axis)
     (b.assets || []).forEach((asset, i) => {
       const alat = asset.lat ?? b.lat;
       const alon = asset.lon ?? b.lon;
-      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, chBrg) : bargeIcon(asset.pct, chBrg);
+      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, slopeBrg) : bargeIcon(asset.pct, slopeBrg);
       L.marker([alat, alon], {icon, zIndexOffset: 500})
        .bindPopup(assetPopup(asset))
        .bindTooltip(`${asset.name} (${asset.pct}%)`, {sticky: true})
