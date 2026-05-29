@@ -85,17 +85,40 @@ def port_map_data():
                                        'seq': r['berth_sequence']}
                     for r in berth_rows if r['lat'] is not None}
 
-    # ── Vessels currently at anchorage ───────────────────────────────────────
-    # vcn_anchorage: arrival set, departure null/empty → vessel is anchored
+    # ── Vessels currently at anchorage with active LDUD progress ─────────────
+    # Only vessels that have a non-Closed LDUD (balance != 0) are shown.
     cur.execute('''
         SELECT
-            vh.id           AS vcn_id,
+            vh.id            AS vcn_id,
             vh.vessel_name,
             vh.vcn_doc_num,
             va.anchorage_name,
-            va.anchorage_arrival
+            va.anchorage_arrival,
+            lh.id            AS ldud_id,
+            lh.doc_num       AS ldud_doc_num,
+            COALESCE(bl.bl_total,  0) AS bl_total,
+            COALESCE(vo.ops_total, 0) AS ops_total,
+            COALESCE(cg.cargo_str, '') AS cargo_name
         FROM vcn_anchorage va
         JOIN vcn_header vh ON vh.id = va.vcn_id
+        JOIN ldud_header lh ON lh.vcn_id = va.vcn_id
+            AND lh.doc_status NOT IN ('Closed')
+        LEFT JOIN (
+            SELECT vcn_id, SUM(bl_quantity) AS bl_total FROM (
+                SELECT vcn_id, bl_quantity FROM vcn_cargo_declaration
+                UNION ALL
+                SELECT vcn_id, bl_quantity FROM vcn_export_cargo_declaration
+            ) x GROUP BY vcn_id
+        ) bl ON bl.vcn_id = vh.id
+        LEFT JOIN (
+            SELECT ldud_id, SUM(quantity) AS ops_total
+            FROM ldud_vessel_operations GROUP BY ldud_id
+        ) vo ON vo.ldud_id = lh.id
+        LEFT JOIN (
+            SELECT ldud_id,
+                   STRING_AGG(DISTINCT cargo_name, ', ' ORDER BY cargo_name) AS cargo_str
+            FROM ldud_anchorage WHERE cargo_name IS NOT NULL GROUP BY ldud_id
+        ) cg ON cg.ldud_id = lh.id
         WHERE va.anchorage_arrival IS NOT NULL
           AND (va.anchorage_departure IS NULL OR va.anchorage_departure = '')
         ORDER BY va.anchorage_arrival DESC
@@ -106,11 +129,21 @@ def port_map_data():
     vessels_by_anchorage = {}
     for r in anchored_vessels_raw:
         an = r['anchorage_name'] or ''
+        bl  = float(r['bl_total']  or 0)
+        ops = float(r['ops_total'] or 0)
+        balance = round(bl - ops, 2)
+        pct = min(round(ops / bl * 100, 1) if bl > 0 else 0, 100)
         vessels_by_anchorage.setdefault(an, []).append({
             'vcn_id':       r['vcn_id'],
             'vessel_name':  r['vessel_name'],
             'doc_num':      r['vcn_doc_num'],
+            'ldud_doc_num': r['ldud_doc_num'],
             'arrived':      str(r['anchorage_arrival']) if r['anchorage_arrival'] else None,
+            'cargo':        r['cargo_name'],
+            'bl_qty':       round(bl, 2),
+            'ops_qty':      round(ops, 2),
+            'balance':      balance,
+            'pct':          pct,
         })
 
     # Build anchorage list

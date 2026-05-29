@@ -222,13 +222,9 @@ input[type=checkbox] { accent-color:var(--blue); width:14px; height:14px; }
           <span class="layer-dot" style="background:#7C3AED"></span>
           <span class="layer-label">In Transit</span>
           <span class="layer-count" id="cnt-transit">—</span></div>
-        <div class="layer-row"><input type="checkbox" id="lyr-channel" checked onchange="toggleLayer('channel')">
-          <span class="layer-dot" style="background:#0891B2;border-radius:0"></span>
-          <span class="layer-label">Channel Route</span>
-          <span class="layer-count"></span></div>
         <div class="layer-row"><input type="checkbox" id="lyr-wp" checked onchange="toggleLayer('waypoints')">
           <span class="layer-dot" style="background:#64748B"></span>
-          <span class="layer-label">Waypoints</span>
+          <span class="layer-label">Landmarks</span>
           <span class="layer-count"></span></div>
       </div>
     </div>
@@ -252,6 +248,7 @@ input[type=checkbox] { accent-color:var(--blue); width:14px; height:14px; }
         <div class="leg-item"><div class="leg-icon"><div style="width:20px;height:8px;border-radius:2px;border:1.5px solid #FCD34D;background:#FFFBEB"></div></div><span class="leg-lbl">Barge</span></div>
         <div class="leg-item"><div class="leg-icon"><div style="width:18px;height:8px;clip-path:polygon(0 0,92% 0,100% 50%,92% 100%,0 100%);border:1.5px solid #A5F3FC;background:#ECFEFF"></div></div><span class="leg-lbl">MBC</span></div>
         <div class="leg-item"><div class="leg-icon"><div style="width:10px;height:10px;border-radius:50%;border:2px solid #7C3AED;background:#EDE9FE;animation:transit-pulse 2s ease-in-out infinite"></div></div><span class="leg-lbl">In transit</span></div>
+        <div class="leg-item"><div class="leg-icon"><svg width="16" height="16" viewBox="0 0 16 16"><polygon points="8,1 15,15 1,15" fill="#64748B" stroke="#fff" stroke-width="1.5"/></svg></div><span class="leg-lbl">Landmark</span></div>
       </div>
     </div>
 
@@ -286,8 +283,8 @@ const REFRESH = 60;
 const PORT_CENTER = [18.7053, 73.0281];
 const PORT_ZOOM   = 13;
 
-// Channel route: Gull Island → Berth 1, traced on geojson.io
-const CHANNEL_GEOJSON = {"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[72.89658266480782,18.833811110744946],[72.94714951195965,18.831363735004487],[72.95433230274907,18.818310462360472],[72.96869788432545,18.79655275599687],[72.99656711258618,18.782952761098727],[72.99886560563786,18.778600530807466],[72.98622389385054,18.75738179880021],[72.98536195895602,18.752484789224084],[72.98708582874505,18.743234494568583],[72.99714173584877,18.727725510770668],[73.0069103313206,18.719834428796773],[73.0212759128982,18.71466420986846],[73.02644752226664,18.708949573483594],[73.02845784852622,18.70133101074053]]}};
+// Only these two landmarks are plotted; others from DB are ignored.
+const SHOW_LANDMARKS = new Set(['Gull Island', 'Yellow Crane']);
 
 let cd = REFRESH;
 
@@ -338,9 +335,10 @@ const map = L.map('map', {
 });
 map.fitBounds(AREA_BOUNDS);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19
+// Plain light tile — white land, blue water, no foliage/labels
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+  attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+  maxZoom: 20, subdomains: 'abcd'
 }).addTo(map);
 
 /* ── LAYER GROUPS ── */
@@ -349,7 +347,6 @@ const layers = {
   berths:     L.layerGroup().addTo(map),
   assets:     L.layerGroup().addTo(map),
   transit:    L.layerGroup().addTo(map),
-  channel:    L.layerGroup().addTo(map),
   waypoints:  L.layerGroup().addTo(map),
 };
 
@@ -357,20 +354,6 @@ function toggleLayer(name) {
   const lyr = layers[name];
   if (map.hasLayer(lyr)) map.removeLayer(lyr);
   else map.addLayer(lyr);
-}
-
-/* ── CHANNEL POLYLINE ── */
-function drawChannel() {
-  layers.channel.clearLayers();
-  L.geoJSON(CHANNEL_GEOJSON, {
-    style: { color: '#0891B2', weight: 3, dashArray: '8 5', opacity: 0.65 }
-  }).bindTooltip('Dharamtar Channel — Gull Island to Berth 1', {sticky: true})
-    .addTo(layers.channel);
-  // Port area circle
-  L.circle(PORT_CENTER, {
-    radius: 800, color: '#2563EB', weight: 1,
-    fillColor: '#2563EB', fillOpacity: 0.04, dashArray: '4 4'
-  }).addTo(layers.channel).bindTooltip('Dharamtar Port Area', {permanent: false});
 }
 
 /* ── ICON FACTORIES ── */
@@ -482,9 +465,18 @@ function assetPopup(asset) {
 }
 
 function vesselPopup(vessel) {
+  const pct = vessel.pct || 0;
+  const pc  = progColor(pct);
   return `<div class="popup-title"><span class="popup-pill VCN">VCN</span> ${vessel.vessel_name}</div>
     <div class="popup-row"><span class="popup-lbl">Doc #</span><span class="popup-val">${vessel.doc_num || '—'}</span></div>
-    <div class="popup-row"><span class="popup-lbl">Arrived</span><span class="popup-val">${vessel.arrived ? vessel.arrived.slice(0,16) : '—'}</span></div>`;
+    ${vessel.ldud_doc_num ? `<div class="popup-row"><span class="popup-lbl">LDUD</span><span class="popup-val">${vessel.ldud_doc_num}</span></div>` : ''}
+    <div class="popup-row"><span class="popup-lbl">Cargo</span><span class="popup-val">${vessel.cargo || '—'}</span></div>
+    <div class="popup-row"><span class="popup-lbl">Arrived</span><span class="popup-val">${vessel.arrived ? vessel.arrived.slice(0,16) : '—'}</span></div>
+    <div class="popup-row"><span class="popup-lbl">B/L</span><span class="popup-val">${fmtNum(vessel.bl_qty)} MT</span></div>
+    <div class="popup-row"><span class="popup-lbl">Discharged</span><span class="popup-val">${fmtNum(vessel.ops_qty)} MT</span></div>
+    <div class="popup-row"><span class="popup-lbl">Balance</span><span class="popup-val" style="color:${pc};font-weight:600">${fmtNum(vessel.balance)} MT</span></div>
+    <div class="popup-prog"><div class="popup-prog-fill" style="width:${pct}%;background:${pc}"></div></div>
+    <div style="font-family:'DM Mono',monospace;font-size:9px;color:${pc};text-align:right">${pct}%</div>`;
 }
 
 /* ── INFO BOX (sidebar) ── */
@@ -506,16 +498,14 @@ function render(d) {
 
   // Clear all layers
   Object.values(layers).forEach(l => l.clearLayers());
-  drawChannel();
 
   // Add waypoints back (they're static-ish)
   let allVessels = 0, allBarges = 0, allMBCs = 0, allTransit = 0;
 
-  // ── Waypoints ──
-  (d.waypoints || []).forEach(wp => {
+  // ── Landmarks (Gull Island + Yellow Crane only) ──
+  (d.waypoints || []).filter(wp => SHOW_LANDMARKS.has(wp.name)).forEach(wp => {
     L.marker([wp.lat, wp.lon], {icon: waypointIcon(wp.type), zIndexOffset: 100})
      .bindPopup(`<div class="popup-title">${wp.name}</div>
-       <div class="popup-row"><span class="popup-lbl">Type</span><span class="popup-val">${wp.type}</span></div>
        <div class="popup-row"><span class="popup-lbl">Coords</span><span class="popup-val">${wp.lat.toFixed(4)}, ${wp.lon.toFixed(4)}</span></div>`)
      .bindTooltip(wp.name, {permanent: true, direction: 'top', className: 'leaflet-tooltip', offset: [0, -10]})
      .addTo(layers.waypoints);
@@ -545,7 +535,13 @@ function render(d) {
          ? anch.vessels.map(v => infoCard(`⚓ ${v.vessel_name}`, [
              ['Anchorage', anch.name],
              ['Doc #', v.doc_num || '—'],
+             ['LDUD', v.ldud_doc_num || '—'],
+             ['Cargo', v.cargo || '—'],
              ['Arrived', v.arrived ? v.arrived.slice(0,16) : '—'],
+             ['B/L', `${fmtNum(v.bl_qty)} MT`],
+             ['Discharged', `${fmtNum(v.ops_qty)} MT`],
+             ['Balance', `${fmtNum(v.balance)} MT`],
+             ['Progress', `${v.pct}%`],
            ])).join('')
          : infoCard(`⚓ ${anch.name}`, [['Status', 'Vacant']]));
      })
@@ -563,7 +559,13 @@ function render(d) {
        .on('click', () => showInfo(infoCard(`🚢 ${v.vessel_name}`, [
            ['Anchorage', anch.name],
            ['Doc #', v.doc_num || '—'],
+           ['LDUD', v.ldud_doc_num || '—'],
+           ['Cargo', v.cargo || '—'],
            ['Arrived', v.arrived ? v.arrived.slice(0,16) : '—'],
+           ['B/L', `${fmtNum(v.bl_qty)} MT`],
+           ['Discharged', `${fmtNum(v.ops_qty)} MT`],
+           ['Balance', `${fmtNum(v.balance)} MT`],
+           ['Progress', `${v.pct}%`],
          ])))
        .addTo(layers.anchorages);
     });
@@ -679,7 +681,6 @@ setInterval(() => {
 }, 1000);
 
 /* ── INIT ── */
-drawChannel();
 loadData();
 </script>
 </body>

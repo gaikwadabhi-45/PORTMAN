@@ -108,7 +108,12 @@
     <!-- Port Traffic Map -->
     <a class="report-card" href="/module/RP01/port-map/" target="_blank" rel="noopener">
         <div class="card-icon">
-            <img src="{{ url_for('static', filename='img/map.png') }}" alt="Port Traffic Map" onerror="this.style.fontSize='32px';this.outerHTML='<span style=&quot;font-size:32px&quot;>🗺</span>'">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="36" height="36" rx="6" fill="#EFF6FF"/>
+                <path d="M6 10l8-3 8 3 8-3v19l-8 3-8-3-8 3V10z" stroke="#2563EB" stroke-width="1.8" fill="#BFDBFE" fill-opacity=".4"/>
+                <circle cx="14" cy="17" r="3" fill="#2563EB" opacity=".7"/>
+                <path d="M14 14v-4M14 20v4" stroke="#2563EB" stroke-width="1.2"/>
+            </svg>
         </div>
         <div class="card-title">Port Traffic Map</div>
         <div class="card-desc">
