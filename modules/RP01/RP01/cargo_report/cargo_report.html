@@ -1,0 +1,672 @@
+{% extends "base.html" %}
+
+{% block title %}Cargo Handling - RP01{% endblock %}
+
+{% block head %}
+<!-- WebDataRocks pivot table -->
+<link href="https://cdn.webdatarocks.com/latest/webdatarocks.min.css" rel="stylesheet">
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.toolbar.min.js"></script>
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.js"></script>
+
+<!-- Highcharts (cdnjs mirror — code.highcharts.com blocks direct hotlinking) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/highcharts.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/highcharts-3d.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/exporting.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/export-data.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/drilldown.min.js"></script>
+
+<!-- WebDataRocks ↔ Highcharts connector -->
+<script src="https://cdn.webdatarocks.com/latest/webdatarocks.highcharts.js"></script>
+
+<style>
+/* ── Page header ─────────────────────────────────────────── */
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border-color);
+}
+.page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+.module-badge {
+    background: #4a90d9; color: #fff;
+    padding: 3px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+}
+.breadcrumb {
+    font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;
+}
+.breadcrumb a { color: #4a90d9; text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+.toolbar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.toolbar-group label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.toolbar-group select,
+.toolbar-group input[type="datetime-local"] {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 28px;
+}
+.toolbar-group select:focus,
+.toolbar-group input[type="datetime-local"]:focus { outline: none; border-color: #4a90d9; }
+.tb-btn {
+    padding: 0 14px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    align-self: flex-end;
+    white-space: nowrap;
+}
+.tb-btn.primary  { background: #4a90d9; color: #fff; }
+.tb-btn.primary:hover  { background: #357abd; }
+.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Status bar ──────────────────────────────────────────── */
+.status-bar {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    min-height: 16px;
+}
+.status-bar.error { color: #e74c3c; }
+
+/* ── Pivot wrapper ───────────────────────────────────────── */
+#wdr-component {
+    margin-bottom: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* ── Chart panels ────────────────────────────────────────── */
+.chart-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 4px;
+}
+.chart-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.chart-type-sel {
+    padding: 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.chart-type-sel:focus { outline: none; border-color: #4a90d9; }
+.chart-container {
+    height: 350px;
+    padding: 4px;
+}
+
+/* ── KPI stat cards ──────────────────────────────────────── */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.kpi-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 14px 16px 12px;
+    border-left: 4px solid #2E75B6;
+    transition: border-color 0.2s;
+}
+.kpi-card:nth-child(2) { border-left-color: #ED7D31; }
+.kpi-card:nth-child(3) { border-left-color: #A9D18E; }
+.kpi-card:nth-child(4) { border-left-color: #FFC000; }
+.kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.kpi-label select {
+    font-size: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 1px 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    max-width: 120px;
+}
+.kpi-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* ── Chart panel settings ───────────────────────────────── */
+.chart-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    flex-wrap: wrap;
+}
+.chart-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-right: auto;
+}
+.chart-opt-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+.chart-opt-group select {
+    font-size: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 2px 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.chart-opt-group input[type="checkbox"] {
+    cursor: pointer;
+    margin: 0;
+}
+.chart-opt-group label {
+    cursor: pointer;
+    user-select: none;
+}
+
+#cargo-report-table thead th {
+    background: #e8e7b5 !important;
+    color: #000 !important;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+}
+
+#cargo-report-table tbody td {
+    font-size: 13px;
+    color: #344054;
+    border: 1px solid #d9dee7;
+    padding: 10px;
+    vertical-align: middle;
+}
+
+#cargo-report-table tbody tr:nth-child(even) {
+    background: #f9fafb;
+}
+
+/* Space between filter section and table */
+.report-spacing {
+    margin-top: 20px;
+}
+
+/* DataTable top controls spacing */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter {
+    margin-bottom: 14px;
+}
+
+/* Space below table */
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    margin-top: 14px;
+}
+
+/* Better table container spacing */
+#cargo-report-table_wrapper {
+    padding: 16px;
+}
+/* ── Placeholder ─────────────────────────────────────────── */
+.chart-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #aaa;
+    font-size: 12px;
+    font-family: Verdana, sans-serif;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <h2>Cargo Handling</h2>
+    <span class="module-badge">RP01</span>
+</div>
+<div class="breadcrumb">
+    <a href="/module/RP01/">Reports</a> &rsaquo; Cargo Handling
+</div>
+
+<!-- <div class="report-page"> -->
+
+    <!-- Header -->
+    <!-- <div class="report-header">
+        <h2>Cargo Handling Report</h2>
+    </div> -->
+
+    <!-- Filter Section -->
+<div style="
+    background:#f8f9fb;
+    border:1px solid #d9dee7;
+    border-radius:8px;
+    padding:18px;
+    margin-bottom:20px;
+">
+
+    <div style="
+        display:flex;
+        gap:14px;
+        align-items:flex-end;
+        flex-wrap:wrap;
+    ">
+
+        <!-- FROM DATE -->
+        <div style="display:flex;flex-direction:column;gap:6px;">
+
+            <label style="
+                font-size:12px;
+                font-weight:700;
+                color:#667085;
+                text-transform:uppercase;
+            ">
+                FROM DATE
+            </label>
+
+            <input
+                type="date"
+                id="from-date"
+                class="form-control"
+                style="
+                    width:160px;
+                    height:38px;
+                    border:1px solid #d0d5dd;
+                    border-radius:6px;
+                    padding:0 12px;
+                    font-size:14px;
+                    background:#ffffff;
+                ">
+        </div>
+
+        <!-- TO DATE -->
+        <div style="display:flex;flex-direction:column;gap:6px;">
+
+            <label style="
+                font-size:12px;
+                font-weight:700;
+                color:#667085;
+                text-transform:uppercase;
+            ">
+                TO DATE
+            </label>
+
+            <input
+                type="date"
+                id="to-date"
+                class="form-control"
+                style="
+                    width:160px;
+                    height:38px;
+                    border:1px solid #d0d5dd;
+                    border-radius:6px;
+                    padding:0 12px;
+                    font-size:14px;
+                    background:#ffffff;
+                ">
+        </div>
+
+        <!-- APPLY BUTTON -->
+        <button
+            id="apply-filter-btn"
+            style="
+                height:38px;
+                min-width:90px;
+                background:#4a90d9;
+                color:white;
+                border:none;
+                border-radius:6px;
+                font-size:14px;
+                font-weight:700;
+                cursor:pointer;
+            ">
+            Apply
+        </button>
+
+        <!-- RESET BUTTON -->
+        <button
+            id="reset-filter-btn"
+            style="
+                height:38px;
+                min-width:90px;
+                background:#ffffff;
+                color:#667085;
+                border:1px solid #d0d5dd;
+                border-radius:6px;
+                font-size:14px;
+                font-weight:700;
+                cursor:pointer;
+            ">
+            Reset
+        </button>
+
+        <!-- DOWNLOAD BUTTON -->
+        <button
+            id="download-report-btn"
+            style="
+                height:38px;
+                min-width:200px;
+                background:#22c55e;
+                color:white;
+                border:none;
+                border-radius:6px;
+                font-size:14px;
+                font-weight:700;
+                cursor:pointer;
+            ">
+            ↓ Download Excel
+        </button>
+
+    </div>
+
+</div>
+
+    <!-- Table Section -->
+    <!-- Table Container -->
+<div style="
+    background:#ffffff;
+    border:1px solid #d9dee7;
+    border-radius:8px;
+    overflow:hidden;
+">
+
+    <!-- Table Header -->
+    <div style="
+        padding:14px 18px;
+        border-bottom:1px solid #d9dee7;
+        background:#f8f9fb;
+        font-size:14px;
+        font-weight:700;
+        color:#344054;
+    ">
+        Cargo Handling Report
+    </div>
+
+    <!-- Table -->
+    <div style="padding:0;overflow:auto;">
+
+        <table
+            id="cargo-report-table"
+            class="display nowrap"
+            style="
+                width:100%;
+                border-collapse:collapse;
+            ">
+
+            <thead>
+
+                <tr style="background:#e8e7b5;">
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">Sr. No. </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Vessel Name
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        MV/MBC
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Material PO
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Cargo Type
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Cargo Name
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        B/L Qty MT
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Actual Discharge Qty MT
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Load Port
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Discharge Commenced
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Discharge Completed
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Consignee/Customer
+                    </th>
+
+                    <th style="padding:12px;border:1px solid #cfd4dc;">
+                        Flag
+                    </th>
+                </tr>
+
+            </thead>
+
+            <tbody id="cargo-report-body">
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+<!-- DataTables -->
+<link rel="stylesheet"
+      href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+
+$(document).ready(function () {
+
+    $('#cargo-report-table').DataTable({
+        pageLength: 25,
+        searching: true,
+        ordering: true,
+        responsive: true
+    });
+
+});
+
+
+const BASE_URL = '/module/RP01';
+
+
+$('#apply-filter-btn').on('click', async function () {
+
+    const fromDate = $('#from-date').val();
+    const toDate   = $('#to-date').val();
+
+    // Validation
+    if (!validateDates(fromDate, toDate)) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            `/api/cargo-report?from_date=${fromDate}&to_date=${toDate}`
+        );
+
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        console.log(result);
+
+        renderCargoTable(result.data || []);
+
+    } catch (error) {
+
+        console.error('Fetch Error:', error);
+        alert('Failed to fetch report data');
+
+    }
+
+});
+
+function renderCargoTable(data) {
+    const table = $('#cargo-report-table').DataTable();
+    table.clear();
+
+    data.forEach((item, index) => {
+        table.row.add([
+    index + 1,
+    item.vessel_name         || '-',
+    item.vessel_type         || '-',
+    item.material_po         || '-',
+    item.cargo_type          || '-',
+    item.cargo_name          || '-',
+    item.bl_qty_mt           || '-',
+    item.actual_discharge    || '-',
+    item.load_port           || '-',
+    item.discharge_commenced || '-',
+    item.discharge_completed || '-',
+    item.consignee           || '-',
+    item.flag                || '-',   // Flag
+]);
+    });
+
+    table.draw();
+}
+
+function validateDates(fromDate, toDate) {
+
+    if (!fromDate) {
+        alert('From Date is required');
+        return false;
+    }
+
+    if (!toDate) {
+        alert('To Date is required');
+        return false;
+    }
+
+    if (fromDate > toDate) {
+        alert('From Date should not be greater than To Date');
+        return false;
+    }
+
+    return true;
+}
+
+
+$('#reset-filter-btn').on('click', function () {
+
+    $('#from-date').val('');
+    $('#to-date').val('');
+
+    const table = $('#cargo-report-table').DataTable();
+
+    table.clear().draw();
+
+});
+
+
+$('#download-report-btn').on('click', function () {
+
+    const fromDate = $('#from-date').val();
+    const toDate   = $('#to-date').val();
+
+    // Validation
+    if (!validateDates(fromDate, toDate)) {
+        return;
+    }
+
+    window.location.href =
+        `/api/module/RP01/cargo-report/download/?from_date=${fromDate}&to_date=${toDate}`;
+});
+
+// // Uses the bulk download endpoint filtered to a single record's date range.
+// // If you later add a per-ID Flask route, update the URL below.
+// function downloadSingleReport(id) {
+
+//     alert('Single-record download is not yet configured on the server.');
+
+// }
+
+</script>
+
+{% endblock %}

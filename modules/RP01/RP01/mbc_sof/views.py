@@ -181,10 +181,10 @@ def _build_import_activities(load_port, discharge_port):
         ('Vessel All Made Fast at Unloading Berth', 'vessel_all_made_fast'),
         ('Unloading Commenced',                     'unloading_commenced'),
         ('Cleaning Commenced',                      'cleaning_commenced'),
-        ('Cleaning Completed',                      'cleaning_completed'),
+        ('Cleaning Completed',                      'unloading_completed'),
         ('Unloading Completed',                     'unloading_completed'),
         ('Vessel Cast Off from Dharamtar Jetty',    'vessel_cast_off'),
-        ('Sailed Out From Load Port',               'sailed_out_load_port'),
+        ('Sailed Out From Discharge Port',               'sailed_out_load_port'),
     ]
 
     for label, key in discharge_activities:
