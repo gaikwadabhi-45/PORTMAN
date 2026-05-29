@@ -558,17 +558,21 @@ def port_map_data():
         if lat is None:
             continue
 
-        # Tangent along berth alignment line and perpendicular toward channel
+        # Tangent along berth alignment line and perpendicular toward channel.
+        # Assets face the channel (ch_brg) and are spread ALONG the berth line
+        # (bt_brg) so double-banked barges/MBCs sit side-by-side, centred on the
+        # berth rather than strung out from it in a single line.
         bt_brg, ch_brg = _berth_bearings(lat, lon)
-        # Assets bank along the berth face (tangent direction = along berth line)
         face_brg = _math.radians(bt_brg)
-        step = 0.00011  # ~12 m between banks
+        step = 0.00015  # ~17 m between banks
 
         assets = berth_assets.get(bn, [])
+        n = len(assets)
         for i, asset in enumerate(assets):
+            centered = (i - (n - 1) / 2) if n > 1 else 0   # centre the row on the berth
             asset['bank_index'] = i
-            asset['lat'] = round(lat + i * step * _math.cos(face_brg), 6)
-            asset['lon'] = round(lon + i * step * _math.sin(face_brg) /
+            asset['lat'] = round(lat + centered * step * _math.cos(face_brg), 6)
+            asset['lon'] = round(lon + centered * step * _math.sin(face_brg) /
                                   _math.cos(_math.radians(lat)), 6)
 
         # Today's totals from LUEU

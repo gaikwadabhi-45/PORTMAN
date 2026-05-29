@@ -470,15 +470,24 @@ function _cssRot(bearing) {
   return ((bearing - 90) % 360 + 360) % 360;
 }
 
+// Completed (100%) assets turn green; otherwise keep their type colour.
+function _assetColors(type, pct) {
+  if (pct >= 100) return {border: '#059669', bg: '#ECFDF5', fill: '#059669'};
+  return type === 'MBC'
+    ? {border: '#A5F3FC', bg: '#ECFEFF', fill: '#0891B2'}
+    : {border: '#FCD34D', bg: '#FFFBEB', fill: '#D97706'};
+}
+
 function bargeIcon(pct, bearing) {
-  const w   = Math.round(pct);
-  const rot = _cssRot(bearing);
+  const w = Math.round(pct), rot = _cssRot(bearing), c = _assetColors('BARGE', pct);
   return L.divIcon({
     // Outer wrapper is larger so rotation doesn't clip; anchor at its centre.
     html: `<div style="width:44px;height:22px;display:flex;align-items:center;
                        justify-content:center;overflow:visible">
       <div class="m-barge-wrap" style="transform:rotate(${rot}deg);transform-origin:center">
-        <div class="m-barge"><div class="m-barge-fill" style="width:${w}%"></div></div>
+        <div class="m-barge" style="border-color:${c.border};background:${c.bg}">
+          <div class="m-barge-fill" style="width:${w}%;background:${c.fill};opacity:.6"></div>
+        </div>
       </div>
     </div>`,
     className: '', iconAnchor: [22, 11], iconSize: [44, 22]
@@ -486,13 +495,14 @@ function bargeIcon(pct, bearing) {
 }
 
 function mbcIcon(pct, bearing) {
-  const w   = Math.round(pct);
-  const rot = _cssRot(bearing);
+  const w = Math.round(pct), rot = _cssRot(bearing), c = _assetColors('MBC', pct);
   return L.divIcon({
     html: `<div style="width:40px;height:20px;display:flex;align-items:center;
                        justify-content:center;overflow:visible">
       <div class="m-mbc-wrap" style="transform:rotate(${rot}deg);transform-origin:center">
-        <div class="m-mbc"><div class="m-mbc-fill" style="width:${w}%"></div></div>
+        <div class="m-mbc" style="border-color:${c.border};background:${c.bg}">
+          <div class="m-mbc-fill" style="width:${w}%;background:${c.fill};opacity:.6"></div>
+        </div>
       </div>
     </div>`,
     className: '', iconAnchor: [20, 10], iconSize: [40, 20]
@@ -633,12 +643,15 @@ function render(d) {
      })
      .addTo(layers.anchorages);
 
-    // Individual vessel markers — offset slightly around the anchorage
+    // Individual vessel markers — fanned out in a row BELOW the anchorage so
+    // the anchorage name label (anchored at top) never hides them.
+    const n        = anch.vessels.length;
+    const latDrop  = 0.0017;                 // south of the anchorage ring
+    const lonSpan  = 0.0016 / Math.cos(anch.lat * Math.PI/180);
     anch.vessels.forEach((v, i) => {
-      const angle = (i / Math.max(anch.vessels.length, 1)) * 2 * Math.PI;
-      const r = 0.0014;
-      const vlat = anch.lat + r * Math.cos(angle);
-      const vlon = anch.lon + r * Math.sin(angle) / Math.cos(anch.lat * Math.PI/180);
+      const centered = n > 1 ? (i - (n - 1) / 2) : 0;
+      const vlat = anch.lat - latDrop;
+      const vlon = anch.lon + centered * lonSpan;
       L.marker([vlat, vlon], {icon: vesselIcon(0), zIndexOffset: 300})
        .bindPopup(`${vesselPopup(v)}`)
        .bindTooltip(v.vessel_name, {sticky: true})
@@ -691,13 +704,14 @@ function render(d) {
      })
      .addTo(layers.berths);
 
-    // Asset markers — barges align along berth line, MBCs face toward channel
-    const btBrg = b.berth_bearing   || 149;  // along berth line (barge long-axis)
-    const chBrg = b.channel_bearing || 239;  // perpendicular toward water (MBC bow)
+    // Asset markers — barges AND MBCs both face the channel (same orientation).
+    // Multiples on one berth are offset along the berth line (perpendicular to
+    // their facing), so they sit side-by-side instead of stacked in one line.
+    const chBrg = b.channel_bearing || 239;  // perpendicular toward water (bow)
     (b.assets || []).forEach((asset, i) => {
       const alat = asset.lat ?? b.lat;
       const alon = asset.lon ?? b.lon;
-      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, chBrg) : bargeIcon(asset.pct, btBrg);
+      const icon = asset.type === 'MBC' ? mbcIcon(asset.pct, chBrg) : bargeIcon(asset.pct, chBrg);
       L.marker([alat, alon], {icon, zIndexOffset: 500})
        .bindPopup(assetPopup(asset))
        .bindTooltip(`${asset.name} (${asset.pct}%)`, {sticky: true})
@@ -739,7 +753,8 @@ function render(d) {
        ${t.vessel_name ? `<div class="popup-row"><span class="popup-lbl">Vessel</span><span class="popup-val">${t.vessel_name}</span></div>` : ''}
        ${t.bl_qty ? `<div class="popup-row"><span class="popup-lbl">B/L</span><span class="popup-val">${fmtNum(t.bl_qty)} MT</span></div>
        <div class="popup-row"><span class="popup-lbl">Done</span><span class="popup-val">${fmtNum(t.actual)} MT</span></div>${pctBar}` : ''}`)
-     .bindTooltip(`${t.name} — ${stgLbl} · ${t.eta_label||'ETA'}: ${etaStr}`, {sticky:true})
+     .bindTooltip(`${t.name} · ${t.eta_label||'ETA'} ${etaStr}`,
+                  {permanent: true, direction: 'top', offset: [0, -8], className: 'leaflet-tooltip'})
      .on('click', () => showInfo(infoCard(`🔄 ${t.name}`, [
          ['Type',  t.type],
          ['Stage', stgLbl],
