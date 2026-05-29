@@ -280,10 +280,12 @@ def port_map_data():
     # ── Fleet-wide average transit times (all historical LDUD barge trips) ──────
     cur.execute('''
         SELECT AVG(secs) AS avg_v2g FROM (
-            SELECT EXTRACT(EPOCH FROM (anchored_gull_island - cast_off_mv)) AS secs
+            SELECT EXTRACT(EPOCH FROM (
+                anchored_gull_island::timestamp - cast_off_mv::timestamp
+            )) AS secs
             FROM ldud_barge_lines
-            WHERE cast_off_mv IS NOT NULL AND anchored_gull_island IS NOT NULL
-              AND anchored_gull_island > cast_off_mv
+            WHERE cast_off_mv IS NOT NULL AND cast_off_mv != ''
+              AND anchored_gull_island IS NOT NULL AND anchored_gull_island != ''
         ) x WHERE secs BETWEEN 1800 AND 86400
     ''')
     r0 = cur.fetchone()
@@ -291,10 +293,12 @@ def port_map_data():
 
     cur.execute('''
         SELECT AVG(secs) AS avg_g2b FROM (
-            SELECT EXTRACT(EPOCH FROM (along_side_berth - aweigh_gull_island)) AS secs
+            SELECT EXTRACT(EPOCH FROM (
+                along_side_berth::timestamp - aweigh_gull_island::timestamp
+            )) AS secs
             FROM ldud_barge_lines
-            WHERE aweigh_gull_island IS NOT NULL AND along_side_berth IS NOT NULL
-              AND along_side_berth > aweigh_gull_island
+            WHERE aweigh_gull_island IS NOT NULL AND aweigh_gull_island != ''
+              AND along_side_berth IS NOT NULL AND along_side_berth != ''
         ) x WHERE secs BETWEEN 1800 AND 86400
     ''')
     r0 = cur.fetchone()
@@ -302,10 +306,12 @@ def port_map_data():
 
     cur.execute('''
         SELECT AVG(secs) AS avg_mbc_g2b FROM (
-            SELECT EXTRACT(EPOCH FROM (vessel_all_made_fast - departure_gull_island)) AS secs
+            SELECT EXTRACT(EPOCH FROM (
+                vessel_all_made_fast::timestamp - departure_gull_island::timestamp
+            )) AS secs
             FROM mbc_discharge_port_lines
-            WHERE departure_gull_island IS NOT NULL AND vessel_all_made_fast IS NOT NULL
-              AND vessel_all_made_fast > departure_gull_island
+            WHERE departure_gull_island IS NOT NULL AND departure_gull_island != ''
+              AND vessel_all_made_fast IS NOT NULL AND vessel_all_made_fast != ''
         ) x WHERE secs BETWEEN 1800 AND 86400
     ''')
     r0 = cur.fetchone()
@@ -328,12 +334,17 @@ def port_map_data():
         return 'PENDING', None
 
     def eta_info(stage_start, avg_secs):
-        """Return (fraction 0-1, eta_minutes int)."""
+        """Return (fraction 0-1, eta_minutes int). stage_start may be str or datetime."""
         if not stage_start or avg_secs <= 0:
             return 0.0, None
-        elapsed = (now - stage_start).total_seconds()
-        fraction  = min(max(elapsed / avg_secs, 0.0), 0.99)
-        eta_mins  = max(round((avg_secs - elapsed) / 60), 0)
+        try:
+            if isinstance(stage_start, str):
+                stage_start = datetime.fromisoformat(stage_start.replace('T', ' '))
+            elapsed = (now - stage_start).total_seconds()
+        except Exception:
+            return 0.0, None
+        fraction = min(max(elapsed / avg_secs, 0.0), 0.99)
+        eta_mins = max(round((avg_secs - elapsed) / 60), 0)
         return round(fraction, 4), eta_mins
 
     # Build berth asset lists and transit list
