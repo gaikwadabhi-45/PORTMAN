@@ -706,7 +706,7 @@
     <!-- ══ 11. Corporate office footer ══ -->
     <div class="corp-footer">
         {% if payment_bank and payment_bank.corporate_office_address %}
-        Corporate Off: {{ payment_bank.corporate_office_address }}
+        {{ payment_bank.corporate_office_address }}
         {% else %}
         Corporate Off: JSW Centre, Bandra Kurla Complex, Bandra(East), Mumbai, Maharashtra, India, 400051, Tel:02242861000, Fax:02242863000
         {% endif %}
