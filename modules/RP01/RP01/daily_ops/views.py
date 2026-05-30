@@ -439,6 +439,45 @@ def _fetch_upcoming_vessels(report_date):
     conn.close()
 
     return rows
+
+def _fetch_discharging_mbcs(report_date):
+
+    window_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        8, 0, 0
+    )
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            h.mbc_name,
+            p.vessel_unloaded_by AS equipment,
+            h.cargo_name,
+            h.bl_quantity AS discharge_quantity,
+            p.unloading_commenced
+        FROM mbc_header h
+        JOIN mbc_discharge_port_lines p
+            ON p.mbc_id = h.id
+        WHERE
+            p.unloading_commenced IS NOT NULL
+            AND p.unloading_commenced <> ''
+            AND p.unloading_commenced::timestamp < %s
+            AND (
+                p.unloading_completed IS NULL
+                OR p.unloading_completed = ''
+            )
+        ORDER BY h.mbc_name
+    """, (window_end,))
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    return rows
         
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
@@ -1013,6 +1052,47 @@ def daily_ops_preview():
             <td style='border:1px solid #ccc;padding:8px'>{v['cargo_type']}</td>
             <td style='border:1px solid #ccc;padding:8px'>{v['vessel_agent_name']}</td>
             <td style='border:1px solid #ccc;padding:8px'>{_fmt_dt(v['eta'])}</td>
+        </tr>
+        """
+
+    html += "</table>"
+
+    discharging_mbcs = _fetch_discharging_mbcs(report_date)
+
+    html += """
+    <br><br>
+    <h3>MBCs Discharging</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+        <tr style='background:#4a90d9;color:white'>
+            <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Equipment</th>
+            <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Discharge Quantity (MT)</th>
+        </tr>
+    """
+
+    for m in discharging_mbcs:
+
+        equipment = m['equipment'] or '-'
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['mbc_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {equipment}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['cargo_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {float(m['discharge_quantity']):,.2f}
+            </td>
         </tr>
         """
 

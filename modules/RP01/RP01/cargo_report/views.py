@@ -301,6 +301,72 @@ ORDER BY discharge_commenced DESC;
         cur.close()
         conn.close()
 
+@bp.route('/api/update-material-po', methods=['POST'])
+@login_required
+def update_material_po():
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    try:
+
+        data = request.get_json()
+
+        print("UPDATE REQUEST:", data)
+
+        record_id = data.get('id')
+        vessel_type = data.get('vessel_type')
+        material_po = data.get('material_po')
+
+        if not record_id:
+            return jsonify({
+                'success': False,
+                'message': 'Record ID missing'
+            }), 400
+
+        if vessel_type == 'MV':
+
+            cur.execute("""
+                UPDATE ldud_header
+                SET material_po_number = %s
+                WHERE id = %s
+            """, (material_po, record_id))
+
+        elif vessel_type == 'MBC':
+
+            cur.execute("""
+                UPDATE mbc_customer_details
+                SET material_po = %s
+                WHERE mbc_id = %s
+            """, (material_po, record_id))
+
+        else:
+
+            return jsonify({
+                'success': False,
+                'message': f'Invalid vessel type: {vessel_type}'
+            }), 400
+
+        conn.commit()
+
+        return jsonify({
+            'success': True
+        })
+
+    except Exception as e:
+
+        conn.rollback()
+        print("UPDATE ERROR:", str(e))
+
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+    finally:
+        cur.close()
+        conn.close()
+
 
 # =========================================================
 # DOWNLOAD FULL REPORT
