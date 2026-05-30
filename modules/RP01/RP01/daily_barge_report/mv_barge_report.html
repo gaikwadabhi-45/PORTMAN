@@ -1,0 +1,2045 @@
+{% extends "base.html" %}
+
+{% block title %}MV Barge Report — RP01{% endblock %}
+
+{% block head %}
+<link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
+<script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+<style>
+    /* ── Page layout ─────────────────────────────────────────────── */
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--border-color);
+    }
+
+    .page-header h2 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--text-primary);
+    }
+
+    .module-badge {
+        background: #4a90d9;
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    .breadcrumb {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+
+    .breadcrumb a {
+        color: #4a90d9;
+        text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+
+    /* ── Filter bar ──────────────────────────────────────────────── */
+    .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: flex-end;
+        margin-bottom: 6px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 8px 10px;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .filter-group label {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+
+    .filter-group input,
+    .filter-group select {
+        padding: 5px 9px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 12px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        height: 30px;
+    }
+
+    .filter-group input:focus,
+    .filter-group select:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
+
+    .filter-btn {
+        padding: 0 18px;
+        height: 30px;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        align-self: flex-end;
+    }
+
+    .filter-btn.primary {
+        background: #4a90d9;
+        color: #fff;
+    }
+
+    .filter-btn.primary:hover {
+        background: #357abd;
+    }
+
+    .filter-btn.reset {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+    }
+
+    .filter-btn.reset:hover {
+        background: var(--border-color);
+    }
+
+    /* ───────────────── DOWNLOAD ALL BUTTON ───────────────── */
+
+    .filter-btn.dl-all {
+
+        background: linear-gradient(135deg,
+                #22c55e,
+                #16a34a);
+
+        color: #fff;
+
+        border: none;
+
+        position: relative;
+
+        overflow: hidden;
+
+        transition:
+            transform .18s ease,
+            box-shadow .22s ease,
+            background .25s ease;
+
+        box-shadow:
+            0 4px 12px rgba(34, 197, 94, .25);
+    }
+
+    /* Hover effect */
+    .filter-btn.dl-all:hover {
+
+        background: linear-gradient(135deg,
+                #22c55e,
+                #15803d);
+
+        transform: translateY(-2px);
+
+        box-shadow:
+            0 8px 20px rgba(34, 197, 94, .35);
+    }
+
+    /* Click effect */
+    .filter-btn.dl-all:active {
+
+        transform: scale(.96);
+    }
+
+    /* Disabled */
+    .filter-btn.dl-all:disabled {
+
+        background: #94a3b8;
+
+        cursor: not-allowed;
+
+        transform: none;
+
+        box-shadow: none;
+    }
+
+
+
+    /* Shine animation */
+    @keyframes dlAllShine {
+
+        0% {
+            left: -80px;
+        }
+
+        100% {
+            left: 140%;
+        }
+    }
+
+    /* Download arrow bounce */
+    @keyframes dlAllBounce {
+
+        0%,
+        100% {
+            transform: translateY(0);
+        }
+
+        50% {
+            transform: translateY(2px);
+        }
+    }
+
+    /* ── Row count ───────────────────────────────────────────────── */
+    .row-count {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+    }
+
+    /* ── Tabulator overrides ─────────────────────────────────────── */
+    #vd-table {
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        overflow: hidden;
+        height: calc(100vh - 170px);
+    }
+
+    #vd-table .tabulator-tableholder {
+        overflow: auto !important;
+    }
+
+    /* Sticky Header */
+    #vd-table .tabulator-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+
+
+
+    /* Dark Theme */
+    .dark-theme #vd-table .tabulator-cell:first-child,
+    .dark-theme #vd-table .tabulator-col:first-child,
+    .dark-theme #vd-table .tabulator-cell:nth-child(2),
+    .dark-theme #vd-table .tabulator-col:nth-child(2) {
+        background: #16161e;
+    }
+
+    .tabulator-header .tabulator-col-title {
+        white-space: normal !important;
+        line-height: 1.3;
+        text-align: center;
+        color: #000000 !important;
+    }
+
+    /* ── All header columns same colour ─────────────────── */
+    #vd-table .tabulator-header .tabulator-col {
+        background-color: #d0e4f7 !important;
+    }
+
+    #vd-table .tabulator-header .tabulator-col .tabulator-col-content {
+        background-color: #d0e4f7 !important;
+    }
+
+    #vd-table .tabulator-header .tabulator-col-resize-handle {
+        background-color: #d0e4f7 !important;
+    }
+
+    /* Dark theme table */
+    .dark-theme #vd-table .tabulator-header {
+        background: #1e1e2e;
+    }
+
+    .dark-theme #vd-table .tabulator-row {
+        background: #16161e;
+        color: #cdd6f4;
+    }
+
+    .dark-theme #vd-table .tabulator-row:nth-child(even) {
+        background: #1c1c2a;
+    }
+
+    .dark-theme #vd-table .tabulator-row:hover {
+        background: #2a2a3e !important;
+    }
+
+    /* ── Download button in cell ─────────────────────────────────── */
+    .dl-btn {
+        padding: 2px 10px;
+        background: #27ae60;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .dl-btn:hover {
+        background: #1e8449;
+    }
+
+    .dark-theme .dl-btn {
+        background: #1e6b3a;
+    }
+
+    .dark-theme .dl-btn:hover {
+        background: #27ae60;
+    }
+
+    /* ───────────────── DOWNLOAD LOADER ───────────────── */
+
+    .download-loader {
+        position: fixed;
+        inset: 0;
+
+        background: rgba(220, 220, 220, .55);
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        z-index: 99999;
+
+        opacity: 0;
+        visibility: hidden;
+
+        transition:
+            opacity .35s ease,
+            visibility .35s ease;
+    }
+
+    .download-loader.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .loader-box {
+
+        background: #ffffff;
+
+        border: 1px solid #dbe4f0;
+
+        border-radius: 20px;
+
+        padding: 32px 36px;
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        gap: 16px;
+
+        min-width: 300px;
+
+        box-shadow:
+            0 20px 60px rgba(0, 0, 0, .45);
+    }
+
+    /* ── Orbit Animation ── */
+
+    .orbit-stage {
+        position: relative;
+        width: 120px;
+        height: 120px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .orbit-ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+
+        border-radius: 50%;
+        border: 1px dashed rgba(74, 144, 217, .25);
+
+        transform: translate(-50%, -50%);
+    }
+
+    .ring1 {
+        width: 76px;
+        height: 76px;
+    }
+
+    .ring2 {
+        width: 108px;
+        height: 108px;
+    }
+
+    .orbit-center {
+        width: 44px;
+        height: 44px;
+
+        background: #cee3fd;
+
+        border-radius: 50%;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        font-size: 22px;
+
+        z-index: 2;
+
+        animation:
+            orbitPulse 2.4s ease-in-out infinite,
+            orbitGlow 2.8s ease-in-out infinite;
+    }
+
+    .orbiter {
+        position: absolute;
+
+        top: 50%;
+        left: 50%;
+
+        margin-top: -10px;
+        margin-left: -10px;
+
+        width: 20px;
+        height: 20px;
+
+        border-radius: 50%;
+
+        background: #ccdef5;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        font-size: 13px;
+
+        animation: orbitA 2.4s linear infinite;
+    }
+
+    .orbiter.o2 {
+        animation-delay: -0.8s;
+    }
+
+    .orbiter.o3 {
+        animation-delay: -1.6s;
+    }
+
+    .orbiter2 {
+        position: absolute;
+
+        top: 50%;
+        left: 50%;
+
+        margin-top: -8px;
+        margin-left: -8px;
+
+        width: 16px;
+        height: 16px;
+
+        border-radius: 50%;
+
+        background: #312e81;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        font-size: 11px;
+
+        color: #a5b4fc;
+
+        animation: orbitB 4.8s linear infinite;
+    }
+
+    .orbiter2.o2r {
+        animation-delay: -1.6s;
+        background: #4c1d95;
+    }
+
+    .orbiter2.o3r {
+        animation-delay: -3.2s;
+        background: #cbdef7;
+    }
+
+    @keyframes orbitA {
+
+        0% {
+            transform:
+                rotate(0deg) translateX(38px) rotate(0deg);
+        }
+
+        100% {
+            transform:
+                rotate(360deg) translateX(38px) rotate(-360deg);
+        }
+    }
+
+    @keyframes orbitB {
+
+        0% {
+            transform:
+                rotate(0deg) translateX(54px) rotate(0deg);
+        }
+
+        100% {
+            transform:
+                rotate(-360deg) translateX(54px) rotate(360deg);
+        }
+    }
+
+    @keyframes orbitPulse {
+
+        0%,
+        100% {
+            transform: scale(1);
+        }
+
+        50% {
+            transform: scale(1.08);
+        }
+    }
+
+    @keyframes orbitGlow {
+
+        0%,
+        100% {
+            opacity: .85;
+        }
+
+        50% {
+            opacity: .45;
+        }
+    }
+
+    /* ── Loader Text ── */
+
+    .loader-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .loader-subtitle {
+        font-size: 12px;
+        color: #64748b;
+        margin: 0;
+    }
+
+    /* ── Progress Bar ── */
+
+    .pbar2-wrap {
+        width: 100%;
+        height: 6px;
+
+        background: #3076e6;
+
+        border-radius: 99px;
+
+        overflow: hidden;
+        position: relative;
+    }
+
+    .pbar2-fill {
+        height: 100%;
+        width: 0%;
+
+        border-radius: 99px;
+
+        background: linear-gradient(90deg,
+                #3b82f6,
+                #06b6d4,
+                #22c55e);
+
+        transition: width .8s ease;
+    }
+
+    .pbar2-shine {
+        position: absolute;
+
+        top: 0;
+        left: -60px;
+
+        width: 60px;
+        height: 100%;
+
+        background: linear-gradient(90deg,
+                transparent,
+                rgba(255, 255, 255, .3),
+                transparent);
+
+        animation: shineSlide 1.5s ease-in-out infinite;
+    }
+
+    @keyframes shineSlide {
+
+        0% {
+            left: -60px;
+        }
+
+        100% {
+            left: 110%;
+        }
+    }
+
+    .loader-pct {
+        font-size: 11px;
+        font-weight: 700;
+        color: #60a5fa;
+    }
+
+    /* ───────── STEP DOTS ───────── */
+
+    .step-dots {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .dot {
+        width: 10px;
+        height: 10px;
+
+        border-radius: 50%;
+
+        background: #cbd5e1;
+
+        transition:
+            transform .25s ease,
+            background .25s ease,
+            box-shadow .25s ease;
+    }
+
+    /* Current step */
+    .dot.active {
+
+        background: #3b82f6;
+
+        transform: scale(1.25);
+
+        box-shadow:
+            0 0 10px rgba(59, 130, 246, .7);
+
+        animation: dotPulse 1s infinite;
+    }
+
+    /* Completed step */
+    .dot.done {
+
+        background: #22c55e;
+
+        box-shadow:
+            0 0 8px rgba(34, 197, 94, .5);
+    }
+
+    @keyframes dotPulse {
+
+        0%,
+        100% {
+            transform: scale(1.1);
+        }
+
+        50% {
+            transform: scale(1.4);
+        }
+    }
+
+    .svg-ring {
+        position: absolute;
+        animation: spinRing 8s linear infinite;
+    }
+
+    @keyframes spinRing {
+
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+
+    #vd-table .tabulator-tableholder {
+        overflow-x: auto;
+    }
+
+    #vd-table .tabulator-footer {
+        position: sticky;
+        left: 0;
+        bottom: 0;
+        width: max-content !important;
+        min-width: 100% !important;
+        background: #f8f9fb;
+        border-top: 1px solid #dcdfe6;
+    }
+
+    #vd-table .tabulator-footer-contents {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 10px;
+        box-sizing: border-box;
+    }
+
+    .filter-panel {
+        background: #f7fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+    }
+
+    .filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+    }
+
+    .filter-col-select,
+    .filter-text-input {
+        padding: 4px 8px;
+        border: 1px solid #cbd5e0;
+        border-radius: 4px;
+        font-size: 12px;
+        background: white;
+    }
+
+    .filter-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+    }
+
+    .btn-filter-add {
+        background: #edf2f7;
+        color: #2d3748;
+        border: 1px solid #cbd5e0;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .btn-filter-apply {
+        background: #3182ce;
+        color: white;
+        border: none;
+        padding: 5px 14px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .btn-filter-clear {
+        background: #e2e8f0;
+        color: #2d3748;
+        border: none;
+        padding: 5px 14px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .filter-remove {
+        background: none;
+        border: none;
+        color: #e53e3e;
+        cursor: pointer;
+        font-size: 16px;
+    }
+
+    .btn-filter-save {
+        background: #27ae60;
+        color: white;
+        border: none;
+        padding: 5px 14px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .btn-filter-save:hover {
+        background: #1e8449;
+    }
+
+    .saved-filter-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #e8f1ff;
+        color: #2b6cb0;
+        border: 1px solid #bcd2f7;
+        border-radius: 14px;
+        padding: 3px 10px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .saved-filter-chip button {
+        border: none;
+        background: none;
+        color: #e53e3e;
+        cursor: pointer;
+        font-size: 13px;
+        line-height: 1;
+    }
+
+    .shift-card {
+        background: #ffffff;
+        border: 1px solid #dfe6ee;
+        border-radius: 8px;
+        margin-bottom: 14px;
+        overflow: hidden;
+    }
+
+    .dark-theme .shift-card {
+        background: #1e1e2e;
+        border-color: #2d3748;
+    }
+
+    .shift-header {
+        background: transparent;
+        color: #2d3748;
+        padding: 12px;
+        font-size: 18px;
+        font-weight: 700;
+        text-align: center;
+        border-bottom: 1px solid #dfe6ee;
+    }
+
+    .dark-theme .shift-header {
+        color: #ffffff;
+        border-bottom: 1px solid #2d3748;
+    }
+
+    .shift-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+    .shift-table th {
+        background: #f1f5f9;
+        padding: 8px;
+        border: 1px solid #dfe6ee;
+        text-align: center;
+    }
+
+    .shift-table td {
+        padding: 7px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .dark-theme .shift-table th {
+        background: #2d3748;
+        color: #fff;
+    }
+
+    .dark-theme .shift-table td {
+        color: #e2e8f0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>MV Barge Report</h2>
+    <span class="module-badge">RP01</span>
+</div>
+<div class="breadcrumb">
+    <a href="/module/RP01/">Reports</a> &rsaquo; MV Barge Report
+</div>
+
+
+<!-- Download Loader -->
+<div id="download-loader" class="download-loader" style="display:none;">
+    <div class="loader-box">
+        <div class="orbit-stage">
+            <svg class="svg-ring" width="120" height="120" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="45" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="283"
+                    stroke-dashoffset="70" stroke-linecap="round" opacity="0.5" />
+            </svg>
+            <div class="orbit-ring ring1"></div>
+            <div class="orbit-ring ring2"></div>
+            <div class="orbit-center">
+                📊
+            </div>
+            <div class="orbiter">📄</div>
+            <div class="orbiter o2">📋</div>
+            <div class="orbiter o3">🗂️</div>
+            <div class="orbiter2">✦</div>
+            <div class="orbiter2 o2r">✦</div>
+            <div class="orbiter2 o3r">✦</div>
+        </div>
+        <p class="loader-title">
+            Preparing Excel Download
+        </p>
+        <p class="loader-subtitle" id="loader-msg">Connecting to server...</p>
+        <div class="pbar2-wrap">
+            <div class="pbar2-fill"></div>
+            <div class="pbar2-shine"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <div class="step-dots">
+                <div class="dot" id="ld1"></div>
+                <div class="dot" id="ld2"></div>
+                <div class="dot" id="ld3"></div>
+                <div class="dot" id="ld4"></div>
+            </div>
+            <span class="loader-pct" id="loader-pct">0%</span>
+        </div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+
+    <div class="filter-group">
+        <label for="filter-from">From Date</label>
+        <input type="date" id="filter-from" title="From Date">
+    </div>
+    <div class="filter-group">
+
+        <label for="date-field-filter">
+            Filter Basis
+        </label>
+
+        <select id="status-filter">
+            <option value="all">
+                All
+            </option>
+
+            <option value="in_transit">
+                In Transit
+            </option>
+
+            <option value="currently_loading">
+                Currently Loading
+            </option>
+
+            <option value="loaded_waiting">
+                Loaded & Waiting
+            </option>
+
+            <option value="under_discharge">
+                Under Discharge
+            </option>
+
+            <option value="completed_discharge">
+                Completed Discharge
+            </option>
+
+        </select>
+
+    </div>
+    <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
+    <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
+    <button type="button" class="filter-btn" onclick="toggleAdvancedFilters()" style="background:#6c5ce7;color:white;">
+        ⚙ Filters
+    </button>
+    <button type="button" class="filter-btn dl-all" id="dl-all-btn" onclick="downloadAll()">&#8595; Download
+        All</button>
+
+    <div style="margin-left: auto; font-size: 12px; color: var(--text-primary); line-height: 1.6; padding-top: 6px;">
+        <div id="date-range-display">—</div>
+    </div>
+</div>
+
+
+<div id="filterPanel" class="filter-panel" style="display:none;">
+
+    <div id="filterRows"></div>
+
+    <div class="filter-actions">
+        <button class="btn-filter-add" onclick="addFilterRow()">
+            + Add Filter
+        </button>
+
+        <button class="btn-filter-apply" onclick="applyColumnFilters()">
+            Apply
+        </button>
+
+        <button class="btn-filter-clear" onclick="clearColumnFilters()">
+            Clear All
+        </button>
+        <button class="btn-filter-save" onclick="saveCurrentFilters()">
+            💾Save Filter
+        </button>
+    </div>
+    <!-- Row count -->
+
+
+    <div id="savedFiltersBar" style="margin-top:8px;display:none;align-items:center;flex-wrap:wrap;gap:6px;">
+
+        <span style="font-size:11px;color:#718096;font-weight:600;">
+            Saved Filters:
+        </span>
+
+        <div id="savedFiltersList" style="display:inline-flex;flex-wrap:wrap;gap:6px;">
+        </div>
+
+    </div>
+
+</div>
+
+<div class="row-count" id="row-count">Loading…</div>
+<!-- Tabulator table -->
+<div id="vd-table"></div>
+<div id="shift-preview-wrapper" style="margin-top:14px;">
+
+    <div style="
+        font-size:15px;
+        font-weight:700;
+        margin-bottom:10px;
+        color:#2d3748;
+    ">
+        Shift Wise Preview
+    </div>
+
+    <div id="shift-preview"></div>
+
+</div>
+
+<script>
+    /* ── Formatters ──────────────────────────────────────── */
+    function dtFormatter(cell) {
+        const v = cell.getValue();
+        if (!v) return '<span style="color:var(--text-secondary)">—</span>';
+        // Convert ISO datetime → DD-MM-YYYY HH:MM for display
+        try {
+            const d = new Date(v);
+            if (isNaN(d)) return v;
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            const hh = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
+        } catch (e) {
+            return v;
+        }
+    }
+
+    function numFormatter(cell) {
+        const v = cell.getValue();
+        if (v === '' || v === null || v === undefined) return '—';
+        const n = parseFloat(v);
+        if (isNaN(n)) return v;
+        return n.toLocaleString('en-IN');
+    }
+
+    function downloadBtnFormatter() {
+        return '<button class="dl-btn">&#8595; Excel</button>';
+    }
+
+    /* ── Column definitions ──────────────────────────────── */
+    function buildColumns() {
+        return [
+
+            {
+                title: 'ID',
+                field: 'id',
+                frozen: true,
+                visible: true,        // ← hides the column completely
+                sorter: 'number'       // ← ensures numeric sorting
+            },
+            {
+                title: 'Sr#',
+                field: '_sr',
+                frozen: true,
+                width: 55,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                formatter: function (cell) {
+                    return cell.getRow().getPosition(true);
+                },
+            },
+            {
+                title: 'Barge / MBC Name',
+                field: 'barge_name',
+                frozen: true,
+                width: 180,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'Mother Vessel Name',
+                field: 'mother_vessel_name',
+                frozen: true,
+                width: 180,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'Cargo Type',
+                field: 'cargo_type',
+                frozen: true,
+                width: 150,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'MBPT / PLA',
+                field: 'mbpt_pla',
+                frozen: true,
+                width: 100,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'Qty (MT)',
+                field: 'qty_mt',
+                width: 110,
+                hozAlign: 'right',
+                headerHozAlign: 'center',
+                formatter: numFormatter,
+            },
+            {
+                title: 'Qty Balance (MT)',
+                field: 'qty_balance',
+                width: 130,
+                hozAlign: 'right',
+                headerHozAlign: 'center',
+                formatter: numFormatter,
+            },
+            {
+                title: 'Trip Start',
+                field: 'trip_start',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Anch. Gull Island',
+                field: 'anchored_gull_island',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Aweigh Gull Island',
+                field: 'aweigh_gull_island',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Alongside Vessel (MV)',
+                field: 'along_side_vessel',
+                width: 155,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Loading Start',
+                field: 'commenced_loading',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Loading End',
+                field: 'completed_loading',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Cast Off MV',
+                field: 'cast_off_mv',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Anch. Gull Island (Loaded)',
+                field: 'anchored_gull_island',
+                width: 165,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Aweigh Gull Island (Loaded)',
+                field: 'aweigh_gull_island',
+                width: 165,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'AMF at Port',
+                field: 'amf_at_port',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Alongside Berth',
+                field: 'along_side_berth',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Discharge Start (Berth)',
+                field: 'commence_discharge_berth',
+                width: 155,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Discharge End (Berth)',
+                field: 'completed_discharge_berth',
+                width: 155,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Cast Off Berth NT',
+                field: 'cast_off_berth_nt',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Cast Off Port',
+                field: 'cast_off_port',
+                width: 145,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Unloaded By',
+                field: 'unloaded_by',
+                width: 140,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'TAT',
+                field: 'tat',
+                width: 80,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+            },
+
+        ];
+    }
+
+    /* ── Single shared tooltip for all rows ── */
+    const _tip = document.createElement('span');
+    _tip.id = 'row-tip';
+    _tip.style.cssText = [
+        'display:none',
+        'position:fixed',
+        'z-index:99999',
+        'background:rgba(30,30,30,0.88)',
+        'color:#fff',
+        'font-size:11px',
+        'font-weight:600',
+        'padding:5px 12px',
+        'border-radius:6px',
+        'pointer-events:none',
+        'white-space:nowrap',
+        'box-shadow:0 4px 14px rgba(0,0,0,0.25)'
+    ].join(';');
+    document.body.appendChild(_tip);
+
+    document.getElementById('vd-table').addEventListener('mouseover', function (e) {
+        const row = e.target.closest('.tabulator-row');
+        if (row && row.dataset.status) {
+            _tip.textContent = row.dataset.status;
+            _tip.style.display = 'block';
+        } else {
+            _tip.style.display = 'none';
+        }
+    });
+    document.getElementById('vd-table').addEventListener('mousemove', function (e) {
+        _tip.style.top = (e.clientY + 10) + 'px';
+        _tip.style.left = (e.clientX + 10) + 'px';
+    });
+    document.getElementById('vd-table').addEventListener('mouseleave', function () {
+        _tip.style.display = 'none';
+    });
+    /* ── Table instance ──────────────────────────────────── */
+    let table;
+
+    function initTable(data) {
+
+        table = new Tabulator('#vd-table', {
+
+            data: data,
+
+            columns: buildColumns(),
+
+            layout: "fitDataStretch",
+
+            responsiveLayout: false,
+
+            maxHeight: 'calc(100vh - 190px)',
+
+            rowHeight: 30,
+
+            placeholder: 'No records found.',
+
+            pagination: true,
+
+            paginationMode: "local",
+
+            paginationSize: 20,
+
+            paginationSizeSelector: [20, 50, 100, 200],
+
+            rowFormatter: function (row) {
+                const data = row.getData();
+                const el = row.getElement();
+
+                let statusLabel = '';
+                let bgColor = '';
+
+                if (
+                    data.completed_discharge_berth &&
+                    String(data.completed_discharge_berth).trim() !== ''
+                ) {
+                    bgColor = '#c6efce';
+                    statusLabel = 'Completed Discharge';
+                }
+                else if (
+                    data.commence_discharge_berth &&
+                    String(data.commence_discharge_berth).trim() !== ''
+                ) {
+                    bgColor = '#ffe699';
+                    statusLabel = 'Under Discharge';
+                }
+                else if (
+                    data.completed_loading &&
+                    String(data.completed_loading).trim() !== ''
+                ) {
+                    bgColor = '#bdd7ee';
+                    statusLabel = 'Loaded & Waiting';
+                }
+                else if (
+                    data.commenced_loading &&
+                    String(data.commenced_loading).trim() !== ''
+                ) {
+                    bgColor = '#d9d2e9';
+                    statusLabel = 'Currently Loading';
+                }
+                else if (
+                    data.trip_start &&
+                    String(data.trip_start).trim() !== ''
+                ) {
+                    bgColor = '#fff2cc';
+                    statusLabel = '🚢 In Transit';
+                }
+
+                if (bgColor) {
+                    el.style.backgroundColor = bgColor;
+                }
+
+                if (statusLabel) {
+                    el.setAttribute('data-status', statusLabel);
+                }
+            },
+
+            initialSort: [
+                { column: "id", dir: "desc" }
+            ]
+        });
+
+        updateCount(data.length);
+        renderShiftPreview(data);
+    }
+
+    function updateCount(n) {
+        document.getElementById('row-count').textContent =
+            n === 1 ? '1 record' : `${n.toLocaleString('en-IN')} records`;
+    }
+
+    /* ── Filters ─────────────────────────────────────────── */
+    function updateDateRangeDisplay() {
+        const selectedDate = document.getElementById('filter-from').value;
+        const displayEl = document.getElementById('date-range-display');
+
+        if (!selectedDate) {
+            displayEl.innerHTML = '—';
+            return;
+        }
+
+        // Parse selected date
+        const [year, month, day] = selectedDate.split('-');
+
+        // Start: selected date at 06:00 AM
+        const startDate = new Date(year, parseInt(month) - 1, parseInt(day), 6, 0, 0);
+
+        // End: next day at 06:00 AM
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 1);
+
+        // Format: DD-MM-YYYY HH:MM
+        const formatDT = (dt) => {
+            const dd = String(dt.getDate()).padStart(2, '0');
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const yyyy = dt.getFullYear();
+            const hh = String(dt.getHours()).padStart(2, '0');
+            const min = String(dt.getMinutes()).padStart(2, '0');
+            return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
+        };
+
+        displayEl.innerHTML = `${formatDT(startDate)}<br>${formatDT(endDate)}`;
+    }
+
+    // Update display when date input changes
+    document.addEventListener('DOMContentLoaded', function () {
+        const dateInput = document.getElementById('filter-from');
+        if (dateInput) {
+            dateInput.addEventListener('change', updateDateRangeDisplay);
+            // Set initial date to today and display range
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            dateInput.value = `${year}-${month}-${day}`;
+            updateDateRangeDisplay();
+        }
+    });
+
+    function applyFilters() {
+
+        const selectedDate =
+            document.getElementById('filter-from').value;
+
+        const params = new URLSearchParams();
+
+        if (selectedDate) {
+            params.set('from_date', selectedDate);
+        }
+
+        const selectedFilter =
+            document.getElementById(
+                'status-filter'
+            ).value;
+
+        params.set(
+            'status_filter',
+            selectedFilter
+        );
+
+        document.getElementById('row-count').textContent =
+            'Loading…';
+
+        fetch(
+            '/api/module/RP01/mv-barge-report/data?' +
+            params.toString()
+        )
+
+            .then(r => {
+
+                if (!r.ok) {
+                    throw new Error('Server error ' + r.status);
+                }
+
+                return r.json();
+            })
+
+            .then(data => {
+
+                if (table) {
+
+                    table.setData(data);
+
+                    updateCount(data.length);
+
+                    renderShiftPreview(data);
+
+                } else {
+
+                    initTable(data);
+                }
+            })
+
+            .catch(err => {
+
+                console.error(err);
+
+                document.getElementById('row-count').textContent =
+                    'Error loading data.';
+            });
+    }
+    function resetFilters() {
+
+        const now = new Date();
+
+        const year =
+            now.getFullYear();
+
+        const month =
+            String(now.getMonth() + 1).padStart(2, '0');
+
+        const day =
+            String(now.getDate()).padStart(2, '0');
+
+        document.getElementById('filter-from').value =
+            `${year}-${month}-${day}`;
+
+        updateDateRangeDisplay();
+
+        applyFilters();
+    }
+
+    /* ── Download Excel per barge ────────────────────────── */
+    function downloadExcel(bargeLineId, bargeName) {
+        const url = `/api/module/RP01/mv-barge-report/${bargeLineId}/download`;
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error('Server error ' + res.status);
+                const disposition = res.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="(.+?)"/);
+                const filename = match ? match[1] : `MVBargeReport_${bargeName || 'barge'}.xlsx`;
+                return res.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Download failed. Please try again.');
+            });
+    }
+
+    /* ── Download All (multi-sheet) ──────────────────────── */
+    function downloadAll() {
+        const selectedDate = document.getElementById('filter-from').value;
+        const btn = document.getElementById('dl-all-btn');
+        const loader = document.getElementById('download-loader');
+
+        btn.disabled = true;
+        btn.innerHTML = 'Preparing...';
+        loader.style.display = 'flex';
+
+        setTimeout(() => {
+            loader.classList.add('show');
+        }, 10);
+
+        // Reset animation state
+        const bar = document.querySelector('.pbar2-fill');
+        const pct = document.getElementById('loader-pct');
+        const msg = document.getElementById('loader-msg');
+        bar.style.width = '0%';
+        pct.textContent = '0%';
+        ['ld1', 'ld2', 'ld3', 'ld4'].forEach(id => {
+            document.getElementById(id).className = 'dot';
+        });
+
+        const steps = [
+            { msg: 'Connecting to server...', pct: 15, dots: [1, 0, 0, 0] },
+            { msg: 'Fetching barge records...', pct: 35, dots: [2, 1, 0, 0] },
+            { msg: 'Building Excel sheets...', pct: 60, dots: [2, 2, 1, 0] },
+            { msg: 'Calculating totals...', pct: 82, dots: [2, 2, 2, 1] },
+        ];
+
+        let stepIdx = 0;
+        const stepTimer = setInterval(() => {
+            if (stepIdx >= steps.length) { clearInterval(stepTimer); return; }
+            const s = steps[stepIdx];
+            msg.textContent = s.msg;
+            bar.style.width = s.pct + '%';
+            pct.textContent = s.pct + '%';
+            s.dots.forEach((state, i) => {
+                const el = document.getElementById('ld' + (i + 1));
+                el.className = 'dot' + (state === 1 ? ' active' : state === 2 ? ' done' : '');
+            });
+            stepIdx++;
+        }, 1100);
+
+        const params = new URLSearchParams();
+        if (selectedDate) params.set('from_date', selectedDate);
+        const selectedFilter =
+            document.getElementById(
+                'status-filter'
+            ).value;
+
+        params.set(
+            'status_filter',
+            selectedFilter
+        );
+
+        fetch('/api/module/RP01/mv-barge-report/download-all?' + params.toString())
+            .then(res => {
+                if (!res.ok) throw new Error('Server error ' + res.status);
+                const disposition = res.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="(.+?)"/);
+                const filename = match ? match[1] : 'MVBargeReport.xlsx';
+                return res.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                bar.style.width = '100%';
+                pct.textContent = '100%';
+                msg.textContent = 'Download ready!';
+                ['ld1', 'ld2', 'ld3', 'ld4'].forEach(id => {
+                    document.getElementById(id).className = 'dot done';
+                });
+                setTimeout(() => {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(a.href);
+                }, 400);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Download failed.');
+            })
+            .finally(() => {
+                clearInterval(stepTimer);
+                setTimeout(() => {
+                    loader.classList.remove('show');
+
+                    setTimeout(() => {
+                        loader.style.display = 'none';
+                    }, 350);
+                    btn.disabled = false;
+                    btn.innerHTML = '↓ Download All';
+                }, 800);
+            });
+    }
+    function renderShiftPreview(data) {
+    const wrapper = document.getElementById('shift-preview');
+    wrapper.innerHTML = '';
+
+    const equipments = [
+        'Barge Unloader 1',
+        'Barge Unloader 2',
+        'SANY 285-Exavator',
+        'Sennebogen J1',
+        'Sennebogen J5',
+        'BUL-01',
+        'BUL-02',
+        'BUL-03',
+        'BUL-04',
+        'BUL-05'
+    ];
+
+    const shiftDefs = [
+        { name: 'A Shift', start: 6,  end: 14 },
+        { name: 'B Shift', start: 14, end: 22 },
+        { name: 'C Shift', start: 22, end: 30 }  // 30 = next day 06:00
+    ];
+
+    /* ── assign each row to exactly ONE shift ── */
+    function getShiftHour(row) {
+        const raw = String(row.trip_start || '');
+        if (!raw) return null;
+        try {
+            const timePart = raw.includes('T')
+                ? raw.split('T')[1]
+                : raw.split(' ')[1];
+            if (!timePart) return null;
+            return parseInt(timePart.split(':')[0]);
+        } catch (e) { return null; }
+    }
+
+    function assignShift(hr) {
+        if (hr === null) return null;
+        if (hr >= 6  && hr < 14) return 0;   // A
+        if (hr >= 14 && hr < 22) return 1;   // B
+        return 2;                              // C (22–05)
+    }
+
+    /* ── build per-shift equipment maps ── */
+    // shiftRows[shiftIdx][equipName] = [row, row, ...]
+    const shiftRows = shiftDefs.map(() => {
+        const map = {};
+        equipments.forEach(eq => { map[eq] = []; });
+        return map;
+    });
+
+    // shiftAllRows[shiftIdx] = unique rows in that shift (for shift total)
+    const shiftAllRows = [[], [], []];
+
+    data.forEach(row => {
+        if (!row.trip_start) return;
+        const hr = getShiftHour(row);
+        const si = assignShift(hr);
+        if (si === null) return;
+
+        shiftAllRows[si].push(row);
+
+        const unload = (row.unloaded_by || '').trim();
+        if (!unload) return;
+
+        unload.split(',').map(x => x.trim()).forEach(eq => {
+            if (shiftRows[si][eq] !== undefined) {
+                shiftRows[si][eq].push(row);
+            }
+        });
+    });
+
+    /* ── grand totals per equipment (sum across all shifts, qty counted once per row per equipment) ── */
+    const grandEqTotals = {};
+    equipments.forEach(eq => {
+        grandEqTotals[eq] = shiftDefs.reduce((sum, _, si) => {
+            return sum + shiftRows[si][eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+        }, 0);
+    });
+
+    /* ── grand overall total = sum of all unique rows' qty across all shifts ── */
+    const grandOverall = [0, 1, 2].reduce((total, si) => {
+        return total + shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+    }, 0);
+
+    /* ── render each shift card ── */
+    shiftDefs.forEach((shift, si) => {
+        const map = shiftRows[si];
+        const isLastShift = si === shiftDefs.length - 1;
+
+        // shift total = sum of all rows in this shift (each row counted once)
+        const shiftTotal = shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+
+        let html = `
+        <div class="shift-card">
+            <div class="shift-header">${shift.name}</div>
+            <div style="overflow-x:auto;">
+            <table class="shift-table">
+                <thead><tr>`;
+
+        equipments.forEach(eq => {
+            html += `<th colspan="4" style="background:#c6efce;color:#006100;text-align:center;">${eq}</th>`;
+        });
+
+        html += `</tr><tr>`;
+        equipments.forEach(() => {
+            html += `<th>Barge</th><th>Qty</th><th>Cargo</th><th>MV</th>`;
+        });
+        html += `</tr></thead><tbody>`;
+
+        const maxRows = Math.max(...equipments.map(eq => map[eq].length), 1);
+
+        for (let i = 0; i < maxRows; i++) {
+            html += `<tr>`;
+            equipments.forEach(eq => {
+                const row = map[eq][i];
+                if (row) {
+                    html += `
+                    <td>${row.barge_name || ''}</td>
+                    <td style="text-align:right;">${Number(row.qty_mt || 0).toLocaleString('en-IN')}</td>
+                    <td>${row.cargo_type || ''}</td>
+                    <td>${row.mother_vessel_name || ''}</td>`;
+                } else {
+                    html += `<td></td><td></td><td></td><td></td>`;
+                }
+            });
+            html += `</tr>`;
+        }
+
+        /* equipment totals row (yellow) */
+        html += `<tr style="background:#ffe699;font-weight:700;">`;
+        equipments.forEach(eq => {
+            const t = map[eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+            html += `
+            <td style="text-align:center;">Total</td>
+            <td style="text-align:right;">${t.toLocaleString('en-IN')}</td>
+            <td colspan="2"></td>`;
+        });
+        html += `</tr>`;
+
+        /* shift total row (blue) */
+        html += `
+        <tr style="background:#bdd7ee;font-weight:700;">
+            <td colspan="${equipments.length * 4}"
+                style="text-align:right;padding-right:20px;">
+                ${shift.name} Total : ${shiftTotal.toLocaleString('en-IN')} MT
+            </td>
+        </tr>`;
+
+        /* grand total row — only after C Shift */
+        if (isLastShift) {
+            html += `<tr style="background:#c6e0f5;font-weight:700;font-size:12px;color:#0c4a6e;">`;
+            html += `<td style="white-space:nowrap;text-align:center;border-left:3px solid #4a7ab5;">All Shifts</td>`;
+            equipments.forEach((eq, idx) => {
+                const val = grandEqTotals[eq];
+                if (idx === 0) {
+                    html += `<td style="text-align:right;">${val.toLocaleString('en-IN')}</td><td colspan="2"></td>`;
+                } else {
+                    html += `<td style="border-left:3px solid #4a7ab5;"></td>
+                             <td style="text-align:right;">${val.toLocaleString('en-IN')}</td>
+                             <td colspan="2"></td>`;
+                }
+            });
+            html += `</tr>`;
+
+            html += `<tr style="background:#bdd7ee;font-weight:700;">
+                <td colspan="${equipments.length * 4}"
+                    style="text-align:right;padding-right:20px;color:#0c4a6e;font-size:13px;">
+                    Grand Total (All Shifts) : ${grandOverall.toLocaleString('en-IN')} MT
+                </td>
+            </tr>`;
+        }
+
+        html += `</tbody></table></div></div>`;
+        wrapper.innerHTML += html;
+    });
+}
+    /* ── On load — auto-fetch current month ──────────────── */
+    document.addEventListener('DOMContentLoaded', function () {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+
+        document.getElementById('filter-from').value =
+            `${year}-${month}-${day}`;
+
+        applyFilters();   // ← triggers the fetch immediately on page load
+        addFilterRow();
+
+    });
+    let filterIndex = 0;
+
+    function getFilterColumns() {
+
+        return [
+            { field: "barge_name", title: "Barge / MBC Name" },
+            { field: "mother_vessel_name", title: "Mother Vessel Name" },
+            { field: "cargo_type", title: "Cargo Type" },
+            { field: "mbpt_pla", title: "MBPT / PLA" },
+            { field: "trip_start", title: "Trip Start" },
+        ];
+
+    }
+
+    function addFilterRow() {
+
+        filterIndex++;
+
+        const cols = getFilterColumns();
+
+        let options = '<option value="">-- Column --</option>';
+
+        cols.forEach(c => {
+            options += `<option value="${c.field}">${c.title}</option>`;
+        });
+
+        const row = document.createElement('div');
+
+        row.className = 'filter-row';
+
+        row.id = `filter-row-${filterIndex}`;
+
+        row.innerHTML = `
+        <select class="filter-col-select">
+            ${options}
+        </select>
+
+        <input type="text"
+               class="filter-text-input"
+               placeholder="Search value">
+
+        <button class="filter-remove"
+                onclick="removeFilterRow(${filterIndex})">
+            ×
+        </button>
+    `;
+
+        document.getElementById('filterRows').appendChild(row);
+    }
+
+    function removeFilterRow(id) {
+
+        const row = document.getElementById(`filter-row-${id}`);
+
+        if (row) row.remove();
+    }
+
+    function applyColumnFilters() {
+
+        const filters = [];
+
+        document.querySelectorAll('.filter-row').forEach(row => {
+
+            const field = row.querySelector('.filter-col-select').value;
+
+            const value = row.querySelector('.filter-text-input').value;
+
+            if (field && value) {
+
+                filters.push({
+                    field: field,
+                    type: "like",
+                    value: value
+                });
+            }
+        });
+
+        table.clearFilter(true);
+
+        table.setFilter(filters);
+    }
+
+    function clearColumnFilters() {
+
+        document.getElementById('filterRows').innerHTML = '';
+
+        table.clearFilter(true);
+    }
+
+    function toggleAdvancedFilters() {
+
+        const panel = document.getElementById('filterPanel');
+
+        if (panel.style.display === 'none') {
+
+            panel.style.display = 'block';
+
+        } else {
+
+            panel.style.display = 'none';
+        }
+    }
+    let savedFilters = [];
+
+    function saveCurrentFilters() {
+
+        const current = [];
+
+        document.querySelectorAll('.filter-row').forEach(row => {
+
+            const field = row.querySelector('.filter-col-select').value;
+
+            const value = row.querySelector('.filter-text-input').value;
+
+            const fieldText =
+                row.querySelector('.filter-col-select')
+                    .selectedOptions[0]?.text || '';
+
+            if (field && value) {
+
+                current.push({
+                    field,
+                    value,
+                    title: fieldText
+                });
+            }
+        });
+
+        if (current.length === 0) {
+            return;
+        }
+
+        savedFilters.push(current);
+
+        localStorage.setItem(
+            'mv_barge_saved_filters',
+            JSON.stringify(savedFilters)
+        );
+
+        renderSavedFilters();
+    }
+
+    function renderSavedFilters() {
+
+        const bar = document.getElementById('savedFiltersBar');
+
+        const list = document.getElementById('savedFiltersList');
+
+        list.innerHTML = '';
+
+        if (savedFilters.length === 0) {
+
+            bar.style.display = 'none';
+
+            return;
+        }
+
+        bar.style.display = 'flex';
+
+        savedFilters.forEach((group, index) => {
+
+            const names = group.map(f => f.title).join(', ');
+
+            const chip = document.createElement('div');
+
+            chip.className = 'saved-filter-chip';
+
+            chip.innerHTML = `
+            ${names}
+
+            <button onclick="removeSavedFilter(${index})">
+                ×
+            </button>
+        `;
+
+            chip.addEventListener('click', function (e) {
+
+                if (e.target.tagName === 'BUTTON') return;
+
+                applySavedFilter(index);
+            });
+
+            list.appendChild(chip);
+        });
+    }
+
+    function applySavedFilter(index) {
+
+        clearColumnFilters();
+
+        const filters = savedFilters[index];
+
+        filters.forEach(f => {
+
+            addFilterRow();
+
+            const rows =
+                document.querySelectorAll('.filter-row');
+
+            const row = rows[rows.length - 1];
+
+            row.querySelector('.filter-col-select').value = f.field;
+
+            row.querySelector('.filter-text-input').value = f.value;
+        });
+
+        applyColumnFilters();
+    }
+
+    function removeSavedFilter(index) {
+
+        savedFilters.splice(index, 1);
+
+        localStorage.setItem(
+            'mv_barge_saved_filters',
+            JSON.stringify(savedFilters)
+        );
+
+        renderSavedFilters();
+    }
+</script>
+{% endblock %}

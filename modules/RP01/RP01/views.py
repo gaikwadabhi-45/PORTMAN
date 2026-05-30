@@ -15,6 +15,7 @@ from .mv_mbc_month_report import views as _mv_monthly_report_views  # noqa: regi
 from .live_dashboard    import views as _live_dashboard_views  # noqa: registers live-dashboard routes on bp
 from .cargo_report import views as _cargo_report_views
 from .port_map          import views as _port_map_views        # noqa: registers port-map routes on bp
+from .daily_barge_report import views as _mv_barge_report_views  # noqa: registers mv-barge-report routes on bp
 
 def login_required(f):
     @wraps(f)
