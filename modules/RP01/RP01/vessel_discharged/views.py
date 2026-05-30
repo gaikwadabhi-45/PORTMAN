@@ -146,7 +146,7 @@ def login_required(f):
 # ── Data fetch ──────────────────────────────────────────────────────────────
 
 _DATE_FIELDS = {
-    "discharge_commenced": "a.discharge_started",
+    "discharge_commenced": "pla_commenced.pla_discharge_started",
     "discharge_completed": "a.discharge_commenced",
     "nor_tendered": "h.nor_tendered",
 }
@@ -164,41 +164,50 @@ def _fetch_list(from_date, to_date, date_field=None):
 
     cur = get_cursor(conn)
 
-    query = f"""
-        SELECT
-            h.id,
-            h.doc_num,
-            h.vcn_doc_num,
-            h.vessel_name,
+    query = """
+    SELECT
+        h.id,
+        h.doc_num,
+        h.vcn_doc_num,
+        h.vessel_name,
 
-            a.discharge_started AS discharge_commenced,
+        pla.anchored AS pla_date,
 
-            a.discharge_commenced AS discharge_completed,
+        pla_commenced.pla_discharge_started
+            AS discharge_commenced,
 
-            h.nor_tendered,
+        a.discharge_commenced
+            AS discharge_completed,
 
-            h.doc_status,
+        h.nor_tendered,
 
-            v.vessel_agent_name,
+        h.doc_status,
 
-            v.operation_type,
+        v.vessel_agent_name,
 
-            COALESCE(SUM(cd.bl_quantity), 0) AS bl_qty,
+        v.operation_type,
 
-            STRING_AGG(
-                DISTINCT cd.cargo_name,
-                ', '
-            ) AS cargo_names
+        COALESCE(SUM(cd.bl_quantity), 0)
+            AS bl_qty,
 
-        FROM ldud_header h
+        STRING_AGG(
+            DISTINCT cd.cargo_name,
+            ', '
+        ) AS cargo_names
 
-        LEFT JOIN vcn_header v
-            ON v.id = h.vcn_id
+    FROM ldud_header h
 
-        LEFT JOIN vcn_cargo_declaration cd
-            ON cd.vcn_id = h.vcn_id
+    LEFT JOIN vcn_header v
+        ON v.id = h.vcn_id
 
-        LEFT JOIN LATERAL (
+    LEFT JOIN vcn_cargo_declaration cd
+        ON cd.vcn_id = h.vcn_id
+
+    -- =====================================
+    -- FINAL COMPLETED DATE
+    -- =====================================
+
+    LEFT JOIN LATERAL (
 
         SELECT
             aa.discharge_started,
@@ -209,16 +218,59 @@ def _fetch_list(from_date, to_date, date_field=None):
         WHERE aa.ldud_id = h.id
 
         ORDER BY
-            aa.discharge_started DESC NULLS LAST
+            aa.discharge_commenced DESC NULLS LAST
 
         LIMIT 1
 
-        ) a ON TRUE
+    ) a ON TRUE
 
-        WHERE LOWER(h.operation_type) = 'import'
+    -- =====================================
+    -- PLA COMMENCED DATE
+    -- =====================================
 
-        AND DATE({date_col}) BETWEEN %s AND %s
-    """
+    LEFT JOIN LATERAL (
+
+        SELECT
+            aa.discharge_started
+                AS pla_discharge_started
+
+        FROM ldud_anchorage aa
+
+        WHERE aa.ldud_id = h.id
+        AND UPPER(aa.anchorage_name)
+            LIKE '%%PLA%%'
+
+        ORDER BY aa.anchored ASC
+
+        LIMIT 1
+
+    ) pla_commenced ON TRUE
+
+    -- =====================================
+    -- PLA ARRIVAL DATE
+    -- =====================================
+
+    LEFT JOIN LATERAL (
+
+        SELECT
+            aa.anchored
+
+        FROM ldud_anchorage aa
+
+        WHERE aa.ldud_id = h.id
+        AND UPPER(aa.anchorage_name)
+            LIKE '%%PLA%%'
+
+        ORDER BY aa.anchored ASC
+
+        LIMIT 1
+
+    ) pla ON TRUE
+
+    WHERE LOWER(h.operation_type) = 'import'
+
+    AND DATE(""" + date_col + """) BETWEEN %s AND %s
+"""
 
     # =========================================
     # ONLY ACTIVE COMMENCED VESSELS
@@ -245,6 +297,8 @@ def _fetch_list(from_date, to_date, date_field=None):
             h.doc_status,
             v.vessel_agent_name,
             v.operation_type,
+            pla.anchored,
+            pla_commenced.pla_discharge_started,
             a.discharge_started,
             a.discharge_commenced
 
@@ -403,7 +457,8 @@ def _write_vessel_sheet(ws, data):
     started_list = [
         _parse_dt(a.get("discharge_started"))
         for a in anchorages
-        if a.get("discharge_started")
+        if "PLA" in (a.get("anchorage_name") or "").upper()
+        and a.get("discharge_started")
     ]
 
     completed_list = [
@@ -1365,7 +1420,7 @@ def vessel_discharged_preview(ldud_id):
         conn.close()
         return jsonify({"error": "Record not found"}), 404
 
-        # =========================
+    # =========================
     # ANCHORAGE DATA
     # =========================
 
