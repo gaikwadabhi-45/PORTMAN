@@ -692,8 +692,9 @@ def print_invoice(invoice_id):
         base_bank = dict(base_row) if base_row else None
 
         va_id = invoice.get('virtual_account_id')
-        if va_id:
-            cur_b.execute('SELECT * FROM customer_virtual_accounts WHERE id=%s', [va_id])
+        if va_id and va_id > 0:
+            # Specific virtual account chosen at invoice time
+            cur_b.execute('SELECT * FROM customer_virtual_accounts WHERE id=%s AND is_active=1', [va_id])
             va_row = cur_b.fetchone()
             if va_row:
                 payment_bank = dict(base_bank) if base_bank else {}
@@ -704,13 +705,19 @@ def print_invoice(invoice_id):
                     'bank_name': va_row['bank_name'] or payment_bank.get('bank_name') or '',
                     'branch_name': va_row['branch_name'] or payment_bank.get('branch_name') or '',
                 })
-        if not payment_bank:
+        elif va_id == -1:
+            # User explicitly chose admin port bank account
+            payment_bank = base_bank
+        else:
+            # va_id is null: use virtual_account_number from customer master overlaid on admin bank
             legacy_va = (customer_master.get('virtual_account_number') or '').strip() if customer_master else ''
             if legacy_va:
                 payment_bank = dict(base_bank) if base_bank else {}
                 payment_bank['account_number'] = legacy_va
             else:
                 payment_bank = base_bank
+        if not payment_bank:
+            payment_bank = base_bank
     except Exception:
         payment_bank = None
     conn_b.close()
@@ -1246,6 +1253,11 @@ def get_customer_bank(customer_type, customer_id):
     cur = get_cursor(conn)
     try:
         result = _get_customer_master_snapshot(cur, customer_type, customer_id)
+
+        # Admin port bank account (always the fallback)
+        cur.execute('SELECT * FROM port_bank_accounts ORDER BY id LIMIT 1')
+        admin_row = cur.fetchone()
+        result['admin_bank'] = dict(admin_row) if admin_row else None
 
         # Get virtual bank accounts from customer_virtual_accounts table
         party_type = 'Agent' if customer_type.lower() == 'agent' else 'Customer'

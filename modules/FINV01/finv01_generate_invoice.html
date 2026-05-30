@@ -455,21 +455,26 @@ async function validateSelection() {
     try {
         const res = await fetch(`/api/module/FINV01/customer-bank/${ctype}/${cid}`);
         const info = await res.json();
-        // Populate virtual account dropdown
+        // Populate payment account dropdown
         const vaSelect = document.getElementById('virtualAccountSelect');
-        const defaultVaLabel = info.virtual_account_number
-            ? `Default (Customer Virtual A/c ${info.virtual_account_number})`
-            : 'Default (Admin Bank Account)';
-        vaSelect.innerHTML = `<option value="">${defaultVaLabel}</option>`;
-        const vas = info.virtual_accounts || [];
-        vas.forEach(va => {
-            const opt = document.createElement('option');
-            opt.value = va.id;
-            opt.textContent = `${va.account_number} — ${va.bank_name || ''} (${va.account_holder_name || ''})`;
-            vaSelect.appendChild(opt);
+        const ab = info.admin_bank;
+        const adminLabel = ab
+            ? `Admin Bank — ${ab.bank_name || ''} A/c ${ab.account_number || ''}`
+            : 'Admin Bank Account';
+        const legacyVa = (info.virtual_account_number || '').trim();
+        let html = '';
+        if (legacyVa) {
+            // Customer has a virtual A/c number in their master — make it the default
+            html += `<option value="">${legacyVa} (Customer Virtual A/c)</option>`;
+            html += `<option value="admin">${adminLabel}</option>`;
+        } else {
+            // No virtual A/c → admin bank is default
+            html += `<option value="">${adminLabel}</option>`;
+        }
+        (info.virtual_accounts || []).forEach(va => {
+            html += `<option value="${va.id}">${va.account_number} — ${va.bank_name || ''} (${va.account_holder_name || ''})</option>`;
         });
-        // Auto-select if only one virtual account
-        if (vas.length === 1) vaSelect.value = vas[0].id;
+        vaSelect.innerHTML = html;
         // Pre-fill billing details from customer master (only if currently empty)
         if (info.billing_address && !document.getElementById('billingAddress').value)
             document.getElementById('billingAddress').value = info.billing_address;
@@ -604,7 +609,7 @@ async function confirmGenerateInvoice() {
         payment_terms: document.getElementById('paymentTerms').value,
         due_date: document.getElementById('dueDate').value,
         remarks: document.getElementById('remarks').value,
-        virtual_account_id: parseInt(document.getElementById('virtualAccountSelect').value) || null,
+        virtual_account_id: (function() { const v = document.getElementById('virtualAccountSelect').value; return v === 'admin' ? -1 : (parseInt(v) || null); })(),
 
         customer_type: ctype,
         customer_id: parseInt(firstRow.dataset.customerId),

@@ -1266,12 +1266,12 @@ def _build_delay_sheet(wb, delay_view):
             # CLEAR + STYLE ROW
             # =========================================
             for col in range(1, 9):
-
-                ws.cell(row, col).value = None
-
-                ws.cell(row, col).fill = _fill(_SUBTOTAL_BG)
-
-                ws.cell(row, col).border = _FULL_BDR
+                _cell(ws, row, col, '', fill_color=_SUBTOTAL_BG, font_color=_TEXT)
+            _cell(ws, row, 1, '', bold=True, fill_color=_TYPE_BG, font_color=_WHITE)
+            _cell(ws, row, 2, item.get('label', ''), bold=True,
+                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_left)
+            _cell(ws, row, 8, item.get('total', ''), bold=True,
+                  fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
 
             # =========================================
             # KEEP TYPE COLUMN
