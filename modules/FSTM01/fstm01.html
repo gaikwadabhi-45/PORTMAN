@@ -10,11 +10,12 @@
     .btn-save { background: #3498db; color: white; }
     .btn-delete { background: #e74c3c; color: white; }
     .btn-fields { background: #8e44ad; color: white; font-size: 10px; padding: 4px 8px; }
-    .data-table { width: 100%; border-collapse: collapse; font-size: 11px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .data-table th, .data-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ecf0f1; }
+    .table-wrap { overflow-x: auto; }
+    .data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 11px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .data-table th, .data-table td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #ecf0f1; white-space: nowrap; }
     .data-table th { background: #34495e; color: white; font-weight: 600; font-size: 10px; text-transform: uppercase; }
     .data-table tr:hover { background: #f8f9fa; }
-    .data-table input, .data-table select { width: 100%; padding: 4px; font-size: 11px; border: 1px solid #ddd; }
+    .data-table input, .data-table select { padding: 4px 6px; font-size: 11px; border: 1px solid #ddd; box-sizing: border-box; }
     .data-table input[readonly], .data-table input:disabled, .data-table select:disabled { background: #ecf0f1; color: #7f8c8d; cursor: not-allowed; }
     .pagination { margin-top: 15px; display: flex; gap: 5px; justify-content: center; font-size: 11px; }
     .system-row { background: #fdf6e3 !important; }
@@ -50,34 +51,35 @@
     {% endif %}
 </div>
 
+<div class="table-wrap">
 <form id="dataForm">
 <table class="data-table">
     <thead>
         <tr>
             <th style="width:30px"><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
-            <th>Service Code</th>
-            <th>Service Name</th>
-            <th>Category</th>
-            <th>GL Code</th>
-            <th>SAP GL Account</th>
-            <th>SAP Profit Center</th>
-            <th>SAP Cost Center</th>
-            <th title="IGST GL Account for SAP staging">IGST GL</th>
-            <th title="CGST GL Account for SAP staging">CGST GL</th>
-            <th title="SGST GL Account for SAP staging">SGST GL</th>
-            <th title="Checked = Sale (A), Unchecked = Service (S)">Is Sale</th>
-            <th title="TDS GL Account for this service (overrides config default)">TDS GL</th>
-            <th title="TCS GL Account for this service (overrides config default)">TCS GL</th>
-            <th>SAC Code</th>
-            <th>GST Rate</th>
-            <th>UOM</th>
-            <th>Billable</th>
-            <th>TDS</th>
-            <th>TDS %</th>
-            <th>TCS</th>
-            <th>TCS %</th>
-            <th>Triplicate</th>
-            <th>Status</th>
+            <th style="min-width:90px">Service Code</th>
+            <th style="min-width:160px">Service Name</th>
+            <th style="min-width:110px">Category</th>
+            <th style="min-width:110px">GL Code</th>
+            <th style="min-width:130px">SAP GL Account</th>
+            <th style="min-width:130px">SAP Profit Center</th>
+            <th style="min-width:120px">SAP Cost Center</th>
+            <th style="min-width:110px" title="IGST GL Account for SAP staging">IGST GL</th>
+            <th style="min-width:110px" title="CGST GL Account for SAP staging">CGST GL</th>
+            <th style="min-width:110px" title="SGST GL Account for SAP staging">SGST GL</th>
+            <th style="min-width:60px;text-align:center" title="Checked = Sale (A), Unchecked = Service (S)">Is Sale</th>
+            <th style="min-width:120px" title="TDS GL Account for this service (overrides config default)">TDS GL</th>
+            <th style="min-width:120px" title="TCS GL Account for this service (overrides config default)">TCS GL</th>
+            <th style="min-width:90px">SAC Code</th>
+            <th style="min-width:110px">GST Rate</th>
+            <th style="min-width:70px">UOM</th>
+            <th style="min-width:80px">Billable</th>
+            <th style="min-width:65px">TDS</th>
+            <th style="min-width:75px">TDS %</th>
+            <th style="min-width:65px">TCS</th>
+            <th style="min-width:75px">TCS %</th>
+            <th style="min-width:90px">Triplicate</th>
+            <th style="min-width:85px">Status</th>
             <th>Fields</th>
         </tr>
     </thead>
@@ -96,12 +98,12 @@
             <td><input type="text" name="sap_gl_account[]" value="{{ row.sap_gl_account or '' }}" placeholder="e.g. 4101076030" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_profit_center[]" value="{{ row.sap_profit_center or '' }}" placeholder="e.g. 5171000000" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sap_cost_center[]" value="{{ row.sap_cost_center or '' }}" {% if locked %}readonly{% endif %}></td>
-            <td><input type="text" name="sap_igst_gl[]" value="{{ row.sap_igst_gl or '' }}" placeholder="IGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
-            <td><input type="text" name="sap_cgst_gl[]" value="{{ row.sap_cgst_gl or '' }}" placeholder="CGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
-            <td><input type="text" name="sap_sgst_gl[]" value="{{ row.sap_sgst_gl or '' }}" placeholder="SGST GL" style="width:90px;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_igst_gl[]" value="{{ row.sap_igst_gl or '' }}" placeholder="IGST GL" style="width:100%;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_cgst_gl[]" value="{{ row.sap_cgst_gl or '' }}" placeholder="CGST GL" style="width:100%;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_sgst_gl[]" value="{{ row.sap_sgst_gl or '' }}" placeholder="SGST GL" style="width:100%;" {% if locked %}readonly{% endif %}></td>
             <td style="text-align:center;"><input type="checkbox" name="is_sale[]" {% if row.service_sale_flag == 'A' %}checked{% endif %} {% if locked %}disabled{% endif %} title="Is Sale?"></td>
-            <td><input type="text" name="sap_tds_gl[]" value="{{ row.sap_tds_gl or '' }}" placeholder="e.g. 2400001000" style="width:100px;" {% if locked %}readonly{% endif %}></td>
-            <td><input type="text" name="sap_tcs_gl[]" value="{{ row.sap_tcs_gl or '' }}" placeholder="e.g. 2400007000" style="width:100px;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_tds_gl[]" value="{{ row.sap_tds_gl or '' }}" placeholder="e.g. 2400001000" style="width:100%;" {% if locked %}readonly{% endif %}></td>
+            <td><input type="text" name="sap_tcs_gl[]" value="{{ row.sap_tcs_gl or '' }}" placeholder="e.g. 2400007000" style="width:100%;" {% if locked %}readonly{% endif %}></td>
             <td><input type="text" name="sac_code[]" value="{{ row.sac_code }}" {% if locked %}readonly{% endif %}></td>
             <td><select name="gst_rate_id[]" {% if locked %}disabled{% endif %}>
                 <option value="">--Select--</option>
@@ -144,6 +146,7 @@
     </tbody>
 </table>
 </form>
+</div><!-- /.table-wrap -->
 
 <div class="pagination">
     {% if page > 1 %}
@@ -258,12 +261,12 @@ function addRow() {
         <td><input type="text" name="sap_gl_account[]" placeholder="e.g. 4101076030"></td>
         <td><input type="text" name="sap_profit_center[]" placeholder="e.g. 5171000000"></td>
         <td><input type="text" name="sap_cost_center[]"></td>
-        <td><input type="text" name="sap_igst_gl[]" placeholder="IGST GL" style="width:90px;"></td>
-        <td><input type="text" name="sap_cgst_gl[]" placeholder="CGST GL" style="width:90px;"></td>
-        <td><input type="text" name="sap_sgst_gl[]" placeholder="SGST GL" style="width:90px;"></td>
+        <td><input type="text" name="sap_igst_gl[]" placeholder="IGST GL" style="width:100%;"></td>
+        <td><input type="text" name="sap_cgst_gl[]" placeholder="CGST GL" style="width:100%;"></td>
+        <td><input type="text" name="sap_sgst_gl[]" placeholder="SGST GL" style="width:100%;"></td>
         <td style="text-align:center;"><input type="checkbox" name="is_sale[]" title="Is Sale?"></td>
-        <td><input type="text" name="sap_tds_gl[]" placeholder="e.g. 2400001000" style="width:100px;"></td>
-        <td><input type="text" name="sap_tcs_gl[]" placeholder="e.g. 2400007000" style="width:100px;"></td>
+        <td><input type="text" name="sap_tds_gl[]" placeholder="e.g. 2400001000" style="width:100%;"></td>
+        <td><input type="text" name="sap_tcs_gl[]" placeholder="e.g. 2400007000" style="width:100%;"></td>
         <td><input type="text" name="sac_code[]"></td>
         <td><select name="gst_rate_id[]">
             <option value="">--Select--</option>

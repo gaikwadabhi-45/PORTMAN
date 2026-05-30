@@ -11,6 +11,7 @@ from .dashboard        import views as _dashboard_views           # noqa: regist
 from .daily_ops         import views as _daily_ops_views        # noqa: registers daily-ops routes on bp
 from .shift_report      import views as _shift_report_views    # noqa: registers shift-report routes on bp
 from .barge_report      import views as _barge_report_views    # noqa: registers barge-report routes on bp
+from .mv_mbc_month_report import views as _mv_monthly_report_views  # noqa: registers mv-monthly-report routes on bp
 from .live_dashboard    import views as _live_dashboard_views  # noqa: registers live-dashboard routes on bp
 from .port_map          import views as _port_map_views        # noqa: registers port-map routes on bp
 from .cargo_report import views as _cargo_report_views
