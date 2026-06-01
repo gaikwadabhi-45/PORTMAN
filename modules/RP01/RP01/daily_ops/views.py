@@ -333,7 +333,7 @@ def _fetch_data(report_date):
     _STATUS_KEYS = (
         'at_jetty', 'waiting_discharge', 'waiting_empty_jetty',
         'at_gull_loaded', 'under_loading', 'waiting_loading',
-        'in_transit_jetty_to_mv',
+        'in_transit_jetty_to_mv', 'Non-Operational',
     )
     if ldud_ids:
         cur.execute("""
