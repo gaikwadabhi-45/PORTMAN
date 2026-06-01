@@ -199,7 +199,7 @@ def _fetch_data(report_date):
             MIN(a1.discharge_started) AS discharge_started
         FROM ldud_anchorage a1
         WHERE a1.ldud_id = h.id
-          AND a1.discharge_started IS NOT NULL
+        AND a1.discharge_started IS NOT NULL
     ) first_anchor ON TRUE
 
     LEFT JOIN LATERAL (
@@ -209,8 +209,8 @@ def _fetch_data(report_date):
                     SELECT 1
                     FROM ldud_anchorage x
                     WHERE x.ldud_id = h.id
-                      AND x.discharge_started IS NOT NULL
-                      AND x.discharge_commenced IS NULL
+                    AND x.discharge_started IS NOT NULL
+                    AND x.discharge_commenced IS NULL
                 )
                 THEN NULL
                 ELSE MAX(a2.discharge_commenced)
@@ -226,10 +226,20 @@ def _fetch_data(report_date):
         -- Vessel started before report end
         AND first_anchor.discharge_started < %s
 
-        -- Vessel was still active after report start
+        -- Vessel active OR barges still active
         AND (
             last_anchor.discharge_completed IS NULL
             OR last_anchor.discharge_completed >= %s
+
+            OR EXISTS (
+            SELECT 1
+            FROM ldud_barge_lines b
+            WHERE b.ldud_id = h.id
+            AND (
+                    b.completed_discharge_berth IS NULL
+                    OR b.cast_off_berth IS NULL
+                )
+        )
         )
 
     ORDER BY
@@ -237,11 +247,10 @@ def _fetch_data(report_date):
         first_anchor.discharge_started,
         h.id
 
-    """, (
-        window_end,      # Selected date 08:00 AM
-        window_start     # Previous day 08:00 AM
-    ))
-
+    """,  (
+    window_end,
+    window_start
+))
 
     vessels  = [dict(r) for r in cur.fetchall()]
     ldud_ids = [v['id'] for v in vessels]
@@ -375,6 +384,8 @@ def _fetch_data(report_date):
                 status = 'waiting_empty_jetty'
             elif r['commence_discharge_berth'] and not r['cast_off_berth']:
                 status = 'at_jetty'
+            elif (r['along_side_berth']and not r['commence_discharge_berth']):
+                status = 'waiting_discharge'
             elif r['cast_off_mv'] and not r['along_side_berth']:
                 status = 'at_gull_loaded'
             elif (r['commence_discharge_berth']and not r['completed_discharge_berth']):
@@ -437,18 +448,32 @@ def _fetch_upcoming_vessels(report_date):
     cur.execute("""
     SELECT
         vh.vessel_name,
-        vh.cargo_type,
+
+        vc.cargo_name,
+
+        COALESCE(vc.bl_quantity, 0) AS bl_quantity,
+
         vh.vessel_agent_name,
+
         vn.eta,
+
         lh.nor_tendered
+
     FROM vcn_header vh
+
     JOIN vcn_nominations vn
         ON vn.vcn_id = vh.id
+
     LEFT JOIN ldud_header lh
         ON lh.vcn_id = vh.id
+
+    LEFT JOIN vcn_cargo_declaration vc
+        ON vc.vcn_id = vh.id
+
     WHERE DATE(COALESCE(lh.nor_tendered, vn.eta)) > %s
+
     ORDER BY vn.eta
-""", (report_date,))
+    """, (report_date,))
 
     rows = cur.fetchall()
 
@@ -1055,7 +1080,8 @@ def daily_ops_preview():
     <table style='width:100%;border-collapse:collapse;font-family:Arial'>
         <tr style='background:#4a90d9;color:white'>
             <th style='border:1px solid #ccc;padding:8px'>Vessel Name</th>
-            <th style='border:1px solid #ccc;padding:8px'>Cargo Type</th>
+            <th>Cargo</th>
+            <th>Qty (MT)</th>
             <th style='border:1px solid #ccc;padding:8px'>Vessel Agent</th>
             <th style='border:1px solid #ccc;padding:8px'>ETA</th>
         </tr>
@@ -1065,7 +1091,8 @@ def daily_ops_preview():
         html += f"""
         <tr>
             <td style='border:1px solid #ccc;padding:8px'>{v['vessel_name']}</td>
-            <td style='border:1px solid #ccc;padding:8px'>{v['cargo_type']}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{v['cargo_name'] or '-'}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{v['bl_quantity'] or '-'}</td>
             <td style='border:1px solid #ccc;padding:8px'>{v['vessel_agent_name']}</td>
             <td style='border:1px solid #ccc;padding:8px'>{_fmt_dt(v['eta'])}</td>
         </tr>
