@@ -152,16 +152,26 @@ def _load_cutoff():
 
 # ── Data fetchers ───────────────────────────────────────────────────────────
 
+from datetime import datetime, timedelta
+
 def _fetch_data(report_date):
-    window_end   = datetime(report_date.year, report_date.month, report_date.day, 7, 0, 0)
+    window_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        8, 0, 0
+    )
+
+    # Previous day 08:00 AM
     window_start = window_end - timedelta(hours=24)
+
     ws_str = window_start.strftime('%Y-%m-%d %H:%M:%S')
     we_str = window_end.strftime('%Y-%m-%d %H:%M:%S')
 
     conn = get_db()
-    cur  = get_cursor(conn)
+    cur = get_cursor(conn)
 
-    # Fetch vessels that had discharge activity in the 24h window
+    # Fetch vessels that were active during the reporting window
     cur.execute("""
     SELECT DISTINCT
 
@@ -189,7 +199,7 @@ def _fetch_data(report_date):
             MIN(a1.discharge_started) AS discharge_started
         FROM ldud_anchorage a1
         WHERE a1.ldud_id = h.id
-        AND a1.discharge_started IS NOT NULL
+          AND a1.discharge_started IS NOT NULL
     ) first_anchor ON TRUE
 
     LEFT JOIN LATERAL (
@@ -199,8 +209,8 @@ def _fetch_data(report_date):
                     SELECT 1
                     FROM ldud_anchorage x
                     WHERE x.ldud_id = h.id
-                    AND x.discharge_started IS NOT NULL
-                    AND x.discharge_commenced IS NULL
+                      AND x.discharge_started IS NOT NULL
+                      AND x.discharge_commenced IS NULL
                 )
                 THEN NULL
                 ELSE MAX(a2.discharge_commenced)
@@ -213,11 +223,13 @@ def _fetch_data(report_date):
 
         first_anchor.discharge_started IS NOT NULL
 
-        AND DATE(first_anchor.discharge_started) <= %s
+        -- Vessel started before report end
+        AND first_anchor.discharge_started < %s
 
+        -- Vessel was still active after report start
         AND (
             last_anchor.discharge_completed IS NULL
-            OR DATE(last_anchor.discharge_completed) >= %s
+            OR last_anchor.discharge_completed >= %s
         )
 
     ORDER BY
@@ -226,9 +238,11 @@ def _fetch_data(report_date):
         h.id
 
     """, (
-        report_date,
-        report_date
+        window_end,      # Selected date 08:00 AM
+        window_start     # Previous day 08:00 AM
     ))
+
+
     vessels  = [dict(r) for r in cur.fetchall()]
     ldud_ids = [v['id'] for v in vessels]
     vcn_ids  = [v['vcn_id'] for v in vessels if v.get('vcn_id')]
@@ -319,7 +333,7 @@ def _fetch_data(report_date):
     _STATUS_KEYS = (
         'at_jetty', 'waiting_discharge', 'waiting_empty_jetty',
         'at_gull_loaded', 'under_loading', 'waiting_loading',
-        'in_transit_jetty_to_mv', 'Non-Operational',
+        'in_transit_jetty_to_mv',
     )
     if ldud_ids:
         cur.execute("""

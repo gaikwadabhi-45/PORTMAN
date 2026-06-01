@@ -76,6 +76,7 @@ def get_cargo_report():
         query = """
 SELECT
     h.id,
+    cd.id AS customer_detail_id,
 
     COALESCE(h.doc_num, '-') || ' / ' ||
     COALESCE(h.mbc_name, '-') AS vessel_name,
@@ -140,6 +141,7 @@ WHERE NULLIF(TRIM(dp.unloading_commenced), '') IS NOT NULL
 
 GROUP BY
     h.id,
+    cd.id,
     h.doc_num,
     h.mbc_name,
     h.cargo_type,
@@ -156,6 +158,7 @@ UNION ALL
 
 SELECT
     lh.id,
+    0 AS customer_detail_id,
 
     COALESCE(vh.vcn_doc_num, '-') || ' / ' ||
     COALESCE(lh.vessel_name, '-') AS vessel_name,
@@ -327,7 +330,7 @@ ORDER BY discharge_commenced DESC;
         if row['discharge_completed']
         else 'InProgress',
 
-    'consignee': row['consignee'] or '-',
+    'customer_detail_id': row['customer_detail_id'] or '-',
     'flag': row['flag'] or '-',
 })
 
