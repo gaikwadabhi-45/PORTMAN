@@ -256,11 +256,12 @@ def _fetch_mv_monthly_data(
                 'vessel_name':        v_name,
                 'cargo_name':         r['cargo_name'] or r['lueu_cargo'] or '-',
                 'cargo_type':         r['cargo_type'] or r['lueu_cargo'] or '-',
-                'bl_qty':             _safe_float(r['bl_qty']) if r['source_type'] == 'VCN' else 0,
+                'bl_qty': _safe_float(r['bl_qty']),
                 'company':            r['company'] or 'Mother Vessel',
                 'source_type':        r['source_type'],
                 'previous_month_qty': 0
             }
+            
 
     # ─────────────────────────────────────────────
     # Previous Month Continuing Qty
@@ -368,11 +369,7 @@ def _fetch_mv_monthly_data(
             total += date_vessel_qty[dt].get(v_name, 0)
         vessel_totals[v_name] = total
 
-    for v_name in vessel_meta:
-        if vessel_meta[v_name]['source_type'] == 'MBC':
-            current_total = vessel_totals.get(v_name, 0)
-            prev_total    = vessel_meta[v_name].get('previous_month_qty', 0)
-            vessel_meta[v_name]['bl_qty'] = current_total + prev_total
+
 
     vessels_with_data = [
         v for v in vessel_meta.values()
