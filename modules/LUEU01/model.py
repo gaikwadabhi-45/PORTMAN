@@ -23,23 +23,26 @@ def _intervals_overlap(from_a, to_a, from_b, to_b):
 
     A range whose end <= start is treated as crossing midnight (end += 1440),
     matching the overnight convention used by calcDiffHrs in the template.
+    Because the day is cyclic, a non-wrapping range is also compared against the
+    other range shifted by +1440 so overnight overlaps are caught symmetrically
+    (the result is independent of argument order).
     Returns False if either range is incomplete/unparseable.
     """
     fa = _hhmm_to_minutes(from_a); ta = _hhmm_to_minutes(to_a)
     fb = _hhmm_to_minutes(from_b); tb = _hhmm_to_minutes(to_b)
     if fa is None or ta is None or fb is None or tb is None:
         return False
-    a_wraps = ta <= fa
-    b_wraps = tb <= fb
-    if a_wraps:
+    if ta <= fa:
         ta += 1440
-    if b_wraps:
+    if tb <= fb:
         tb += 1440
-    # If only one wraps, shift the other's range forward to align on the wrapped day.
-    if a_wraps != b_wraps:
-        if a_wraps:  # a wraps but b doesn't
-            fb += 1440; tb += 1440
-    return fa < tb and fb < ta
+
+    def _lin(s1, e1, s2, e2):
+        return s1 < e2 and s2 < e1
+
+    return (_lin(fa, ta, fb, tb)
+            or _lin(fa, ta, fb + 1440, tb + 1440)
+            or _lin(fa + 1440, ta + 1440, fb, tb))
 
 
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):

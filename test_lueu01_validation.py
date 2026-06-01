@@ -43,3 +43,14 @@ def test_overlap_overnight_wrap():
 def test_overlap_false_when_incomplete():
     assert model._intervals_overlap('06:00', '', '07:00', '09:00') is False
     assert model._intervals_overlap('06:00', '08:00', None, '09:00') is False
+
+def test_overlap_is_symmetric():
+    # Argument order must never change the result, including overnight cases.
+    assert model._intervals_overlap('23:00', '02:00', '01:00', '03:00') == \
+           model._intervals_overlap('01:00', '03:00', '23:00', '02:00')
+    assert model._intervals_overlap('01:00', '03:00', '23:00', '02:00') is True
+
+def test_overlap_separate_overnight_still_false():
+    # 22:00-23:00 and 00:30-01:00 (next day) do not intersect, either order.
+    assert model._intervals_overlap('22:00', '23:00', '00:30', '01:00') is False
+    assert model._intervals_overlap('00:30', '01:00', '22:00', '23:00') is False
