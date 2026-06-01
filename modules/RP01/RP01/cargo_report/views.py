@@ -88,7 +88,7 @@ SELECT
 
     COALESCE(cd.quantity, 0) AS bl_qty_mt,
 
-    COALESCE(cd.quantity, 0) AS actual_discharge,
+    COALESCE(mbc.actual_discharge, 0) AS actual_discharge,
 
     h.load_port,
 
@@ -119,10 +119,24 @@ LEFT JOIN mbc_discharge_port_lines dp
 LEFT JOIN mbc_customer_details cd
     ON cd.mbc_id = h.id
 
+LEFT JOIN (
+    SELECT
+        source_id,
+        SUM(COALESCE(quantity, 0)) AS actual_discharge
+    FROM lueu_lines
+    WHERE source_type = 'MBC'
+      AND is_deleted = false
+    GROUP BY source_id
+) mbc
+    ON mbc.source_id = h.id
+
 WHERE NULLIF(TRIM(dp.unloading_commenced), '') IS NOT NULL
 
-  AND NULLIF(TRIM(dp.unloading_commenced), '')::date
-      BETWEEN %s::date AND %s::date
+  AND dp.unloading_commenced::timestamp >=
+      (%s::date + INTERVAL '6 hours')
+
+  AND dp.unloading_commenced::timestamp <=
+      (%s::date + INTERVAL '6 hours')
 
 GROUP BY
     h.id,
@@ -136,8 +150,8 @@ GROUP BY
     cd.customer_name,
     dp.unloading_commenced,
     dp.unloading_completed,
-    v.nationality
-
+    v.nationality,
+    mbc.actual_discharge
 UNION ALL
 
 SELECT
@@ -259,8 +273,11 @@ AND mv.match_cargo =
 
 WHERE la.first_discharge_started IS NOT NULL
 
-  AND la.first_discharge_started::date
-      BETWEEN %s::date AND %s::date
+  AND la.first_discharge_started >=
+      (%s::date + INTERVAL '6 hours')
+
+  AND la.first_discharge_started <=
+      (%s::date + INTERVAL '6 hours')
 
 GROUP BY
     lh.id,
@@ -297,15 +314,15 @@ ORDER BY discharge_commenced DESC;
 
     'discharge_commenced':
         datetime.fromisoformat(
-            str(row['discharge_commenced'])
+            str(row['discharge_commenced']).replace('\r', '').replace('\n', '').strip()
         ).strftime('%d/%m/%Y %H:%M')
         if row['discharge_commenced'] else '-',
 
     'discharge_completed':
         'InProgress'
-        if row['discharge_completed'] == 'InProgress'
+        if str(row['discharge_completed']).strip() == 'InProgress'
         else datetime.fromisoformat(
-            str(row['discharge_completed'])
+            str(row['discharge_completed']).replace('\r', '').replace('\n', '').strip()
         ).strftime('%d/%m/%Y %H:%M')
         if row['discharge_completed']
         else 'InProgress',
@@ -313,6 +330,7 @@ ORDER BY discharge_commenced DESC;
     'consignee': row['consignee'] or '-',
     'flag': row['flag'] or '-',
 })
+
 
         return jsonify({'success': True, 'data': data})
 
@@ -424,7 +442,7 @@ SELECT
 
     COALESCE(cd.quantity, 0) AS bl_qty_mt,
 
-    COALESCE(cd.quantity, 0) AS actual_discharge,
+    COALESCE(mbc.actual_discharge, 0) AS actual_discharge,
 
     h.load_port,
 
@@ -434,7 +452,12 @@ SELECT
 
     dp.unloading_commenced::text AS discharge_commenced,
 
-    dp.unloading_completed::text  AS discharge_completed,
+    CASE
+        WHEN dp.unloading_commenced IS NOT NULL
+             AND dp.unloading_completed IS NULL
+        THEN 'InProgress'
+        ELSE dp.unloading_completed::text
+    END AS discharge_completed,
 
     COALESCE(v.nationality, '-') AS flag
 
@@ -450,10 +473,24 @@ LEFT JOIN mbc_discharge_port_lines dp
 LEFT JOIN mbc_customer_details cd
     ON cd.mbc_id = h.id
 
-WHERE NULLIF(TRIM(dp.unloading_completed), '') IS NOT NULL
+LEFT JOIN (
+    SELECT
+        source_id,
+        SUM(COALESCE(quantity, 0)) AS actual_discharge
+    FROM lueu_lines
+    WHERE source_type = 'MBC'
+      AND is_deleted = false
+    GROUP BY source_id
+) mbc
+    ON mbc.source_id = h.id
 
-  AND NULLIF(TRIM(dp.unloading_completed), '')::date
-      BETWEEN %s::date AND %s::date
+WHERE NULLIF(TRIM(dp.unloading_commenced), '') IS NOT NULL
+
+  AND dp.unloading_commenced::timestamp >=
+      (%s::date + INTERVAL '6 hours')
+
+  AND dp.unloading_commenced::timestamp <=
+      (%s::date + INTERVAL '6 hours')
 
 GROUP BY
     h.id,
@@ -467,8 +504,8 @@ GROUP BY
     cd.customer_name,
     dp.unloading_commenced,
     dp.unloading_completed,
-    v.nationality
-
+    v.nationality,
+    mbc.actual_discharge
 UNION ALL
 
 SELECT
@@ -493,7 +530,7 @@ SELECT
 
     vc.customer_name AS consignee,
 
-    la.first_discharge_started::text  AS discharge_commenced,
+    la.first_discharge_started::text AS discharge_commenced,
 
     la.last_discharge_completed::text AS discharge_completed,
 
@@ -508,11 +545,12 @@ LEFT JOIN (
         MIN(discharge_started) AS first_discharge_started,
 
         CASE
-            WHEN COUNT(
+            WHEN SUM(
                 CASE
                     WHEN discharge_started IS NOT NULL
                      AND discharge_commenced IS NULL
                     THEN 1
+                    ELSE 0
                 END
             ) > 0
             THEN NULL
@@ -587,10 +625,13 @@ ON mv.match_display =
 AND mv.match_cargo =
     LOWER(TRIM(vc.cargo_name))
 
-WHERE la.last_discharge_completed IS NOT NULL
+WHERE la.first_discharge_started IS NOT NULL
 
-  AND la.last_discharge_completed::date
-      BETWEEN %s::date AND %s::date
+  AND la.first_discharge_started >=
+      (%s::date + INTERVAL '6 hours')
+
+  AND la.first_discharge_started <=
+      (%s::date + INTERVAL '6 hours')
 
 GROUP BY
     lh.id,
@@ -609,7 +650,6 @@ GROUP BY
 
 ORDER BY discharge_commenced DESC;
 """
-
         cur.execute(query, (from_date, to_date, from_date, to_date))
         rows = cur.fetchall()
 
@@ -696,10 +736,13 @@ ORDER BY discharge_commenced DESC;
     ).strftime('%d/%m/%Y %H:%M')
     if row['discharge_commenced'] else '',
 
-    datetime.fromisoformat(
-        str(row['discharge_completed'])
-    ).strftime('%d/%m/%Y %H:%M')
-    if row['discharge_completed'] else '',
+    'InProgress'
+if str(row['discharge_completed']).strip() == 'InProgress'
+else datetime.fromisoformat(
+    str(row['discharge_completed']).replace('\r', '').replace('\n', '').strip()
+).strftime('%d/%m/%Y %H:%M')
+if row['discharge_completed']
+else '',
 
     row['consignee'] or '',
     row['flag'] or '',
@@ -713,6 +756,51 @@ ORDER BY discharge_commenced DESC;
                 cell.border    = bdr_thin
                 cell.alignment = align_ctr if col in [1, 3, 7, 8] else align_left
             ws.row_dimensions[r].height = 20
+
+        # ── Merge Actual Discharge column (H) ────────────────
+        merge_start = data_start
+
+        for row_no in range(data_start + 1, data_start + len(rows) + 1):
+
+            prev_vessel = ws.cell(row=row_no - 1, column=2).value
+            curr_vessel = ws.cell(row=row_no, column=2).value
+
+            prev_actual = ws.cell(row=row_no - 1, column=8).value
+            curr_actual = ws.cell(row=row_no, column=8).value
+
+            if prev_vessel != curr_vessel or prev_actual != curr_actual:
+
+                if row_no - merge_start > 1:
+
+                    ws.merge_cells(
+                        start_row=merge_start,
+                        start_column=8,
+                        end_row=row_no - 1,
+                        end_column=8
+                    )
+
+                    ws.cell(
+                        row=merge_start,
+                        column=8
+                    ).alignment = align_ctr
+
+                merge_start = row_no
+
+        last_row = data_start + len(rows) - 1
+
+        if last_row - merge_start >= 1:
+
+            ws.merge_cells(
+                start_row=merge_start,
+                start_column=8,
+                end_row=last_row,
+                end_column=8
+            )
+
+            ws.cell(
+                row=merge_start,
+                column=8
+            ).alignment = align_ctr
 
         # ── Total row ─────────────────────────────────────────
         total_row = data_start + len(rows)
