@@ -88,7 +88,11 @@ SELECT
 
     COALESCE(cd.quantity, 0) AS bl_qty_mt,
 
-    COALESCE(cd.quantity, 0) AS actual_discharge,
+    (
+        COALESCE(cd.quantity, 0)
+        -
+        COALESCE(mbc.actual_discharge, 0)
+    ) AS actual_discharge,
 
     h.load_port,
 
@@ -119,10 +123,24 @@ LEFT JOIN mbc_discharge_port_lines dp
 LEFT JOIN mbc_customer_details cd
     ON cd.mbc_id = h.id
 
+LEFT JOIN (
+    SELECT
+        source_id,
+        SUM(COALESCE(quantity, 0)) AS actual_discharge
+    FROM lueu_lines
+    WHERE source_type = 'MBC'
+      AND is_deleted = false
+    GROUP BY source_id
+) mbc
+    ON mbc.source_id = h.id
+
 WHERE NULLIF(TRIM(dp.unloading_commenced), '') IS NOT NULL
 
-  AND NULLIF(TRIM(dp.unloading_commenced), '')::date
-      BETWEEN %s::date AND %s::date
+  AND dp.unloading_commenced::timestamp >=
+      (%s::date + INTERVAL '6 hours')
+
+  AND dp.unloading_commenced::timestamp <=
+      (%s::date + INTERVAL '6 hours')
 
 GROUP BY
     h.id,
@@ -136,8 +154,8 @@ GROUP BY
     cd.customer_name,
     dp.unloading_commenced,
     dp.unloading_completed,
-    v.nationality
-
+    v.nationality,
+    mbc.actual_discharge
 UNION ALL
 
 SELECT
@@ -259,8 +277,11 @@ AND mv.match_cargo =
 
 WHERE la.first_discharge_started IS NOT NULL
 
-  AND la.first_discharge_started::date
-      BETWEEN %s::date AND %s::date
+  AND la.first_discharge_started >=
+      (%s::date + INTERVAL '6 hours')
+
+  AND la.first_discharge_started <=
+      (%s::date + INTERVAL '6 hours')
 
 GROUP BY
     lh.id,
