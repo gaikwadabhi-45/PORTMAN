@@ -98,7 +98,12 @@ SELECT
 
     dp.unloading_commenced::text AS discharge_commenced,
 
-    dp.unloading_completed::text  AS discharge_completed,
+    CASE
+        WHEN dp.unloading_commenced IS NOT NULL
+             AND dp.unloading_completed IS NULL
+        THEN 'InProgress'
+        ELSE dp.unloading_completed::text
+    END AS discharge_completed,
 
     COALESCE(v.nationality, '-') AS flag
 
@@ -114,10 +119,11 @@ LEFT JOIN mbc_discharge_port_lines dp
 LEFT JOIN mbc_customer_details cd
     ON cd.mbc_id = h.id
 
-WHERE NULLIF(TRIM(dp.unloading_completed), '') IS NOT NULL
+WHERE NULLIF(TRIM(dp.unloading_commenced), '') IS NOT NULL
 
-  AND NULLIF(TRIM(dp.unloading_completed), '')::date
+  AND NULLIF(TRIM(dp.unloading_commenced), '')::date
       BETWEEN %s::date AND %s::date
+
 GROUP BY
     h.id,
     h.doc_num,
@@ -156,7 +162,7 @@ SELECT
 
     vc.customer_name AS consignee,
 
-    la.first_discharge_started::text  AS discharge_commenced,
+    la.first_discharge_started::text AS discharge_commenced,
 
     la.last_discharge_completed::text AS discharge_completed,
 
@@ -167,8 +173,22 @@ FROM ldud_header lh
 LEFT JOIN (
     SELECT
         ldud_id,
-        MIN(discharge_started)   AS first_discharge_started,
-        MAX(discharge_commenced) AS last_discharge_completed
+
+        MIN(discharge_started) AS first_discharge_started,
+
+        CASE
+            WHEN SUM(
+                CASE
+                    WHEN discharge_started IS NOT NULL
+                     AND discharge_commenced IS NULL
+                    THEN 1
+                    ELSE 0
+                END
+            ) > 0
+            THEN NULL
+            ELSE MAX(discharge_commenced)
+        END AS last_discharge_completed
+
     FROM ldud_anchorage
     GROUP BY ldud_id
 ) la ON la.ldud_id = lh.id
@@ -237,9 +257,9 @@ ON mv.match_display =
 AND mv.match_cargo =
     LOWER(TRIM(vc.cargo_name))
 
-WHERE la.last_discharge_completed IS NOT NULL
+WHERE la.first_discharge_started IS NOT NULL
 
-  AND la.last_discharge_completed::date
+  AND la.first_discharge_started::date
       BETWEEN %s::date AND %s::date
 
 GROUP BY
@@ -282,10 +302,13 @@ ORDER BY discharge_commenced DESC;
         if row['discharge_commenced'] else '-',
 
     'discharge_completed':
-        datetime.fromisoformat(
+        'InProgress'
+        if row['discharge_completed'] == 'InProgress'
+        else datetime.fromisoformat(
             str(row['discharge_completed'])
         ).strftime('%d/%m/%Y %H:%M')
-        if row['discharge_completed'] else 'InProgress',
+        if row['discharge_completed']
+        else 'InProgress',
 
     'consignee': row['consignee'] or '-',
     'flag': row['flag'] or '-',
@@ -481,8 +504,21 @@ FROM ldud_header lh
 LEFT JOIN (
     SELECT
         ldud_id,
-        MIN(discharge_started)   AS first_discharge_started,
-        MAX(discharge_commenced) AS last_discharge_completed
+
+        MIN(discharge_started) AS first_discharge_started,
+
+        CASE
+            WHEN COUNT(
+                CASE
+                    WHEN discharge_started IS NOT NULL
+                     AND discharge_commenced IS NULL
+                    THEN 1
+                END
+            ) > 0
+            THEN NULL
+            ELSE MAX(discharge_commenced)
+        END AS last_discharge_completed
+
     FROM ldud_anchorage
     GROUP BY ldud_id
 ) la ON la.ldud_id = lh.id
