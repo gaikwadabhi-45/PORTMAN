@@ -9,7 +9,6 @@ from datetime import datetime
 import io
 import json
 import re
-
 from .. import bp
 from database import get_db, get_cursor
 

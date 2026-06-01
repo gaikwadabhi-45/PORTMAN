@@ -481,6 +481,8 @@ def _fetch_upcoming_vessels(report_date):
 
     return rows
 
+from datetime import datetime, timedelta
+
 def _fetch_discharging_mbcs(report_date):
 
     window_end = datetime(
@@ -490,32 +492,36 @@ def _fetch_discharging_mbcs(report_date):
         8, 0, 0
     )
 
+    window_start = window_end - timedelta(days=1)
+
     conn = get_db()
     cur = get_cursor(conn)
 
     cur.execute("""
         SELECT
+            h.id,
             h.mbc_name,
             p.vessel_unloaded_by AS equipment,
             h.cargo_name,
             h.bl_quantity AS discharge_quantity,
-            p.unloading_commenced
+            p.unloading_commenced,
+            p.unloading_completed
         FROM mbc_header h
         JOIN mbc_discharge_port_lines p
             ON p.mbc_id = h.id
         WHERE
             p.unloading_commenced IS NOT NULL
-            AND p.unloading_commenced <> ''
             AND p.unloading_commenced::timestamp < %s
             AND (
                 p.unloading_completed IS NULL
-                OR p.unloading_completed = ''
+                OR TRIM(COALESCE(p.unloading_completed, '')) = ''
             )
-        ORDER BY h.mbc_name
+        ORDER BY p.unloading_commenced DESC
     """, (window_end,))
 
     rows = cur.fetchall()
 
+    cur.close()
     conn.close()
 
     return rows
