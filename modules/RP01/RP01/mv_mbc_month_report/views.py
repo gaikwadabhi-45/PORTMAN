@@ -261,6 +261,7 @@ def _fetch_mv_monthly_data(
                 'source_type':        r['source_type'],
                 'previous_month_qty': 0
             }
+            
 
     # ─────────────────────────────────────────────
     # Previous Month Continuing Qty
