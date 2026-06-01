@@ -2,6 +2,46 @@ from database import get_db, get_cursor
 from datetime import datetime, date, timedelta
 
 
+def _hhmm_to_minutes(t):
+    """'HH:MM' -> minutes since midnight, or None if not parseable."""
+    if not t or not isinstance(t, str):
+        return None
+    parts = t.strip().split(':')
+    if len(parts) < 2:
+        return None
+    try:
+        h = int(parts[0]); m = int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return h * 60 + m
+
+
+def _intervals_overlap(from_a, to_a, from_b, to_b):
+    """True if two HH:MM ranges on the same date intersect.
+
+    A range whose end <= start is treated as crossing midnight (end += 1440),
+    matching the overnight convention used by calcDiffHrs in the template.
+    Returns False if either range is incomplete/unparseable.
+    """
+    fa = _hhmm_to_minutes(from_a); ta = _hhmm_to_minutes(to_a)
+    fb = _hhmm_to_minutes(from_b); tb = _hhmm_to_minutes(to_b)
+    if fa is None or ta is None or fb is None or tb is None:
+        return False
+    a_wraps = ta <= fa
+    b_wraps = tb <= fb
+    if a_wraps:
+        ta += 1440
+    if b_wraps:
+        tb += 1440
+    # If only one wraps, shift the other's range forward to align on the wrapped day.
+    if a_wraps != b_wraps:
+        if a_wraps:  # a wraps but b doesn't
+            fb += 1440; tb += 1440
+    return fa < tb and fb < ta
+
+
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     conn = get_db()
     cur = get_cursor(conn)
