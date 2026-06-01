@@ -1273,12 +1273,6 @@ def _build_delay_sheet(wb, delay_view):
             _cell(ws, row, 8, item.get('total', ''), bold=True,
                   fill_color=_SUBTOTAL_BG, font_color=_TEXT, align=_ctr)
 
-                ws.cell(row, col).value = None
-
-                ws.cell(row, col).fill = _fill(_SUBTOTAL_BG)
-
-                ws.cell(row, col).border = _FULL_BDR
-
             # =========================================
             # KEEP TYPE COLUMN
             # =========================================

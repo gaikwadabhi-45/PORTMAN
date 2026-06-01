@@ -72,7 +72,7 @@ def save_service_type(data):
         if data.get('id'):
             cur.execute('''
                 UPDATE finance_service_types
-                SET service_name=%s, service_category=%s, gl_code=%s, sac_code=%s,
+                SET service_code=%s, service_name=%s, service_category=%s, gl_code=%s, sac_code=%s,
                     gst_rate_id=%s, uom=%s, is_billable=%s, is_active=%s,
                     sap_gl_account=%s, sap_profit_center=%s, sap_cost_center=%s,
                     sap_igst_gl=%s, sap_cgst_gl=%s, sap_sgst_gl=%s, service_sale_flag=%s,
@@ -80,6 +80,7 @@ def save_service_type(data):
                     is_tds=%s, tds_percent=%s, is_tcs=%s, tcs_percent=%s, is_triplicate=%s
                 WHERE id=%s
             ''', [
+                (data.get('service_code') or '').strip(),
                 data.get('service_name'),
                 data.get('service_category'),
                 data.get('gl_code'),

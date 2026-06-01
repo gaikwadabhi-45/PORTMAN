@@ -592,26 +592,74 @@ function renderCargoTable(data) {
     table.clear();
 
     data.forEach((item, index) => {
-        table.row.add([
+table.row.add([
     index + 1,
-    item.vessel_name         || '-',
-    item.vessel_type         || '-',
-    item.material_po         || '-',
-    item.cargo_type          || '-',
-    item.cargo_name          || '-',
-    item.bl_qty_mt           || '-',
-    item.actual_discharge    || '-',
-    item.load_port           || '-',
+    item.vessel_name || '-',
+    item.vessel_type || '-',
+
+    `<input type="text"
+        class="material-po-input"
+        value="${item.material_po || ''}"
+        data-id="${item.id || ''}"
+        data-vessel-type="${item.vessel_type || ''}"
+        style="width:120px;padding:4px;">`,
+
+    item.cargo_type || '-',
+    item.cargo_name || '-',
+    item.bl_qty_mt || '-',
+    item.actual_discharge || '-',
+    item.load_port || '-',
     item.discharge_commenced || '-',
     item.discharge_completed || '-',
-    item.consignee           || '-',
-    item.flag                || '-',   // Flag
+    item.consignee || '-',
+    item.flag || '-'
 ]);
     });
 
     table.draw();
 }
 
+$(document).on('change', '.material-po-input', async function () {
+
+    const materialPo = $(this).val();
+    const id = $(this).data('id');
+    const vesselType = $(this).data('vessel-type');
+
+    console.log({
+        id: id,
+        vessel_type: vesselType,
+        material_po: materialPo
+    });
+
+    try {
+
+        const response = await fetch('/api/update-material-po', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: id,
+                vessel_type: vesselType,
+                material_po: materialPo
+            })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.message);
+        }
+
+        alert('Material PO updated successfully');
+
+    } catch (err) {
+
+        console.error(err);
+        alert(err.message || 'Failed to update Material PO');
+
+    }
+});
 function validateDates(fromDate, toDate) {
 
     if (!fromDate) {
