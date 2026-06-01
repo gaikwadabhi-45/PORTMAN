@@ -163,70 +163,72 @@ def _fetch_data(report_date):
 
     # Fetch vessels that had discharge activity in the 24h window
     cur.execute("""
-SELECT DISTINCT
+    SELECT DISTINCT
 
-    h.id,
-    h.vcn_id,
-    h.vessel_name,
-    h.operation_type,
-    h.nor_tendered,
+        h.id,
+        h.vcn_id,
+        h.vessel_name,
+        h.operation_type,
+        h.nor_tendered,
 
-    first_anchor.discharge_started AS discharge_commenced,
+        first_anchor.discharge_started AS discharge_commenced,
 
-    last_anchor.discharge_commenced AS discharge_completed,
+        last_anchor.discharge_completed AS discharge_completed,
 
-    CASE
-        WHEN last_anchor.discharge_commenced IS NULL THEN 1
-        ELSE 0
-    END AS sort_order,
+        CASE
+            WHEN last_anchor.discharge_completed IS NULL THEN 1
+            ELSE 0
+        END AS sort_order,
 
-    h.doc_status
+        h.doc_status
 
-FROM ldud_header h
+    FROM ldud_header h
 
-LEFT JOIN LATERAL (
-    SELECT
-        MIN(a1.discharge_started) AS discharge_started
-    FROM ldud_anchorage a1
-    WHERE a1.ldud_id = h.id
-      AND a1.discharge_started IS NOT NULL
-) first_anchor ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT
+            MIN(a1.discharge_started) AS discharge_started
+        FROM ldud_anchorage a1
+        WHERE a1.ldud_id = h.id
+        AND a1.discharge_started IS NOT NULL
+    ) first_anchor ON TRUE
 
-LEFT JOIN LATERAL (
-    SELECT
-        MAX(a2.discharge_commenced) AS discharge_commenced
-    FROM ldud_anchorage a2
-    WHERE a2.ldud_id = h.id
-      AND a2.discharge_commenced IS NOT NULL
-) last_anchor ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM ldud_anchorage x
+                    WHERE x.ldud_id = h.id
+                    AND x.discharge_started IS NOT NULL
+                    AND x.discharge_commenced IS NULL
+                )
+                THEN NULL
+                ELSE MAX(a2.discharge_commenced)
+            END AS discharge_completed
+        FROM ldud_anchorage a2
+        WHERE a2.ldud_id = h.id
+    ) last_anchor ON TRUE
 
-WHERE
+    WHERE
 
-    first_anchor.discharge_started IS NOT NULL
+        first_anchor.discharge_started IS NOT NULL
 
-    AND
+        AND DATE(first_anchor.discharge_started) <= %s
 
-    DATE(first_anchor.discharge_started) <= %s
+        AND (
+            last_anchor.discharge_completed IS NULL
+            OR DATE(last_anchor.discharge_completed) >= %s
+        )
 
-    AND
+    ORDER BY
+        sort_order,
+        first_anchor.discharge_started,
+        h.id
 
-    (
-        last_anchor.discharge_commenced IS NULL
-
-        OR
-
-        DATE(last_anchor.discharge_commenced) >= %s
-    )
-
-ORDER BY
-    sort_order,
-    first_anchor.discharge_started,
-    h.id
-
-""", (
-    report_date,
-    report_date
-))
+    """, (
+        report_date,
+        report_date
+    ))
     vessels  = [dict(r) for r in cur.fetchall()]
     ldud_ids = [v['id'] for v in vessels]
     vcn_ids  = [v['vcn_id'] for v in vessels if v.get('vcn_id')]
@@ -433,6 +435,45 @@ def _fetch_upcoming_vessels(report_date):
     WHERE DATE(COALESCE(lh.nor_tendered, vn.eta)) > %s
     ORDER BY vn.eta
 """, (report_date,))
+
+    rows = cur.fetchall()
+
+    conn.close()
+
+    return rows
+
+def _fetch_discharging_mbcs(report_date):
+
+    window_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        8, 0, 0
+    )
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            h.mbc_name,
+            p.vessel_unloaded_by AS equipment,
+            h.cargo_name,
+            h.bl_quantity AS discharge_quantity,
+            p.unloading_commenced
+        FROM mbc_header h
+        JOIN mbc_discharge_port_lines p
+            ON p.mbc_id = h.id
+        WHERE
+            p.unloading_commenced IS NOT NULL
+            AND p.unloading_commenced <> ''
+            AND p.unloading_commenced::timestamp < %s
+            AND (
+                p.unloading_completed IS NULL
+                OR p.unloading_completed = ''
+            )
+        ORDER BY h.mbc_name
+    """, (window_end,))
 
     rows = cur.fetchall()
 
@@ -1013,6 +1054,47 @@ def daily_ops_preview():
             <td style='border:1px solid #ccc;padding:8px'>{v['cargo_type']}</td>
             <td style='border:1px solid #ccc;padding:8px'>{v['vessel_agent_name']}</td>
             <td style='border:1px solid #ccc;padding:8px'>{_fmt_dt(v['eta'])}</td>
+        </tr>
+        """
+
+    html += "</table>"
+
+    discharging_mbcs = _fetch_discharging_mbcs(report_date)
+
+    html += """
+    <br><br>
+    <h3>MBCs Discharging</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+        <tr style='background:#4a90d9;color:white'>
+            <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Equipment</th>
+            <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Discharge Quantity (MT)</th>
+        </tr>
+    """
+
+    for m in discharging_mbcs:
+
+        equipment = m['equipment'] or '-'
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['mbc_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {equipment}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['cargo_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {float(m['discharge_quantity']):,.2f}
+            </td>
         </tr>
         """
 
