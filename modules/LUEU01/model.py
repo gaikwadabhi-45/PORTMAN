@@ -99,6 +99,89 @@ def compute_rejections(data, trip_expected, trip_handled, overlap_candidates):
     return clean, rejections
 
 
+def _resolve_trip_quantity(cur, data, exclude_id):
+    """Return (expected, handled_excluding_self) for the barge/MBC this row targets.
+
+    expected == 0.0 means there is no basis to check (skip the quantity block).
+    `exclude_id` is the row's own id (None for new rows); it is excluded from the
+    handled sum so re-saving an existing row never double-counts itself.
+    """
+    source_type = data.get('source_type')
+    source_id = data.get('source_id')
+    barge_name = data.get('barge_name')
+    if not source_type or not source_id:
+        return 0.0, 0.0
+
+    if source_type == 'VCN':
+        if not barge_name:
+            return 0.0, 0.0
+        cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s', [source_id])
+        ldud = cur.fetchone()
+        if not ldud:
+            return 0.0, 0.0
+        cur.execute('''
+            SELECT barge_name, trip_number,
+                   COALESCE(SUM(discharge_quantity), 0) AS expected_qty
+            FROM ldud_barge_lines
+            WHERE ldud_id = %s AND barge_name IS NOT NULL AND barge_name != ''
+            GROUP BY barge_name, trip_number
+        ''', [ldud['id']])
+        expected = 0.0
+        for r in cur.fetchall():
+            trip = r['trip_number'] or ''
+            display = f"{r['barge_name']} / {trip}" if trip else r['barge_name']
+            if display == barge_name:
+                expected = float(r['expected_qty'] or 0)
+                break
+        cur.execute('''
+            SELECT COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id = %s AND barge_name = %s
+              AND (is_deleted IS NOT TRUE) AND id != %s
+        ''', [source_id, barge_name, exclude_id or 0])
+        handled = float(cur.fetchone()['handled'] or 0)
+        return expected, handled
+
+    if source_type == 'MBC':
+        cur.execute('''
+            SELECT CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
+            FROM mbc_header m
+            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+            WHERE m.id = %s
+            GROUP BY m.id, m.bl_quantity
+        ''', [source_id])
+        row = cur.fetchone()
+        expected = float(row['bl_qty'] or 0) if row else 0.0
+        cur.execute('''
+            SELECT COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'MBC' AND source_id = %s
+              AND (is_deleted IS NOT TRUE) AND id != %s
+        ''', [source_id, exclude_id or 0])
+        handled = float(cur.fetchone()['handled'] or 0)
+        return expected, handled
+
+    return 0.0, 0.0
+
+
+def _overlap_candidates(cur, data, exclude_id):
+    """Return [(from_time, to_time), ...] for other rows on the same
+    equipment_name + entry_date that have both times set (excludes this row)."""
+    equipment_name = data.get('equipment_name')
+    entry_date = data.get('entry_date')
+    if not equipment_name or not entry_date:
+        return []
+    cur.execute('''
+        SELECT from_time, to_time FROM lueu_lines
+        WHERE equipment_name = %s AND entry_date = %s
+          AND (is_deleted IS NOT TRUE) AND id != %s
+          AND from_time IS NOT NULL AND from_time != ''
+          AND to_time IS NOT NULL AND to_time != ''
+    ''', [equipment_name, entry_date, exclude_id or 0])
+    return [(r['from_time'], r['to_time']) for r in cur.fetchall()]
+
+
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     conn = get_db()
     cur = get_cursor(conn)
