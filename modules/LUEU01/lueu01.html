@@ -217,6 +217,13 @@
         vertical-align: middle; cursor: help;
     }
     .dark-theme .qty-exceeded-badge { background: #4a1a1a; border-color: #9b2c2c; color: #fc8181; }
+    .qty-over-badge {
+        display: inline-block; margin-left: 4px;
+        background: #fff5f5; color: #c53030; border: 1px solid #fc8181;
+        border-radius: 3px; padding: 0 4px; font-size: 9px; font-weight: 700;
+        vertical-align: middle; cursor: help;
+    }
+    .dark-theme .qty-over-badge { background: #4a1a1a; border-color: #fc8181; color: #fc8181; }
 </style>
 <div class="module-header">
     <h2>Load Unload Equipment Utilization</h2>
@@ -790,7 +797,11 @@
                             badge = '<span class="qty-exceeded-badge" title="BL exceeded by ' + cargoRow.exceeded_by.toLocaleString() + (cargoRow.uom ? ' ' + cargoRow.uom : '') + '">&#9888; OVR</span>';
                         }
                     }
-                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge;
+                    let overBadge = '';
+                    if (data._qty_over_group) {
+                        overBadge = '<span class="qty-over-badge" title="This barge/MBC is over its trip quantity by ' + (data._qty_over_by || 0).toLocaleString() + ' — please correct.">&#9888; OVER</span>';
+                    }
+                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge + overBadge;
                 }},
             {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(uomList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},

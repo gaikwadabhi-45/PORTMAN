@@ -268,6 +268,25 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
         else:
             r['customer_name'] = ''
 
+    # Flag historical over-quantity rows: every row of a barge/MBC whose TOTAL
+    # handled qty exceeds its trip qty (same per-barge/MBC limit the save-time
+    # validation enforces, so a flagged row is exactly one the rule would block).
+    over_cache = {}  # group key -> overage (float; >0 means over)
+    for r in rows:
+        st = r.get('source_type'); sid = r.get('source_id')
+        if not st or not sid:
+            r['_qty_over_group'] = False
+            r['_qty_over_by'] = 0
+            continue
+        gkey = (st, sid, r.get('barge_name') if st == 'VCN' else None)
+        if gkey not in over_cache:
+            expected, handled = _resolve_trip_quantity(cur, r, None)
+            over_cache[gkey] = (round(handled - expected, 3)
+                                if (expected and expected > 0 and handled > expected) else 0)
+        over_by = over_cache[gkey]
+        r['_qty_over_group'] = over_by > 0
+        r['_qty_over_by'] = over_by
+
     conn.close()
 
     return {
