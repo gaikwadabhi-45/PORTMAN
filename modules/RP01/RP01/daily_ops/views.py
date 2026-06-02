@@ -726,6 +726,7 @@ def _fetch_upcoming_mbcs(report_date):
 
 """)
 
+
     rows = cur.fetchall()
 
     cur.close()
