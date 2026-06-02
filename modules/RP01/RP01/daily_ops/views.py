@@ -446,71 +446,70 @@ def _fetch_upcoming_vessels(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
-        SELECT
-            vh.vessel_name,
+    SELECT
+        vh.vessel_name,
 
-            vc.cargo_name,
+        vc.cargo_name,
 
-            COALESCE(vc.bl_quantity, 0) AS bl_quantity,
+        COALESCE(vc.bl_quantity, 0) AS bl_quantity,
 
-            vh.vessel_agent_name,
+        vh.vessel_agent_name,
 
-            CASE
-                WHEN lh.nor_tendered IS NULL THEN
-                    'ETA : ' ||
-                    TO_CHAR(vn.eta::timestamp, 'DD-MM-YYYY HH24:MI')
+        CASE
+            WHEN lh.nor_tendered IS NULL
+                THEN 'ETA : ' ||
+                     TO_CHAR(vn.eta::timestamp, 'DD-MM-YYYY HH24:MI')
 
-                WHEN lh.nor_tendered IS NOT NULL
-                     AND fa.discharge_started IS NULL THEN
-                    'ARRIVED AT : ' ||
-                    TO_CHAR(lh.nor_tendered::timestamp, 'DD-MM-YYYY HH24:MI')
-            END AS eta,
+            WHEN lh.nor_tendered IS NOT NULL
+                 AND fa.discharge_started IS NULL
+                THEN 'ARRIVED AT : ' ||
+                     TO_CHAR(lh.nor_tendered::timestamp, 'DD-MM-YYYY HH24:MI')
+        END AS eta,
 
-            CASE
-                WHEN lh.nor_tendered IS NULL THEN 'ETA'
-                WHEN lh.nor_tendered IS NOT NULL
-                     AND fa.discharge_started IS NULL THEN 'ARRIVED'
-            END AS vessel_status,
+        CASE
+            WHEN lh.nor_tendered IS NULL
+                THEN 'ETA'
 
-            CASE
-                WHEN lh.nor_tendered IS NULL
-                    THEN vn.eta::timestamp
-                ELSE
-                    lh.nor_tendered::timestamp
-            END AS status_time
+            WHEN lh.nor_tendered IS NOT NULL
+                 AND fa.discharge_started IS NULL
+                THEN 'ARRIVED'
+        END AS vessel_status,
 
+            COALESCE(
+        lh.nor_tendered::timestamp,
+        vn.eta::timestamp
+    ) AS status_time
         FROM vcn_header vh
 
-        JOIN vcn_nominations vn
-            ON vn.vcn_id = vh.id
+    JOIN vcn_nominations vn
+        ON vn.vcn_id = vh.id
 
-        LEFT JOIN ldud_header lh
-            ON lh.vcn_id = vh.id
+    LEFT JOIN ldud_header lh
+        ON lh.vcn_id = vh.id
 
-        LEFT JOIN vcn_cargo_declaration vc
-            ON vc.vcn_id = vh.id
+    LEFT JOIN vcn_cargo_declaration vc
+        ON vc.vcn_id = vh.id
 
-        LEFT JOIN LATERAL (
-            SELECT MIN(a.discharge_started) AS discharge_started
-            FROM ldud_anchorage a
-            WHERE a.ldud_id = lh.id
-        ) fa ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT MIN(a.discharge_started) AS discharge_started
+        FROM ldud_anchorage a
+        WHERE a.ldud_id = lh.id
+    ) fa ON TRUE
 
-        WHERE
-        (
-            lh.nor_tendered IS NULL
-            AND vn.eta IS NOT NULL
-            AND vn.eta::timestamp >= %s
-        )
+    WHERE
+    (
+        lh.nor_tendered IS NULL
+        AND vn.eta::timestamp >= %s
+    )
 
-        OR
+    OR
 
-        (
-            lh.nor_tendered IS NOT NULL
-            AND fa.discharge_started IS NULL
-        )
+    (
+        lh.nor_tendered IS NOT NULL
+        AND fa.discharge_started IS NULL
+    )
 
-        ORDER BY status_time
+    ORDER BY status_time
     """, (report_date,))
 
     rows = cur.fetchall()
@@ -1356,9 +1355,6 @@ def daily_ops_preview():
             <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
-            <th style='border:1px solid #ccc;padding:8px'>Fwd</th>
-            <th style='border:1px solid #ccc;padding:8px'>Mid</th>
-            <th style='border:1px solid #ccc;padding:8px'>Aft</th>
             <th style='border:1px solid #ccc;padding:8px'>Date</th>
             <th style='border:1px solid #ccc;padding:8px'>Status</th>
         </tr>
