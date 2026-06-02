@@ -632,6 +632,66 @@ def _fetch_discharging_mbcs(report_date):
     conn.close()
 
     return rows
+
+def _fetch_upcoming_mbcs(report_date):
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            h.id,
+            h.mbc_name,
+            h.cargo_name,
+            h.bl_quantity,
+            p.arrival_gull_island AS event_time,
+            'AT GULL' AS status
+
+        FROM mbc_header h
+        JOIN mbc_discharge_port_lines p
+            ON p.mbc_id = h.id
+
+        WHERE
+            p.arrival_gull_island IS NOT NULL
+            AND (
+                p.vessel_arrival_port IS NULL
+                OR TRIM(COALESCE(p.vessel_arrival_port,'')) = ''
+            )
+
+        UNION ALL
+
+        SELECT
+            h.id,
+            h.mbc_name,
+            h.cargo_name,
+            h.bl_quantity,
+            l.eta AS event_time,
+            'ETA' AS status
+
+        FROM mbc_header h
+        JOIN mbc_load_port_lines l
+            ON l.mbc_id = h.id
+
+        WHERE
+            l.eta IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM mbc_discharge_port_lines d
+                WHERE d.mbc_id = h.id
+                  AND d.arrival_gull_island IS NOT NULL
+            )
+
+        ORDER BY event_time
+
+    """)
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
     Month values incorporate cutoff if the cutoff date falls within the report month.
@@ -1256,6 +1316,47 @@ def daily_ops_preview():
 
             <td style='border:1px solid #ccc;padding:8px;text-align:right'>
                 {float(m['discharge_quantity']):,.2f}
+            </td>
+        </tr>
+        """
+
+    html += "</table>"
+
+    upcoming_mbcs = _fetch_upcoming_mbcs(report_date)
+
+    html += """
+    <br><br>
+    <h3>Upcoming MBCs</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+        <tr style='background:#4a90d9;color:white'>
+            <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
+            <th style='border:1px solid #ccc;padding:8px'>Status</th>
+        </tr>
+    """
+
+    for m in upcoming_mbcs:
+
+        row_color = "#d1ecf1" if m["status"] == "AT GULL" else "#fff3cd"
+
+        html += f"""
+        <tr style="background-color:{row_color};">
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['mbc_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['cargo_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {float(m['bl_quantity']):,.2f}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['status']}
             </td>
         </tr>
         """
