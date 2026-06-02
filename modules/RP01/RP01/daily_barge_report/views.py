@@ -39,15 +39,19 @@ def _font(bold=False, size=XL_NORM_SZ, color='000000'):
 
 
 def _fmt_dt(val):
+
     if not val:
         return ''
-    if isinstance(val, datetime):
-        return val.strftime('%d-%m-%Y %H:%M')
-    try:
-        return datetime.fromisoformat(str(val)).strftime('%d-%m-%Y %H:%M')
-    except Exception:
-        return str(val)
 
+    try:
+
+        dt = _parse_tat_datetime(val)
+
+        return dt.strftime('%d-%m-%Y %H:%M')
+
+    except Exception:
+
+        return str(val)
 
 def _safe_float(val):
     try:
@@ -55,37 +59,55 @@ def _safe_float(val):
     except (TypeError, ValueError):
         return 0.0
 
+def _parse_tat_datetime(val):
+
+    if not val:
+        return None
+
+    val = str(val)
+
+    if "T24:" in val:
+
+        date_part, time_part = val.split("T")
+
+        dt = datetime.strptime(
+            date_part,
+            "%Y-%m-%d"
+        ) + timedelta(days=1)
+
+        hh, mm = time_part.split(":")
+
+        return dt.replace(
+            hour=0,
+            minute=int(mm)
+        )
+
+    return datetime.fromisoformat(val)
+
+
 def _calc_tat(start_val, end_val):
 
     try:
 
-        if not start_val or not end_val:
-            return ''
+        print("START =", start_val)
+        print("END =", end_val)
 
-        start_dt = (
-            start_val
-            if isinstance(start_val, datetime)
-            else datetime.fromisoformat(str(start_val))
-        )
+        start_dt = _parse_tat_datetime(start_val)
+        end_dt = _parse_tat_datetime(end_val)
 
-        end_dt = (
-            end_val
-            if isinstance(end_val, datetime)
-            else datetime.fromisoformat(str(end_val))
-        )
+        print("START_DT =", start_dt)
+        print("END_DT =", end_dt)
 
         diff = end_dt - start_dt
 
-        total_hours = round(
-            diff.total_seconds() / 3600,
-            2
-        )
+        return f"{round(diff.total_seconds()/3600,2)} Hrs"
 
-        return f'{total_hours} Hrs'
+    except Exception as e:
 
-    except Exception:
+        print("TAT ERROR =", e)
+
         return ''
-
+    
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -101,59 +123,76 @@ _STATUS_FILTERS = {
     
     'all': {
 
-    'date_col': 'l.trip_start',
+'date_col': 'l.trip_start',
 
-    'condition': """
+'condition': """
+    (
+        -- IN TRANSIT
         (
-            (
-                l.trip_start IS NOT NULL
-                AND TRIM(l.trip_start) <> ''
-                AND (
-                    l.along_side_vessel IS NULL
-                    OR TRIM(l.along_side_vessel) = ''
-                )
-            )
-
-            OR
-
-            (
-                l.commenced_loading IS NOT NULL
-                AND TRIM(l.commenced_loading) <> ''
-                AND (
-                    l.completed_loading IS NULL
-                    OR TRIM(l.completed_loading) = ''
-                )
-            )
-
-            OR
-
-            (
-                completed_loading IS NOT NULL
-                AND TRIM(completed_loading) <> ''
-                AND (
-                    l.commence_discharge_berth IS NULL
-                    OR TRIM(l.commence_discharge_berth) = ''
-                )
-            )
-
-            OR
-
-            (
-                l.commence_discharge_berth IS NOT NULL
-                AND TRIM(l.commence_discharge_berth) <> ''
-                AND (
-                    l.completed_discharge_berth IS NULL
-                    OR TRIM(l.completed_discharge_berth) = ''
-                )
-            )
-
-            OR
-
-            (
-                completed_discharge_berth IS NOT NULL
-                AND TRIM(completed_discharge_berth) <> ''
+            l.trip_start IS NOT NULL
+            AND TRIM(l.trip_start) <> ''
+            AND (
+                l.along_side_vessel IS NULL
+                OR TRIM(l.along_side_vessel) = ''
             )
         )
+
+        OR
+
+        -- CURRENTLY LOADING
+        (
+            l.commenced_loading IS NOT NULL
+            AND TRIM(l.commenced_loading) <> ''
+            AND (
+                l.completed_loading IS NULL
+                OR TRIM(l.completed_loading) = ''
+            )
+        )
+
+        OR
+
+        -- AT GULL ISLAND LOADED: cast off MV, not yet alongside berth
+        (
+            l.cast_off_mv IS NOT NULL
+            AND TRIM(l.cast_off_mv) <> ''
+            AND (
+                l.along_side_berth IS NULL
+                OR TRIM(l.along_side_berth) = ''
+            )
+        )
+
+        OR
+
+        -- WAITING AT JETTY: alongside berth, discharge not started
+        (
+            l.along_side_berth IS NOT NULL
+            AND TRIM(l.along_side_berth) <> ''
+            AND (
+                l.commence_discharge_berth IS NULL
+                OR TRIM(l.commence_discharge_berth) = ''
+            )
+        )
+
+        OR
+
+        -- UNDER DISCHARGE
+        (
+            l.commence_discharge_berth IS NOT NULL
+            AND TRIM(l.commence_discharge_berth) <> ''
+            AND (
+                l.completed_discharge_berth IS NULL
+                OR TRIM(l.completed_discharge_berth) = ''
+            )
+        )
+
+        OR
+
+        -- COMPLETED DISCHARGE
+        (
+            l.completed_discharge_berth IS NOT NULL
+            AND TRIM(l.completed_discharge_berth) <> ''
+        )
+    )
     """
     },
 
@@ -223,14 +262,14 @@ _STATUS_FILTERS = {
         """
     }
 }
-_DATE_FIELD_DEFAULT = 'trip_start'
+# _DATE_FIELD_DEFAULT = 'trip_start'
 
 
 def _fetch_list(selected_date, status_filter=None):
 
     filter_config = _STATUS_FILTERS.get(
         status_filter,
-        _STATUS_FILTERS['in_transit']
+        _STATUS_FILTERS['all']
     )
 
     where_clause = (
@@ -238,16 +277,8 @@ def _fetch_list(selected_date, status_filter=None):
         .replace('l.', '')
     )
 
-    date_col = (
-        filter_config['date_col']
-        .replace('l.', '')
-    )
-
     conn = get_db()
     cur = get_cursor(conn)
-
-    # Shipping day:
-    # 06:00 AM to next day 06:00 AM
 
     start_dt = datetime.strptime(
         selected_date,
@@ -281,11 +312,7 @@ def _fetch_list(selected_date, status_filter=None):
 
         l.bpt_bfl AS mbpt_pla,
 
-
-
-    COALESCE(l.discharge_quantity, 0) AS qty_mt,
-
-
+        COALESCE(l.discharge_quantity, 0) AS qty_mt,
 
         l.trip_start,
 
@@ -299,6 +326,8 @@ def _fetch_list(selected_date, status_filter=None):
         l.along_side_berth,
         l.commence_discharge_berth,
         l.completed_discharge_berth,
+        l.anchored_gull_island_empty,
+        l.aweigh_gull_island_empty,
 
         l.cast_off_berth AS cast_off_berth_nt,
 
@@ -323,14 +352,12 @@ def _fetch_list(selected_date, status_filter=None):
 
         *,
 
-
-
-    GREATEST(
-        COALESCE(qty_mt, 0)
-        -
-        COALESCE(discharge_done_qty, 0),
-        0
-    ) AS qty_balance
+        GREATEST(
+            COALESCE(qty_mt, 0)
+            -
+            COALESCE(discharge_done_qty, 0),
+            0
+        ) AS qty_balance
 
     FROM (
 
@@ -338,114 +365,109 @@ def _fetch_list(selected_date, status_filter=None):
 
             atd.*,
 
-    COALESCE(
-        (
-            SELECT SUM(ll.quantity)
-            FROM lueu_lines ll
-            WHERE
-                ll.barge_name = CONCAT(
-                    atd.original_barge_name,
-                    ' / ',
-                    COALESCE(atd.trip_number::text, '1')
-                )
-                AND ll.source_id = atd.vcn_id
-                AND ll.source_type = 'VCN'
-                AND (ll.is_deleted IS NOT TRUE)
-        ),
-        0
+            COALESCE(
+    (
+        SELECT SUM(ll.quantity)
+        FROM lueu_lines ll
+        WHERE
+            ll.barge_name = CONCAT(
+                atd.original_barge_name,
+                ' / ',
+                COALESCE(atd.trip_number::text, '1')
+            )
+            AND ll.source_id = atd.vcn_id
+            AND ll.source_type = 'VCN'
+            AND (ll.is_deleted IS NOT TRUE)
+
+            AND TO_DATE(ll.entry_date,'YYYY-MM-DD')
+                <= %s::date
+    ),
+    0
     ) AS discharge_done_qty
 
-            FROM all_trip_data atd
+        FROM all_trip_data atd
 
-        ) z
+    ) z
 
-  )
+    )
 
     SELECT *
 
     FROM balance_data
 
-    WHERE
-
-    ({where_clause})
-
-    
-
-    AND
-    (
-        (
-            trip_start IS NOT NULL
-            AND (
-                along_side_vessel IS NULL
-                OR TRIM(along_side_vessel) = ''
-            )
-            AND NULLIF(TRIM(trip_start), '')::timestamp >= %s
-            AND NULLIF(TRIM(trip_start), '')::timestamp < %s
-        )
-
-        OR
-
-        (
-            commenced_loading IS NOT NULL
-            AND (
-                completed_loading IS NULL
-                OR TRIM(completed_loading) = ''
-            )
-            AND NULLIF(TRIM(commenced_loading), '')::timestamp >= %s
-            AND NULLIF(TRIM(commenced_loading), '')::timestamp < %s
-        )
-
-        OR
-
-        (
-            completed_loading IS NOT NULL
-            AND (
-                commence_discharge_berth IS NULL
-                OR TRIM(commence_discharge_berth) = ''
-            )
-            AND NULLIF(TRIM(completed_loading), '')::timestamp >= %s
-            AND NULLIF(TRIM(completed_loading), '')::timestamp < %s
-        )
-
-        OR
-
-        (
-            commence_discharge_berth IS NOT NULL
-            AND (
-                completed_discharge_berth IS NULL
-                OR TRIM(completed_discharge_berth) = ''
-            )
-            AND NULLIF(TRIM(commence_discharge_berth), '')::timestamp >= %s
-            AND NULLIF(TRIM(commence_discharge_berth), '')::timestamp < %s
-        )
-
-        OR
-
-        (
-            completed_discharge_berth IS NOT NULL
-            AND TRIM(completed_discharge_berth) <> ''
-            AND NULLIF(TRIM(completed_discharge_berth), '')::timestamp >= %s
-            AND NULLIF(TRIM(completed_discharge_berth), '')::timestamp < %s
-        )
-    )
+    WHERE ({where_clause})
 
     ORDER BY
         trip_start,
         id
-    
 
+    """,
+     (selected_date,))
 
-""", (
-    start_dt, end_dt,
-    start_dt, end_dt,
-    start_dt, end_dt,
-    start_dt, end_dt,
-    start_dt, end_dt
-))
-
-    rows = [dict(r) for r in cur.fetchall()]
-
+    raw_rows = [dict(r) for r in cur.fetchall()]
     conn.close()
+
+    # ── Parse any date string into datetime ─────────────────────
+    def _parse_dt(val):
+
+        if not val:
+            return None
+
+        if isinstance(val, datetime):
+            return val
+
+        val = str(val).strip()
+
+        if not val:
+            return None
+
+        for fmt in (
+            '%Y-%m-%dT%H:%M',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d %H:%M',
+            '%d-%m-%Y %H:%M',
+            '%d-%m-%Y %H:%M:%S',
+            '%Y-%m-%d',
+            '%d-%m-%Y',
+        ):
+            try:
+                return datetime.strptime(val, fmt)
+            except ValueError:
+                pass
+
+        try:
+            return datetime.fromisoformat(val)
+        except Exception:
+            return None
+
+
+    def _row_active_on_date(row):
+
+        event_dates = [
+            row.get('trip_start'),
+            row.get('along_side_vessel'),
+            row.get('commenced_loading'),
+            row.get('completed_loading'),
+            row.get('cast_off_mv'),
+            row.get('amf_at_port'),
+            row.get('along_side_berth'),
+            row.get('commence_discharge_berth'),
+            row.get('completed_discharge_berth'),
+            row.get('cast_off_berth_nt'),
+            row.get('cast_off_port')
+        ]
+
+        for event_date in event_dates:
+
+            dt = _parse_dt(event_date)
+
+            if dt and start_dt <= dt < end_dt:
+                return True
+
+        return False
+
+
+    rows = [r for r in raw_rows if _row_active_on_date(r)]
 
     return rows
 
@@ -457,7 +479,7 @@ def _fetch_barge_data(barge_line_id):
 
     cur.execute(
         """
-        SELECT
+    SELECT
     l.*,
 
     h.vessel_name,
@@ -582,8 +604,8 @@ def _write_barge_sheet(ws, data):
     commenced_loading       = _fmt_dt(data.get('commenced_loading'))
     completed_loading       = _fmt_dt(data.get('completed_loading'))
     cast_off_mv             = _fmt_dt(data.get('cast_off_mv'))
-    anchored_loaded = _fmt_dt(data.get('anchored_gull_island'))
-    aweigh_loaded   = _fmt_dt(data.get('aweigh_gull_island'))
+    anchored_loaded = _fmt_dt(data.get('anchored_gull_island_empty'))
+    aweigh_loaded   = _fmt_dt(data.get('aweigh_gull_island_empty'))
     amf_at_port             = _fmt_dt(data.get('amf_at_port'))
     along_side_berth        = _fmt_dt(data.get('along_side_berth'))
     commence_discharge_berth = _fmt_dt(data.get('commence_discharge_berth'))
@@ -904,8 +926,8 @@ def _write_summary_sheet(ws, rows):
 
             _fmt_dt(row.get('cast_off_mv')),
 
-            _fmt_dt(row.get('anchored_gull_island')),
-            _fmt_dt(row.get('aweigh_gull_island')),
+            _fmt_dt(row.get('anchored_gull_island_empty')),
+            _fmt_dt(row.get('aweigh_gull_island_empty')),
 
             _fmt_dt(row.get('amf_at_port')),
             _fmt_dt(row.get('along_side_berth')),
@@ -1475,7 +1497,7 @@ def mv_barge_report_data():
 
     status_filter = request.args.get(
         'status_filter',
-        'in_transit'
+        'all'
     )
 
     rows = _fetch_list(
@@ -1485,15 +1507,31 @@ def mv_barge_report_data():
 
     for row in rows:
 
-        for k, v in row.items():
+        row['tat'] = _calc_tat(
+            row.get('trip_start'),
+            row.get('cast_off_port')
+        )
 
-            if hasattr(v, 'isoformat'):
+        date_fields = [
+            'trip_start',
+            'anchored_gull_island',
+            'aweigh_gull_island',
+            'along_side_vessel',
+            'commenced_loading',
+            'completed_loading',
+            'cast_off_mv',
+            'amf_at_port',
+            'along_side_berth',
+            'commence_discharge_berth',
+            'completed_discharge_berth',
+            'cast_off_berth_nt',
+            'cast_off_port'
+        ]
 
-                row[k] = v.isoformat()
+        for fld in date_fields:
+            row[fld] = _fmt_dt(row.get(fld))
 
     return jsonify(rows)
-    
-
 
 @bp.route('/api/module/RP01/mv-barge-report/download-all')
 @login_required
@@ -1504,10 +1542,7 @@ def mv_barge_report_download_all():
         date.today().replace(day=1).strftime('%Y-%m-%d')
     )
 
-    status_filter = request.args.get(
-        'status_filter',
-        'in_transit'
-    )
+    status_filter = request.args.get('status_filter', 'all')
 
     list_rows = _fetch_list(
         from_date,
