@@ -2,6 +2,186 @@ from database import get_db, get_cursor
 from datetime import datetime, date, timedelta
 
 
+def _hhmm_to_minutes(t):
+    """'HH:MM' -> minutes since midnight, or None if not parseable."""
+    if not t or not isinstance(t, str):
+        return None
+    parts = t.strip().split(':')
+    if len(parts) < 2:
+        return None
+    try:
+        h = int(parts[0]); m = int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return h * 60 + m
+
+
+def _intervals_overlap(from_a, to_a, from_b, to_b):
+    """True if two HH:MM ranges on the same date intersect.
+
+    A range whose end <= start is treated as crossing midnight (end += 1440),
+    matching the overnight convention used by calcDiffHrs in the template.
+    Because the day is cyclic, a non-wrapping range is also compared against the
+    other range shifted by +1440 so overnight overlaps are caught symmetrically
+    (the result is independent of argument order).
+    Returns False if either range is incomplete/unparseable.
+    """
+    fa = _hhmm_to_minutes(from_a); ta = _hhmm_to_minutes(to_a)
+    fb = _hhmm_to_minutes(from_b); tb = _hhmm_to_minutes(to_b)
+    if fa is None or ta is None or fb is None or tb is None:
+        return False
+    if ta <= fa:
+        ta += 1440
+    if tb <= fb:
+        tb += 1440
+
+    def _lin(s1, e1, s2, e2):
+        return s1 < e2 and s2 < e1
+
+    return (_lin(fa, ta, fb, tb)
+            or _lin(fa, ta, fb + 1440, tb + 1440)
+            or _lin(fa + 1440, ta + 1440, fb, tb))
+
+
+def compute_rejections(data, trip_expected, trip_handled, overlap_candidates):
+    """Pure decision logic for save-time validation.
+
+    Args:
+        data: the row dict about to be written.
+        trip_expected: total qty basis for the barge/MBC; <= 0 means 'no basis,
+            skip the quantity check'.
+        trip_handled: qty already handled for that barge/MBC EXCLUDING this row.
+        overlap_candidates: list of (from_time, to_time) tuples for other rows on
+            the same equipment + entry_date (already excludes this row).
+
+    Returns (clean_data, rejections):
+        clean_data: a copy of `data` with rejected fields set to None.
+        rejections: list of dicts describing each rejected field.
+    """
+    clean = dict(data)
+    rejections = []
+
+    # ── Quantity vs remaining trip quantity ──────────────────────────────────
+    qty = clean.get('quantity')
+    if qty is not None and str(qty).strip() != '' and trip_expected and float(trip_expected) > 0:
+        try:
+            qv = float(qty)
+        except (TypeError, ValueError):
+            qv = None
+        if qv is not None:
+            remaining = float(trip_expected) - float(trip_handled or 0)
+            if qv > remaining + 1e-9:
+                clean['quantity'] = None
+                rejections.append({
+                    'field': 'quantity',
+                    'reason': 'exceeds_trip_qty',
+                    'label': clean.get('barge_name') or clean.get('source_display') or '',
+                    'attempted': round(qv, 3),
+                    'remaining': round(remaining, 3),
+                })
+
+    # ── Time overlap vs same equipment + same date ───────────────────────────
+    ft = clean.get('from_time'); tt = clean.get('to_time')
+    if _hhmm_to_minutes(ft) is not None and _hhmm_to_minutes(tt) is not None:
+        for cf, ct in overlap_candidates:
+            if _intervals_overlap(ft, tt, cf, ct):
+                clean['from_time'] = None
+                clean['to_time'] = None
+                rejections.append({
+                    'field': 'time',
+                    'reason': 'overlap',
+                    'conflict': {'from_time': cf, 'to_time': ct},
+                })
+                break
+
+    return clean, rejections
+
+
+def _resolve_trip_quantity(cur, data, exclude_id):
+    """Return (expected, handled_excluding_self) for the barge/MBC this row targets.
+
+    expected == 0.0 means there is no basis to check (skip the quantity block).
+    `exclude_id` is the row's own id (None for new rows); it is excluded from the
+    handled sum so re-saving an existing row never double-counts itself.
+    """
+    source_type = data.get('source_type')
+    source_id = data.get('source_id')
+    barge_name = data.get('barge_name')
+    if not source_type or not source_id:
+        return 0.0, 0.0
+
+    if source_type == 'VCN':
+        if not barge_name:
+            return 0.0, 0.0
+        cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s', [source_id])
+        ldud = cur.fetchone()
+        if not ldud:
+            return 0.0, 0.0
+        cur.execute('''
+            SELECT barge_name, trip_number,
+                   COALESCE(SUM(discharge_quantity), 0) AS expected_qty
+            FROM ldud_barge_lines
+            WHERE ldud_id = %s AND barge_name IS NOT NULL AND barge_name != ''
+            GROUP BY barge_name, trip_number
+        ''', [ldud['id']])
+        expected = 0.0
+        for r in cur.fetchall():
+            trip = r['trip_number'] or ''
+            display = f"{r['barge_name']} / {trip}" if trip else r['barge_name']
+            if display == barge_name:
+                expected = float(r['expected_qty'] or 0)
+                break
+        cur.execute('''
+            SELECT COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id = %s AND barge_name = %s
+              AND (is_deleted IS NOT TRUE) AND id != %s
+        ''', [source_id, barge_name, exclude_id or 0])
+        handled = float(cur.fetchone()['handled'] or 0)
+        return expected, handled
+
+    if source_type == 'MBC':
+        cur.execute('''
+            SELECT CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
+            FROM mbc_header m
+            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+            WHERE m.id = %s
+            GROUP BY m.id, m.bl_quantity
+        ''', [source_id])
+        row = cur.fetchone()
+        expected = float(row['bl_qty'] or 0) if row else 0.0
+        cur.execute('''
+            SELECT COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'MBC' AND source_id = %s
+              AND (is_deleted IS NOT TRUE) AND id != %s
+        ''', [source_id, exclude_id or 0])
+        handled = float(cur.fetchone()['handled'] or 0)
+        return expected, handled
+
+    return 0.0, 0.0
+
+
+def _overlap_candidates(cur, data, exclude_id):
+    """Return [(from_time, to_time), ...] for other rows on the same
+    equipment_name + entry_date that have both times set (excludes this row)."""
+    equipment_name = data.get('equipment_name')
+    entry_date = data.get('entry_date')
+    if not equipment_name or not entry_date:
+        return []
+    cur.execute('''
+        SELECT from_time, to_time FROM lueu_lines
+        WHERE equipment_name = %s AND entry_date = %s
+          AND (is_deleted IS NOT TRUE) AND id != %s
+          AND from_time IS NOT NULL AND from_time != ''
+          AND to_time IS NOT NULL AND to_time != ''
+    ''', [equipment_name, entry_date, exclude_id or 0])
+    return [(r['from_time'], r['to_time']) for r in cur.fetchall()]
+
+
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     conn = get_db()
     cur = get_cursor(conn)
@@ -88,6 +268,98 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
         else:
             r['customer_name'] = ''
 
+    # Flag historical over-quantity rows: every row of a barge/MBC whose TOTAL
+    # handled qty exceeds its trip qty (same per-barge/MBC limit the save-time
+    # validation enforces, so a flagged row is exactly one the rule would block).
+    # Resolved with set-based queries (≤5 total, independent of page size) rather
+    # than a per-row resolver, to avoid N+1 query fan-out on large pages. The
+    # math mirrors _resolve_trip_quantity exactly.
+    vcn_ids = {r['source_id'] for r in rows
+               if r.get('source_type') == 'VCN' and r.get('source_id')}
+    mbc_ids = {r['source_id'] for r in rows
+               if r.get('source_type') == 'MBC' and r.get('source_id')}
+
+    vcn_expected = {}   # (vcn_id, barge_display) -> expected discharge qty
+    vcn_handled = {}    # (vcn_id, barge_name)    -> total handled qty
+    if vcn_ids:
+        ph = ','.join(['%s'] * len(vcn_ids))
+        ids = list(vcn_ids)
+        # one ldud_header per vcn (first wins, mirroring _resolve_trip_quantity)
+        cur.execute(f'SELECT id, vcn_id FROM ldud_header WHERE vcn_id IN ({ph})', ids)
+        first_lduds = {}   # ldud_id -> vcn_id
+        seen_vcn = set()
+        for lr in cur.fetchall():
+            if lr['vcn_id'] not in seen_vcn:
+                seen_vcn.add(lr['vcn_id'])
+                first_lduds[lr['id']] = lr['vcn_id']
+        if first_lduds:
+            lph = ','.join(['%s'] * len(first_lduds))
+            cur.execute(f'''
+                SELECT ldud_id, barge_name, trip_number,
+                       COALESCE(SUM(discharge_quantity), 0) AS expected_qty
+                FROM ldud_barge_lines
+                WHERE ldud_id IN ({lph}) AND barge_name IS NOT NULL AND barge_name != ''
+                GROUP BY ldud_id, barge_name, trip_number
+            ''', list(first_lduds.keys()))
+            for br in cur.fetchall():
+                vcn_id = first_lduds.get(br['ldud_id'])
+                if vcn_id is None:
+                    continue
+                trip = br['trip_number'] or ''
+                display = f"{br['barge_name']} / {trip}" if trip else br['barge_name']
+                vcn_expected[(vcn_id, display)] = float(br['expected_qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, barge_name, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE) AND barge_name IS NOT NULL
+            GROUP BY source_id, barge_name
+        ''', ids)
+        for hr in cur.fetchall():
+            vcn_handled[(hr['source_id'], hr['barge_name'])] = float(hr['handled'] or 0)
+
+    mbc_expected = {}   # mbc_id -> expected qty
+    mbc_handled = {}    # mbc_id -> total handled qty
+    if mbc_ids:
+        ph = ','.join(['%s'] * len(mbc_ids))
+        ids = list(mbc_ids)
+        cur.execute(f'''
+            SELECT m.id,
+                   CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
+            FROM mbc_header m
+            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+            WHERE m.id IN ({ph})
+            GROUP BY m.id, m.bl_quantity
+        ''', ids)
+        for mr in cur.fetchall():
+            mbc_expected[mr['id']] = float(mr['bl_qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'MBC' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE)
+            GROUP BY source_id
+        ''', ids)
+        for hr in cur.fetchall():
+            mbc_handled[hr['source_id']] = float(hr['handled'] or 0)
+
+    for r in rows:
+        st = r.get('source_type'); sid = r.get('source_id')
+        over_by = 0
+        if st == 'VCN' and sid and r.get('barge_name'):
+            expected = vcn_expected.get((sid, r['barge_name']), 0)
+            handled = vcn_handled.get((sid, r['barge_name']), 0)
+            if expected > 0 and handled > expected:
+                over_by = round(handled - expected, 3)
+        elif st == 'MBC' and sid:
+            expected = mbc_expected.get(sid, 0)
+            handled = mbc_handled.get(sid, 0)
+            if expected > 0 and handled > expected:
+                over_by = round(handled - expected, 3)
+        r['_qty_over_group'] = over_by > 0
+        r['_qty_over_by'] = over_by
+
     conn.close()
 
     return {
@@ -111,6 +383,11 @@ def save_line(data):
     data['source_id'] = _num('source_id')
 
     line_id = data.get('id')
+
+    # ── Validation: blank (but reject) over-limit quantity and overlapping times ──
+    trip_expected, trip_handled = _resolve_trip_quantity(cur, data, line_id)
+    overlap = _overlap_candidates(cur, data, line_id)
+    data, rejections = compute_rejections(data, trip_expected, trip_handled, overlap)
 
     if line_id:
         cur.execute('''
@@ -154,7 +431,7 @@ def save_line(data):
 
     conn.commit()
     conn.close()
-    return line_id
+    return {'id': line_id, 'rejections': rejections}
 
 
 def soft_delete_lines(ids, username=None):

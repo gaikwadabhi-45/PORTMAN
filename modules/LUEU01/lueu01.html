@@ -217,6 +217,13 @@
         vertical-align: middle; cursor: help;
     }
     .dark-theme .qty-exceeded-badge { background: #4a1a1a; border-color: #9b2c2c; color: #fc8181; }
+    .qty-over-badge {
+        display: inline-block; margin-left: 4px;
+        background: #fff5f5; color: #c53030; border: 1px solid #fc8181;
+        border-radius: 3px; padding: 0 4px; font-size: 9px; font-weight: 700;
+        vertical-align: middle; cursor: help;
+    }
+    .dark-theme .qty-over-badge { background: #4a1a1a; border-color: #fc8181; color: #fc8181; }
 </style>
 <div class="module-header">
     <h2>Load Unload Equipment Utilization</h2>
@@ -277,6 +284,22 @@
         <div style="padding:0 16px 14px;display:flex;gap:8px;justify-content:flex-end;">
             <button onclick="cancelDelModal()" style="padding:5px 14px;border:1px solid #cbd5e0;background:#e2e8f0;border-radius:4px;font-size:12px;cursor:pointer;">Cancel</button>
             <button onclick="confirmDelModal()" style="padding:5px 14px;background:#c53030;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Delete</button>
+        </div>
+    </div>
+</div>
+
+<!-- Rejection Popup Modal -->
+<div id="rejectModal" style="display:none;position:fixed;inset:0;z-index:9200;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.25);width:460px;max-width:92vw;overflow:hidden;">
+        <div style="background:#b45309;color:#fff;padding:12px 16px;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;">
+            <span>&#9888;</span> Some values were not saved
+        </div>
+        <div style="padding:16px;">
+            <p style="font-size:12px;color:#4a5568;margin-bottom:10px;">The rest of each row was saved. Please correct the highlighted fields:</p>
+            <ul id="rejectList" style="margin:0;padding-left:18px;font-size:12px;color:#2d3748;display:flex;flex-direction:column;gap:6px;"></ul>
+        </div>
+        <div style="padding:0 16px 14px;display:flex;justify-content:flex-end;">
+            <button onclick="document.getElementById('rejectModal').style.display='none'" style="padding:5px 14px;background:#b45309;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;">OK</button>
         </div>
     </div>
 </div>
@@ -774,7 +797,11 @@
                             badge = '<span class="qty-exceeded-badge" title="BL exceeded by ' + cargoRow.exceeded_by.toLocaleString() + (cargoRow.uom ? ' ' + cargoRow.uom : '') + '">&#9888; OVR</span>';
                         }
                     }
-                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge;
+                    let overBadge = '';
+                    if (data._qty_over_group) {
+                        overBadge = '<span class="qty-over-badge" title="This barge/MBC is over its trip quantity by ' + (data._qty_over_by || 0).toLocaleString() + ' — please correct.">&#9888; OVER</span>';
+                    }
+                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge + overBadge;
                 }},
             {title: "Qty UOM", field: "quantity_uom", width: 110, editor: canEdit ? "list" : false, editable: editableCheck,
                 editorParams: {values: toOptions(uomList), autocomplete: true, allowEmpty: true, listOnEmpty: true}},
@@ -1036,11 +1063,20 @@
         }
     });
 
+    function showRejectionPopup(messages) {
+        const list = document.getElementById('rejectList');
+        list.innerHTML = messages.map(function(m) {
+            return '<li>' + m + '</li>';
+        }).join('');
+        document.getElementById('rejectModal').style.display = 'flex';
+    }
+
     async function saveAll() {
         cancelAutoSave();
         showStatus('Saving...', 'saving');
         const rows = table.getRows();
         let savedCount = 0;
+        let rejectionMessages = [];
 
         for (const row of rows) {
             const data = row.getData();
@@ -1067,10 +1103,30 @@
                 body: JSON.stringify(payload)
             });
             const result = await res.json();
-            if (result.id) { row.update({id: result.id, _is_new: false}); savedCount++; }
+            if (result.id) {
+                const upd = {id: result.id, _is_new: false};
+                const label = data.barge_name || data.source_display || '—';
+                (result.rejections || []).forEach(function(rej) {
+                    if (rej.field === 'quantity') {
+                        upd.quantity = null;
+                        rejectionMessages.push(
+                            `${currentEquipment} / ${label}: quantity ${rej.attempted} exceeds remaining ${rej.remaining} — quantity not saved.`);
+                    } else if (rej.field === 'time') {
+                        upd.from_time = null;
+                        upd.to_time = null;
+                        upd.diff_hrs = '';
+                        const c = rej.conflict || {};
+                        rejectionMessages.push(
+                            `${currentEquipment} / ${label}: time overlaps existing ${c.from_time || '?'}–${c.to_time || '?'} — From/To not saved.`);
+                    }
+                });
+                row.update(upd);
+                savedCount++;
+            }
         }
         dirtyRowIds.clear();
         showStatus(`Saved ${savedCount} row(s)`, 'saved');
+        if (rejectionMessages.length) showRejectionPopup(rejectionMessages);
     }
 
     document.addEventListener('keydown', function(e) {
