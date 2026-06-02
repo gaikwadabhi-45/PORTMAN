@@ -271,19 +271,92 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     # Flag historical over-quantity rows: every row of a barge/MBC whose TOTAL
     # handled qty exceeds its trip qty (same per-barge/MBC limit the save-time
     # validation enforces, so a flagged row is exactly one the rule would block).
-    over_cache = {}  # group key -> overage (float; >0 means over)
+    # Resolved with set-based queries (≤5 total, independent of page size) rather
+    # than a per-row resolver, to avoid N+1 query fan-out on large pages. The
+    # math mirrors _resolve_trip_quantity exactly.
+    vcn_ids = {r['source_id'] for r in rows
+               if r.get('source_type') == 'VCN' and r.get('source_id')}
+    mbc_ids = {r['source_id'] for r in rows
+               if r.get('source_type') == 'MBC' and r.get('source_id')}
+
+    vcn_expected = {}   # (vcn_id, barge_display) -> expected discharge qty
+    vcn_handled = {}    # (vcn_id, barge_name)    -> total handled qty
+    if vcn_ids:
+        ph = ','.join(['%s'] * len(vcn_ids))
+        ids = list(vcn_ids)
+        # one ldud_header per vcn (first wins, mirroring _resolve_trip_quantity)
+        cur.execute(f'SELECT id, vcn_id FROM ldud_header WHERE vcn_id IN ({ph})', ids)
+        first_lduds = {}   # ldud_id -> vcn_id
+        seen_vcn = set()
+        for lr in cur.fetchall():
+            if lr['vcn_id'] not in seen_vcn:
+                seen_vcn.add(lr['vcn_id'])
+                first_lduds[lr['id']] = lr['vcn_id']
+        if first_lduds:
+            lph = ','.join(['%s'] * len(first_lduds))
+            cur.execute(f'''
+                SELECT ldud_id, barge_name, trip_number,
+                       COALESCE(SUM(discharge_quantity), 0) AS expected_qty
+                FROM ldud_barge_lines
+                WHERE ldud_id IN ({lph}) AND barge_name IS NOT NULL AND barge_name != ''
+                GROUP BY ldud_id, barge_name, trip_number
+            ''', list(first_lduds.keys()))
+            for br in cur.fetchall():
+                vcn_id = first_lduds.get(br['ldud_id'])
+                if vcn_id is None:
+                    continue
+                trip = br['trip_number'] or ''
+                display = f"{br['barge_name']} / {trip}" if trip else br['barge_name']
+                vcn_expected[(vcn_id, display)] = float(br['expected_qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, barge_name, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE) AND barge_name IS NOT NULL
+            GROUP BY source_id, barge_name
+        ''', ids)
+        for hr in cur.fetchall():
+            vcn_handled[(hr['source_id'], hr['barge_name'])] = float(hr['handled'] or 0)
+
+    mbc_expected = {}   # mbc_id -> expected qty
+    mbc_handled = {}    # mbc_id -> total handled qty
+    if mbc_ids:
+        ph = ','.join(['%s'] * len(mbc_ids))
+        ids = list(mbc_ids)
+        cur.execute(f'''
+            SELECT m.id,
+                   CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
+            FROM mbc_header m
+            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+            WHERE m.id IN ({ph})
+            GROUP BY m.id, m.bl_quantity
+        ''', ids)
+        for mr in cur.fetchall():
+            mbc_expected[mr['id']] = float(mr['bl_qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'MBC' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE)
+            GROUP BY source_id
+        ''', ids)
+        for hr in cur.fetchall():
+            mbc_handled[hr['source_id']] = float(hr['handled'] or 0)
+
     for r in rows:
         st = r.get('source_type'); sid = r.get('source_id')
-        if not st or not sid:
-            r['_qty_over_group'] = False
-            r['_qty_over_by'] = 0
-            continue
-        gkey = (st, sid, r.get('barge_name') if st == 'VCN' else None)
-        if gkey not in over_cache:
-            expected, handled = _resolve_trip_quantity(cur, r, None)
-            over_cache[gkey] = (round(handled - expected, 3)
-                                if (expected and expected > 0 and handled > expected) else 0)
-        over_by = over_cache[gkey]
+        over_by = 0
+        if st == 'VCN' and sid and r.get('barge_name'):
+            expected = vcn_expected.get((sid, r['barge_name']), 0)
+            handled = vcn_handled.get((sid, r['barge_name']), 0)
+            if expected > 0 and handled > expected:
+                over_by = round(handled - expected, 3)
+        elif st == 'MBC' and sid:
+            expected = mbc_expected.get(sid, 0)
+            handled = mbc_handled.get(sid, 0)
+            if expected > 0 and handled > expected:
+                over_by = round(handled - expected, 3)
         r['_qty_over_group'] = over_by > 0
         r['_qty_over_by'] = over_by
 
