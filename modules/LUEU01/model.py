@@ -517,7 +517,8 @@ def get_vcn_options():
 
 
 def get_mbc_options():
-    """Get MBC entries for dropdown — excludes MBCs where LUEU handled qty >= BL qty."""
+    """Get MBC entries for dropdown — includes all MBCs, flagging each with
+    `completed` when LUEU handled qty >= BL qty (no longer hidden)."""
     conn = get_db()
     cur = get_cursor(conn)
 
@@ -544,21 +545,26 @@ def get_mbc_options():
 
     conn.close()
 
+    # Keep fully-handled MBCs in the list (so users can still find them) but flag
+    # them as completed — over-entry is prevented by save-time validation, not by
+    # hiding the option.
     result = []
     for m in mbcs:
         bl = float(m['bl_qty'] or 0)
         handled = handled_map.get(m['id'], 0)
-        if bl > 0 and handled >= bl:
-            continue
-        result.append(dict(m))
+        row = dict(m)
+        row['completed'] = bool(bl > 0 and handled >= bl)
+        result.append(row)
     return result
 
 
 def get_vcn_barges(vcn_id):
-    """Get barge trips for a VCN — excludes trips where handled qty >= discharge_quantity.
+    """Get barge trips for a VCN as [{name, completed}, ...].
 
-    Aggregates by (barge_name, trip_number) so duplicate LDUD rows (same barge + trip)
-    don't double-filter the dropdown. Sorted by data-entry order (earliest id first)
+    Includes every trip; `completed` is True when handled qty >= discharge_quantity
+    (such trips are flagged in the dropdown rather than hidden, so users can still
+    find them). Aggregates by (barge_name, trip_number) so duplicate LDUD rows
+    (same barge + trip) collapse. Sorted by data-entry order (earliest id first)
     rather than trip number, which previously confused users when trips were entered
     out of sequence.
     """
@@ -591,15 +597,18 @@ def get_vcn_barges(vcn_id):
         handled_map = {r['barge_name']: float(r['handled_qty'] or 0) for r in cur.fetchall()}
 
         conn.close()
+        # Keep fully-handled barge trips in the list (flagged completed) rather
+        # than hiding them — over-entry is blocked by save-time validation.
         result = []
         for r in trip_rows:
             trip = r['trip_number'] or ''
             display = f"{r['barge_name']} / {trip}" if trip else r['barge_name']
             expected = float(r['expected_qty'] or 0)
             handled = handled_map.get(display, 0)
-            if expected > 0 and handled >= expected:
-                continue
-            result.append(display)
+            result.append({
+                'name': display,
+                'completed': bool(expected > 0 and handled >= expected),
+            })
         return result
     conn.close()
     return []
