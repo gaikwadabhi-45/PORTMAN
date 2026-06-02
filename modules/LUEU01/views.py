@@ -50,8 +50,8 @@ def save_data():
 
     data = request.json
     data['created_by'] = session.get('username')
-    line_id = model.save_line(data)
-    return jsonify({'id': line_id})
+    result = model.save_line(data)   # {'id': ..., 'rejections': [...]}
+    return jsonify(result)
 
 @bp.route('/api/module/LUEU01/split', methods=['POST'])
 @login_required

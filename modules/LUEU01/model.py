@@ -292,6 +292,11 @@ def save_line(data):
 
     line_id = data.get('id')
 
+    # ── Validation: blank (but reject) over-limit quantity and overlapping times ──
+    trip_expected, trip_handled = _resolve_trip_quantity(cur, data, line_id)
+    overlap = _overlap_candidates(cur, data, line_id)
+    data, rejections = compute_rejections(data, trip_expected, trip_handled, overlap)
+
     if line_id:
         cur.execute('''
             UPDATE lueu_lines SET
@@ -334,7 +339,7 @@ def save_line(data):
 
     conn.commit()
     conn.close()
-    return line_id
+    return {'id': line_id, 'rejections': rejections}
 
 
 def soft_delete_lines(ids, username=None):
