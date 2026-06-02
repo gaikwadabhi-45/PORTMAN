@@ -678,54 +678,34 @@ def _fetch_upcoming_mbcs(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
-    SELECT
-        h.id,
-        h.mbc_name,
-        h.cargo_name,
-        h.bl_quantity,
-        p.arrival_gull_island AS event_time,
-        p.arrival_gull_island AS event_date,
-        'AT GULL' AS status
+        SELECT
+            h.id,
+            h.mbc_name,
+            h.cargo_name,
+            h.bl_quantity,
+            l.eta AS event_time,
+            l.eta AS event_date,
+            'ETA' AS status
+        FROM mbc_header h
+        JOIN mbc_load_port_lines l
+            ON l.mbc_id = h.id
+        WHERE
+            NULLIF(TRIM(l.eta), '') IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM mbc_discharge_port_lines d
+                WHERE d.mbc_id = h.id
+                AND d.arrival_gull_island IS NOT NULL
+            )
+        ORDER BY l.eta
+    """)
 
-    FROM mbc_header h
-    JOIN mbc_discharge_port_lines p
-        ON p.mbc_id = h.id
+    rows = cur.fetchall()
 
-    WHERE
-        p.arrival_gull_island IS NOT NULL
-        AND (
-            p.vessel_arrival_port IS NULL
-            OR TRIM(COALESCE(p.vessel_arrival_port,'')) = ''
-        )
+    cur.close()
+    conn.close()
 
-    UNION ALL
-
-    SELECT
-        h.id,
-        h.mbc_name,
-        h.cargo_name,
-        h.bl_quantity,
-        l.eta AS event_time,
-        l.eta AS event_date,
-        'ETA' AS status
-
-    FROM mbc_header h
-    JOIN mbc_load_port_lines l
-        ON l.mbc_id = h.id
-
-    WHERE
-        l.eta IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1
-            FROM mbc_discharge_port_lines d
-            WHERE d.mbc_id = h.id
-              AND d.arrival_gull_island IS NOT NULL
-        )
-
-    ORDER BY event_time
-
-""")
-
+    return rows
 
     rows = cur.fetchall()
 
