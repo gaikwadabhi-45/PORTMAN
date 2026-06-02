@@ -45,6 +45,60 @@ def _intervals_overlap(from_a, to_a, from_b, to_b):
             or _lin(fa + 1440, ta + 1440, fb, tb))
 
 
+def compute_rejections(data, trip_expected, trip_handled, overlap_candidates):
+    """Pure decision logic for save-time validation.
+
+    Args:
+        data: the row dict about to be written.
+        trip_expected: total qty basis for the barge/MBC; <= 0 means 'no basis,
+            skip the quantity check'.
+        trip_handled: qty already handled for that barge/MBC EXCLUDING this row.
+        overlap_candidates: list of (from_time, to_time) tuples for other rows on
+            the same equipment + entry_date (already excludes this row).
+
+    Returns (clean_data, rejections):
+        clean_data: a copy of `data` with rejected fields set to None.
+        rejections: list of dicts describing each rejected field.
+    """
+    clean = dict(data)
+    rejections = []
+
+    # ── Quantity vs remaining trip quantity ──────────────────────────────────
+    qty = clean.get('quantity')
+    if qty is not None and str(qty).strip() != '' and trip_expected and float(trip_expected) > 0:
+        try:
+            qv = float(qty)
+        except (TypeError, ValueError):
+            qv = None
+        if qv is not None:
+            remaining = float(trip_expected) - float(trip_handled or 0)
+            if qv > remaining + 1e-9:
+                clean['quantity'] = None
+                rejections.append({
+                    'field': 'quantity',
+                    'reason': 'exceeds_trip_qty',
+                    'label': clean.get('barge_name') or clean.get('source_display') or '',
+                    'attempted': round(qv, 3),
+                    'remaining': round(remaining, 3),
+                })
+
+    # ── Time overlap vs same equipment + same date ───────────────────────────
+    ft = clean.get('from_time'); tt = clean.get('to_time')
+    if _hhmm_to_minutes(ft) is not None and _hhmm_to_minutes(tt) is not None:
+        for cf, ct in overlap_candidates:
+            if _intervals_overlap(ft, tt, cf, ct):
+                clean['from_time'] = None
+                clean['to_time'] = None
+                rejections.append({
+                    'field': 'time',
+                    'reason': 'overlap',
+                    'conflict': {'from_time': cf, 'to_time': ct},
+                })
+                break
+
+    return clean, rejections
+
+
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     conn = get_db()
     cur = get_cursor(conn)
