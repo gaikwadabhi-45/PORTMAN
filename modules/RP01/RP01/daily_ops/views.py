@@ -530,6 +530,20 @@ def _fetch_discharging_mbcs(report_date):
 
     window_start = window_end - timedelta(days=1)
 
+    completion_start = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        6, 0, 0
+    )
+
+    completion_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        23, 59, 59
+    )
+
     conn = get_db()
     cur = get_cursor(conn)
 
@@ -562,13 +576,15 @@ def _fetch_discharging_mbcs(report_date):
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
+                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
             THEN 'DISCHARGING'
 
             WHEN
                 p.unloading_completed IS NOT NULL
                 AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
                 AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_completed), '')::timestamp < %s
+                AND NULLIF(TRIM(p.unloading_completed), '')::timestamp <= %s
             THEN 'COMPLETED'
         END AS status
 
@@ -597,6 +613,8 @@ def _fetch_discharging_mbcs(report_date):
             p.unloading_completed IS NULL
             OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
+        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
     )
 
     OR
@@ -605,7 +623,7 @@ def _fetch_discharging_mbcs(report_date):
         p.unloading_completed IS NOT NULL
         AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
         AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_completed), '')::timestamp < %s
+        AND NULLIF(TRIM(p.unloading_completed), '')::timestamp <= %s
     )
 
     ORDER BY
@@ -638,12 +656,13 @@ def _fetch_discharging_mbcs(report_date):
         ) DESC
 
     """, (
-        window_start, window_end,      # CASE ARRIVED
-        window_start, window_end,      # CASE COMPLETED
+        window_start, window_end,          # CASE ARRIVED
+        window_start, window_end,          # CASE DISCHARGING
+        completion_start, completion_end,  # CASE COMPLETED
 
-        window_start, window_end,      # WHERE ARRIVED
-
-        window_start, window_end       # WHERE COMPLETED
+        window_start, window_end,          # WHERE ARRIVED
+        window_start, window_end,          # WHERE DISCHARGING
+        completion_start, completion_end   # WHERE COMPLETED
     ))
 
     rows = cur.fetchall()
