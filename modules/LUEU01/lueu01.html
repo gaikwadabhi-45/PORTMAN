@@ -560,9 +560,12 @@
     }
 
     function getVcnMbcOptions() {
+        // Map key = stored value (clean label); map value = display text. Completed
+        // MBCs are shown with a ✓ marker but the stored value stays clean so source
+        // matching/auto-fill/save still work.
         const opts = {'': ''};
         vcnOptions.forEach(opt => { opts[opt.label] = opt.label; });
-        mbcOptions.forEach(opt => { opts[opt.label] = opt.label; });
+        mbcOptions.forEach(opt => { opts[opt.label] = opt.completed ? opt.label + '  ✓' : opt.label; });
         return opts;
     }
 
@@ -578,13 +581,17 @@
         select.style.boxSizing = "border-box";
         select.style.padding = "4px";
 
+        // opts items may be plain strings or {name, completed} objects. The stored
+        // value is always the clean name; completed entries get a ✓ marker only.
         function renderSelect(opts) {
             select.innerHTML = '<option value=""></option>';
             opts.forEach(opt => {
+                const val = (opt && typeof opt === 'object') ? opt.name : opt;
+                const done = (opt && typeof opt === 'object') && opt.completed;
                 const option = document.createElement("option");
-                option.value = opt;
-                option.textContent = opt;
-                if (opt === cell.getValue()) option.selected = true;
+                option.value = val;
+                option.textContent = done ? (val + '  ✓') : val;
+                if (val === cell.getValue()) option.selected = true;
                 select.appendChild(option);
             });
         }
@@ -597,8 +604,13 @@
                 .then(barges => { renderSelect(barges); });
         } else {
             const mbcMatch = mbcOptions.find(m => m.label === sourceDisplay);
-            if (mbcMatch) { renderSelect(mbcNames); }
-            else { renderSelect([]); }
+            if (mbcMatch) {
+                // An MBC document is a single craft — offer only its own name,
+                // not the entire MBC master list.
+                const parts = sourceDisplay.split(' / ');
+                const mbcName = parts.length >= 2 ? parts.slice(1).join(' / ') : sourceDisplay;
+                renderSelect([mbcName]);
+            } else { renderSelect([]); }
         }
 
         onRendered(function() { select.focus(); });

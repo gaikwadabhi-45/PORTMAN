@@ -131,7 +131,8 @@ def get_mbc_options():
             'label': display,
             'type': 'MBC',
             'id': opt['id'],
-            'cargo_name': opt.get('cargo_name') or ''
+            'cargo_name': opt.get('cargo_name') or '',
+            'completed': bool(opt.get('completed'))
         })
     return jsonify(result)
 
