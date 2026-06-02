@@ -562,9 +562,14 @@ def _fetch_discharging_mbcs(report_date):
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
             THEN 'DISCHARGING'
+
+            WHEN
+                p.unloading_completed IS NOT NULL
+                AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
+                AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
+                AND NULLIF(TRIM(p.unloading_completed), '')::timestamp < %s
+            THEN 'COMPLETED'
         END AS status
 
     FROM mbc_header h
@@ -592,8 +597,15 @@ def _fetch_discharging_mbcs(report_date):
             p.unloading_completed IS NULL
             OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+    )
+
+    OR
+
+    (
+        p.unloading_completed IS NOT NULL
+        AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
+        AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
+        AND NULLIF(TRIM(p.unloading_completed), '')::timestamp < %s
     )
 
     ORDER BY
@@ -613,19 +625,27 @@ def _fetch_discharging_mbcs(report_date):
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
             THEN 2
+
+            WHEN
+                p.unloading_completed IS NOT NULL
+            THEN 3
         END,
 
         COALESCE(
-            NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp,
-            NULLIF(TRIM(p.unloading_commenced), '')::timestamp
+            NULLIF(TRIM(p.unloading_completed), '')::timestamp,
+            NULLIF(TRIM(p.unloading_commenced), '')::timestamp,
+            NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp
         ) DESC
 
-""", (
-    window_start, window_end,      # CASE ARRIVED
-    window_start, window_end,      # CASE DISCHARGING
-    window_start, window_end,      # WHERE ARRIVED
-    window_start, window_end       # WHERE DISCHARGING
-))
+    """, (
+        window_start, window_end,      # CASE ARRIVED
+        window_start, window_end,      # CASE COMPLETED
+
+        window_start, window_end,      # WHERE ARRIVED
+
+        window_start, window_end       # WHERE COMPLETED
+    ))
+
     rows = cur.fetchall()
 
     cur.close()
@@ -639,51 +659,53 @@ def _fetch_upcoming_mbcs(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
-        SELECT
-            h.id,
-            h.mbc_name,
-            h.cargo_name,
-            h.bl_quantity,
-            p.arrival_gull_island AS event_time,
-            'AT GULL' AS status
+    SELECT
+        h.id,
+        h.mbc_name,
+        h.cargo_name,
+        h.bl_quantity,
+        p.arrival_gull_island AS event_time,
+        p.arrival_gull_island AS event_date,
+        'AT GULL' AS status
 
-        FROM mbc_header h
-        JOIN mbc_discharge_port_lines p
-            ON p.mbc_id = h.id
+    FROM mbc_header h
+    JOIN mbc_discharge_port_lines p
+        ON p.mbc_id = h.id
 
-        WHERE
-            p.arrival_gull_island IS NOT NULL
-            AND (
-                p.vessel_arrival_port IS NULL
-                OR TRIM(COALESCE(p.vessel_arrival_port,'')) = ''
-            )
+    WHERE
+        p.arrival_gull_island IS NOT NULL
+        AND (
+            p.vessel_arrival_port IS NULL
+            OR TRIM(COALESCE(p.vessel_arrival_port,'')) = ''
+        )
 
-        UNION ALL
+    UNION ALL
 
-        SELECT
-            h.id,
-            h.mbc_name,
-            h.cargo_name,
-            h.bl_quantity,
-            l.eta AS event_time,
-            'ETA' AS status
+    SELECT
+        h.id,
+        h.mbc_name,
+        h.cargo_name,
+        h.bl_quantity,
+        l.eta AS event_time,
+        l.eta AS event_date,
+        'ETA' AS status
 
-        FROM mbc_header h
-        JOIN mbc_load_port_lines l
-            ON l.mbc_id = h.id
+    FROM mbc_header h
+    JOIN mbc_load_port_lines l
+        ON l.mbc_id = h.id
 
-        WHERE
-            l.eta IS NOT NULL
-            AND NOT EXISTS (
-                SELECT 1
-                FROM mbc_discharge_port_lines d
-                WHERE d.mbc_id = h.id
-                  AND d.arrival_gull_island IS NOT NULL
-            )
+    WHERE
+        l.eta IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1
+            FROM mbc_discharge_port_lines d
+            WHERE d.mbc_id = h.id
+              AND d.arrival_gull_island IS NOT NULL
+        )
 
-        ORDER BY event_time
+    ORDER BY event_time
 
-    """)
+""")
 
     rows = cur.fetchall()
 
@@ -1333,6 +1355,7 @@ def daily_ops_preview():
             <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
+            <th style='border:1px solid #ccc;padding:8px'>Date</th>
             <th style='border:1px solid #ccc;padding:8px'>Status</th>
         </tr>
     """
@@ -1353,6 +1376,10 @@ def daily_ops_preview():
 
             <td style='border:1px solid #ccc;padding:8px;text-align:right'>
                 {float(m['bl_quantity']):,.2f}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['event_date'] if m['event_date'] else '-'}
             </td>
 
             <td style='border:1px solid #ccc;padding:8px'>
