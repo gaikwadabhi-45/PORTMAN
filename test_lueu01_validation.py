@@ -129,3 +129,29 @@ def test_both_rejections_can_fire_together():
     assert clean['quantity'] is None
     assert clean['from_time'] is None
     assert clean['to_time'] is None
+
+
+# ── _diff_hrs ───────────────────────────────────────────────────────────────
+
+def test_diff_hrs_same_day():
+    assert model._diff_hrs('06:00', '08:30') == 2.5
+
+def test_diff_hrs_overnight():
+    assert model._diff_hrs('23:00', '01:00') == 2.0
+
+def test_diff_hrs_missing_returns_blank():
+    assert model._diff_hrs('', '08:00') == ''
+    assert model._diff_hrs('06:00', None) == ''
+
+
+# ── _over_group_key ─────────────────────────────────────────────────────────
+
+def test_over_group_key_vcn_uses_barge():
+    assert model._over_group_key({'source_type': 'VCN', 'source_id': 5, 'barge_name': 'B / 1'}) == ('VCN', 5, 'B / 1')
+
+def test_over_group_key_mbc_ignores_barge():
+    assert model._over_group_key({'source_type': 'MBC', 'source_id': 9, 'barge_name': 'X'}) == ('MBC', 9, None)
+
+def test_over_group_key_none_without_source():
+    assert model._over_group_key({'source_type': '', 'source_id': None}) is None
+    assert model._over_group_key({'source_type': 'VCN', 'source_id': 5}) is None

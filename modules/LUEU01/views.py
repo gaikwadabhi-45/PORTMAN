@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, Response
 from werkzeug.security import check_password_hash
 from functools import wraps
 from . import model
@@ -256,6 +256,101 @@ def get_bl_progress(source_type, source_id):
     if source_type not in ('VCN', 'MBC'):
         return jsonify({'error': 'Invalid source type'}), 400
     return jsonify(model.get_bl_progress(source_type, source_id))
+
+
+@bp.route('/api/module/LUEU01/export')
+@login_required
+def export_excel():
+    """Dump the entire lueu_lines table to .xlsx, with a trailing Issues column
+    flagging 'possible over quantity' / 'possible overlap' per row."""
+    if not get_perms().get('can_read'):
+        return jsonify({'error': 'No permission'}), 403
+
+    import io
+    from datetime import datetime as _dt
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    rows = model.get_export_rows()
+
+    columns = [
+        ('Equipment', 'equipment_name'),
+        ('Date', 'entry_date'),
+        ('Shift', 'shift'),
+        ('From', 'from_time'),
+        ('To', 'to_time'),
+        ('Diff (Hrs)', 'diff_hrs'),
+        ('VCN / MBC', 'source_display'),
+        ('Barge / MBC Name', 'barge_name'),
+        ('Cargo', 'cargo_name'),
+        ('Delay', 'delay_name'),
+        ('System', 'system_name'),
+        ('Receiving Route', 'route_name'),
+        ('Berth', 'berth_name'),
+        ('Shift Incharge', 'shift_incharge'),
+        ('Operator', 'operator_name'),
+        ('Quantity', 'quantity'),
+        ('Qty UOM', 'quantity_uom'),
+        ('Remarks', 'remarks'),
+        ('Deleted', '_deleted_flag'),
+        ('Deleted By', 'deleted_by'),
+        ('Deleted Date', 'deleted_date'),
+        ('Issues', 'issues'),
+    ]
+
+    thin = Side(style='thin', color='000000')
+    bdr = Border(left=thin, right=thin, top=thin, bottom=thin)
+    hdr_fill = PatternFill('solid', fgColor='1E3A5F')
+    hdr_font = Font(name='Calibri', bold=True, size=10, color='FFFFFF')
+    cell_font = Font(name='Calibri', size=10)
+    issue_fill = PatternFill('solid', fgColor='FDE2E1')
+    issue_font = Font(name='Calibri', size=10, bold=True, color='B91C1C')
+    del_font = Font(name='Calibri', size=10, italic=True, color='9CA3AF')
+    ctr = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    lft = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    rgt = Alignment(horizontal='right', vertical='center')
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'LUEU Lines'
+    ws.freeze_panes = 'A2'
+    ws.row_dimensions[1].height = 22
+    for col_idx, (label, _key) in enumerate(columns, 1):
+        c = ws.cell(1, col_idx, label)
+        c.font = hdr_font; c.fill = hdr_fill; c.border = bdr; c.alignment = ctr
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(12, len(label) + 2)
+
+    for row_idx, r in enumerate(rows, 2):
+        is_del = bool(r.get('is_deleted'))
+        for col_idx, (label, key) in enumerate(columns, 1):
+            if key == '_deleted_flag':
+                val = 'Yes' if is_del else ''
+            else:
+                val = r.get(key)
+            if val is None:
+                val = ''
+            elif hasattr(val, 'isoformat'):
+                val = str(val)
+            c = ws.cell(row_idx, col_idx, val)
+            c.border = bdr
+            c.alignment = rgt if key in ('quantity', 'diff_hrs') else lft
+            if key == 'issues' and val:
+                c.fill = issue_fill; c.font = issue_font
+            elif is_del:
+                c.font = del_font
+            else:
+                c.font = cell_font
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"LUEU01_export_{_dt.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return Response(
+        buf.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+    )
 
 
 @bp.route('/module/LUEU01/dashboard')

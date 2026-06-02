@@ -182,6 +182,120 @@ def _overlap_candidates(cur, data, exclude_id):
     return [(r['from_time'], r['to_time']) for r in cur.fetchall()]
 
 
+def _diff_hrs(from_t, to_t):
+    """Duration in hours between two HH:MM strings, overnight-aware (matches the
+    client calcDiffHrs). Returns '' when either time is missing/unparseable."""
+    f = _hhmm_to_minutes(from_t); t = _hhmm_to_minutes(to_t)
+    if f is None or t is None:
+        return ''
+    diff = (t - f) if t > f else (1440 - f + t)
+    return round(diff / 60.0, 2)
+
+
+def _over_group_key(r):
+    """Barge/MBC over-quantity group key for a row: VCN → (type, id, barge),
+    MBC → (type, id, None); None when the row has no source to check."""
+    st = r.get('source_type'); sid = r.get('source_id')
+    if st == 'VCN' and sid and r.get('barge_name'):
+        return (st, sid, r['barge_name'])
+    if st == 'MBC' and sid:
+        return (st, sid, None)
+    return None
+
+
+def _over_quantity_by(cur, rows):
+    """Return {over_group_key: over_by} for `rows`.
+
+    over_by > 0 means the barge/MBC group's TOTAL non-deleted handled qty exceeds
+    its trip qty. Batched (≤5 queries) and mirrors _resolve_trip_quantity's math.
+    Shared by get_all_lines (historical badge) and the Excel export.
+    """
+    vcn_ids = {r['source_id'] for r in rows
+               if r.get('source_type') == 'VCN' and r.get('source_id')}
+    mbc_ids = {r['source_id'] for r in rows
+               if r.get('source_type') == 'MBC' and r.get('source_id')}
+
+    vcn_expected = {}   # (vcn_id, barge_display) -> expected discharge qty
+    vcn_handled = {}    # (vcn_id, barge_name)    -> total handled qty
+    if vcn_ids:
+        ph = ','.join(['%s'] * len(vcn_ids))
+        ids = list(vcn_ids)
+        # one ldud_header per vcn (first wins, mirroring _resolve_trip_quantity)
+        cur.execute(f'SELECT id, vcn_id FROM ldud_header WHERE vcn_id IN ({ph})', ids)
+        first_lduds = {}   # ldud_id -> vcn_id
+        seen_vcn = set()
+        for lr in cur.fetchall():
+            if lr['vcn_id'] not in seen_vcn:
+                seen_vcn.add(lr['vcn_id'])
+                first_lduds[lr['id']] = lr['vcn_id']
+        if first_lduds:
+            lph = ','.join(['%s'] * len(first_lduds))
+            cur.execute(f'''
+                SELECT ldud_id, barge_name, trip_number,
+                       COALESCE(SUM(discharge_quantity), 0) AS expected_qty
+                FROM ldud_barge_lines
+                WHERE ldud_id IN ({lph}) AND barge_name IS NOT NULL AND barge_name != ''
+                GROUP BY ldud_id, barge_name, trip_number
+            ''', list(first_lduds.keys()))
+            for br in cur.fetchall():
+                vcn_id = first_lduds.get(br['ldud_id'])
+                if vcn_id is None:
+                    continue
+                trip = br['trip_number'] or ''
+                display = f"{br['barge_name']} / {trip}" if trip else br['barge_name']
+                vcn_expected[(vcn_id, display)] = float(br['expected_qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, barge_name, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE) AND barge_name IS NOT NULL
+            GROUP BY source_id, barge_name
+        ''', ids)
+        for hr in cur.fetchall():
+            vcn_handled[(hr['source_id'], hr['barge_name'])] = float(hr['handled'] or 0)
+
+    mbc_expected = {}   # mbc_id -> expected qty
+    mbc_handled = {}    # mbc_id -> total handled qty
+    if mbc_ids:
+        ph = ','.join(['%s'] * len(mbc_ids))
+        ids = list(mbc_ids)
+        cur.execute(f'''
+            SELECT m.id,
+                   CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
+                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
+            FROM mbc_header m
+            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
+            WHERE m.id IN ({ph})
+            GROUP BY m.id, m.bl_quantity
+        ''', ids)
+        for mr in cur.fetchall():
+            mbc_expected[mr['id']] = float(mr['bl_qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'MBC' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE)
+            GROUP BY source_id
+        ''', ids)
+        for hr in cur.fetchall():
+            mbc_handled[hr['source_id']] = float(hr['handled'] or 0)
+
+    over = {}
+    for r in rows:
+        key = _over_group_key(r)
+        if key is None or key in over:
+            continue
+        st, sid, barge = key
+        if st == 'VCN':
+            e = vcn_expected.get((sid, barge), 0)
+            h = vcn_handled.get((sid, barge), 0)
+        else:
+            e = mbc_expected.get(sid, 0)
+            h = mbc_handled.get(sid, 0)
+        over[key] = round(h - e, 3) if (e > 0 and h > e) else 0
+    return over
+
+
 def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     conn = get_db()
     cur = get_cursor(conn)
@@ -271,92 +385,9 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     # Flag historical over-quantity rows: every row of a barge/MBC whose TOTAL
     # handled qty exceeds its trip qty (same per-barge/MBC limit the save-time
     # validation enforces, so a flagged row is exactly one the rule would block).
-    # Resolved with set-based queries (≤5 total, independent of page size) rather
-    # than a per-row resolver, to avoid N+1 query fan-out on large pages. The
-    # math mirrors _resolve_trip_quantity exactly.
-    vcn_ids = {r['source_id'] for r in rows
-               if r.get('source_type') == 'VCN' and r.get('source_id')}
-    mbc_ids = {r['source_id'] for r in rows
-               if r.get('source_type') == 'MBC' and r.get('source_id')}
-
-    vcn_expected = {}   # (vcn_id, barge_display) -> expected discharge qty
-    vcn_handled = {}    # (vcn_id, barge_name)    -> total handled qty
-    if vcn_ids:
-        ph = ','.join(['%s'] * len(vcn_ids))
-        ids = list(vcn_ids)
-        # one ldud_header per vcn (first wins, mirroring _resolve_trip_quantity)
-        cur.execute(f'SELECT id, vcn_id FROM ldud_header WHERE vcn_id IN ({ph})', ids)
-        first_lduds = {}   # ldud_id -> vcn_id
-        seen_vcn = set()
-        for lr in cur.fetchall():
-            if lr['vcn_id'] not in seen_vcn:
-                seen_vcn.add(lr['vcn_id'])
-                first_lduds[lr['id']] = lr['vcn_id']
-        if first_lduds:
-            lph = ','.join(['%s'] * len(first_lduds))
-            cur.execute(f'''
-                SELECT ldud_id, barge_name, trip_number,
-                       COALESCE(SUM(discharge_quantity), 0) AS expected_qty
-                FROM ldud_barge_lines
-                WHERE ldud_id IN ({lph}) AND barge_name IS NOT NULL AND barge_name != ''
-                GROUP BY ldud_id, barge_name, trip_number
-            ''', list(first_lduds.keys()))
-            for br in cur.fetchall():
-                vcn_id = first_lduds.get(br['ldud_id'])
-                if vcn_id is None:
-                    continue
-                trip = br['trip_number'] or ''
-                display = f"{br['barge_name']} / {trip}" if trip else br['barge_name']
-                vcn_expected[(vcn_id, display)] = float(br['expected_qty'] or 0)
-        cur.execute(f'''
-            SELECT source_id, barge_name, COALESCE(SUM(quantity), 0) AS handled
-            FROM lueu_lines
-            WHERE source_type = 'VCN' AND source_id IN ({ph})
-              AND (is_deleted IS NOT TRUE) AND barge_name IS NOT NULL
-            GROUP BY source_id, barge_name
-        ''', ids)
-        for hr in cur.fetchall():
-            vcn_handled[(hr['source_id'], hr['barge_name'])] = float(hr['handled'] or 0)
-
-    mbc_expected = {}   # mbc_id -> expected qty
-    mbc_handled = {}    # mbc_id -> total handled qty
-    if mbc_ids:
-        ph = ','.join(['%s'] * len(mbc_ids))
-        ids = list(mbc_ids)
-        cur.execute(f'''
-            SELECT m.id,
-                   CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
-                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
-            FROM mbc_header m
-            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
-            WHERE m.id IN ({ph})
-            GROUP BY m.id, m.bl_quantity
-        ''', ids)
-        for mr in cur.fetchall():
-            mbc_expected[mr['id']] = float(mr['bl_qty'] or 0)
-        cur.execute(f'''
-            SELECT source_id, COALESCE(SUM(quantity), 0) AS handled
-            FROM lueu_lines
-            WHERE source_type = 'MBC' AND source_id IN ({ph})
-              AND (is_deleted IS NOT TRUE)
-            GROUP BY source_id
-        ''', ids)
-        for hr in cur.fetchall():
-            mbc_handled[hr['source_id']] = float(hr['handled'] or 0)
-
+    over_map = _over_quantity_by(cur, rows)
     for r in rows:
-        st = r.get('source_type'); sid = r.get('source_id')
-        over_by = 0
-        if st == 'VCN' and sid and r.get('barge_name'):
-            expected = vcn_expected.get((sid, r['barge_name']), 0)
-            handled = vcn_handled.get((sid, r['barge_name']), 0)
-            if expected > 0 and handled > expected:
-                over_by = round(handled - expected, 3)
-        elif st == 'MBC' and sid:
-            expected = mbc_expected.get(sid, 0)
-            handled = mbc_handled.get(sid, 0)
-            if expected > 0 and handled > expected:
-                over_by = round(handled - expected, 3)
+        over_by = over_map.get(_over_group_key(r), 0)
         r['_qty_over_group'] = over_by > 0
         r['_qty_over_by'] = over_by
 
@@ -367,6 +398,57 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
         'last_page': (total + size - 1) // size,
         'total': total
     }
+
+
+def get_export_rows():
+    """Return every lueu_lines row (including soft-deleted) for the Excel export,
+    each enriched with `diff_hrs` and an `issues` string flagging
+    'possible over quantity' and/or 'possible overlap'.
+
+    Issues are computed only for live (non-deleted) rows:
+      - over quantity: the row's barge/MBC group total handled exceeds its trip qty
+        (same rule as the on-screen OVER badge).
+      - overlap: the row's From-To intersects another live row on the same
+        equipment + entry_date (same _intervals_overlap rule the save guard uses).
+    """
+    from collections import defaultdict
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT * FROM lueu_lines ORDER BY equipment_name, entry_date, id')
+    rows = [dict(r) for r in cur.fetchall()]
+
+    live = [r for r in rows if not r.get('is_deleted')]
+    over_map = _over_quantity_by(cur, live)
+    conn.close()
+
+    # Time overlaps among live rows, bucketed by equipment + entry_date.
+    buckets = defaultdict(list)
+    for r in live:
+        if not r.get('equipment_name') or not r.get('entry_date'):
+            continue
+        if _hhmm_to_minutes(r.get('from_time')) is None or _hhmm_to_minutes(r.get('to_time')) is None:
+            continue
+        buckets[(r['equipment_name'], r['entry_date'])].append(r)
+    overlap_ids = set()
+    for grp in buckets.values():
+        for i in range(len(grp)):
+            for j in range(i + 1, len(grp)):
+                if _intervals_overlap(grp[i]['from_time'], grp[i]['to_time'],
+                                      grp[j]['from_time'], grp[j]['to_time']):
+                    overlap_ids.add(grp[i]['id'])
+                    overlap_ids.add(grp[j]['id'])
+
+    for r in rows:
+        r['diff_hrs'] = _diff_hrs(r.get('from_time'), r.get('to_time'))
+        issues = []
+        if not r.get('is_deleted'):
+            if over_map.get(_over_group_key(r), 0) > 0:
+                issues.append('possible over quantity')
+            if r.get('id') in overlap_ids:
+                issues.append('possible overlap')
+        r['issues'] = '; '.join(issues)
+    return rows
 
 
 def save_line(data):
