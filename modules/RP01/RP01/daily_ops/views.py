@@ -388,7 +388,7 @@ def _fetch_data(report_date):
                 status = 'waiting_discharge'
             elif r['cast_off_mv'] and not r['along_side_berth']:
                 status = 'at_gull_loaded'
-            elif (r['commence_discharge_berth']and not r['completed_discharge_berth']):
+            elif r['commenced_loading'] and not r['completed_loading']:
                 status = 'under_loading'
             elif r['along_side_vessel'] and not r['commenced_loading']:
                 status = 'waiting_loading'
@@ -455,11 +455,31 @@ def _fetch_upcoming_vessels(report_date):
 
         vh.vessel_agent_name,
 
-        vn.eta,
+        CASE
+            WHEN lh.nor_tendered IS NULL
+                THEN 'ETA : ' ||
+                     TO_CHAR(vn.eta::timestamp, 'DD-MM-YYYY HH24:MI')
 
-        lh.nor_tendered
+            WHEN lh.nor_tendered IS NOT NULL
+                 AND fa.discharge_started IS NULL
+                THEN 'ARRIVED AT : ' ||
+                     TO_CHAR(lh.nor_tendered::timestamp, 'DD-MM-YYYY HH24:MI')
+        END AS eta,
 
-    FROM vcn_header vh
+        CASE
+            WHEN lh.nor_tendered IS NULL
+                THEN 'ETA'
+
+            WHEN lh.nor_tendered IS NOT NULL
+                 AND fa.discharge_started IS NULL
+                THEN 'ARRIVED'
+        END AS vessel_status,
+
+            COALESCE(
+        lh.nor_tendered::timestamp,
+        vn.eta::timestamp
+    ) AS status_time
+        FROM vcn_header vh
 
     JOIN vcn_nominations vn
         ON vn.vcn_id = vh.id
@@ -470,9 +490,26 @@ def _fetch_upcoming_vessels(report_date):
     LEFT JOIN vcn_cargo_declaration vc
         ON vc.vcn_id = vh.id
 
-    WHERE DATE(COALESCE(lh.nor_tendered, vn.eta)) > %s
+    LEFT JOIN LATERAL (
+        SELECT MIN(a.discharge_started) AS discharge_started
+        FROM ldud_anchorage a
+        WHERE a.ldud_id = lh.id
+    ) fa ON TRUE
 
-    ORDER BY vn.eta
+    WHERE
+    (
+        lh.nor_tendered IS NULL
+        AND vn.eta::timestamp >= %s
+    )
+
+    OR
+
+    (
+        lh.nor_tendered IS NOT NULL
+        AND fa.discharge_started IS NULL
+    )
+
+    ORDER BY status_time
     """, (report_date,))
 
     rows = cur.fetchall()
@@ -481,7 +518,6 @@ def _fetch_upcoming_vessels(report_date):
 
     return rows
 
-from datetime import datetime, timedelta
 
 def _fetch_discharging_mbcs(report_date):
 
@@ -491,8 +527,6 @@ def _fetch_discharging_mbcs(report_date):
         report_date.day,
         8, 0, 0
     )
-
-    window_start = window_end - timedelta(days=1)
 
     conn = get_db()
     cur = get_cursor(conn)
@@ -504,19 +538,57 @@ def _fetch_discharging_mbcs(report_date):
             p.vessel_unloaded_by AS equipment,
             h.cargo_name,
             h.bl_quantity AS discharge_quantity,
+            p.vessel_arrival_port,
             p.unloading_commenced,
-            p.unloading_completed
+            p.unloading_completed,
+
+            CASE
+                WHEN p.vessel_arrival_port IS NOT NULL
+                     AND (
+                         p.unloading_commenced IS NULL
+                         OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
+                     )
+                THEN 'ARRIVED'
+
+                WHEN p.unloading_commenced IS NOT NULL
+                     AND (
+                         p.unloading_completed IS NULL
+                         OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+                     )
+                THEN 'DISCHARGING'
+            END AS status
+
         FROM mbc_header h
+
         JOIN mbc_discharge_port_lines p
             ON p.mbc_id = h.id
+
         WHERE
+
+        (
+            p.vessel_arrival_port IS NOT NULL
+            AND (
+                p.unloading_commenced IS NULL
+                OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
+            )
+        )
+
+        OR
+
+        (
             p.unloading_commenced IS NOT NULL
             AND p.unloading_commenced::timestamp < %s
             AND (
                 p.unloading_completed IS NULL
                 OR TRIM(COALESCE(p.unloading_completed, '')) = ''
             )
-        ORDER BY p.unloading_commenced DESC
+        )
+
+        ORDER BY
+            COALESCE(
+                p.unloading_commenced::timestamp,
+                p.vessel_arrival_port::timestamp
+            ) DESC
     """, (window_end,))
 
     rows = cur.fetchall()
@@ -525,6 +597,11 @@ def _fetch_discharging_mbcs(report_date):
     conn.close()
 
     return rows
+
+
+
+
+    
         
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
@@ -1100,7 +1177,7 @@ def daily_ops_preview():
             <td style='border:1px solid #ccc;padding:8px'>{v['cargo_name'] or '-'}</td>
             <td style='border:1px solid #ccc;padding:8px'>{v['bl_quantity'] or '-'}</td>
             <td style='border:1px solid #ccc;padding:8px'>{v['vessel_agent_name']}</td>
-            <td style='border:1px solid #ccc;padding:8px'>{_fmt_dt(v['eta'])}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{v['eta']}</td>
         </tr>
         """
 
@@ -1125,8 +1202,17 @@ def daily_ops_preview():
 
         equipment = m['equipment'] or '-'
 
+        if m['status'] == 'DISCHARGING':
+            row_style = "background-color:#fff3cd;"   # Yellow
+
+        elif m['status'] == 'ARRIVED':
+            row_style = "background-color:#f8d7da;"   # Light Red
+
+        else:
+            row_style = ""
+
         html += f"""
-        <tr>
+        <tr style="{row_style}">
             <td style='border:1px solid #ccc;padding:8px'>
                 {m['mbc_name']}
             </td>
