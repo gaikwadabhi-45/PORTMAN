@@ -443,6 +443,15 @@ def _fetch_list(selected_date, status_filter=None):
 
     def _row_active_on_date(row):
 
+        completed_dt = _parse_dt(
+            row.get('completed_discharge_berth')
+        )
+
+        # If discharge completed after current report cutoff,
+        # don't show it in current operational day
+        if completed_dt and completed_dt >= end_dt:
+            return False
+
         event_dates = [
             row.get('trip_start'),
             row.get('along_side_vessel'),
@@ -464,7 +473,7 @@ def _fetch_list(selected_date, status_filter=None):
             if dt and start_dt <= dt < end_dt:
                 return True
 
-        return False
+            
 
 
     rows = [r for r in raw_rows if _row_active_on_date(r)]

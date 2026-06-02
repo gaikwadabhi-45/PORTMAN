@@ -860,6 +860,51 @@
     .dark-theme .shift-table td {
         color: #e2e8f0;
     }
+    .legend-wrapper{
+    position:relative;
+}
+
+.legend-icon{
+    color:#4a90d9;
+    font-size:16px;
+    font-weight:bold;
+    cursor:pointer;
+    display:inline-block;
+}
+
+.legend-popup{
+    display:none;
+    position:absolute;
+    right:0;
+    top:35px;
+    min-width:190px;
+    background:#fff;
+    border:1px solid #d9d9d9;
+    border-radius:8px;
+    padding:10px;
+    box-shadow:0 4px 18px rgba(0,0,0,.15);
+    z-index:9999;
+}
+
+.legend-wrapper:hover .legend-popup{
+    display:block;
+}
+
+.legend-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:4px 0;
+    font-size:12px;
+}
+
+.legend-color{
+    width:18px;
+    height:18px;
+    border:1px solid #999;
+    border-radius:3px;
+    display:inline-block;
+}
 </style>
 {% endblock %}
 
@@ -962,9 +1007,50 @@
     <button type="button" class="filter-btn dl-all" id="dl-all-btn" onclick="downloadAll()">&#8595; Download
         All</button>
 
-    <div style="margin-left: auto; font-size: 12px; color: var(--text-primary); line-height: 1.6; padding-top: 6px;">
+  <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+
+    <div class="legend-wrapper">
+
+          <span class="legend-icon">ⓘ</span>
+
+        <div class="legend-popup">
+
+            <div class="legend-item">
+                <span class="legend-color" style="background:#fff2cc;"></span>
+                In Transit
+            </div>
+
+            <div class="legend-item">
+                <span class="legend-color" style="background:#d9d2e9;"></span>
+                Currently Loading
+            </div>
+
+            <div class="legend-item">
+                <span class="legend-color" style="background:#bdd7ee;"></span>
+                Loaded & Waiting
+            </div>
+
+            <div class="legend-item">
+                <span class="legend-color" style="background:#ffe699;"></span>
+                Under Discharge
+            </div>
+
+            <div class="legend-item">
+                <span class="legend-color" style="background:#c6efce;"></span>
+                Completed Discharge
+            </div>
+
+        </div>
+
+    </div>
+
+    <div style="font-size:12px;color:var(--text-primary);line-height:1.6;padding-top:6px;">
         <div id="date-range-display">—</div>
     </div>
+
+    
+
+</div>
 </div>
 
 
