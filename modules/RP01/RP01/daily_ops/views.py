@@ -528,81 +528,110 @@ def _fetch_discharging_mbcs(report_date):
         8, 0, 0
     )
 
+    window_start = window_end - timedelta(days=1)
+
     conn = get_db()
     cur = get_cursor(conn)
 
     cur.execute("""
-        SELECT
-            h.id,
-            h.mbc_name,
-            p.vessel_unloaded_by AS equipment,
-            h.cargo_name,
-            h.bl_quantity AS discharge_quantity,
-            p.vessel_arrival_port,
-            p.unloading_commenced,
-            p.unloading_completed,
+    SELECT
+        h.id,
+        h.mbc_name,
+        p.vessel_unloaded_by AS equipment,
+        h.cargo_name,
+        h.bl_quantity AS discharge_quantity,
+        p.vessel_arrival_port,
+        p.unloading_commenced,
+        p.unloading_completed,
 
-            CASE
-                WHEN p.vessel_arrival_port IS NOT NULL
-                     AND (
-                         p.unloading_commenced IS NULL
-                         OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
-                     )
-                THEN 'ARRIVED'
+        CASE
+            WHEN
+                NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
+                AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
+                AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
+                AND (
+                    p.unloading_commenced IS NULL
+                    OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
+                )
+            THEN 'ARRIVED'
 
-                WHEN p.unloading_commenced IS NOT NULL
-                     AND (
-                         p.unloading_completed IS NULL
-                         OR TRIM(COALESCE(p.unloading_completed, '')) = ''
-                     )
-                THEN 'DISCHARGING'
-            END AS status
+            WHEN
+                p.unloading_commenced IS NOT NULL
+                AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+                AND (
+                    p.unloading_completed IS NULL
+                    OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+                )
+                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+            THEN 'DISCHARGING'
+        END AS status
 
-        FROM mbc_header h
+    FROM mbc_header h
+    JOIN mbc_discharge_port_lines p
+        ON p.mbc_id = h.id
 
-        JOIN mbc_discharge_port_lines p
-            ON p.mbc_id = h.id
+    WHERE
 
-        WHERE
-
-        (
-            p.vessel_arrival_port IS NOT NULL
-            AND (
-                p.unloading_commenced IS NULL
-                OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
-            )
+    (
+        NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
+        AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
+        AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
+        AND (
+            p.unloading_commenced IS NULL
+            OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
         )
+    )
 
-        OR
+    OR
 
-        (
-            p.unloading_commenced IS NOT NULL
-            AND p.unloading_commenced::timestamp < %s
-            AND (
-                p.unloading_completed IS NULL
-                OR TRIM(COALESCE(p.unloading_completed, '')) = ''
-            )
+    (
+        p.unloading_commenced IS NOT NULL
+        AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+        AND (
+            p.unloading_completed IS NULL
+            OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
+        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+    )
 
-        ORDER BY
-            COALESCE(
-                p.unloading_commenced::timestamp,
-                p.vessel_arrival_port::timestamp
-            ) DESC
-    """, (window_end,))
+    ORDER BY
+        CASE
+            WHEN
+                NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
+                AND (
+                    p.unloading_commenced IS NULL
+                    OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
+                )
+            THEN 1
 
+            WHEN
+                p.unloading_commenced IS NOT NULL
+                AND (
+                    p.unloading_completed IS NULL
+                    OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+                )
+            THEN 2
+        END,
+
+        COALESCE(
+            NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp,
+            NULLIF(TRIM(p.unloading_commenced), '')::timestamp
+        ) DESC
+
+""", (
+    window_start, window_end,      # CASE ARRIVED
+    window_start, window_end,      # CASE DISCHARGING
+    window_start, window_end,      # WHERE ARRIVED
+    window_start, window_end       # WHERE DISCHARGING
+))
     rows = cur.fetchall()
 
     cur.close()
     conn.close()
 
     return rows
-
-
-
-
-    
-        
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
     Month values incorporate cutoff if the cutoff date falls within the report month.
