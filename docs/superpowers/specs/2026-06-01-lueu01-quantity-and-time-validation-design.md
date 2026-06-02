@@ -91,6 +91,22 @@ Only checked when **both** `from_time` and `to_time` are present and parseable a
   **single summary popup** listing every rejected row and why (reusing existing
   modal/popup styling in the template).
 
+## Historical over-quantity flag (added)
+
+New validation only blocks *new* over-entries. Rows saved before it existed may already
+exceed the barge/MBC trip quantity. To let staff find and correct them, `get_all_lines`
+annotates each returned row with a group-level over flag:
+
+- **Group key:** VCN → `(source_id, barge_name)`; MBC → `(source_id)`.
+- **Over test:** the group's *total* non-deleted handled quantity exceeds its trip
+  quantity (the same per-barge/MBC basis as `_resolve_trip_quantity`, `exclude_id=None`
+  so nothing is excluded). Flag **every** row in an over group (not just the offending
+  one — which row "tipped it over" is order-dependent and ambiguous).
+- **Row fields added:** `_qty_over_group` (bool) and `_qty_over_by` (float, the overage).
+- **UI:** the Quantity-cell formatter shows a distinct red `⚠ OVER` badge (separate from
+  the existing per-cargo `OVR` badge) with a tooltip naming the overage. Read-time only;
+  no schema change.
+
 ## Out of scope (deliberately)
 
 - **Split** (`split_line`) is *not* re-validated — it only redistributes existing

@@ -693,6 +693,150 @@ git commit -m "feat(LUEU01): blank rejected cells and show rejection popup on sa
 
 ---
 
+### Task 6: Historical over-quantity flag on existing rows
+
+**Depends on Task 3** (`_resolve_trip_quantity` must already exist).
+
+**Files:**
+- Modify: `modules/LUEU01/model.py` — annotate rows in `get_all_lines` (before `conn.close()`, ~line 91)
+- Modify: `modules/LUEU01/lueu01.html` — add `.qty-over-badge` CSS (~line 219) and extend the Quantity formatter (~lines 762-778)
+
+This flags every row of a barge/MBC whose **total** handled quantity exceeds its trip
+quantity — the same per-barge/MBC limit the save-time validation enforces — so staff can
+find and correct pre-existing over-entries. Computed at read time; no schema change. No
+unit test (DB + UI); verified manually.
+
+- [ ] **Step 1: Annotate rows in get_all_lines**
+
+In `modules/LUEU01/model.py`, in `get_all_lines`, find this block (currently ~lines 80-91):
+
+```python
+    # Enrich rows with customer_name (only when multi-customer)
+    for r in rows:
+        key = (r.get('source_type'), r.get('source_id'))
+        is_multi = source_multi_customer.get(key, False)
+        r['_multi_customer'] = is_multi
+        if is_multi:
+            cargo_customers = source_customer_map.get(key, {})
+            r['customer_name'] = cargo_customers.get(r.get('cargo_name'), '')
+        else:
+            r['customer_name'] = ''
+
+    conn.close()
+```
+
+Replace it with (adds the over-group annotation before `conn.close()`):
+
+```python
+    # Enrich rows with customer_name (only when multi-customer)
+    for r in rows:
+        key = (r.get('source_type'), r.get('source_id'))
+        is_multi = source_multi_customer.get(key, False)
+        r['_multi_customer'] = is_multi
+        if is_multi:
+            cargo_customers = source_customer_map.get(key, {})
+            r['customer_name'] = cargo_customers.get(r.get('cargo_name'), '')
+        else:
+            r['customer_name'] = ''
+
+    # Flag historical over-quantity rows: every row of a barge/MBC whose TOTAL
+    # handled qty exceeds its trip qty (same per-barge/MBC limit the save-time
+    # validation enforces, so a flagged row is exactly one the rule would block).
+    over_cache = {}  # group key -> overage (float; >0 means over)
+    for r in rows:
+        st = r.get('source_type'); sid = r.get('source_id')
+        if not st or not sid:
+            r['_qty_over_group'] = False
+            r['_qty_over_by'] = 0
+            continue
+        gkey = (st, sid, r.get('barge_name') if st == 'VCN' else None)
+        if gkey not in over_cache:
+            expected, handled = _resolve_trip_quantity(cur, r, None)
+            over_cache[gkey] = (round(handled - expected, 3)
+                                if (expected and expected > 0 and handled > expected) else 0)
+        over_by = over_cache[gkey]
+        r['_qty_over_group'] = over_by > 0
+        r['_qty_over_by'] = over_by
+
+    conn.close()
+```
+
+- [ ] **Step 2: Add the badge CSS**
+
+In `modules/LUEU01/lueu01.html`, immediately after the `.dark-theme .qty-exceeded-badge { ... }` rule (~line 219), add:
+
+```css
+    .qty-over-badge {
+        display: inline-block; margin-left: 4px;
+        background: #fff5f5; color: #c53030; border: 1px solid #fc8181;
+        border-radius: 3px; padding: 0 4px; font-size: 9px; font-weight: 700;
+        vertical-align: middle; cursor: help;
+    }
+    .dark-theme .qty-over-badge { background: #4a1a1a; border-color: #fc8181; color: #fc8181; }
+```
+
+- [ ] **Step 3: Extend the Quantity formatter**
+
+In `modules/LUEU01/lueu01.html`, find the Quantity column formatter (~lines 762-778). Replace its `formatter` function body:
+
+```javascript
+                formatter: function(cell) {
+                    const val = cell.getValue();
+                    if (val === null || val === undefined || val === '') return '';
+                    const data = cell.getRow().getData();
+                    const cacheKey = data.source_type + ':' + data.source_id;
+                    const progress = data.source_type && data.source_id ? blProgressCache[cacheKey] : null;
+                    let badge = '';
+                    if (progress && Array.isArray(progress)) {
+                        const cargoRow = progress.find(p => p.cargo_name === (data.cargo_name || ''));
+                        if (cargoRow && cargoRow.exceeded) {
+                            badge = '<span class="qty-exceeded-badge" title="BL exceeded by ' + cargoRow.exceeded_by.toLocaleString() + (cargoRow.uom ? ' ' + cargoRow.uom : '') + '">&#9888; OVR</span>';
+                        }
+                    }
+                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge;
+                }},
+```
+
+with (adds the OVER badge using the server `_qty_over_group` flag):
+
+```javascript
+                formatter: function(cell) {
+                    const val = cell.getValue();
+                    if (val === null || val === undefined || val === '') return '';
+                    const data = cell.getRow().getData();
+                    const cacheKey = data.source_type + ':' + data.source_id;
+                    const progress = data.source_type && data.source_id ? blProgressCache[cacheKey] : null;
+                    let badge = '';
+                    if (progress && Array.isArray(progress)) {
+                        const cargoRow = progress.find(p => p.cargo_name === (data.cargo_name || ''));
+                        if (cargoRow && cargoRow.exceeded) {
+                            badge = '<span class="qty-exceeded-badge" title="BL exceeded by ' + cargoRow.exceeded_by.toLocaleString() + (cargoRow.uom ? ' ' + cargoRow.uom : '') + '">&#9888; OVR</span>';
+                        }
+                    }
+                    let overBadge = '';
+                    if (data._qty_over_group) {
+                        overBadge = '<span class="qty-over-badge" title="This barge/MBC is over its trip quantity by ' + (data._qty_over_by || 0).toLocaleString() + ' — please correct.">&#9888; OVER</span>';
+                    }
+                    return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge + overBadge;
+                }},
+```
+
+- [ ] **Step 4: Manual verification**
+
+With the app running, open an equipment whose barge/MBC is known to be over (or temporarily lower a barge's `discharge_quantity` in test data so an existing group sums over). Confirm:
+1. Every row of the over group shows the red `⚠ OVER` badge next to its quantity; the tooltip names the overage amount.
+2. Rows of groups within their trip qty show no OVER badge.
+3. After reducing quantities so the group total fits, the badge disappears on next data reload.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add modules/LUEU01/model.py modules/LUEU01/lueu01.html
+git commit -m "feat(LUEU01): flag historical rows that exceed barge/MBC trip qty"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage:**
