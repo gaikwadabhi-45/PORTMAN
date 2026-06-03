@@ -567,8 +567,6 @@ def _fetch_discharging_mbcs(report_date):
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
             THEN 'DISCHARGING'
 
             WHEN
@@ -604,8 +602,6 @@ def _fetch_discharging_mbcs(report_date):
             p.unloading_completed IS NULL
             OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
     )
 
     OR
@@ -648,11 +644,9 @@ def _fetch_discharging_mbcs(report_date):
 
     """, (
         window_start, window_end,          # CASE ARRIVED
-        window_start, window_end,          # CASE DISCHARGING
         completion_start, completion_end,  # CASE COMPLETED
 
         window_start, window_end,          # WHERE ARRIVED
-        window_start, window_end,          # WHERE DISCHARGING
         completion_start, completion_end   # WHERE COMPLETED
     ))
 
