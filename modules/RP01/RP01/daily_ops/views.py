@@ -731,58 +731,75 @@ def _fetch_cargo_availability(report_date):
             h.cargo_name,
 
             CASE
-                WHEN SUM(COALESCE(l.qty, 0)) > 0
+                WHEN SUM(
+                    CASE
+                        WHEN NULLIF(TRIM(h.created_date),'') IS NOT NULL
+                         AND NULLIF(TRIM(h.created_date),'')::timestamp >= %s
+                         AND NULLIF(TRIM(h.created_date),'')::timestamp < %s
+                        THEN 1
+                        ELSE 0
+                    END
+                ) > 0
                 THEN
-                    SUM(COALESCE(h.bl_quantity, 0))
+                    SUM(
+                        CASE
+                            WHEN NULLIF(TRIM(h.created_date),'') IS NOT NULL
+                             AND NULLIF(TRIM(h.created_date),'')::timestamp >= %s
+                             AND NULLIF(TRIM(h.created_date),'')::timestamp < %s
+                            THEN COALESCE(h.bl_quantity,0)
+                            ELSE 0
+                        END
+                    )
                     -
-                    SUM(COALESCE(l.qty, 0))
+                    SUM(
+                        CASE
+                            WHEN NULLIF(TRIM(h.created_date),'') IS NOT NULL
+                             AND NULLIF(TRIM(h.created_date),'')::timestamp >= %s
+                             AND NULLIF(TRIM(h.created_date),'')::timestamp < %s
+                            THEN COALESCE(l.qty,0)
+                            ELSE 0
+                        END
+                    )
                 ELSE NULL
             END AS at_jetty_qty
 
         FROM mbc_header h
 
         LEFT JOIN (
-
             SELECT
-                cargo_name,
-                SUM(COALESCE(quantity, 0)) AS qty
+                source_id,
+                SUM(COALESCE(quantity,0)) AS qty
 
             FROM lueu_lines
 
             WHERE source_type = 'MBC'
 
               AND (
-                    TO_DATE(entry_date, 'YYYY-MM-DD')
+                    TO_DATE(entry_date,'YYYY-MM-DD')
                     +
-                    COALESCE(
-                        NULLIF(from_time, ''),
-                        '00:00'
-                    )::time
+                    COALESCE(NULLIF(from_time,''),'00:00')::time
                   ) >= %s
 
               AND (
-                    TO_DATE(entry_date, 'YYYY-MM-DD')
+                    TO_DATE(entry_date,'YYYY-MM-DD')
                     +
-                    COALESCE(
-                        NULLIF(from_time, ''),
-                        '00:00'
-                    )::time
+                    COALESCE(NULLIF(from_time,''),'00:00')::time
                   ) < %s
 
-            GROUP BY cargo_name
+            GROUP BY source_id
 
         ) l
-            ON TRIM(h.cargo_name) = TRIM(l.cargo_name)
+            ON l.source_id = h.id
 
-        GROUP BY
-            h.cargo_name
+        GROUP BY h.cargo_name
 
-        ORDER BY
-            h.cargo_name
+        ORDER BY h.cargo_name
 
     """, (
-        window_start,
-        window_end
+        window_start, window_end,   # CASE count
+        window_start, window_end,   # BL qty
+        window_start, window_end,   # LUEU qty
+        window_start, window_end    # LUEU window
     ))
 
     rows = cur.fetchall()
@@ -1496,20 +1513,20 @@ def daily_ops_preview():
 
     html += """
     <br><br>
-    <h3 style='text-align:center'>Cargo Availability for the Day</h3>
+    <h3>Cargo Availability for the Day</h3>
 
     <table style='width:100%;border-collapse:collapse;font-family:Arial;font-size:12px'>
     """
 
     # Header Row
     html += """
-    <tr style='background:#f2f2f2;font-weight:bold'>
-        <th style='border:1px solid #000;padding:6px'></th>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'></th>
     """
 
     for c in cargo_availability:
         html += f"""
-        <th style='border:1px solid #000;padding:6px;text-align:center'>
+        <th style='border:1px solid #ccc;padding:8px;text-align:center;min-width:100px'>
             {c['cargo_name']}
         </th>
         """
@@ -1519,7 +1536,7 @@ def daily_ops_preview():
     # At Jetty Row
     html += """
     <tr>
-        <td style='border:1px solid #000;padding:6px;font-weight:bold'>
+        <td style='border:1px solid #ccc;padding:8px;font-weight:bold'>
             At Jetty
         </td>
     """
@@ -1528,13 +1545,18 @@ def daily_ops_preview():
 
     for c in cargo_availability:
 
-        qty = float(c["at_jetty_qty"] or 0)
+        qty = c["at_jetty_qty"]
 
-        grand_total += qty
+        display_value = ""
+
+        if qty is not None:
+            qty = float(qty)
+            grand_total += qty
+            display_value = f"{qty:,.0f}"
 
         html += f"""
-        <td style='border:1px solid #000;padding:6px;text-align:right'>
-            {qty:,.0f}
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {display_value}
         </td>
         """
 
@@ -1543,18 +1565,23 @@ def daily_ops_preview():
     # Total Row
     html += """
     <tr style='background:#f2f2f2;font-weight:bold'>
-        <td style='border:1px solid #000;padding:6px'>
+        <td style='border:1px solid #ccc;padding:8px'>
             Total
         </td>
     """
 
     for c in cargo_availability:
 
-        qty = float(c["at_jetty_qty"] or 0)
+        qty = c["at_jetty_qty"]
+
+        display_value = ""
+
+        if qty is not None:
+            display_value = f"{float(qty):,.0f}"
 
         html += f"""
-        <td style='border:1px solid #000;padding:6px;text-align:right'>
-            {qty:,.0f}
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {display_value}
         </td>
         """
 
