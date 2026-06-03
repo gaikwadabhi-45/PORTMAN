@@ -312,6 +312,37 @@ def get_barge_lines(ldud_id):
     conn.close()
     return [dict(r) for r in rows]
 
+def get_lueu_barge_progress(ldud_id):
+    """LUEU01 handled quantities for the VCN behind this LDUD, for reconciling
+    barge-line discharge quantities against what was actually entered in LUEU.
+
+    Returns {'total': float, 'barges': {barge_display: handled_qty}} where
+    barge_display matches the 'barge / trip' label LUEU lines store in barge_name.
+    """
+    conn = get_db()
+    cur = get_cursor(conn)
+    cur.execute('SELECT vcn_id FROM ldud_header WHERE id=%s', [ldud_id])
+    row = cur.fetchone()
+    if not row or not row['vcn_id']:
+        conn.close()
+        return {'total': 0, 'barges': {}}
+    vcn_id = row['vcn_id']
+    cur.execute('''
+        SELECT COALESCE(SUM(quantity), 0) AS total FROM lueu_lines
+        WHERE source_type='VCN' AND source_id=%s AND (is_deleted IS NOT TRUE)
+    ''', [vcn_id])
+    total = float(cur.fetchone()['total'] or 0)
+    cur.execute('''
+        SELECT barge_name, COALESCE(SUM(quantity), 0) AS handled FROM lueu_lines
+        WHERE source_type='VCN' AND source_id=%s AND (is_deleted IS NOT TRUE)
+          AND barge_name IS NOT NULL
+        GROUP BY barge_name
+    ''', [vcn_id])
+    barges = {r['barge_name']: float(r['handled'] or 0) for r in cur.fetchall()}
+    conn.close()
+    return {'total': round(total, 3), 'barges': barges}
+
+
 def get_next_trip_number(ldud_id, barge_name):
     """Get the next trip number for a barge in this LDUD"""
     conn = get_db()

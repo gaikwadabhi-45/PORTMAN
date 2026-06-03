@@ -1086,8 +1086,11 @@
         dirtySubSections = {};
         currentLdudId = ldudId;
 
-        // Set modal title
-        document.getElementById('modalTitle').textContent = `Details for ${data.vessel_name || data.doc_num || 'LDUD'} (${operationType})`;
+        // Set modal title — vessel name plus the cargo name(s) for this record
+        const _baseLabel = data.vessel_name || data.doc_num || 'LDUD';
+        const _cargoLabel = (data.cargo_names_display || '').toString().trim();
+        const _cargoPart = _cargoLabel ? ` | Cargo: ${_cargoLabel}` : '';
+        document.getElementById('modalTitle').textContent = `Details for ${_baseLabel}${_cargoPart} (${operationType})`;
         // Show lock banner for closed records
         let lockBanner = document.getElementById('modalLockBanner');
         if (!lockBanner) {
@@ -1640,6 +1643,7 @@
             height: 200,
             ajaxURL: `/api/module/LDUD01/delays/${ldudId}`,
             columnDefaults: { headerSort: false },
+            initialSort: [{column: "total_time_hrs", dir: "asc"}],
             cellEdited: () => markDirty('delays'),
             columns: [
                 {title: "Crane No", field: "crane_number", width: 110, editor: canEdit ? craneMultiSelectEditor : false,
@@ -1658,7 +1662,7 @@
                 {title: "End", field: "end_datetime", width: 140, editor: canEdit ? datetimeEditor : false,
                     formatter: datetimeCellFormatter},
                 {title: "Mins", field: "total_time_mins", width: 60, hozAlign: "right"},
-                {title: "Hrs", field: "total_time_hrs", width: 60, hozAlign: "right"},
+                {title: "Hrs", field: "total_time_hrs", width: 60, hozAlign: "right", sorter: "number"},
                 {title: "Minus Hrs", field: "minus_delay_hours", width: 70, editor: canEdit ? "list" : false,
                     editorParams: {values: yesNoOptions}},
                 canEdit ? {title: "", field: "actions", formatter: deleteButtonFormatter, width: 50, hozAlign: "center", headerSort: false,
@@ -1703,6 +1707,78 @@
 
         // Barge Lines table — column order/titles differ for Export
         const dtFmt = datetimeCellFormatter;
+
+        // LUEU01 reconciliation: total + per-barge handled qty entered in LUEU for
+        // this vessel. Fetched before the table builds so the formatter can use it.
+        let lueuProgress = {total: 0, barges: {}};
+        try {
+            const _lpRes = await fetch(`/api/module/LDUD01/lueu_barge_progress/${ldudId}`);
+            lueuProgress = await _lpRes.json();
+        } catch (e) { /* ignore — reconciliation column just stays blank */ }
+        (function () {
+            const sumEl = document.getElementById(`barge-bl-summary-${ldudId}`);
+            if (!sumEl) return;
+            let lp = document.getElementById(`barge-lueu-summary-${ldudId}`);
+            if (!lp) {
+                lp = document.createElement('span');
+                lp.id = `barge-lueu-summary-${ldudId}`;
+                lp.style.cssText = 'background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;';
+                sumEl.appendChild(lp);
+            }
+            lp.textContent = `LUEU: ${(parseFloat(lueuProgress.total) || 0).toFixed(2)} MT`;
+        })();
+
+        // Total declared discharge per barge/trip across all barge-line rows, so a
+        // barge whose qty is split over several cargo rows reconciles as one unit.
+        const bargeDisplay = (d) => {
+            if (!d.barge_name) return '';
+            const trip = d.trip_number || '';
+            return trip ? `${d.barge_name} / ${trip}` : d.barge_name;
+        };
+        let bargeExpectedByDisplay = {};
+        function recomputeBargeExpected() {
+            bargeExpectedByDisplay = {};
+            const t = subTables[ldudId] && subTables[ldudId].barge_lines;
+            if (!t) return;
+            t.getRows().forEach(r => {
+                const d = r.getData();
+                const disp = bargeDisplay(d);
+                if (!disp) return;
+                bargeExpectedByDisplay[disp] = (bargeExpectedByDisplay[disp] || 0) + (parseFloat(d.discharge_quantity) || 0);
+            });
+        }
+
+        // First column: reconciliation of each barge's discharge qty against what
+        // was entered in LUEU — ✓ when it matches, else signed % (red if LUEU is
+        // more than the barge qty, black if less).
+        const lueuCompletionCol = {
+            title: "LUEU", field: "_lueu_completion", width: 70, hozAlign: "center",
+            headerSort: false, frozen: true,
+            formatter: function (cell) {
+                const d = cell.getRow().getData();
+                const display = bargeDisplay(d);
+                if (!display) return '';
+                // Prefer the summed-per-barge qty; fall back to this row before the map builds.
+                const expected = (bargeExpectedByDisplay[display] != null)
+                    ? bargeExpectedByDisplay[display] : parseFloat(d.discharge_quantity || 0);
+                const handled = (lueuProgress.barges && lueuProgress.barges[display] != null)
+                    ? parseFloat(lueuProgress.barges[display]) : 0;
+                if (!expected) {
+                    return handled > 0
+                        ? `<span style="color:#b91c1c;font-weight:700;" title="LUEU ${handled.toFixed(2)} entered but barge Qty is blank">⚠</span>`
+                        : '';
+                }
+                const diff = handled - expected;
+                if (Math.abs(diff) < 0.005) {
+                    return `<span style="color:#059669;font-weight:700;" title="Reconciled — LUEU ${handled.toFixed(2)} = Barge ${expected.toFixed(2)}">&#10003;</span>`;
+                }
+                const pct = (diff / expected) * 100;
+                const color = diff > 0 ? '#b91c1c' : '#111827';   // more = red, less = black
+                const sign = diff > 0 ? '+' : '';
+                return `<span style="color:${color};font-weight:600;" title="LUEU ${handled.toFixed(2)} vs Barge ${expected.toFixed(2)}">${sign}${pct.toFixed(1)}%</span>`;
+            }
+        };
+
         const delBtn = canEdit ? {title: "", field: "actions", formatter: deleteButtonFormatter, width: 50, hozAlign: "center", headerSort: false,
             cellClick: function(e, cell) { deleteSubRow('barge_lines', cell.getRow().getData().id, ldudId); }
         } : null;
@@ -1798,12 +1874,28 @@
             ].filter(Boolean);
         }
 
+        // LUEU reconciliation is the first column for both Import and Export.
+        bargeLinesColumns.unshift(lueuCompletionCol);
+
         subTables[ldudId].barge_lines = new Tabulator(`#barge_lines-table-${ldudId}`, {
             layout: "fitDataFill",
             height: 250,
             ajaxURL: `/api/module/LDUD01/barge_lines/${ldudId}`,
             columnDefaults: { headerSort: false },
-            cellEdited: () => markDirty('barge_lines'),
+            dataLoaded: function () {
+                // Recompute per-barge totals then refresh the reconciliation column.
+                recomputeBargeExpected();
+                this.getRows().forEach(r => r.reformat());
+            },
+            cellEdited: (cell) => {
+                markDirty('barge_lines');
+                // Refresh all LUEU reconciliation cells when their inputs change
+                // (qty may be split across several rows of the same barge).
+                if (['discharge_quantity', 'barge_name', 'trip_number'].includes(cell.getField())) {
+                    recomputeBargeExpected();
+                    cell.getTable().getRows().forEach(r => r.reformat());
+                }
+            },
             columns: bargeLinesColumns
         });
         if (isDark) document.querySelector(`#barge_lines-table-${ldudId}`).classList.add('tabulator-dark');
@@ -2318,6 +2410,11 @@
                 }
             }
         });
+
+        // Keep Delays ordered ascending by Hrs after saving
+        if (type === 'delays' && subTables[ldudId] && subTables[ldudId].delays) {
+            subTables[ldudId].delays.setSort('total_time_hrs', 'asc');
+        }
 
         clearDirty(type);
         if (!silent) showSubStatus(type, ldudId, `Saved ${savedCount} row(s)`);

@@ -45,14 +45,17 @@ def _intervals_overlap(from_a, to_a, from_b, to_b):
             or _lin(fa + 1440, ta + 1440, fb, tb))
 
 
-def compute_rejections(data, trip_expected, trip_handled, overlap_candidates):
+def compute_rejections(data, limit_checks, overlap_candidates):
     """Pure decision logic for save-time validation.
 
     Args:
         data: the row dict about to be written.
-        trip_expected: total qty basis for the barge/MBC; <= 0 means 'no basis,
-            skip the quantity check'.
-        trip_handled: qty already handled for that barge/MBC EXCLUDING this row.
+        limit_checks: list of quantity-limit dicts the row must satisfy, each
+            {'scope': str, 'label': str, 'expected': float, 'handled': float}.
+            `handled` excludes this row; a check with expected <= 0 is skipped.
+            The row's quantity is rejected against the TIGHTEST breached limit
+            (smallest remaining), and the breached scope is reported so callers
+            can tell the user / Excel which tier failed.
         overlap_candidates: list of (from_time, to_time) tuples for other rows on
             the same equipment + entry_date (already excludes this row).
 
@@ -63,20 +66,31 @@ def compute_rejections(data, trip_expected, trip_handled, overlap_candidates):
     clean = dict(data)
     rejections = []
 
-    # ── Quantity vs remaining trip quantity ──────────────────────────────────
+    # ── Quantity vs the applicable limits (vessel/barge for VCN, header/cargo
+    #    for MBC). Only the quantity is blanked; the rest of the row is kept. ──
     qty = clean.get('quantity')
-    if qty is not None and str(qty).strip() != '' and trip_expected and float(trip_expected) > 0:
+    if qty is not None and str(qty).strip() != '':
         try:
             qv = float(qty)
         except (TypeError, ValueError):
             qv = None
         if qv is not None:
-            remaining = float(trip_expected) - float(trip_handled or 0)
-            if qv > remaining + 1e-9:
+            breached = []
+            for chk in (limit_checks or []):
+                exp = chk.get('expected')
+                if exp and float(exp) > 0:
+                    remaining = float(exp) - float(chk.get('handled') or 0)
+                    if qv > remaining + 1e-9:
+                        breached.append((remaining, chk))
+            if breached:
+                breached.sort(key=lambda x: x[0])  # tightest (binding) limit first
+                remaining, chk = breached[0]
                 clean['quantity'] = None
                 rejections.append({
                     'field': 'quantity',
-                    'reason': 'exceeds_trip_qty',
+                    'reason': 'exceeds_' + chk.get('scope', 'trip_qty'),
+                    'scope': chk.get('scope', ''),
+                    'scope_label': chk.get('label', ''),
                     'label': clean.get('barge_name') or clean.get('source_display') or '',
                     'attempted': round(qv, 3),
                     'remaining': round(remaining, 3),
@@ -99,70 +113,116 @@ def compute_rejections(data, trip_expected, trip_handled, overlap_candidates):
     return clean, rejections
 
 
-def _resolve_trip_quantity(cur, data, exclude_id):
-    """Return (expected, handled_excluding_self) for the barge/MBC this row targets.
+def _resolve_trip_limits(cur, data, exclude_id):
+    """Return the list of quantity-limit checks the row must satisfy.
 
-    expected == 0.0 means there is no basis to check (skip the quantity block).
+    Each item: {'scope', 'label', 'expected', 'handled'} where `handled` excludes
+    this row (exclude_id). A check with expected <= 0 is skipped by
+    compute_rejections, so an empty/zero basis simply means 'no check'.
+
+    VCN rows are limited by two tiers:
+      - 'vessel': total handled across the whole VCN vs the sum of BL across the
+                  vessel's cargo declarations (import + export).
+      - 'barge' : handled for this barge/trip vs the barge line discharge_quantity.
+    MBC rows are limited by two tiers:
+      - 'bl_header': total handled across the whole MBC vs mbc_header.bl_quantity.
+      - 'cargo'    : handled for this row's cargo vs the summed customer-details
+                     quantity for that cargo.
     `exclude_id` is the row's own id (None for new rows); it is excluded from the
-    handled sum so re-saving an existing row never double-counts itself.
+    handled sums so re-saving an existing row never double-counts itself.
     """
     source_type = data.get('source_type')
     source_id = data.get('source_id')
-    barge_name = data.get('barge_name')
     if not source_type or not source_id:
-        return 0.0, 0.0
+        return []
+
+    checks = []
 
     if source_type == 'VCN':
-        if not barge_name:
-            return 0.0, 0.0
-        cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s', [source_id])
-        ldud = cur.fetchone()
-        if not ldud:
-            return 0.0, 0.0
+        # ── Tier 1: whole-vessel BL (sum of import + export cargo declarations) ──
         cur.execute('''
-            SELECT barge_name, trip_number,
-                   COALESCE(SUM(discharge_quantity), 0) AS expected_qty
-            FROM ldud_barge_lines
-            WHERE ldud_id = %s AND barge_name IS NOT NULL AND barge_name != ''
-            GROUP BY barge_name, trip_number
-        ''', [ldud['id']])
-        expected = 0.0
-        for r in cur.fetchall():
-            trip = r['trip_number'] or ''
-            display = f"{r['barge_name']} / {trip}" if trip else r['barge_name']
-            if display == barge_name:
-                expected = float(r['expected_qty'] or 0)
-                break
+            SELECT COALESCE((SELECT SUM(bl_quantity) FROM vcn_cargo_declaration WHERE vcn_id = %s), 0)
+                 + COALESCE((SELECT SUM(bl_quantity) FROM vcn_export_cargo_declaration WHERE vcn_id = %s), 0)
+                   AS vessel_bl
+        ''', [source_id, source_id])
+        vessel_bl = float(cur.fetchone()['vessel_bl'] or 0)
         cur.execute('''
             SELECT COALESCE(SUM(quantity), 0) AS handled
             FROM lueu_lines
-            WHERE source_type = 'VCN' AND source_id = %s AND barge_name = %s
+            WHERE source_type = 'VCN' AND source_id = %s
               AND (is_deleted IS NOT TRUE) AND id != %s
-        ''', [source_id, barge_name, exclude_id or 0])
-        handled = float(cur.fetchone()['handled'] or 0)
-        return expected, handled
+        ''', [source_id, exclude_id or 0])
+        vessel_handled = float(cur.fetchone()['handled'] or 0)
+        checks.append({'scope': 'vessel', 'label': 'vessel quantity',
+                       'expected': vessel_bl, 'handled': vessel_handled})
+
+        # ── Tier 2: this barge/trip's discharge_quantity ──
+        barge_name = data.get('barge_name')
+        if barge_name:
+            cur.execute('SELECT id FROM ldud_header WHERE vcn_id = %s', [source_id])
+            ldud = cur.fetchone()
+            if ldud:
+                cur.execute('''
+                    SELECT barge_name, trip_number,
+                           COALESCE(SUM(discharge_quantity), 0) AS expected_qty
+                    FROM ldud_barge_lines
+                    WHERE ldud_id = %s AND barge_name IS NOT NULL AND barge_name != ''
+                    GROUP BY barge_name, trip_number
+                ''', [ldud['id']])
+                expected = 0.0
+                for r in cur.fetchall():
+                    trip = r['trip_number'] or ''
+                    display = f"{r['barge_name']} / {trip}" if trip else r['barge_name']
+                    if display == barge_name:
+                        expected = float(r['expected_qty'] or 0)
+                        break
+                cur.execute('''
+                    SELECT COALESCE(SUM(quantity), 0) AS handled
+                    FROM lueu_lines
+                    WHERE source_type = 'VCN' AND source_id = %s AND barge_name = %s
+                      AND (is_deleted IS NOT TRUE) AND id != %s
+                ''', [source_id, barge_name, exclude_id or 0])
+                handled = float(cur.fetchone()['handled'] or 0)
+                checks.append({'scope': 'barge', 'label': 'barge quantity',
+                               'expected': expected, 'handled': handled})
+        return checks
 
     if source_type == 'MBC':
-        cur.execute('''
-            SELECT CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
-                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
-            FROM mbc_header m
-            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
-            WHERE m.id = %s
-            GROUP BY m.id, m.bl_quantity
-        ''', [source_id])
+        # ── Tier 1: header BL quantity ──
+        cur.execute('SELECT COALESCE(bl_quantity, 0) AS bl FROM mbc_header WHERE id = %s', [source_id])
         row = cur.fetchone()
-        expected = float(row['bl_qty'] or 0) if row else 0.0
+        header_bl = float(row['bl'] or 0) if row else 0.0
         cur.execute('''
             SELECT COALESCE(SUM(quantity), 0) AS handled
             FROM lueu_lines
             WHERE source_type = 'MBC' AND source_id = %s
               AND (is_deleted IS NOT TRUE) AND id != %s
         ''', [source_id, exclude_id or 0])
-        handled = float(cur.fetchone()['handled'] or 0)
-        return expected, handled
+        total_handled = float(cur.fetchone()['handled'] or 0)
+        checks.append({'scope': 'bl_header', 'label': 'BL header quantity',
+                       'expected': header_bl, 'handled': total_handled})
 
-    return 0.0, 0.0
+        # ── Tier 2: this cargo's customer-details quantity ──
+        cargo_name = data.get('cargo_name')
+        if cargo_name:
+            cur.execute('''
+                SELECT COALESCE(SUM(quantity), 0) AS cargo_qty
+                FROM mbc_customer_details
+                WHERE mbc_id = %s AND cargo_name = %s
+            ''', [source_id, cargo_name])
+            cargo_qty = float(cur.fetchone()['cargo_qty'] or 0)
+            cur.execute('''
+                SELECT COALESCE(SUM(quantity), 0) AS handled
+                FROM lueu_lines
+                WHERE source_type = 'MBC' AND source_id = %s AND cargo_name = %s
+                  AND (is_deleted IS NOT TRUE) AND id != %s
+            ''', [source_id, cargo_name, exclude_id or 0])
+            cargo_handled = float(cur.fetchone()['handled'] or 0)
+            checks.append({'scope': 'cargo', 'label': 'customer cargo quantity',
+                           'expected': cargo_qty, 'handled': cargo_handled})
+        return checks
+
+    return []
 
 
 def _overlap_candidates(cur, data, exclude_id):
@@ -204,23 +264,48 @@ def _over_group_key(r):
 
 
 def _over_quantity_by(cur, rows):
-    """Return {over_group_key: over_by} for `rows`.
+    """Return {row_id: {'scopes': [label, ...], 'over_by': float}} for `rows`.
 
-    over_by > 0 means the barge/MBC group's TOTAL non-deleted handled qty exceeds
-    its trip qty. Batched (≤5 queries) and mirrors _resolve_trip_quantity's math.
-    Shared by get_all_lines (historical badge) and the Excel export.
+    A scope is present for a row when its group's TOTAL non-deleted handled qty
+    exceeds the corresponding limit (the same two tiers _resolve_trip_limits
+    enforces at save time):
+      VCN → 'vessel quantity' (whole VCN vs cargo-declaration BL),
+            'barge quantity'  (barge/trip vs barge-line discharge qty).
+      MBC → 'BL header quantity'      (whole MBC vs header BL),
+            'customer cargo quantity' (per-cargo vs customer-details qty).
+    `over_by` is the largest single overflow among the row's breached scopes.
+    Batched; shared by get_all_lines (on-screen badge) and the Excel export.
     """
     vcn_ids = {r['source_id'] for r in rows
                if r.get('source_type') == 'VCN' and r.get('source_id')}
     mbc_ids = {r['source_id'] for r in rows
                if r.get('source_type') == 'MBC' and r.get('source_id')}
 
-    vcn_expected = {}   # (vcn_id, barge_display) -> expected discharge qty
-    vcn_handled = {}    # (vcn_id, barge_name)    -> total handled qty
+    vcn_vessel_bl = {}      # vcn_id -> total cargo-declaration BL
+    vcn_total_handled = {}  # vcn_id -> total handled across the VCN
+    vcn_barge_expected = {} # (vcn_id, barge_display) -> barge discharge qty
+    vcn_barge_handled = {}  # (vcn_id, barge_name)     -> handled for that barge
     if vcn_ids:
         ph = ','.join(['%s'] * len(vcn_ids))
         ids = list(vcn_ids)
-        # one ldud_header per vcn (first wins, mirroring _resolve_trip_quantity)
+        cur.execute(f'''
+            SELECT vcn_id, COALESCE(SUM(bl_quantity), 0) AS bl FROM (
+                SELECT vcn_id, bl_quantity FROM vcn_cargo_declaration WHERE vcn_id IN ({ph})
+                UNION ALL
+                SELECT vcn_id, bl_quantity FROM vcn_export_cargo_declaration WHERE vcn_id IN ({ph})
+            ) t GROUP BY vcn_id
+        ''', ids + ids)
+        for r in cur.fetchall():
+            vcn_vessel_bl[r['vcn_id']] = float(r['bl'] or 0)
+        cur.execute(f'''
+            SELECT source_id, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'VCN' AND source_id IN ({ph}) AND (is_deleted IS NOT TRUE)
+            GROUP BY source_id
+        ''', ids)
+        for r in cur.fetchall():
+            vcn_total_handled[r['source_id']] = float(r['handled'] or 0)
+        # one ldud_header per vcn (first wins, mirroring _resolve_trip_limits)
         cur.execute(f'SELECT id, vcn_id FROM ldud_header WHERE vcn_id IN ({ph})', ids)
         first_lduds = {}   # ldud_id -> vcn_id
         seen_vcn = set()
@@ -243,7 +328,7 @@ def _over_quantity_by(cur, rows):
                     continue
                 trip = br['trip_number'] or ''
                 display = f"{br['barge_name']} / {trip}" if trip else br['barge_name']
-                vcn_expected[(vcn_id, display)] = float(br['expected_qty'] or 0)
+                vcn_barge_expected[(vcn_id, display)] = float(br['expected_qty'] or 0)
         cur.execute(f'''
             SELECT source_id, barge_name, COALESCE(SUM(quantity), 0) AS handled
             FROM lueu_lines
@@ -252,47 +337,72 @@ def _over_quantity_by(cur, rows):
             GROUP BY source_id, barge_name
         ''', ids)
         for hr in cur.fetchall():
-            vcn_handled[(hr['source_id'], hr['barge_name'])] = float(hr['handled'] or 0)
+            vcn_barge_handled[(hr['source_id'], hr['barge_name'])] = float(hr['handled'] or 0)
 
-    mbc_expected = {}   # mbc_id -> expected qty
-    mbc_handled = {}    # mbc_id -> total handled qty
+    mbc_header_bl = {}      # mbc_id -> header BL qty
+    mbc_total_handled = {}  # mbc_id -> total handled across the MBC
+    mbc_cargo_qty = {}      # (mbc_id, cargo) -> customer-details qty for that cargo
+    mbc_cargo_handled = {}  # (mbc_id, cargo) -> handled for that cargo
     if mbc_ids:
         ph = ','.join(['%s'] * len(mbc_ids))
         ids = list(mbc_ids)
-        cur.execute(f'''
-            SELECT m.id,
-                   CASE WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
-                        ELSE COALESCE(m.bl_quantity, 0) END AS bl_qty
-            FROM mbc_header m
-            LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
-            WHERE m.id IN ({ph})
-            GROUP BY m.id, m.bl_quantity
-        ''', ids)
+        cur.execute(f'SELECT id, COALESCE(bl_quantity, 0) AS bl FROM mbc_header WHERE id IN ({ph})', ids)
         for mr in cur.fetchall():
-            mbc_expected[mr['id']] = float(mr['bl_qty'] or 0)
+            mbc_header_bl[mr['id']] = float(mr['bl'] or 0)
         cur.execute(f'''
             SELECT source_id, COALESCE(SUM(quantity), 0) AS handled
             FROM lueu_lines
-            WHERE source_type = 'MBC' AND source_id IN ({ph})
-              AND (is_deleted IS NOT TRUE)
+            WHERE source_type = 'MBC' AND source_id IN ({ph}) AND (is_deleted IS NOT TRUE)
             GROUP BY source_id
         ''', ids)
         for hr in cur.fetchall():
-            mbc_handled[hr['source_id']] = float(hr['handled'] or 0)
+            mbc_total_handled[hr['source_id']] = float(hr['handled'] or 0)
+        cur.execute(f'''
+            SELECT mbc_id, cargo_name, COALESCE(SUM(quantity), 0) AS qty
+            FROM mbc_customer_details
+            WHERE mbc_id IN ({ph}) AND cargo_name IS NOT NULL
+            GROUP BY mbc_id, cargo_name
+        ''', ids)
+        for mr in cur.fetchall():
+            mbc_cargo_qty[(mr['mbc_id'], mr['cargo_name'])] = float(mr['qty'] or 0)
+        cur.execute(f'''
+            SELECT source_id, cargo_name, COALESCE(SUM(quantity), 0) AS handled
+            FROM lueu_lines
+            WHERE source_type = 'MBC' AND source_id IN ({ph})
+              AND (is_deleted IS NOT TRUE) AND cargo_name IS NOT NULL
+            GROUP BY source_id, cargo_name
+        ''', ids)
+        for hr in cur.fetchall():
+            mbc_cargo_handled[(hr['source_id'], hr['cargo_name'])] = float(hr['handled'] or 0)
 
     over = {}
     for r in rows:
-        key = _over_group_key(r)
-        if key is None or key in over:
-            continue
-        st, sid, barge = key
-        if st == 'VCN':
-            e = vcn_expected.get((sid, barge), 0)
-            h = vcn_handled.get((sid, barge), 0)
-        else:
-            e = mbc_expected.get(sid, 0)
-            h = mbc_handled.get(sid, 0)
-        over[key] = round(h - e, 3) if (e > 0 and h > e) else 0
+        rid = r.get('id')
+        st = r.get('source_type'); sid = r.get('source_id')
+        scopes = []
+        over_by = 0.0
+        if st == 'VCN' and sid:
+            vbl = vcn_vessel_bl.get(sid, 0); vh = vcn_total_handled.get(sid, 0)
+            if vbl > 0 and vh > vbl:
+                scopes.append('vessel quantity'); over_by = max(over_by, vh - vbl)
+            barge = r.get('barge_name')
+            if barge:
+                be = vcn_barge_expected.get((sid, barge), 0)
+                bh = vcn_barge_handled.get((sid, barge), 0)
+                if be > 0 and bh > be:
+                    scopes.append('barge quantity'); over_by = max(over_by, bh - be)
+        elif st == 'MBC' and sid:
+            hbl = mbc_header_bl.get(sid, 0); th = mbc_total_handled.get(sid, 0)
+            if hbl > 0 and th > hbl:
+                scopes.append('BL header quantity'); over_by = max(over_by, th - hbl)
+            cargo = r.get('cargo_name')
+            if cargo:
+                cq = mbc_cargo_qty.get((sid, cargo), 0)
+                ch = mbc_cargo_handled.get((sid, cargo), 0)
+                if cq > 0 and ch > cq:
+                    scopes.append('customer cargo quantity'); over_by = max(over_by, ch - cq)
+        if scopes and rid is not None:
+            over[rid] = {'scopes': scopes, 'over_by': round(over_by, 3)}
     return over
 
 
@@ -387,9 +497,10 @@ def get_all_lines(page=1, size=20, equipment_name=None, filters=None):
     # validation enforces, so a flagged row is exactly one the rule would block).
     over_map = _over_quantity_by(cur, rows)
     for r in rows:
-        over_by = over_map.get(_over_group_key(r), 0)
-        r['_qty_over_group'] = over_by > 0
-        r['_qty_over_by'] = over_by
+        info = over_map.get(r.get('id'))
+        r['_qty_over_group'] = bool(info)
+        r['_qty_over_by'] = info['over_by'] if info else 0
+        r['_qty_over_scopes'] = info['scopes'] if info else []
 
     conn.close()
 
@@ -443,8 +554,10 @@ def get_export_rows():
         r['diff_hrs'] = _diff_hrs(r.get('from_time'), r.get('to_time'))
         issues = []
         if not r.get('is_deleted'):
-            if over_map.get(_over_group_key(r), 0) > 0:
-                issues.append('possible over quantity')
+            info = over_map.get(r.get('id'))
+            if info:
+                for scope_label in info['scopes']:
+                    issues.append('over ' + scope_label)
             if r.get('id') in overlap_ids:
                 issues.append('possible overlap')
         r['issues'] = '; '.join(issues)
@@ -467,9 +580,9 @@ def save_line(data):
     line_id = data.get('id')
 
     # ── Validation: blank (but reject) over-limit quantity and overlapping times ──
-    trip_expected, trip_handled = _resolve_trip_quantity(cur, data, line_id)
+    limit_checks = _resolve_trip_limits(cur, data, line_id)
     overlap = _overlap_candidates(cur, data, line_id)
-    data, rejections = compute_rejections(data, trip_expected, trip_handled, overlap)
+    data, rejections = compute_rejections(data, limit_checks, overlap)
 
     if line_id:
         cur.execute('''
@@ -907,22 +1020,17 @@ def get_dashboard_data():
         })
 
     # ── Active MBCs ──────────────────────────────────────────────────────────
-    # Aggregate customer_details quantities per MBC; fall back to mbc_header.bl_quantity
-    # if no customer rows exist yet.
+    # Basis is the header BL quantity — the tier-1 limit the LUEU save-time
+    # validation enforces (per-cargo customer-details limits are tier-2 and shown
+    # in the per-cargo BL progress panel, not here).
     cur.execute('''
         SELECT
             m.id, m.doc_num, m.mbc_name, m.doc_status,
             COALESCE(m.cargo_name, '') AS cargo_name,
             COALESCE(m.quantity_uom, '') AS uom,
-            CASE
-                WHEN COUNT(cd.id) > 0 THEN COALESCE(SUM(cd.quantity), 0)
-                ELSE COALESCE(m.bl_quantity, 0)
-            END AS bl_quantity
+            COALESCE(m.bl_quantity, 0) AS bl_quantity
         FROM mbc_header m
-        LEFT JOIN mbc_customer_details cd ON cd.mbc_id = m.id
         WHERE m.doc_status != 'Closed'
-        GROUP BY m.id, m.doc_num, m.mbc_name, m.doc_status,
-                 m.cargo_name, m.quantity_uom, m.bl_quantity
         ORDER BY m.id DESC
     ''')
     mbc_declarations = cur.fetchall()
