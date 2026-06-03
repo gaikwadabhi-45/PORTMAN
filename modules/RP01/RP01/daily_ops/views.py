@@ -1347,7 +1347,6 @@ def daily_ops_preview():
     <table style='width:100%;border-collapse:collapse;font-family:Arial'>
         <tr style='background:#4a90d9;color:white'>
             <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
-            <th style='border:1px solid #ccc;padding:8px'>Owner</th>
             <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
             <th style='border:1px solid #ccc;padding:8px'>Date</th>
@@ -1361,37 +1360,18 @@ def daily_ops_preview():
 
         html += f"""
         <tr style="background-color:{row_color};">
-
-            <td style='border:1px solid #ccc;padding:8px'>
-                {m['mbc_name']}
-            </td>
-
-            <td style='border:1px solid #ccc;padding:8px'>
-                {m.get('owner', '-')}
-            </td>
-
-            <td style='border:1px solid #ccc;padding:8px'>
-                {m['cargo_name']}
-            </td>
-
-            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
-                {float(m['bl_quantity']):,.2f}
-            </td>
-
-            <td style='border:1px solid #ccc;padding:8px'>
-                {m['event_date'] if m['event_date'] else '-'}
-            </td>
-
-            <td style='border:1px solid #ccc;padding:8px'>
-                {m['status']}
-            </td>
-
+            <td style='border:1px solid #ccc;padding:8px'>{m['mbc_name']}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{m.get('owner','-')}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{m['cargo_name']}</td>
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>{float(m['bl_quantity']):,.2f}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{m['event_date'] if m['event_date'] else '-'}</td>
+            <td style='border:1px solid #ccc;padding:8px'>{m['status']}</td>
         </tr>
         """
 
-
-
-        html += "</table>"
+    html += """
+    </table>
+    """
 
     return html
 
