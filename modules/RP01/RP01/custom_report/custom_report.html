@@ -548,6 +548,7 @@ td.pvtAxisContainer.pvtCols::before {
             <option value="vessel-ops">Vessel Operation</option>
             <option value="vessel-barge">Vessel - Barge Lines</option>
             <option value="lueu-equipment">LUEU - Equipment Utilization</option>
+            <option value="lueu-historical">LUEU (incl. historical)</option>
             <option value="mbc-tat">MBC TAT Analysis</option>
         </select>
     </div>
@@ -674,6 +675,11 @@ const DATE_COLS = {
         ],
     },
     'lueu-equipment': {
+        filterable: [
+            { key: 'entry_date', label: 'Date' },
+        ],
+    },
+    'lueu-historical': {
         filterable: [
             { key: 'entry_date', label: 'Date' },
         ],
@@ -1355,6 +1361,7 @@ function srcLabel(s) {
         'vessel-ops':     'Vessel Operation',
         'vessel-barge':   'Vessel - Barge Lines',
         'lueu-equipment': 'LUEU - Equipment Utilization',
+        'lueu-historical': 'LUEU (incl. historical)',
         'mbc-tat':        'MBC TAT Analysis',
     }[s] || s;
 }
