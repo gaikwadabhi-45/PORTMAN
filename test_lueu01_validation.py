@@ -68,42 +68,85 @@ def _row(**over):
     base.update(over)
     return base
 
+def _limit(scope, label, expected, handled):
+    return {'scope': scope, 'label': label, 'expected': expected, 'handled': handled}
+
+# A single barge limit (mirrors the legacy single-tier behaviour).
+_BARGE_LIMIT = [_limit('barge', 'barge quantity', 200.0, 100.0)]
+
 def test_quantity_under_remaining_is_kept():
     clean, rej = model.compute_rejections(_row(quantity=50.0),
-                                          trip_expected=200.0, trip_handled=100.0,
-                                          overlap_candidates=[])
+                                          _BARGE_LIMIT, overlap_candidates=[])
     assert clean['quantity'] == 50.0
     assert rej == []
 
 def test_quantity_over_remaining_is_blanked_and_reported():
     clean, rej = model.compute_rejections(_row(quantity=150.0),
-                                          trip_expected=200.0, trip_handled=100.0,
-                                          overlap_candidates=[])
+                                          _BARGE_LIMIT, overlap_candidates=[])
     assert clean['quantity'] is None
     assert len(rej) == 1
     assert rej[0]['field'] == 'quantity'
     assert rej[0]['remaining'] == 100.0
     assert rej[0]['attempted'] == 150.0
+    assert rej[0]['scope'] == 'barge'
+    assert rej[0]['scope_label'] == 'barge quantity'
 
 def test_quantity_not_checked_when_no_expected():
     clean, rej = model.compute_rejections(_row(quantity=9999.0),
-                                          trip_expected=0.0, trip_handled=0.0,
+                                          [_limit('barge', 'barge quantity', 0.0, 0.0)],
                                           overlap_candidates=[])
+    assert clean['quantity'] == 9999.0
+    assert rej == []
+
+def test_quantity_no_limits_at_all_is_kept():
+    clean, rej = model.compute_rejections(_row(quantity=9999.0), [], overlap_candidates=[])
     assert clean['quantity'] == 9999.0
     assert rej == []
 
 def test_quantity_exactly_remaining_is_kept():
     clean, rej = model.compute_rejections(_row(quantity=100.0),
-                                          trip_expected=200.0, trip_handled=100.0,
-                                          overlap_candidates=[])
+                                          _BARGE_LIMIT, overlap_candidates=[])
     assert clean['quantity'] == 100.0
     assert rej == []
+
+def test_quantity_reports_tightest_limit_when_multiple_breached():
+    # vessel allows 120 remaining, barge allows only 40 remaining → report barge.
+    limits = [
+        _limit('vessel', 'vessel quantity', 1000.0, 880.0),  # remaining 120
+        _limit('barge', 'barge quantity', 200.0, 160.0),     # remaining 40
+    ]
+    clean, rej = model.compute_rejections(_row(quantity=150.0), limits, overlap_candidates=[])
+    assert clean['quantity'] is None
+    assert len(rej) == 1
+    assert rej[0]['scope'] == 'barge'
+    assert rej[0]['remaining'] == 40.0
+
+def test_quantity_breaches_only_vessel_tier():
+    # under the barge limit but over the vessel total.
+    limits = [
+        _limit('vessel', 'vessel quantity', 500.0, 480.0),   # remaining 20
+        _limit('barge', 'barge quantity', 200.0, 50.0),      # remaining 150
+    ]
+    clean, rej = model.compute_rejections(_row(quantity=100.0), limits, overlap_candidates=[])
+    assert clean['quantity'] is None
+    assert rej[0]['scope'] == 'vessel'
+    assert rej[0]['remaining'] == 20.0
+
+def test_mbc_cargo_tier_reported():
+    limits = [
+        _limit('bl_header', 'BL header quantity', 1000.0, 100.0),     # remaining 900
+        _limit('cargo', 'customer cargo quantity', 300.0, 280.0),    # remaining 20
+    ]
+    clean, rej = model.compute_rejections(_row(source_type='MBC', quantity=50.0),
+                                          limits, overlap_candidates=[])
+    assert clean['quantity'] is None
+    assert rej[0]['scope'] == 'cargo'
+    assert rej[0]['scope_label'] == 'customer cargo quantity'
 
 def test_time_overlap_blanks_both_times_and_reports():
     clean, rej = model.compute_rejections(
         _row(from_time='07:00', to_time='09:00'),
-        trip_expected=0.0, trip_handled=0.0,
-        overlap_candidates=[('06:00', '08:00')])
+        [], overlap_candidates=[('06:00', '08:00')])
     assert clean['from_time'] is None
     assert clean['to_time'] is None
     assert len(rej) == 1
@@ -113,8 +156,7 @@ def test_time_overlap_blanks_both_times_and_reports():
 def test_no_time_overlap_keeps_times():
     clean, rej = model.compute_rejections(
         _row(from_time='09:00', to_time='10:00'),
-        trip_expected=0.0, trip_handled=0.0,
-        overlap_candidates=[('06:00', '08:00')])
+        [], overlap_candidates=[('06:00', '08:00')])
     assert clean['from_time'] == '09:00'
     assert clean['to_time'] == '10:00'
     assert rej == []
@@ -122,8 +164,7 @@ def test_no_time_overlap_keeps_times():
 def test_both_rejections_can_fire_together():
     clean, rej = model.compute_rejections(
         _row(quantity=150.0, from_time='07:00', to_time='09:00'),
-        trip_expected=200.0, trip_handled=100.0,
-        overlap_candidates=[('06:00', '08:00')])
+        _BARGE_LIMIT, overlap_candidates=[('06:00', '08:00')])
     fields = {r['field'] for r in rej}
     assert fields == {'quantity', 'time'}
     assert clean['quantity'] is None

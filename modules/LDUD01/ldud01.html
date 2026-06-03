@@ -1086,8 +1086,11 @@
         dirtySubSections = {};
         currentLdudId = ldudId;
 
-        // Set modal title
-        document.getElementById('modalTitle').textContent = `Details for ${data.vessel_name || data.doc_num || 'LDUD'} (${operationType})`;
+        // Set modal title — vessel name plus the cargo name(s) for this record
+        const _baseLabel = data.vessel_name || data.doc_num || 'LDUD';
+        const _cargoLabel = (data.cargo_names_display || '').toString().trim();
+        const _cargoPart = _cargoLabel ? ` | Cargo: ${_cargoLabel}` : '';
+        document.getElementById('modalTitle').textContent = `Details for ${_baseLabel}${_cargoPart} (${operationType})`;
         // Show lock banner for closed records
         let lockBanner = document.getElementById('modalLockBanner');
         if (!lockBanner) {
@@ -1658,7 +1661,7 @@
                 {title: "End", field: "end_datetime", width: 140, editor: canEdit ? datetimeEditor : false,
                     formatter: datetimeCellFormatter},
                 {title: "Mins", field: "total_time_mins", width: 60, hozAlign: "right"},
-                {title: "Hrs", field: "total_time_hrs", width: 60, hozAlign: "right"},
+                {title: "Hrs", field: "total_time_hrs", width: 60, hozAlign: "right", sorter: "number"},
                 {title: "Minus Hrs", field: "minus_delay_hours", width: 70, editor: canEdit ? "list" : false,
                     editorParams: {values: yesNoOptions}},
                 canEdit ? {title: "", field: "actions", formatter: deleteButtonFormatter, width: 50, hozAlign: "center", headerSort: false,
@@ -2318,6 +2321,11 @@
                 }
             }
         });
+
+        // Keep Delays ordered ascending by Hrs after saving
+        if (type === 'delays' && subTables[ldudId] && subTables[ldudId].delays) {
+            subTables[ldudId].delays.setSort('total_time_hrs', 'asc');
+        }
 
         clearDirty(type);
         if (!silent) showSubStatus(type, ldudId, `Saved ${savedCount} row(s)`);

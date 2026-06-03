@@ -812,7 +812,9 @@
                     }
                     let overBadge = '';
                     if (data._qty_over_group) {
-                        overBadge = '<span class="qty-over-badge" title="This barge/MBC is over its trip quantity by ' + (data._qty_over_by || 0).toLocaleString() + ' — please correct.">&#9888; OVER</span>';
+                        const scopeTxt = (data._qty_over_scopes && data._qty_over_scopes.length)
+                            ? data._qty_over_scopes.join(', ') : 'trip quantity';
+                        overBadge = '<span class="qty-over-badge" title="Over ' + scopeTxt + ' by ' + (data._qty_over_by || 0).toLocaleString() + ' — please correct.">&#9888; OVER</span>';
                     }
                     return '<span style="font-weight:500">' + parseFloat(val).toLocaleString() + '</span>' + badge + overBadge;
                 }},
@@ -1122,8 +1124,9 @@
                 (result.rejections || []).forEach(function(rej) {
                     if (rej.field === 'quantity') {
                         upd.quantity = null;
+                        const scopeTxt = rej.scope_label ? ` ${rej.scope_label}` : ' trip quantity';
                         rejectionMessages.push(
-                            `${currentEquipment} / ${label}: quantity ${rej.attempted} exceeds remaining ${rej.remaining} — quantity not saved.`);
+                            `${currentEquipment} / ${label}: quantity ${rej.attempted} exceeds remaining ${rej.remaining} for${scopeTxt} — quantity not saved.`);
                     } else if (rej.field === 'time') {
                         upd.from_time = null;
                         upd.to_time = null;
