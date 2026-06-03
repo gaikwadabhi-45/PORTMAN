@@ -860,51 +860,52 @@
     .dark-theme .shift-table td {
         color: #e2e8f0;
     }
-    .legend-wrapper{
-    position:relative;
-}
 
-.legend-icon{
-    color:#4a90d9;
-    font-size:16px;
-    font-weight:bold;
-    cursor:pointer;
-    display:inline-block;
-}
+    .legend-wrapper {
+        position: relative;
+    }
 
-.legend-popup{
-    display:none;
-    position:absolute;
-    right:0;
-    top:35px;
-    min-width:190px;
-    background:#fff;
-    border:1px solid #d9d9d9;
-    border-radius:8px;
-    padding:10px;
-    box-shadow:0 4px 18px rgba(0,0,0,.15);
-    z-index:9999;
-}
+    .legend-icon {
+        color: #4a90d9;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        display: inline-block;
+    }
 
-.legend-wrapper:hover .legend-popup{
-    display:block;
-}
+    .legend-popup {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 35px;
+        min-width: 190px;
+        background: #fff;
+        border: 1px solid #d9d9d9;
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, .15);
+        z-index: 9999;
+    }
 
-.legend-item{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    padding:4px 0;
-    font-size:12px;
-}
+    .legend-wrapper:hover .legend-popup {
+        display: block;
+    }
 
-.legend-color{
-    width:18px;
-    height:18px;
-    border:1px solid #999;
-    border-radius:3px;
-    display:inline-block;
-}
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-size: 12px;
+    }
+
+    .legend-color {
+        width: 18px;
+        height: 18px;
+        border: 1px solid #999;
+        border-radius: 3px;
+        display: inline-block;
+    }
 </style>
 {% endblock %}
 
@@ -957,16 +958,41 @@
         </div>
     </div>
 </div>
-
 <!-- Filter bar -->
 <div class="filter-bar">
-
     <div class="filter-group">
-        <label for="filter-from">From Date</label>
-        <input type="date" id="filter-from" title="From Date">
+        <label for="filter-from">FROM</label>
+        <input type="datetime-local" id="filter-from" title="From Date & Time">
     </div>
-    <div class="filter-group">
 
+    <div class="filter-group">
+        <label for="filter-to">TO</label>
+        <input type="datetime-local" id="filter-to" title="To Date & Time">
+    </div>
+
+    <div class="filter-group">
+        <label for="column-filter">Column (Trip Start to Discharge End)</label>
+        <select id="column-filter" title="Select Column">
+            <option value="">-- Select Column --</option>
+            <option value="trip_start">Trip Start</option>
+            <option value="anchored_gull_island">Anchored Gull Island</option>
+            <option value="aweigh_gull_island">Aweigh Gull Island</option>
+            <option value="along_side_vessel">Alongside Vessel (MV)</option>
+            <option value="commenced_loading">Loading Start</option>
+            <option value="completed_loading">Loading End</option>
+            <option value="cast_off_mv">Cast Off MV</option>
+            <option value="anchored_gull_island_empty">Anch. Gull Island (Loaded)</option>
+            <option value="aweigh_gull_island_empty">Aweigh Gull Island (Loaded)</option>
+            <option value="amf_at_port">AMF at Port</option>
+            <option value="along_side_berth">Alongside Berth</option>
+            <option value="commence_discharge_berth">Discharge Start (Berth)</option>
+            <option value="completed_discharge_berth">Discharge End (Berth)</option>
+            <option value="cast_off_berth_nt">Cast Off Berth NT</option>
+            <option value="cast_off_port">Cast Off Port</option>
+        </select>
+    </div>
+
+    <div class="filter-group">
         <label for="date-field-filter">
             Filter Basis
         </label>
@@ -999,6 +1025,7 @@
         </select>
 
     </div>
+
     <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
     <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
     <button type="button" class="filter-btn" onclick="toggleAdvancedFilters()" style="background:#6c5ce7;color:white;">
@@ -1007,50 +1034,50 @@
     <button type="button" class="filter-btn dl-all" id="dl-all-btn" onclick="downloadAll()">&#8595; Download
         All</button>
 
-  <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
 
-    <div class="legend-wrapper">
+        <div class="legend-wrapper">
 
-          <span class="legend-icon">ⓘ</span>
+            <span class="legend-icon">ⓘ</span>
 
-        <div class="legend-popup">
+            <div class="legend-popup">
 
-            <div class="legend-item">
-                <span class="legend-color" style="background:#fff2cc;"></span>
-                In Transit
-            </div>
+                <div class="legend-item">
+                    <span class="legend-color" style="background:#fff2cc;"></span>
+                    In Transit
+                </div>
 
-            <div class="legend-item">
-                <span class="legend-color" style="background:#d9d2e9;"></span>
-                Currently Loading
-            </div>
+                <div class="legend-item">
+                    <span class="legend-color" style="background:#d9d2e9;"></span>
+                    Currently Loading
+                </div>
 
-            <div class="legend-item">
-                <span class="legend-color" style="background:#bdd7ee;"></span>
-                Loaded & Waiting
-            </div>
+                <div class="legend-item">
+                    <span class="legend-color" style="background:#bdd7ee;"></span>
+                    Loaded & Waiting
+                </div>
 
-            <div class="legend-item">
-                <span class="legend-color" style="background:#ffe699;"></span>
-                Under Discharge
-            </div>
+                <div class="legend-item">
+                    <span class="legend-color" style="background:#ffe699;"></span>
+                    Under Discharge
+                </div>
 
-            <div class="legend-item">
-                <span class="legend-color" style="background:#c6efce;"></span>
-                Completed Discharge
+                <div class="legend-item">
+                    <span class="legend-color" style="background:#c6efce;"></span>
+                    Completed Discharge
+                </div>
+
             </div>
 
         </div>
 
-    </div>
-
-    <div style="font-size:12px;color:var(--text-primary);line-height:1.6;padding-top:6px;">
+        <!-- <div style="font-size:12px;color:var(--text-primary);line-height:1.6;padding-top:6px;">
         <div id="date-range-display">—</div>
+    </div> -->
+
+
+
     </div>
-
-    
-
-</div>
 </div>
 
 
@@ -1111,21 +1138,14 @@
 <script>
     /* ── Formatters ──────────────────────────────────────── */
     function dtFormatter(cell) {
+
         const v = cell.getValue();
-        if (!v) return '<span style="color:var(--text-secondary)">—</span>';
-        // Convert ISO datetime → DD-MM-YYYY HH:MM for display
-        try {
-            const d = new Date(v);
-            if (isNaN(d)) return v;
-            const dd = String(d.getDate()).padStart(2, '0');
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const yyyy = d.getFullYear();
-            const hh = String(d.getHours()).padStart(2, '0');
-            const min = String(d.getMinutes()).padStart(2, '0');
-            return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
-        } catch (e) {
-            return v;
+
+        if (!v) {
+            return '<span style="color:var(--text-secondary)">—</span>';
         }
+
+        return v;
     }
 
     function numFormatter(cell) {
@@ -1206,7 +1226,28 @@
                 width: 130,
                 hozAlign: 'right',
                 headerHozAlign: 'center',
-                formatter: numFormatter,
+
+                formatter: function (cell) {
+
+                    const v = Number(cell.getValue() || 0);
+
+                    if (v < 0) {
+                        return `
+        <span style="
+            color:#dc2626;
+            font-weight:700;
+            font-size:10px;
+            white-space:nowrap;
+            display:inline-block;
+        ">
+            OVER 
+        </span>
+        ${Math.abs(v).toLocaleString('en-IN')}
+    `;
+                    }
+
+                    return v.toLocaleString('en-IN');
+                }
             },
             {
                 title: 'Trip Start',
@@ -1398,51 +1439,30 @@
                 const data = row.getData();
                 const el = row.getElement();
 
-                let statusLabel = '';
-                let bgColor = '';
+                const STATUS_COLORS = {
+                    'completed_discharge': '#c6efce',
+                    'under_discharge': '#ffe699',
+                    'loaded_waiting': '#bdd7ee',
+                    'currently_loading': '#d9d2e9',
+                    'in_transit': '#fff2cc',
+                };
 
-                if (
-                    data.completed_discharge_berth &&
-                    String(data.completed_discharge_berth).trim() !== ''
-                ) {
-                    bgColor = '#c6efce';
-                    statusLabel = 'Completed Discharge';
-                }
-                else if (
-                    data.commence_discharge_berth &&
-                    String(data.commence_discharge_berth).trim() !== ''
-                ) {
-                    bgColor = '#ffe699';
-                    statusLabel = 'Under Discharge';
-                }
-                else if (
-                    data.completed_loading &&
-                    String(data.completed_loading).trim() !== ''
-                ) {
-                    bgColor = '#bdd7ee';
-                    statusLabel = 'Loaded & Waiting';
-                }
-                else if (
-                    data.commenced_loading &&
-                    String(data.commenced_loading).trim() !== ''
-                ) {
-                    bgColor = '#d9d2e9';
-                    statusLabel = 'Currently Loading';
-                }
-                else if (
-                    data.trip_start &&
-                    String(data.trip_start).trim() !== ''
-                ) {
-                    bgColor = '#fff2cc';
-                    statusLabel = '🚢 In Transit';
-                }
+                const STATUS_LABELS = {
+                    'completed_discharge': 'Completed Discharge',
+                    'under_discharge': 'Under Discharge',
+                    'loaded_waiting': 'Loaded & Waiting',
+                    'currently_loading': 'Currently Loading',
+                    'in_transit': '🚢 In Transit',
+                };
 
-                if (bgColor) {
-                    el.style.backgroundColor = bgColor;
-                }
+                // Backend ने set केलेला current_status वापर
+                const status = data.current_status || '';
 
-                if (statusLabel) {
-                    el.setAttribute('data-status', statusLabel);
+                if (STATUS_COLORS[status]) {
+                    el.style.backgroundColor = STATUS_COLORS[status];
+                }
+                if (STATUS_LABELS[status]) {
+                    el.setAttribute('data-status', STATUS_LABELS[status]);
                 }
             },
 
@@ -1495,28 +1515,71 @@
 
     // Update display when date input changes
     document.addEventListener('DOMContentLoaded', function () {
-        const dateInput = document.getElementById('filter-from');
-        if (dateInput) {
-            dateInput.addEventListener('change', updateDateRangeDisplay);
-            // Set initial date to today and display range
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            dateInput.value = `${year}-${month}-${day}`;
-            updateDateRangeDisplay();
+
+        const fromInput = document.getElementById('filter-from');
+        const toInput = document.getElementById('filter-to');
+
+        const now = new Date();
+
+        // FROM = Today 06:00 AM
+        const fromDate = new Date(now);
+        fromDate.setHours(6, 0, 0, 0);
+
+        // TO = Tomorrow 06:00 AM
+        const toDate = new Date(fromDate);
+        toDate.setDate(toDate.getDate() + 1);
+
+        const formatDateTimeLocal = (d) => {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+
+            return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+        };
+
+        if (fromInput) {
+            fromInput.value = formatDateTimeLocal(fromDate);
+        }
+
+        if (toInput) {
+            toInput.value = formatDateTimeLocal(toDate);
         }
     });
+
+    // Update date and time display
+    function updateDateTimeDisplay() {
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const selectedColumn = document.getElementById('column-filter').value;
+
+        console.log('From:', fromDate, 'To:', toDate, 'Column:', selectedColumn);
+    }
 
     function applyFilters() {
 
         const selectedDate =
             document.getElementById('filter-from').value;
 
+        const selectedToDate =
+            document.getElementById('filter-to').value;
+
+        const selectedColumn =
+            document.getElementById('column-filter').value;
+
         const params = new URLSearchParams();
 
         if (selectedDate) {
             params.set('from_date', selectedDate);
+        }
+
+        if (selectedToDate) {
+            params.set('to_date', selectedToDate);
+        }
+
+        if (selectedColumn) {
+            params.set('column_filter', selectedColumn);
         }
 
         const selectedFilter =
@@ -1574,19 +1637,28 @@
 
         const now = new Date();
 
-        const year =
-            now.getFullYear();
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
 
-        const month =
-            String(now.getMonth() + 1).padStart(2, '0');
+        const yesterdayYear = yesterday.getFullYear();
+        const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0');
+        const yesterdayDay = String(yesterday.getDate()).padStart(2, '0');
 
-        const day =
-            String(now.getDate()).padStart(2, '0');
+        const todayYear = now.getFullYear();
+        const todayMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const todayDay = String(now.getDate()).padStart(2, '0');
 
         document.getElementById('filter-from').value =
-            `${year}-${month}-${day}`;
+            `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}T06:00`;
 
-        updateDateRangeDisplay();
+        document.getElementById('filter-to').value =
+            `${todayYear}-${todayMonth}-${todayDay}T06:00`;
+
+        document.getElementById('column-filter').value = '';
+
+        document.getElementById('status-filter').value = 'all';
+
+        updateDateTimeDisplay();
 
         applyFilters();
     }
@@ -1620,6 +1692,8 @@
     /* ── Download All (multi-sheet) ──────────────────────── */
     function downloadAll() {
         const selectedDate = document.getElementById('filter-from').value;
+        const selectedToDate = document.getElementById('filter-to').value;
+        const selectedColumn = document.getElementById('column-filter').value;
         const btn = document.getElementById('dl-all-btn');
         const loader = document.getElementById('download-loader');
 
@@ -1664,6 +1738,8 @@
 
         const params = new URLSearchParams();
         if (selectedDate) params.set('from_date', selectedDate);
+        if (selectedToDate) params.set('to_date', selectedToDate);
+        if (selectedColumn) params.set('column_filter', selectedColumn);
         const selectedFilter =
             document.getElementById(
                 'status-filter'
@@ -1717,147 +1793,147 @@
             });
     }
     function renderShiftPreview(data) {
-    const wrapper = document.getElementById('shift-preview');
-    wrapper.innerHTML = '';
+        const wrapper = document.getElementById('shift-preview');
+        wrapper.innerHTML = '';
 
-    const equipments = [
-        'Barge Unloader 1',
-        'Barge Unloader 2',
-        'SANY 285-Exavator',
-        'Sennebogen J1',
-        'Sennebogen J5',
-        'BUL-01',
-        'BUL-02',
-        'BUL-03',
-        'BUL-04',
-        'BUL-05'
-    ];
+        const equipments = [
+            'Barge Unloader 1',
+            'Barge Unloader 2',
+            'SANY 285-Exavator',
+            'Sennebogen J1',
+            'Sennebogen J5',
+            'BUL-01',
+            'BUL-02',
+            'BUL-03',
+            'BUL-04',
+            'BUL-05'
+        ];
 
-    const shiftDefs = [
-        { name: 'A Shift', start: 6,  end: 14 },
-        { name: 'B Shift', start: 14, end: 22 },
-        { name: 'C Shift', start: 22, end: 30 }  // 30 = next day 06:00
-    ];
+        const shiftDefs = [
+            { name: 'A Shift', start: 6, end: 14 },
+            { name: 'B Shift', start: 14, end: 22 },
+            { name: 'C Shift', start: 22, end: 30 }  // 30 = next day 06:00
+        ];
 
-    /* ── assign each row to exactly ONE shift ── */
-    function getShiftHour(row) {
-        const raw = String(row.trip_start || '');
-        if (!raw) return null;
-        try {
-            const timePart = raw.includes('T')
-                ? raw.split('T')[1]
-                : raw.split(' ')[1];
-            if (!timePart) return null;
-            return parseInt(timePart.split(':')[0]);
-        } catch (e) { return null; }
-    }
+        /* ── assign each row to exactly ONE shift ── */
+        function getShiftHour(row) {
+            const raw = String(row.trip_start || '');
+            if (!raw) return null;
+            try {
+                const timePart = raw.includes('T')
+                    ? raw.split('T')[1]
+                    : raw.split(' ')[1];
+                if (!timePart) return null;
+                return parseInt(timePart.split(':')[0]);
+            } catch (e) { return null; }
+        }
 
-    function assignShift(hr) {
-        if (hr === null) return null;
-        if (hr >= 6  && hr < 14) return 0;   // A
-        if (hr >= 14 && hr < 22) return 1;   // B
-        return 2;                              // C (22–05)
-    }
+        function assignShift(hr) {
+            if (hr === null) return null;
+            if (hr >= 6 && hr < 14) return 0;   // A
+            if (hr >= 14 && hr < 22) return 1;   // B
+            return 2;                              // C (22–05)
+        }
 
-    /* ── build per-shift equipment maps ── */
-    // shiftRows[shiftIdx][equipName] = [row, row, ...]
-    const shiftRows = shiftDefs.map(() => {
-        const map = {};
-        equipments.forEach(eq => { map[eq] = []; });
-        return map;
-    });
-
-    // shiftAllRows[shiftIdx] = unique rows in that shift (for shift total)
-    const shiftAllRows = [[], [], []];
-
-    data.forEach(row => {
-        if (!row.trip_start) return;
-        const hr = getShiftHour(row);
-        const si = assignShift(hr);
-        if (si === null) return;
-
-        shiftAllRows[si].push(row);
-
-        const unload = (row.unloaded_by || '').trim();
-        if (!unload) return;
-
-        unload.split(',').map(x => x.trim()).forEach(eq => {
-            if (shiftRows[si][eq] !== undefined) {
-                shiftRows[si][eq].push(row);
-            }
+        /* ── build per-shift equipment maps ── */
+        // shiftRows[shiftIdx][equipName] = [row, row, ...]
+        const shiftRows = shiftDefs.map(() => {
+            const map = {};
+            equipments.forEach(eq => { map[eq] = []; });
+            return map;
         });
-    });
 
-    /* ── grand totals per equipment (sum across all shifts, qty counted once per row per equipment) ── */
-    const grandEqTotals = {};
-    equipments.forEach(eq => {
-        grandEqTotals[eq] = shiftDefs.reduce((sum, _, si) => {
-            return sum + shiftRows[si][eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+        // shiftAllRows[shiftIdx] = unique rows in that shift (for shift total)
+        const shiftAllRows = [[], [], []];
+
+        data.forEach(row => {
+            if (!row.trip_start) return;
+            const hr = getShiftHour(row);
+            const si = assignShift(hr);
+            if (si === null) return;
+
+            shiftAllRows[si].push(row);
+
+            const unload = (row.unloaded_by || '').trim();
+            if (!unload) return;
+
+            unload.split(',').map(x => x.trim()).forEach(eq => {
+                if (shiftRows[si][eq] !== undefined) {
+                    shiftRows[si][eq].push(row);
+                }
+            });
+        });
+
+        /* ── grand totals per equipment (sum across all shifts, qty counted once per row per equipment) ── */
+        const grandEqTotals = {};
+        equipments.forEach(eq => {
+            grandEqTotals[eq] = shiftDefs.reduce((sum, _, si) => {
+                return sum + shiftRows[si][eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+            }, 0);
+        });
+
+        /* ── grand overall total = sum of all unique rows' qty across all shifts ── */
+        const grandOverall = [0, 1, 2].reduce((total, si) => {
+            return total + shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
         }, 0);
-    });
 
-    /* ── grand overall total = sum of all unique rows' qty across all shifts ── */
-    const grandOverall = [0, 1, 2].reduce((total, si) => {
-        return total + shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
-    }, 0);
+        /* ── render each shift card ── */
+        shiftDefs.forEach((shift, si) => {
+            const map = shiftRows[si];
+            const isLastShift = si === shiftDefs.length - 1;
 
-    /* ── render each shift card ── */
-    shiftDefs.forEach((shift, si) => {
-        const map = shiftRows[si];
-        const isLastShift = si === shiftDefs.length - 1;
+            // shift total = sum of all rows in this shift (each row counted once)
+            const shiftTotal = shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
 
-        // shift total = sum of all rows in this shift (each row counted once)
-        const shiftTotal = shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
-
-        let html = `
+            let html = `
         <div class="shift-card">
             <div class="shift-header">${shift.name}</div>
             <div style="overflow-x:auto;">
             <table class="shift-table">
                 <thead><tr>`;
 
-        equipments.forEach(eq => {
-            html += `<th colspan="4" style="background:#c6efce;color:#006100;text-align:center;">${eq}</th>`;
-        });
-
-        html += `</tr><tr>`;
-        equipments.forEach(() => {
-            html += `<th>Barge</th><th>Qty</th><th>Cargo</th><th>MV</th>`;
-        });
-        html += `</tr></thead><tbody>`;
-
-        const maxRows = Math.max(...equipments.map(eq => map[eq].length), 1);
-
-        for (let i = 0; i < maxRows; i++) {
-            html += `<tr>`;
             equipments.forEach(eq => {
-                const row = map[eq][i];
-                if (row) {
-                    html += `
+                html += `<th colspan="4" style="background:#c6efce;color:#006100;text-align:center;">${eq}</th>`;
+            });
+
+            html += `</tr><tr>`;
+            equipments.forEach(() => {
+                html += `<th>Barge</th><th>Qty</th><th>Cargo</th><th>MV</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            const maxRows = Math.max(...equipments.map(eq => map[eq].length), 1);
+
+            for (let i = 0; i < maxRows; i++) {
+                html += `<tr>`;
+                equipments.forEach(eq => {
+                    const row = map[eq][i];
+                    if (row) {
+                        html += `
                     <td>${row.barge_name || ''}</td>
                     <td style="text-align:right;">${Number(row.qty_mt || 0).toLocaleString('en-IN')}</td>
                     <td>${row.cargo_type || ''}</td>
                     <td>${row.mother_vessel_name || ''}</td>`;
-                } else {
-                    html += `<td></td><td></td><td></td><td></td>`;
-                }
-            });
-            html += `</tr>`;
-        }
+                    } else {
+                        html += `<td></td><td></td><td></td><td></td>`;
+                    }
+                });
+                html += `</tr>`;
+            }
 
-        /* equipment totals row (yellow) */
-        html += `<tr style="background:#ffe699;font-weight:700;">`;
-        equipments.forEach(eq => {
-            const t = map[eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
-            html += `
+            /* equipment totals row (yellow) */
+            html += `<tr style="background:#ffe699;font-weight:700;">`;
+            equipments.forEach(eq => {
+                const t = map[eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+                html += `
             <td style="text-align:center;">Total</td>
             <td style="text-align:right;">${t.toLocaleString('en-IN')}</td>
             <td colspan="2"></td>`;
-        });
-        html += `</tr>`;
+            });
+            html += `</tr>`;
 
-        /* shift total row (blue) */
-        html += `
+            /* shift total row (blue) */
+            html += `
         <tr style="background:#bdd7ee;font-weight:700;">
             <td colspan="${equipments.length * 4}"
                 style="text-align:right;padding-right:20px;">
@@ -1865,45 +1941,39 @@
             </td>
         </tr>`;
 
-        /* grand total row — only after C Shift */
-        if (isLastShift) {
-            html += `<tr style="background:#c6e0f5;font-weight:700;font-size:12px;color:#0c4a6e;">`;
-            html += `<td style="white-space:nowrap;text-align:center;border-left:3px solid #4a7ab5;">All Shifts</td>`;
-            equipments.forEach((eq, idx) => {
-                const val = grandEqTotals[eq];
-                if (idx === 0) {
-                    html += `<td style="text-align:right;">${val.toLocaleString('en-IN')}</td><td colspan="2"></td>`;
-                } else {
-                    html += `<td style="border-left:3px solid #4a7ab5;"></td>
+            /* grand total row — only after C Shift */
+            if (isLastShift) {
+                html += `<tr style="background:#c6e0f5;font-weight:700;font-size:12px;color:#0c4a6e;">`;
+                html += `<td style="white-space:nowrap;text-align:center;border-left:3px solid #4a7ab5;">All Shifts</td>`;
+                equipments.forEach((eq, idx) => {
+                    const val = grandEqTotals[eq];
+                    if (idx === 0) {
+                        html += `<td style="text-align:right;">${val.toLocaleString('en-IN')}</td><td colspan="2"></td>`;
+                    } else {
+                        html += `<td style="border-left:3px solid #4a7ab5;"></td>
                              <td style="text-align:right;">${val.toLocaleString('en-IN')}</td>
                              <td colspan="2"></td>`;
-                }
-            });
-            html += `</tr>`;
+                    }
+                });
+                html += `</tr>`;
 
-            html += `<tr style="background:#bdd7ee;font-weight:700;">
+                html += `<tr style="background:#bdd7ee;font-weight:700;">
                 <td colspan="${equipments.length * 4}"
                     style="text-align:right;padding-right:20px;color:#0c4a6e;font-size:13px;">
                     Grand Total (All Shifts) : ${grandOverall.toLocaleString('en-IN')} MT
                 </td>
             </tr>`;
-        }
+            }
 
-        html += `</tbody></table></div></div>`;
-        wrapper.innerHTML += html;
-    });
-}
+            html += `</tbody></table></div></div>`;
+            wrapper.innerHTML += html;
+        });
+    }
     /* ── On load — auto-fetch current month ──────────────── */
     document.addEventListener('DOMContentLoaded', function () {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
 
-        document.getElementById('filter-from').value =
-            `${year}-${month}-${day}`;
+        applyFilters();
 
-        applyFilters();   // ← triggers the fetch immediately on page load
         addFilterRow();
 
     });
