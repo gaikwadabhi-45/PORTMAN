@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Historical Data - RP01{% endblock %}
+{% block content %}
+<div class="module-header">
+    <h2>Historical Data (LUEU)</h2>
+    <span class="module-code">RP01</span>
+</div>
+
+<div style="padding:14px;max-width:1100px;">
+    <div style="background:#fffbeb;border:1px solid #f6e05e;color:#744210;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;">
+        ⚠ Uploading <b>replaces ALL</b> historical data with the file's contents (delete &amp; insert).
+        Keep one master file with all backdated rows. Live LUEU data is never touched.
+    </div>
+
+    <div style="margin-bottom:14px;font-size:13px;">
+        Current dataset:
+        <b id="hd-count">{{ status.count }}</b> rows
+        {% if status.uploaded_at %}<span style="color:#718096;">— last upload {{ status.uploaded_at }}</span>{% endif %}
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+        <a class="btn" href="/api/module/RP01/historical/template"
+           style="background:#3182ce;color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:13px;">⬇ Download Template</a>
+        <input type="file" id="hd-file" accept=".xlsx,.xls,.csv" style="font-size:13px;">
+        <button class="btn" onclick="hdPreview()" style="background:#805ad5;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:13px;">Preview &amp; Reconcile</button>
+        <button class="btn" id="hd-apply" onclick="hdApply()" disabled style="background:#48bb78;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:13px;opacity:0.5;">Apply (Replace All)</button>
+    </div>
+
+    <div id="hd-result" style="font-size:13px;"></div>
+</div>
+
+<script>
+let hdValid = false;
+
+function hdFile() {
+    const f = document.getElementById('hd-file').files[0];
+    if (!f) { alert('Choose a file first.'); return null; }
+    const fd = new FormData(); fd.append('file', f); return fd;
+}
+
+async function hdPreview() {
+    const fd = hdFile(); if (!fd) return;
+    document.getElementById('hd-result').innerHTML = 'Checking…';
+    const res = await fetch('/api/module/RP01/historical/preview', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.error) { document.getElementById('hd-result').innerHTML = `<span style="color:#c53030">${d.error}</span>`; return; }
+    let html = `<div style="margin-bottom:8px;">Parsed <b>${d.total_rows}</b> data row(s).</div>`;
+    if (d.format_errors.length) {
+        hdValid = false;
+        html += `<div style="background:#fed7d7;color:#c53030;padding:8px 12px;border-radius:4px;margin-bottom:10px;">
+            <b>${d.format_errors.length} format error(s)</b> — fix these before applying:<ul style="margin:6px 0 0;">`
+            + d.format_errors.slice(0,50).map(e=>`<li>Row ${e.row}: ${e.message}</li>`).join('') + `</ul></div>`;
+    } else {
+        hdValid = true;
+        html += `<div style="background:#c6f6d5;color:#276749;padding:8px 12px;border-radius:4px;margin-bottom:10px;">No format errors — ready to apply.</div>`;
+    }
+    // reconciliation
+    for (const [col, info] of Object.entries(d.reconciliation)) {
+        if (!info.unknown.length) continue;
+        html += `<div style="margin-bottom:8px;"><b>${col}</b> — ${info.unknown.length} value(s) not in master:`
+            + `<table style="font-size:12px;border-collapse:collapse;margin-top:4px;"><tr style="background:#edf2f7;"><th style="border:1px solid #cbd5e0;padding:3px 8px;">Value</th><th style="border:1px solid #cbd5e0;padding:3px 8px;">Count</th><th style="border:1px solid #cbd5e0;padding:3px 8px;">Did you mean?</th></tr>`
+            + info.unknown.slice(0,100).map(u=>`<tr><td style="border:1px solid #cbd5e0;padding:3px 8px;">${u.value}</td><td style="border:1px solid #cbd5e0;padding:3px 8px;text-align:right;">${u.count}</td><td style="border:1px solid #cbd5e0;padding:3px 8px;color:#3182ce;">${(u.suggestions||[]).join(', ')}</td></tr>`).join('')
+            + `</table></div>`;
+    }
+    html += `<div style="color:#718096;font-size:12px;margin-top:6px;">Unknown values are allowed (stored as-is) — they just won't match cargo/delay enrichment or filters. Fix spellings in the file and re-preview if needed.</div>`;
+    document.getElementById('hd-result').innerHTML = html;
+    const applyBtn = document.getElementById('hd-apply');
+    applyBtn.disabled = !hdValid;
+    applyBtn.style.opacity = hdValid ? '1' : '0.5';
+}
+
+async function hdApply() {
+    if (!hdValid) return;
+    if (!confirm('This will DELETE all existing historical rows and insert this file. Continue?')) return;
+    const fd = hdFile(); if (!fd) return;
+    const res = await fetch('/api/module/RP01/historical/apply', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.error) { alert(d.error + (d.format_errors ? '\n' + d.format_errors.slice(0,10).map(e=>`Row ${e.row}: ${e.message}`).join('\n') : '')); return; }
+    document.getElementById('hd-count').textContent = d.inserted;
+    document.getElementById('hd-result').innerHTML = `<div style="background:#c6f6d5;color:#276749;padding:10px 14px;border-radius:4px;">✓ Replaced historical data — ${d.inserted} row(s) inserted.</div>`;
+}
+</script>
+{% endblock %}
