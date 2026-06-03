@@ -134,6 +134,20 @@
         <div class="card-arrow">Open Live &rarr;</div>
     </a>
 
+    {% if session.get('is_admin') %}
+    <!-- Historical Data (admin only) -->
+    <a class="report-card" href="/module/RP01/historical-data/">
+        <div class="card-icon">
+            <span style="font-size:28px;">🗄️</span>
+        </div>
+        <div class="card-title">Historical Data (Admin)</div>
+        <div class="card-desc">
+            Upload backdated LUEU data (CSV/Excel) for use in reports &amp; dashboards. Replaces the historical dataset; live data is untouched.
+        </div>
+        <div class="card-arrow">Open &rarr;</div>
+    </a>
+    {% endif %}
+
     <!-- Vessel SOF -->
     <a class="report-card" href="/module/RP01/vessel-sof/">
         <div class="card-icon">
