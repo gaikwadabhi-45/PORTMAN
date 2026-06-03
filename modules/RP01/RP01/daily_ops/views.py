@@ -669,36 +669,41 @@ def _fetch_upcoming_mbcs(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
-        SELECT
-            h.id,
-            h.mbc_name,
-            m.mbc_owner_name AS owner,
-            h.cargo_name,
-            h.bl_quantity,
-            l.eta AS event_time,
-            l.eta AS event_date,
-            'ETA' AS status
+    SELECT
+        h.id,
+        h.mbc_name,
+        m.mbc_owner_name AS owner,
+        h.cargo_name,
+        h.bl_quantity,
 
-        FROM mbc_header h
+        l.fwd_draft,
+        l.mid_draft,
+        l.aft_draft,
 
-        JOIN mbc_load_port_lines l
-            ON l.mbc_id = h.id
+        l.eta AS event_time,
+        l.eta AS event_date,
+        'ETA' AS status
 
-        LEFT JOIN mbc_master m
-            ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
+    FROM mbc_header h
 
-        WHERE
-            NULLIF(TRIM(l.eta::text), '') IS NOT NULL
+    JOIN mbc_load_port_lines l
+        ON l.mbc_id = h.id
 
-            AND NOT EXISTS (
-                SELECT 1
-                FROM mbc_discharge_port_lines d
-                WHERE d.mbc_id = h.id
-                  AND NULLIF(TRIM(d.arrival_gull_island::text), '') IS NOT NULL
-            )
+    LEFT JOIN mbc_master m
+        ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
 
-        ORDER BY l.eta
-    """)
+    WHERE
+        NULLIF(TRIM(l.eta::text), '') IS NOT NULL
+
+        AND NOT EXISTS (
+            SELECT 1
+            FROM mbc_discharge_port_lines d
+            WHERE d.mbc_id = h.id
+              AND NULLIF(TRIM(d.arrival_gull_island::text), '') IS NOT NULL
+        )
+
+    ORDER BY l.eta
+""")
 
     rows = cur.fetchall()
 
@@ -1347,8 +1352,12 @@ def daily_ops_preview():
     <table style='width:100%;border-collapse:collapse;font-family:Arial'>
         <tr style='background:#4a90d9;color:white'>
             <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Owner</th>
             <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
+            <th style='border:1px solid #ccc;padding:8px'>FWD</th>
+            <th style='border:1px solid #ccc;padding:8px'>MID</th>
+            <th style='border:1px solid #ccc;padding:8px'>AFT</th>
             <th style='border:1px solid #ccc;padding:8px'>Date</th>
             <th style='border:1px solid #ccc;padding:8px'>Status</th>
         </tr>
@@ -1360,12 +1369,44 @@ def daily_ops_preview():
 
         html += f"""
         <tr style="background-color:{row_color};">
-            <td style='border:1px solid #ccc;padding:8px'>{m['mbc_name']}</td>
-            <td style='border:1px solid #ccc;padding:8px'>{m.get('owner','-')}</td>
-            <td style='border:1px solid #ccc;padding:8px'>{m['cargo_name']}</td>
-            <td style='border:1px solid #ccc;padding:8px;text-align:right'>{float(m['bl_quantity']):,.2f}</td>
-            <td style='border:1px solid #ccc;padding:8px'>{m['event_date'] if m['event_date'] else '-'}</td>
-            <td style='border:1px solid #ccc;padding:8px'>{m['status']}</td>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['mbc_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m.get('owner', '-')}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['cargo_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {float(m['bl_quantity']):,.2f}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {m['fwd_draft'] if m['fwd_draft'] else '-'}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {m['mid_draft'] if m['mid_draft'] else '-'}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {m['aft_draft'] if m['aft_draft'] else '-'}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {datetime.fromisoformat(m['event_date']).strftime('%d-%m-%Y %H:%M')
+                if m['event_date']
+                    else '-'
+                }
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m['status']}
+            </td>
         </tr>
         """
 
