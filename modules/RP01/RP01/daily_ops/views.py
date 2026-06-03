@@ -567,8 +567,6 @@ def _fetch_discharging_mbcs(report_date):
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
             THEN 'DISCHARGING'
 
             WHEN
@@ -604,8 +602,6 @@ def _fetch_discharging_mbcs(report_date):
             p.unloading_completed IS NULL
             OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
     )
 
     OR
@@ -648,11 +644,9 @@ def _fetch_discharging_mbcs(report_date):
 
     """, (
         window_start, window_end,          # CASE ARRIVED
-        window_start, window_end,          # CASE DISCHARGING
         completion_start, completion_end,  # CASE COMPLETED
 
         window_start, window_end,          # WHERE ARRIVED
-        window_start, window_end,          # WHERE DISCHARGING
         completion_start, completion_end   # WHERE COMPLETED
     ))
 
@@ -677,26 +671,24 @@ def _fetch_upcoming_mbcs(report_date):
             l.eta AS event_time,
             l.eta AS event_date,
             'ETA' AS status
+
         FROM mbc_header h
+
         JOIN mbc_load_port_lines l
             ON l.mbc_id = h.id
+
         WHERE
-            NULLIF(TRIM(l.eta), '') IS NOT NULL
+            NULLIF(TRIM(l.eta::text), '') IS NOT NULL
+
             AND NOT EXISTS (
                 SELECT 1
                 FROM mbc_discharge_port_lines d
                 WHERE d.mbc_id = h.id
-                AND d.arrival_gull_island IS NOT NULL
+                  AND NULLIF(TRIM(d.arrival_gull_island::text), '') IS NOT NULL
             )
+
         ORDER BY l.eta
     """)
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return rows
 
     rows = cur.fetchall()
 
