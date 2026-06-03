@@ -713,6 +713,7 @@ def _fetch_upcoming_mbcs(report_date):
     conn.close()
 
     return rows
+    
 
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
