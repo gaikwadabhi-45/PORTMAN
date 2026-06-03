@@ -447,69 +447,71 @@ def _fetch_upcoming_vessels(report_date):
 
     cur.execute("""
     SELECT
-        vh.vessel_name,
+    vh.vessel_name,
 
-        vc.cargo_name,
+    vc.cargo_name,
 
-        COALESCE(vc.bl_quantity, 0) AS bl_quantity,
+    COALESCE(vc.bl_quantity, 0) AS bl_quantity,
 
-        vh.vessel_agent_name,
+    vh.vessel_agent_name,
 
-        CASE
-            WHEN lh.nor_tendered IS NULL
-                THEN 'ETA : ' ||
-                     TO_CHAR(vn.eta::timestamp, 'DD-MM-YYYY HH24:MI')
+    CASE
+        WHEN lh.nor_tendered IS NULL
+            THEN 'ETA : ' ||
+                 TO_CHAR(vn.eta::timestamp, 'DD-MM-YYYY HH24:MI')
 
-            WHEN lh.nor_tendered IS NOT NULL
-                 AND fa.discharge_started IS NULL
-                THEN 'ARRIVED AT : ' ||
-                     TO_CHAR(lh.nor_tendered::timestamp, 'DD-MM-YYYY HH24:MI')
-        END AS eta,
+        WHEN lh.nor_tendered IS NOT NULL
+             AND fa.discharge_started IS NULL
+            THEN 'ARRIVED AT : ' ||
+                 TO_CHAR(lh.nor_tendered::timestamp, 'DD-MM-YYYY HH24:MI')
+    END AS eta,
 
-        CASE
-            WHEN lh.nor_tendered IS NULL
-                THEN 'ETA'
+    CASE
+        WHEN lh.nor_tendered IS NULL
+            THEN 'ETA'
 
-            WHEN lh.nor_tendered IS NOT NULL
-                 AND fa.discharge_started IS NULL
-                THEN 'ARRIVED'
-        END AS vessel_status,
+        WHEN lh.nor_tendered IS NOT NULL
+             AND fa.discharge_started IS NULL
+            THEN 'ARRIVED'
+    END AS vessel_status,
 
-            COALESCE(
+    COALESCE(
         lh.nor_tendered::timestamp,
         vn.eta::timestamp
     ) AS status_time
-        FROM vcn_header vh
 
-    JOIN vcn_nominations vn
-        ON vn.vcn_id = vh.id
+FROM vcn_header vh
 
-    LEFT JOIN ldud_header lh
-        ON lh.vcn_id = vh.id
+JOIN vcn_nominations vn
+    ON vn.vcn_id = vh.id
 
-    LEFT JOIN vcn_cargo_declaration vc
-        ON vc.vcn_id = vh.id
+LEFT JOIN ldud_header lh
+    ON lh.vcn_id = vh.id
 
-    LEFT JOIN LATERAL (
-        SELECT MIN(a.discharge_started) AS discharge_started
-        FROM ldud_anchorage a
-        WHERE a.ldud_id = lh.id
-    ) fa ON TRUE
+LEFT JOIN vcn_cargo_declaration vc
+    ON vc.vcn_id = vh.id
 
-    WHERE
+LEFT JOIN LATERAL (
+    SELECT MIN(a.discharge_started) AS discharge_started
+    FROM ldud_anchorage a
+    WHERE a.ldud_id = lh.id
+) fa ON TRUE
+
+WHERE
+    fa.discharge_started IS NULL
+    AND
     (
-        lh.nor_tendered IS NULL
-        AND vn.eta::timestamp >= %s
+        (
+            lh.nor_tendered IS NULL
+            AND vn.eta::timestamp >= %s
+        )
+        OR
+        (
+            lh.nor_tendered IS NOT NULL
+        )
     )
 
-    OR
-
-    (
-        lh.nor_tendered IS NOT NULL
-        AND fa.discharge_started IS NULL
-    )
-
-    ORDER BY status_time
+ORDER BY status_time;
     """, (report_date,))
 
     rows = cur.fetchall()
@@ -713,6 +715,7 @@ def _fetch_upcoming_mbcs(report_date):
     conn.close()
 
     return rows
+    
 
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
