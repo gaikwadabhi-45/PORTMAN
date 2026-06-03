@@ -711,7 +711,86 @@ def _fetch_upcoming_mbcs(report_date):
     conn.close()
 
     return rows
-    
+
+def _fetch_cargo_availability(report_date):
+
+    window_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        6, 0, 0
+    )
+
+    window_start = window_end - timedelta(days=1)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            h.cargo_name,
+
+            CASE
+                WHEN SUM(COALESCE(l.qty, 0)) > 0
+                THEN
+                    SUM(COALESCE(h.bl_quantity, 0))
+                    -
+                    SUM(COALESCE(l.qty, 0))
+                ELSE NULL
+            END AS at_jetty_qty
+
+        FROM mbc_header h
+
+        LEFT JOIN (
+
+            SELECT
+                cargo_name,
+                SUM(COALESCE(quantity, 0)) AS qty
+
+            FROM lueu_lines
+
+            WHERE source_type = 'MBC'
+
+              AND (
+                    TO_DATE(entry_date, 'YYYY-MM-DD')
+                    +
+                    COALESCE(
+                        NULLIF(from_time, ''),
+                        '00:00'
+                    )::time
+                  ) >= %s
+
+              AND (
+                    TO_DATE(entry_date, 'YYYY-MM-DD')
+                    +
+                    COALESCE(
+                        NULLIF(from_time, ''),
+                        '00:00'
+                    )::time
+                  ) < %s
+
+            GROUP BY cargo_name
+
+        ) l
+            ON TRIM(h.cargo_name) = TRIM(l.cargo_name)
+
+        GROUP BY
+            h.cargo_name
+
+        ORDER BY
+            h.cargo_name
+
+    """, (
+        window_start,
+        window_end
+    ))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
 
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
@@ -1413,7 +1492,76 @@ def daily_ops_preview():
     html += """
     </table>
     """
+    cargo_availability = _fetch_cargo_availability(report_date)
 
+    html += """
+    <br><br>
+    <h3 style='text-align:center'>Cargo Availability for the Day</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial;font-size:12px'>
+    """
+
+    # Header Row
+    html += """
+    <tr style='background:#f2f2f2;font-weight:bold'>
+        <th style='border:1px solid #000;padding:6px'></th>
+    """
+
+    for c in cargo_availability:
+        html += f"""
+        <th style='border:1px solid #000;padding:6px;text-align:center'>
+            {c['cargo_name']}
+        </th>
+        """
+
+    html += "</tr>"
+
+    # At Jetty Row
+    html += """
+    <tr>
+        <td style='border:1px solid #000;padding:6px;font-weight:bold'>
+            At Jetty
+        </td>
+    """
+
+    grand_total = 0
+
+    for c in cargo_availability:
+
+        qty = float(c["at_jetty_qty"] or 0)
+
+        grand_total += qty
+
+        html += f"""
+        <td style='border:1px solid #000;padding:6px;text-align:right'>
+            {qty:,.0f}
+        </td>
+        """
+
+    html += "</tr>"
+
+    # Total Row
+    html += """
+    <tr style='background:#f2f2f2;font-weight:bold'>
+        <td style='border:1px solid #000;padding:6px'>
+            Total
+        </td>
+    """
+
+    for c in cargo_availability:
+
+        qty = float(c["at_jetty_qty"] or 0)
+
+        html += f"""
+        <td style='border:1px solid #000;padding:6px;text-align:right'>
+            {qty:,.0f}
+        </td>
+        """
+
+    html += """
+    </tr>
+    </table>
+    """
     return html
 
 # ── Download endpoint ───────────────────────────────────────────────────────
