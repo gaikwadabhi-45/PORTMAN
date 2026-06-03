@@ -87,9 +87,15 @@ The page shows:
     - `from_time` / `to_time` → `HH:MM` (24-hr)
     - `quantity` → number
     - `equipment_name` → **required**
-    - `source_display` = vessel name for vessel ops; `barge_name` = barge name
-      (vessel ops) or MBC name (MBC ops); everything else free text.
-- **Sheet 2 "Masters"** — one column per master, populated **live at export
+    - **Source convention:** enter the vessel name **or** the MBC name in
+      `source_display`. For a **vessel** source, put the barge name in
+      `barge_name`. For an **MBC** source, put the MBC name in **both**
+      `source_display` and `barge_name`. Leave both blank for equipment-only
+      delays. Everything else is free text.
+- **Sheet 2 "Example"** — sample rows illustrating a vessel unloading + delay
+  (barge in `barge_name`), an MBC unloading (MBC name in both columns), and an
+  equipment-only delay (no source). Same headers, no dropdowns.
+- **Sheet 3 "Masters"** — one column per master, populated **live at export
   time** from the DB (see master map in §5): Equipment, Cargo, Delay, Route,
   System, Berth, Operator, Shift Incharge, Barge, MBC, Vessel.
 - **Dropdowns**: each master-backed column on the Data sheet gets an Excel
@@ -126,10 +132,11 @@ The page shows:
    | operator_name | `port_shift_operators.name` |
    | shift_incharge | `port_shift_incharge.name` (PSMM01) |
    | barge_name | `barges.barge_name` **or** `mbc_master.mbc_name` |
-   | source_display | `vessels.vessel_name` |
+   | source_display | `vessels.vessel_name` **or** `mbc_master.mbc_name` |
 
-   `barge_name` counts as recognized if it matches **either** the barge master
-   **or** the MBC master (since the column carries both).
+   `source_display` and `barge_name` each count as recognized if they match
+   **either** the vessel/barge master **or** the MBC master (an MBC source uses
+   the MBC name in both columns).
 
 4. Response: `{ total_rows, format_errors: [...],
    reconciliation: { <column>: { recognized: [...],

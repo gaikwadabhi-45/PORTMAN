@@ -174,10 +174,21 @@ def get_all_masters():
     return masters
 
 
+# Columns that may legitimately hold a vessel name OR an MBC name, so they are
+# reconciled against the union of both masters:
+#   - source_display: vessel name (vessel ops) OR MBC name (MBC ops)
+#   - barge_name:     barge name (vessel ops) OR MBC name (MBC ops)
+UNION_MASTER_KEYS = {
+    'source_display': ['source_display', 'mbc_name'],
+    'barge_name':     ['barge_name', 'mbc_name'],
+}
+
+
 def reconcile(rows, masters):
     """For each master-backed column, split the rows' distinct values into
-    recognized vs unknown (with fuzzy suggestions). barge_name matches against
-    barge OR mbc master. Returns {column: {recognized:[...], unknown:[{value,count,suggestions}]}}."""
+    recognized vs unknown (with fuzzy suggestions). source_display and barge_name
+    match against the vessel/barge master OR the MBC master.
+    Returns {column: {recognized:[...], unknown:[{value,count,suggestions}]}}."""
     out = {}
     cols = list(MASTER_MAP.keys()) + ['barge_name']
     for col in cols:
@@ -187,14 +198,11 @@ def reconcile(rows, masters):
             v = r.get(col)
             if v:
                 counts[v] = counts.get(v, 0) + 1
-        if col == 'barge_name':
-            valid = {str(x).lower() for x in masters.get('barge_name', [])}
-            valid |= {str(x).lower() for x in masters.get('mbc_name', [])}
-            suggest_pool = list(masters.get('barge_name', [])) + list(masters.get('mbc_name', []))
-        else:
-            mvals = masters.get(col, [])
-            valid = {str(x).lower() for x in mvals}
-            suggest_pool = mvals
+        keys = UNION_MASTER_KEYS.get(col, [col])
+        suggest_pool = []
+        for k in keys:
+            suggest_pool += list(masters.get(k, []))
+        valid = {str(x).lower() for x in suggest_pool}
         recognized, unknown = [], []
         for value, count in sorted(counts.items()):
             if str(value).lower() in valid:
@@ -243,11 +251,37 @@ def get_status():
 
 
 # ── Template / upload parsing ────────────────────────────────────────────────
+def _example_rows():
+    """Illustrative sample rows for the Example sheet. Demonstrates a vessel
+    unloading + delay (barge in barge_name), an MBC unloading (MBC name in BOTH
+    source_display and barge_name), and an equipment-only delay (no source)."""
+    return [
+        {'entry_date': '2026-04-01', 'shift': 'A', 'equipment_name': 'BARGE UNLOADER 1',
+         'from_time': '06:00', 'to_time': '08:00', 'source_display': 'M.V EVA SHANGHAI',
+         'barge_name': 'KINGFISHER', 'cargo_name': 'Dolomite', 'quantity': 700,
+         'quantity_uom': 'MT', 'route_name': 'C-131', 'operator_name': 'Harshad Thakur',
+         'shift_incharge': 'Rakesh Mhatre', 'remarks': 'Vessel op — barge unloading'},
+        {'entry_date': '2026-04-01', 'shift': 'A', 'equipment_name': 'BARGE UNLOADER 1',
+         'from_time': '08:00', 'to_time': '08:30', 'source_display': 'M.V EVA SHANGHAI',
+         'barge_name': 'KINGFISHER', 'delay_name': 'Crane idle due to hopper full',
+         'remarks': 'Vessel op — delay (no quantity)'},
+        {'entry_date': '2026-04-01', 'shift': 'B', 'equipment_name': 'BARGE UNLOADER 2',
+         'from_time': '14:00', 'to_time': '16:00', 'source_display': 'JSW ARJUNGAD',
+         'barge_name': 'JSW ARJUNGAD', 'cargo_name': 'BRBF Fines', 'quantity': 500,
+         'quantity_uom': 'MT', 'remarks': 'MBC op — MBC name in BOTH source_display and barge_name'},
+        {'entry_date': '2026-04-02', 'shift': 'A', 'equipment_name': 'BU 1 & BU 2',
+         'from_time': '06:00', 'to_time': '06:30', 'delay_name': 'Hopper Empty Out',
+         'remarks': 'Equipment-only delay — no vessel/MBC source'},
+    ]
+
+
 def build_template_workbook():
-    """Return an openpyxl Workbook: 'Data' sheet (headers + instructions +
-    dropdowns) and 'Masters' sheet (live master values)."""
+    """Return an openpyxl Workbook with three sheets: 'Data' (headers +
+    instructions + dropdowns to fill in), 'Example' (sample rows), and 'Masters'
+    (live master values backing the dropdowns)."""
     import openpyxl
     from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
 
     masters = get_all_masters()
@@ -267,37 +301,67 @@ def build_template_workbook():
         for ri, val in enumerate(masters.get(key, []), start=2):
             ms.cell(ri, ci, val)
 
-    # Data sheet
+    note_font = Font(size=10, italic=True, color='744210')
+    note_fill = PatternFill('solid', fgColor='FFFBEB')
+    hdr_font = Font(bold=True, color='FFFFFF')
+    hdr_fill = PatternFill('solid', fgColor='1E3A5F')
+    wrap = Alignment(wrap_text=True, vertical='top')
+
+    note = (
+        "HOW TO FILL — one row per equipment time-slice (see the Example sheet).\n"
+        "• entry_date = YYYY-MM-DD (required)   • from_time / to_time = HH:MM (24h)   "
+        "• quantity = number (unloading rows only)   • equipment_name = required\n"
+        "• SOURCE: enter the VESSEL name OR the MBC name in 'source_display'.\n"
+        "   – Vessel source → put the barge name in 'barge_name'.\n"
+        "   – MBC source → put the MBC name in BOTH 'source_display' AND 'barge_name'.\n"
+        "• Leave source_display & barge_name blank for equipment-only delays.   "
+        "Pick values from the dropdowns (sourced from the Masters sheet)."
+    )
+
+    def write_grid(ws, with_dropdowns, example_rows=None):
+        ws.cell(1, 1, note).font = note_font
+        ws.cell(1, 1).fill = note_fill
+        ws.cell(1, 1).alignment = wrap
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(COLUMNS))
+        ws.row_dimensions[1].height = 92
+        for ci, key in enumerate(COLUMNS, start=1):
+            c = ws.cell(2, ci, key)
+            c.font = hdr_font
+            c.fill = hdr_fill
+            ws.column_dimensions[get_column_letter(ci)].width = max(14, len(key) + 2)
+        ws.freeze_panes = 'A3'
+        if example_rows:
+            for ri, rec in enumerate(example_rows, start=3):
+                for ci, key in enumerate(COLUMNS, start=1):
+                    ws.cell(ri, ci, rec.get(key))
+        if with_dropdowns:
+            dropdown_for = {
+                'equipment_name': 'equipment_name', 'cargo_name': 'cargo_name',
+                'delay_name': 'delay_name', 'route_name': 'route_name',
+                'system_name': 'system_name', 'berth_name': 'berth_name',
+                'operator_name': 'operator_name', 'shift_incharge': 'shift_incharge',
+                'barge_name': 'barge_name', 'source_display': 'source_display',
+            }
+            for data_key, master_key in dropdown_for.items():
+                if data_key not in COLUMNS:
+                    continue
+                mcol = master_col_letter[master_key]
+                dcol = get_column_letter(COLUMNS.index(data_key) + 1)
+                dv = DataValidation(type='list',
+                                    formula1=f"Masters!${mcol}$2:${mcol}$2000",
+                                    allow_blank=True, showErrorMessage=False)
+                ws.add_data_validation(dv)
+                dv.add(f"{dcol}3:{dcol}10000")
+
+    # Data sheet (fill-in, with dropdowns)
     ds = wb.active
     ds.title = 'Data'
-    note = ("Date=YYYY-MM-DD (required) | From/To=HH:MM (24h) | quantity=number | "
-            "equipment_name required | source_display=vessel name (vessel ops) | "
-            "barge_name=barge name (vessel ops) OR MBC name (MBC ops). Pick from dropdowns where available.")
-    ds.cell(1, 1, note)
-    ds.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(COLUMNS))
-    for ci, key in enumerate(COLUMNS, start=1):
-        ds.cell(2, ci, key)
-        ds.column_dimensions[get_column_letter(ci)].width = max(14, len(key) + 2)
-    ds.freeze_panes = 'A3'
+    write_grid(ds, with_dropdowns=True)
 
-    # Dropdowns: Data column key → master sheet column (skip mbc_name; barge uses barge list)
-    dropdown_for = {
-        'equipment_name': 'equipment_name', 'cargo_name': 'cargo_name',
-        'delay_name': 'delay_name', 'route_name': 'route_name',
-        'system_name': 'system_name', 'berth_name': 'berth_name',
-        'operator_name': 'operator_name', 'shift_incharge': 'shift_incharge',
-        'barge_name': 'barge_name', 'source_display': 'source_display',
-    }
-    for data_key, master_key in dropdown_for.items():
-        if data_key not in COLUMNS:
-            continue
-        mcol = master_col_letter[master_key]
-        dcol = get_column_letter(COLUMNS.index(data_key) + 1)
-        dv = DataValidation(type='list',
-                            formula1=f"Masters!${mcol}$2:${mcol}$2000",
-                            allow_blank=True, showErrorMessage=False)
-        ds.add_data_validation(dv)
-        dv.add(f"{dcol}3:{dcol}10000")
+    # Example sheet (sample rows, no dropdowns) — placed right after Data
+    ex = wb.create_sheet('Example', index=1)
+    write_grid(ex, with_dropdowns=False, example_rows=_example_rows())
+
     return wb
 
 
