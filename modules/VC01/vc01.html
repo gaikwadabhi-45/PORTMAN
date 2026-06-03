@@ -2,6 +2,120 @@
 
 {% block title %}Vessel Creation - PORTMAN{% endblock %}
 
+{% block head %}
+<style>
+    /* Filter panel styles */
+    .filter-panel {
+        background: #f7fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        padding: 12px;
+        margin: 8px 0;
+    }
+    .dark-theme .filter-panel { background: #1e293b; border-color: #334155; }
+    
+    .filter-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .filter-col-select, .filter-text-input, .filter-from, .filter-to {
+        padding: 6px 10px;
+        border: 1px solid #cbd5e0;
+        border-radius: 4px;
+        font-size: 13px;
+        background: white;
+        color: #2d3748;
+    }
+    .dark-theme .filter-col-select,
+    .dark-theme .filter-text-input,
+    .dark-theme .filter-from,
+    .dark-theme .filter-to { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+    
+    .filter-remove {
+        background: #f56565;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .filter-remove:hover { background: #e53e3e; }
+    
+    .filter-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        flex-wrap: wrap;
+    }
+    
+    .btn-filter-add { background: #edf2f7; color: #2d3748; border: 1px solid #cbd5e0; padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .btn-filter-apply { background: #3182ce; color: white; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .btn-filter-clear { background: #e2e8f0; color: #2d3748; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .btn-filter-save { background: #48bb78; color: white; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    
+    .btn-filter-add:hover { background: #e2e8f0; }
+    .btn-filter-apply:hover { background: #2c5aa0; }
+    .btn-filter-clear:hover { background: #cbd5e0; }
+    .btn-filter-save:hover { background: #38a169; }
+    
+    .dark-theme .btn-filter-add { background: #2d3748; color: #e2e8f0; border-color: #4a5568; }
+    .dark-theme .btn-filter-add:hover { background: #4a5568; }
+    .dark-theme .btn-filter-save { background: #2f855a; }
+    .dark-theme .btn-filter-save:hover { background: #22543d; }
+    
+   .saved-filters-bar {
+    margin-top: 8px;
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* ADD this: */
+#savedFiltersList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+    
+    .saved-filters-bar.show { display: flex; }
+    
+    .saved-filter-tag {
+        background: #edf2f7;
+        border: 1px solid #cbd5e0;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .dark-theme .saved-filter-tag { background: #2d3748; color: #e2e8f0; border-color: #4a5568; }
+    
+    .saved-filter-tag:hover { background: #cbd5e0; }
+    .dark-theme .saved-filter-tag:hover { background: #4a5568; }
+    
+    .saved-filter-remove {
+        background: none;
+        border: none;
+        color: #e53e3e;
+        cursor: pointer;
+        font-weight: bold;
+        padding: 0;
+    }
+    
+    .saved-filter-remove:hover { color: #c53030; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="module-header">
     <h2>Vessel Creation</h2>
@@ -13,8 +127,24 @@
     {% if permissions.can_add %}<button class="btn btn-add" onclick="addRow()">+ Add Row</button>{% endif %}
     {% if permissions.can_delete %}<button class="btn btn-delete" onclick="deleteSelected()">Delete Selected</button>{% endif %}
     {% if permissions.can_add or permissions.can_edit %}<button class="btn btn-save" onclick="saveAll()">Save (Ctrl+S)</button>{% endif %}
+    <button class="btn" style="font-size:12px;padding:4px 12px;" onclick="toggleFilterPanel()">⚙ Filters <span id="filterBadge" style="display:none;background:#3182ce;color:white;border-radius:10px;padding:1px 6px;font-size:11px;margin-left:4px;">0</span></button>
     <div class="row-info">
         Rows: <span id="rowCount">0</span> / <span id="totalCount">0</span>
+    </div>
+</div>
+
+<!-- Filter Panel -->
+<div id="filterPanel" class="filter-panel" style="display:none;">
+    <div id="filterRows"></div>
+    <div class="filter-actions">
+        <button class="btn-filter-add" onclick="addFilterRow()">+ Add Filter</button>
+        <button class="btn-filter-apply" onclick="applyFilters()">Apply Filters</button>
+        <button class="btn-filter-save" onclick="saveFilterSet()">💾 Save Filter</button>
+        <button class="btn-filter-clear" onclick="clearAllFilters()">Clear All</button>
+    </div>
+    <div id="savedFiltersBar" class="saved-filters-bar">
+        <strong style="font-size: 12px;">Saved Filters:</strong>
+        <div id="savedFiltersList"></div>
     </div>
 </div>
 
@@ -241,6 +371,228 @@
             saveAll();
         }
     });
+
+    // ── FILTER FUNCTIONS ───────────────────────────────────────────
+    let filters = [];  // Array of active filters
+
+    const filterableColumns = [
+        { name: 'vessel_name', label: 'Vessel Name', type: 'text' },
+        { name: 'imo_num', label: 'IMO No', type: 'text' },
+        { name: 'call_sign', label: 'Call Sign', type: 'text' },
+        { name: 'mmsi_num', label: 'MMSI No', type: 'text' },
+        { name: 'vessel_type_name', label: 'Vessel Type', type: 'text' },
+        { name: 'vessel_category_name', label: 'Vessel Category', type: 'text' },
+        { name: 'nationality', label: 'Flag', type: 'text' },
+        { name: 'gt', label: 'GT', type: 'number' },
+        { name: 'dwt', label: 'DWT', type: 'number' },
+        { name: 'loa', label: 'LOA', type: 'number' },
+        { name: 'beam', label: 'Beam', type: 'number' },
+        { name: 'no_of_holds', label: 'Nos of Hold', type: 'number' },
+        { name: 'num_cranes', label: 'No. of Cranes', type: 'number' },
+        { name: 'year_of_built', label: 'Year of Built', type: 'number' },
+        { name: 'created_date', label: 'Created Date', type: 'date' },
+        { name: 'doc_status', label: 'Doc Status', type: 'text' }
+    ];
+
+    function toggleFilterPanel() {
+        const panel = document.getElementById('filterPanel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    function addFilterRow() {
+        const rowIdx = filters.length;
+        filters.push({ column: '', operator: 'contains', value: '' });
+        renderFilterRows();
+    }
+
+    function removeFilterRow(idx) {
+        filters.splice(idx, 1);
+        renderFilterRows();
+    }
+
+    function renderFilterRows() {
+        const container = document.getElementById('filterRows');
+        container.innerHTML = filters.map((f, idx) => `
+            <div class="filter-row">
+                <select class="filter-col-select" onchange="filters[${idx}].column = this.value; renderFilterRows();">
+                    <option value="">-- Select Column --</option>
+                    ${filterableColumns.map(c => `<option value="${c.name}" ${f.column === c.name ? 'selected' : ''}>${c.label}</option>`).join('')}
+                </select>
+                
+                ${f.column ? `
+                    <select class="filter-col-select" onchange="filters[${idx}].operator = this.value; renderFilterRows();">
+                        <option value="contains" ${f.operator === 'contains' ? 'selected' : ''}>Contains</option>
+                        <option value="equals" ${f.operator === 'equals' ? 'selected' : ''}>Equals</option>
+                        <option value="gt" ${f.operator === 'gt' ? 'selected' : ''}>Greater Than</option>
+                        <option value="lt" ${f.operator === 'lt' ? 'selected' : ''}>Less Than</option>
+                    </select>
+                ` : ''}
+                
+                ${f.column ? `
+                    <input type="${getFilterInputType(f.column)}" class="filter-text-input" 
+                        value="${f.value}" 
+                        onchange="filters[${idx}].value = this.value; renderFilterRows();"
+                        placeholder="Enter value...">
+                ` : ''}
+                
+                <button class="filter-remove" onclick="removeFilterRow(${idx})">✕ Remove</button>
+            </div>
+        `).join('');
+        
+        // Update badge
+        const badge = document.getElementById('filterBadge');
+        if (filters.length > 0) {
+            badge.textContent = filters.length;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    function getFilterInputType(columnName) {
+        const col = filterableColumns.find(c => c.name === columnName);
+        return col && col.type === 'date' ? 'date' : (col && col.type === 'number' ? 'number' : 'text');
+    }
+
+    function applyFilters() {
+        // Build filter params for API
+        const filterParams = filters.filter(f => f.column && f.value).map(f => ({
+            column: f.column,
+            operator: f.operator,
+            value: f.value
+        }));
+        
+        // Rebuild table with filters applied
+        table.setData("/api/module/VC01/data", {
+            filters: JSON.stringify(filterParams)
+        });
+    }
+
+    function clearAllFilters() {
+        filters = [];
+        renderFilterRows();
+        table.setData("/api/module/VC01/data");
+    }
+
+    // ── SAVED FILTERS ──────────────────────────────────────────
+    let savedFilters = {};  // Store saved filter sets
+
+    function loadSavedFilters() {
+        try {
+            const saved = localStorage.getItem('VC01_saved_filters');
+            if (saved) {
+                savedFilters = JSON.parse(saved);
+                renderSavedFiltersList();
+            }
+        } catch (e) {
+            console.error('Error loading saved filters:', e);
+        }
+    }
+
+    function saveFilterSet() {
+        if (filters.length === 0) {
+            alert('Create at least one filter before saving');
+            return;
+        }
+
+        // Auto-generate filter name from selected fields
+        const filterParts = filters
+            .filter(f => f.column && f.value)
+            .map(f => {
+                const colLabel = filterableColumns.find(c => c.name === f.column)?.label || f.column;
+                return `${colLabel}: ${f.value}`;
+            });
+
+        if (filterParts.length === 0) {
+            alert('Please set values for all filters before saving');
+            return;
+        }
+
+        // Create auto name
+        let autoName = filterParts.map(p => p.split(':')[0].trim()).join(' | ');
+        
+        // Handle duplicate names by adding timestamp
+        let finalName = autoName;
+        let counter = 1;
+        while (savedFilters[finalName] && counter < 100) {
+            finalName = `${autoName} (${counter})`;
+            counter++;
+        }
+
+        savedFilters[finalName] = JSON.parse(JSON.stringify(filters));
+        localStorage.setItem('VC01_saved_filters', JSON.stringify(savedFilters));
+        renderSavedFiltersList();
+        
+        // Show success message
+        const messageEl = document.createElement('div');
+        messageEl.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #38a169; color: white; padding: 12px 16px; border-radius: 4px; z-index: 9999; font-size: 13px;';
+        messageEl.textContent = `✓ Filter saved: "${finalName}"`;
+        document.body.appendChild(messageEl);
+        
+        setTimeout(() => {
+            messageEl.remove();
+        }, 3000);
+    }
+
+    function loadSavedFilterSet(name) {
+        if (!savedFilters[name]) return;
+        filters = JSON.parse(JSON.stringify(savedFilters[name]));
+        renderFilterRows();
+        applyFilters();
+    }
+
+    function deleteSavedFilterSet(name) {
+        if (!confirm(`Delete filter "${name}"?`)) return;
+        delete savedFilters[name];
+        localStorage.setItem('VC01_saved_filters', JSON.stringify(savedFilters));
+        renderSavedFiltersList();
+    }
+
+    function renderSavedFiltersList() {
+        const listContainer = document.getElementById('savedFiltersList');
+        const bar = document.getElementById('savedFiltersBar');
+        
+const tags = Object.keys(savedFilters).map(name => {
+    // Show each filter column label as a mini badge inside ONE chip
+    const filterSet = savedFilters[name];
+    const badges = filterSet
+        .filter(f => f.column && f.value)
+        .map(f => {
+            const colLabel = filterableColumns.find(c => c.name === f.column)?.label || f.column;
+            return `<span style="
+                background:#dbeafe;
+                color:#1e40af;
+                border-radius:10px;
+                padding:1px 7px;
+                font-size:11px;
+                font-weight:600;
+                margin-right:3px;
+            ">${colLabel}</span>`;
+        }).join('');
+
+    return `
+        <div class="saved-filter-tag" title="Click to load: ${name}" onclick="loadSavedFilterSet('${name}')">
+            ${badges}
+            <button class="saved-filter-remove" onclick="deleteSavedFilterSet('${name}'); event.stopPropagation();">✕</button>
+        </div>
+    `;
+}).join('');
+
+        listContainer.innerHTML = tags;
+
+        if (Object.keys(savedFilters).length > 0) {
+            bar.classList.add('show');
+        } else {
+            bar.classList.remove('show');
+        }
+    }
+
+    // Load saved filters on page load
+    loadSavedFilters();
 
     loadMasterData();
 </script>

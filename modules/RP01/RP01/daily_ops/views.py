@@ -475,11 +475,12 @@ def _fetch_upcoming_vessels(report_date):
                 THEN 'ARRIVED'
         END AS vessel_status,
 
-            COALESCE(
-        lh.nor_tendered::timestamp,
-        vn.eta::timestamp
-    ) AS status_time
-        FROM vcn_header vh
+        COALESCE(
+            lh.nor_tendered::timestamp,
+            vn.eta::timestamp
+        ) AS status_time
+
+    FROM vcn_header vh
 
     JOIN vcn_nominations vn
         ON vn.vcn_id = vh.id
@@ -497,20 +498,10 @@ def _fetch_upcoming_vessels(report_date):
     ) fa ON TRUE
 
     WHERE
-    (
-        lh.nor_tendered IS NULL
-        AND vn.eta::timestamp >= %s
-    )
-
-    OR
-
-    (
-        lh.nor_tendered IS NOT NULL
-        AND fa.discharge_started IS NULL
-    )
+        fa.discharge_started IS NULL
 
     ORDER BY status_time
-    """, (report_date,))
+    """)
 
     rows = cur.fetchall()
 
@@ -576,8 +567,6 @@ def _fetch_discharging_mbcs(report_date):
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
             THEN 'DISCHARGING'
 
             WHEN
@@ -613,8 +602,6 @@ def _fetch_discharging_mbcs(report_date):
             p.unloading_completed IS NULL
             OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
     )
 
     OR
@@ -657,11 +644,9 @@ def _fetch_discharging_mbcs(report_date):
 
     """, (
         window_start, window_end,          # CASE ARRIVED
-        window_start, window_end,          # CASE DISCHARGING
         completion_start, completion_end,  # CASE COMPLETED
 
         window_start, window_end,          # WHERE ARRIVED
-        window_start, window_end,          # WHERE DISCHARGING
         completion_start, completion_end   # WHERE COMPLETED
     ))
 
@@ -686,17 +671,22 @@ def _fetch_upcoming_mbcs(report_date):
             l.eta AS event_time,
             l.eta AS event_date,
             'ETA' AS status
+
         FROM mbc_header h
+
         JOIN mbc_load_port_lines l
             ON l.mbc_id = h.id
+
         WHERE
-            NULLIF(TRIM(l.eta), '') IS NOT NULL
+            NULLIF(TRIM(l.eta::text), '') IS NOT NULL
+
             AND NOT EXISTS (
                 SELECT 1
                 FROM mbc_discharge_port_lines d
                 WHERE d.mbc_id = h.id
-                AND d.arrival_gull_island IS NOT NULL
+                  AND NULLIF(TRIM(d.arrival_gull_island::text), '') IS NOT NULL
             )
+
         ORDER BY l.eta
     """)
 
@@ -706,13 +696,7 @@ def _fetch_upcoming_mbcs(report_date):
     conn.close()
 
     return rows
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return rows
+    
 
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
