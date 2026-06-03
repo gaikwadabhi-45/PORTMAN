@@ -669,41 +669,94 @@ def _fetch_upcoming_mbcs(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
-    SELECT
-        h.id,
-        h.mbc_name,
-        m.mbc_owner_name AS owner,
-        h.cargo_name,
-        h.bl_quantity,
+        SELECT
+            h.id,
+            h.mbc_name,
+            m.mbc_owner_name AS owner,
+            h.cargo_name,
+            h.bl_quantity,
 
-        l.fwd_draft,
-        l.mid_draft,
-        l.aft_draft,
+            l.fwd_draft,
+            l.mid_draft,
+            l.aft_draft,
 
-        l.eta AS event_time,
-        l.eta AS event_date,
-        'ETA' AS status
+            CASE
+                WHEN NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
+                THEN d.departure_gull_island
 
-    FROM mbc_header h
+                WHEN NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
+                THEN d.arrival_gull_island
 
-    JOIN mbc_load_port_lines l
-        ON l.mbc_id = h.id
+                WHEN NULLIF(TRIM(l.eta), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
+                THEN l.eta
+            END AS event_time,
 
-    LEFT JOIN mbc_master m
-        ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
+            CASE
+                WHEN NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
+                THEN d.departure_gull_island
 
-    WHERE
-        NULLIF(TRIM(l.eta::text), '') IS NOT NULL
+                WHEN NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
+                THEN d.arrival_gull_island
 
-        AND NOT EXISTS (
-            SELECT 1
-            FROM mbc_discharge_port_lines d
-            WHERE d.mbc_id = h.id
-              AND NULLIF(TRIM(d.arrival_gull_island::text), '') IS NOT NULL
-        )
+                WHEN NULLIF(TRIM(l.eta), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
+                THEN l.eta
+            END AS event_date,
 
-    ORDER BY l.eta
-""")
+            CASE
+                WHEN NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
+                THEN 10
+
+                WHEN NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
+                THEN 20
+
+                WHEN NULLIF(TRIM(l.eta), '') IS NOT NULL
+                     AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
+                THEN 30
+            END AS status
+
+        FROM mbc_header h
+
+        JOIN mbc_load_port_lines l
+            ON l.mbc_id = h.id
+
+        LEFT JOIN mbc_discharge_port_lines d
+            ON d.mbc_id = h.id
+
+        LEFT JOIN mbc_master m
+            ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
+
+        WHERE
+            (
+                NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
+                AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
+            )
+
+            OR
+
+            (
+                NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
+                AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
+            )
+
+            OR
+
+            (
+                NULLIF(TRIM(l.eta), '') IS NOT NULL
+                AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
+            )
+
+        ORDER BY
+            status,
+            event_time
+    """)
 
     rows = cur.fetchall()
 
