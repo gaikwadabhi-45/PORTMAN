@@ -567,6 +567,8 @@ def _fetch_discharging_mbcs(report_date):
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed, '')) = ''
                 )
+                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
             THEN 'DISCHARGING'
 
             WHEN
@@ -602,6 +604,8 @@ def _fetch_discharging_mbcs(report_date):
             p.unloading_completed IS NULL
             OR TRIM(COALESCE(p.unloading_completed, '')) = ''
         )
+        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
     )
 
     OR
@@ -644,9 +648,11 @@ def _fetch_discharging_mbcs(report_date):
 
     """, (
         window_start, window_end,          # CASE ARRIVED
+        window_start, window_end,          # CASE DISCHARGING
         completion_start, completion_end,  # CASE COMPLETED
 
         window_start, window_end,          # WHERE ARRIVED
+        window_start, window_end,          # WHERE DISCHARGING
         completion_start, completion_end   # WHERE COMPLETED
     ))
 
@@ -666,6 +672,7 @@ def _fetch_upcoming_mbcs(report_date):
         SELECT
             h.id,
             h.mbc_name,
+            m.mbc_owner_name AS owner,
             h.cargo_name,
             h.bl_quantity,
             l.eta AS event_time,
@@ -676,6 +683,9 @@ def _fetch_upcoming_mbcs(report_date):
 
         JOIN mbc_load_port_lines l
             ON l.mbc_id = h.id
+
+        LEFT JOIN mbc_master m
+            ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
 
         WHERE
             NULLIF(TRIM(l.eta::text), '') IS NOT NULL
@@ -1337,6 +1347,7 @@ def daily_ops_preview():
     <table style='width:100%;border-collapse:collapse;font-family:Arial'>
         <tr style='background:#4a90d9;color:white'>
             <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
+            <th style='border:1px solid #ccc;padding:8px'>Owner</th>
             <th style='border:1px solid #ccc;padding:8px'>Cargo Name</th>
             <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
             <th style='border:1px solid #ccc;padding:8px'>Date</th>
@@ -1350,8 +1361,13 @@ def daily_ops_preview():
 
         html += f"""
         <tr style="background-color:{row_color};">
+
             <td style='border:1px solid #ccc;padding:8px'>
                 {m['mbc_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {m.get('owner', '-')}
             </td>
 
             <td style='border:1px solid #ccc;padding:8px'>
@@ -1369,10 +1385,13 @@ def daily_ops_preview():
             <td style='border:1px solid #ccc;padding:8px'>
                 {m['status']}
             </td>
+
         </tr>
         """
 
-    html += "</table>"
+
+
+        html += "</table>"
 
     return html
 
