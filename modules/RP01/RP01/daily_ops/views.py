@@ -730,45 +730,18 @@ def _fetch_cargo_availability(report_date):
         SELECT
             h.cargo_name,
 
-            CASE
-                WHEN SUM(
-                    CASE
-                        WHEN NULLIF(TRIM(h.created_date),'') IS NOT NULL
-                         AND NULLIF(TRIM(h.created_date),'')::timestamp >= %s
-                         AND NULLIF(TRIM(h.created_date),'')::timestamp < %s
-                        THEN 1
-                        ELSE 0
-                    END
-                ) > 0
-                THEN
-                    SUM(
-                        CASE
-                            WHEN NULLIF(TRIM(h.created_date),'') IS NOT NULL
-                             AND NULLIF(TRIM(h.created_date),'')::timestamp >= %s
-                             AND NULLIF(TRIM(h.created_date),'')::timestamp < %s
-                            THEN COALESCE(h.bl_quantity,0)
-                            ELSE 0
-                        END
-                    )
-                    -
-                    SUM(
-                        CASE
-                            WHEN NULLIF(TRIM(h.created_date),'') IS NOT NULL
-                             AND NULLIF(TRIM(h.created_date),'')::timestamp >= %s
-                             AND NULLIF(TRIM(h.created_date),'')::timestamp < %s
-                            THEN COALESCE(l.qty,0)
-                            ELSE 0
-                        END
-                    )
-                ELSE NULL
-            END AS at_jetty_qty
+            SUM(
+                COALESCE(h.bl_quantity, 0)
+                -
+                COALESCE(l.qty, 0)
+            ) AS at_jetty_qty
 
         FROM mbc_header h
 
         LEFT JOIN (
             SELECT
                 source_id,
-                SUM(COALESCE(quantity,0)) AS qty
+                SUM(COALESCE(quantity, 0)) AS qty
 
             FROM lueu_lines
 
@@ -791,15 +764,21 @@ def _fetch_cargo_availability(report_date):
         ) l
             ON l.source_id = h.id
 
-        GROUP BY h.cargo_name
+        WHERE
+            h.created_date::timestamp >= %s
+            AND h.created_date::timestamp < %s
 
-        ORDER BY h.cargo_name
+        GROUP BY
+            h.cargo_name
+
+        ORDER BY
+            h.cargo_name
 
     """, (
-        window_start, window_end,   # CASE count
-        window_start, window_end,   # BL qty
-        window_start, window_end,   # LUEU qty
-        window_start, window_end    # LUEU window
+        window_start,
+        window_end,
+        window_start,
+        window_end
     ))
 
     rows = cur.fetchall()
