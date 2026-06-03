@@ -906,6 +906,51 @@
         border-radius: 3px;
         display: inline-block;
     }
+
+    .view-switch-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    .view-switch-btn {
+        min-width: 120px;
+        height: 34px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        background: #f8fafc;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        transition: .2s;
+    }
+
+    .view-switch-btn:hover {
+        background: #e2e8f0;
+    }
+
+    .view-switch-btn.active {
+        background: #4a90d9;
+        color: #fff;
+        border-color: #4a90d9;
+    }
+    .table-spinner{
+    width:48px;
+    height:48px;
+    border:4px solid #dbeafe;
+    border-top:4px solid #4a90d9;
+    border-radius:50%;
+    animation:spinLoader 0.8s linear infinite;
+}
+
+@keyframes spinLoader{
+    from{
+        transform:rotate(0deg);
+    }
+    to{
+        transform:rotate(360deg);
+    }
+}
 </style>
 {% endblock %}
 
@@ -998,20 +1043,18 @@
         </label>
 
         <select id="status-filter">
-            <option value="all">
-                All
-            </option>
+            <option value="all">All</option>
 
-            <option value="in_transit">
-                In Transit
+            <option value="loaded_transit">
+                Loaded & Transit
             </option>
 
             <option value="currently_loading">
                 Currently Loading
             </option>
 
-            <option value="loaded_waiting">
-                Loaded & Waiting
+            <option value="waiting_discharge">
+                Waiting For Discharge
             </option>
 
             <option value="under_discharge">
@@ -1042,10 +1085,7 @@
 
             <div class="legend-popup">
 
-                <div class="legend-item">
-                    <span class="legend-color" style="background:#fff2cc;"></span>
-                    In Transit
-                </div>
+
 
                 <div class="legend-item">
                     <span class="legend-color" style="background:#d9d2e9;"></span>
@@ -1054,12 +1094,16 @@
 
                 <div class="legend-item">
                     <span class="legend-color" style="background:#bdd7ee;"></span>
-                    Loaded & Waiting
+                    Loaded & tansit
                 </div>
 
                 <div class="legend-item">
                     <span class="legend-color" style="background:#ffe699;"></span>
                     Under Discharge
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color" style="background:#f9cb9c;"></span>
+                    Waiting For Discharge
                 </div>
 
                 <div class="legend-item">
@@ -1116,11 +1160,49 @@
     </div>
 
 </div>
+<div class="view-switch-row">
+
+    <button id="btn-barges" class="view-switch-btn active" onclick="switchView('barges')">
+        🚢 Barges
+    </button>
+
+    <button id="btn-mbc" class="view-switch-btn" onclick="switchView('mbc')">
+        🏗 MBC
+    </button>
+
+</div>
 
 <div class="row-count" id="row-count">Loading…</div>
-<!-- Tabulator table -->
-<div id="vd-table"></div>
-<div id="shift-preview-wrapper" style="margin-top:14px;">
+<div style="position:relative;">
+
+    <div id="table-loader" style="
+        display:none;
+        position:absolute;
+        inset:0;
+        background:rgba(255,255,255,.75);
+        z-index:999;
+        align-items:center;
+        justify-content:center;
+        border-radius:6px;
+    ">
+        <div style="text-align:center;">
+            <div class="table-spinner"></div>
+            <div style="
+                margin-top:10px;
+                font-size:13px;
+                font-weight:600;
+                color:#4a90d9;
+            ">
+                Loading Data...
+            </div>
+        </div>
+    </div>
+
+    <div id="vd-table"></div>
+
+</div>
+
+<!-- <div id="shift-preview-wrapper" style="margin-top:14px;">
 
     <div style="
         font-size:15px;
@@ -1133,7 +1215,7 @@
 
     <div id="shift-preview"></div>
 
-</div>
+</div> -->
 
 <script>
     /* ── Formatters ──────────────────────────────────────── */
@@ -1168,7 +1250,7 @@
                 title: 'ID',
                 field: 'id',
                 frozen: true,
-                visible: true,        // ← hides the column completely
+                visible: false,        // ← hides the column completely
                 sorter: 'number'       // ← ensures numeric sorting
             },
             {
@@ -1370,6 +1452,85 @@
 
         ];
     }
+function mbcDateFormatter(cell) {
+
+    const v = cell.getValue();
+
+    if (!v) {
+        return '—';
+    }
+
+    const d = new Date(v);
+
+    if (isNaN(d.getTime())) {
+        return v;
+    }
+
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+
+    return `${dd}-${mm}-${yy} ${hh}:${min}`;
+}
+function buildMbcColumns(){
+
+    return [
+
+        {
+    title:'Sr#',
+    width:55,
+    hozAlign:'center',
+    formatter:function(cell){
+        return cell.getRow().getPosition(true);
+    }
+},
+
+        {title:'MBC Name', field:'barge_name', width:180},
+
+        {title:'Cargo Type', field:'cargo_type', width:150},
+
+        {title:'BL Qty (MT)', field:'qty_mt', width:120},
+
+        {title:'Balance Qty (MT)', field:'qty_balance', width:140},
+
+        {title:'Arrived Load Port', field:'trip_start', width:160, formatter:mbcDateFormatter},
+
+        {title:'Alongside Berth', field:'along_side_vessel', width:160 ,formatter:mbcDateFormatter},
+
+        {title:'Loading Commenced', field:'commenced_loading', width:170,formatter:mbcDateFormatter},
+
+        {title:'Loading Completed', field:'completed_loading', width:170,formatter:mbcDateFormatter},
+
+        {title:'Cast Off Load Port', field:'cast_off_mv', width:170,formatter:mbcDateFormatter},
+
+        {title:'Arrival Gull Island', field:'arrival_gull_island', width:170,formatter:mbcDateFormatter},
+
+        {title:'Departure Gull Island', field:'departure_gull_island', width:170,formatter:mbcDateFormatter},
+
+        {title:'MBC Arrival Port', field:'mbc_arrival_port', width:170,formatter:mbcDateFormatter},
+
+        {title:'MBC AMF At Unloading Berth', field:'mbc_amf_unloading_berth', width:190,formatter:mbcDateFormatter},
+
+        {title:'Unloading Commenced', field:'unloading_commenced', width:170,formatter:mbcDateFormatter},
+
+        {title:'Cleaning Commenced', field:'cleaning_commenced', width:170,formatter:mbcDateFormatter},
+
+        {title:'Unloading Completed', field:'unloading_completed', width:170,formatter:mbcDateFormatter},
+
+        {title:'MBC Cast Off', field:'mbc_cast_off', width:160,formatter:mbcDateFormatter},
+
+        {title:'Sailed Out Load Port',  field:'sailed_out_load_port' , width:170,formatter:mbcDateFormatter},
+
+        {title:'Unloaded By', field:'vessel_unloaded_by', width:150},
+
+        {title:'Unloaded Berth', field:'unloaded_berth', width:150},
+
+        {title:'TAT', field:'tat', width:100}
+    ];
+}
 
     /* ── Single shared tooltip for all rows ── */
     const _tip = document.createElement('span');
@@ -1415,7 +1576,9 @@
 
             data: data,
 
-            columns: buildColumns(),
+            columns: currentView === 'mbc'
+                ? buildMbcColumns()
+                : buildColumns(),
 
             layout: "fitDataStretch",
 
@@ -1444,7 +1607,9 @@
                     'under_discharge': '#ffe699',
                     'loaded_waiting': '#bdd7ee',
                     'currently_loading': '#d9d2e9',
-                    'in_transit': '#fff2cc',
+                    'loaded_transit': '#9fc5e8',
+                    'waiting_discharge': '#f9cb9c',
+
                 };
 
                 const STATUS_LABELS = {
@@ -1452,10 +1617,11 @@
                     'under_discharge': 'Under Discharge',
                     'loaded_waiting': 'Loaded & Waiting',
                     'currently_loading': 'Currently Loading',
-                    'in_transit': '🚢 In Transit',
+                    'loaded_transit': 'Loaded & Transit',
+                    'waiting_discharge': 'Waiting For Discharge',
                 };
 
-                // Backend ने set केलेला current_status वापर
+                // Backend 
                 const status = data.current_status || '';
 
                 if (STATUS_COLORS[status]) {
@@ -1472,7 +1638,7 @@
         });
 
         updateCount(data.length);
-        renderShiftPreview(data);
+        // renderShiftPreview(data);
     }
 
     function updateCount(n) {
@@ -1591,13 +1757,20 @@
             'status_filter',
             selectedFilter
         );
+        params.set('view_type', currentView);
 
         document.getElementById('row-count').textContent =
             'Loading…';
 
+            showTableLoader();
+
+        const apiUrl =
+            currentView === 'mbc'
+                ? '/api/module/RP01/mv-barge-report/mbc-data?'
+                : '/api/module/RP01/mv-barge-report/data?';
+
         fetch(
-            '/api/module/RP01/mv-barge-report/data?' +
-            params.toString()
+            apiUrl + params.toString()
         )
 
             .then(r => {
@@ -1610,14 +1783,25 @@
             })
 
             .then(data => {
+                hideTableLoader();
 
                 if (table) {
+
+                    if (currentView === 'mbc') {
+                        table.setColumns(
+                            buildMbcColumns()
+                        );
+                    } else {
+                        table.setColumns(
+                            buildColumns()
+                        );
+                    }
 
                     table.setData(data);
 
                     updateCount(data.length);
 
-                    renderShiftPreview(data);
+                    // renderShiftPreview(data);
 
                 } else {
 
@@ -1626,6 +1810,7 @@
             })
 
             .catch(err => {
+                hideTableLoader();
 
                 console.error(err);
 
@@ -2197,5 +2382,47 @@
 
         renderSavedFilters();
     }
+    let currentView = "barges";
+
+    function switchView(view) {
+
+        currentView = view;
+
+        document
+            .getElementById("btn-barges")
+            .classList
+            .remove("active");
+
+        document
+            .getElementById("btn-mbc")
+            .classList
+            .remove("active");
+
+        document
+            .getElementById(
+                view === "barges"
+                    ? "btn-barges"
+                    : "btn-mbc"
+            )
+            .classList
+            .add("active");
+
+        applyFilters();
+    }
+    function showTableLoader() {
+
+    document.getElementById(
+        'table-loader'
+    ).style.display = 'flex';
+
+}
+
+function hideTableLoader() {
+
+    document.getElementById(
+        'table-loader'
+    ).style.display = 'none';
+
+}
 </script>
 {% endblock %}
