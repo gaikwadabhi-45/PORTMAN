@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from functools import wraps
+import json
 from . import model
 from database import get_module_config, get_user_permissions
 
@@ -32,7 +33,18 @@ def view():
 def get_data():
     page = int(request.args.get('page', 1))
     size = int(request.args.get('size', 20))
-    data, total = model.get_data(page, size)
+    
+    # Get and parse filters
+    filters = None
+    filters_param = request.args.get('filters', '')
+    if filters_param:
+        try:
+            filters = json.loads(filters_param)
+        except Exception as e:
+            print(f"Filter parse error: {e}")
+            filters = None
+    
+    data, total = model.get_data(page, size, filters)
     return jsonify({
         'data': data,
         'last_page': (total + size - 1) // size,
