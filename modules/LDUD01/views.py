@@ -307,6 +307,11 @@ def delete_delay():
 def get_barge_lines(ldud_id):
     return jsonify(model.get_barge_lines(ldud_id))
 
+@bp.route('/api/module/LDUD01/lueu_barge_progress/<int:ldud_id>')
+@login_required
+def lueu_barge_progress(ldud_id):
+    return jsonify(model.get_lueu_barge_progress(ldud_id))
+
 @bp.route('/api/module/LDUD01/barge_lines/save', methods=['POST'])
 @login_required
 def save_barge_line():

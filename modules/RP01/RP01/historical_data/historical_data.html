@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}Historical Data - RP01{% endblock %}
+{% block content %}
+<div class="module-header">
+    <h2>Historical Data (LUEU)</h2>
+    <span class="module-code">RP01</span>
+</div>
+
+<div style="padding:14px;max-width:1100px;">
+    <div style="background:#fffbeb;border:1px solid #f6e05e;color:#744210;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;">
+        ⚠ Uploading <b>replaces ALL</b> historical data with the file's contents (delete &amp; insert).
+        Keep one master file with all backdated rows. Live LUEU data is never touched.
+    </div>
+
+    <div style="margin-bottom:14px;font-size:13px;">
+        Current dataset:
+        <b id="hd-count">{{ status.count }}</b> rows
+        {% if status.uploaded_at %}<span style="color:#718096;">— last upload {{ status.uploaded_at }}</span>{% endif %}
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+        <a class="btn" href="/api/module/RP01/historical/template"
+           style="background:#3182ce;color:white;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:13px;">⬇ Download Template</a>
+        <input type="file" id="hd-file" accept=".xlsx,.xls,.csv" style="font-size:13px;">
+        <button class="btn" onclick="hdPreview()" style="background:#805ad5;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:13px;">Preview &amp; Reconcile</button>
+        <button class="btn" id="hd-apply" onclick="hdApply()" disabled style="background:#48bb78;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:13px;opacity:0.5;">Apply (Replace All)</button>
+    </div>
+
+    <div id="hd-result" style="font-size:13px;"></div>
+
+    <div style="margin-top:24px;border-top:1px solid #e2e8f0;padding-top:16px;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+            <b style="font-size:14px;">Stored Data</b>
+            <span style="color:#718096;font-size:12px;">— type in any column header box to search the whole dataset; edit a cell to save it.</span>
+            <button class="btn" onclick="hdClearFilters()" style="margin-left:auto;background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">Clear filters</button>
+            <button class="btn" onclick="hdReloadGrid()" style="background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">↻ Refresh</button>
+        </div>
+        <div id="hd-grid"></div>
+        <div id="hd-grid-status" style="font-size:11px;color:#718096;margin-top:6px;"></div>
+    </div>
+</div>
+
+<script>
+let hdValid = false;
+let hdPreviewData = null;   // last preview response (drives the remediation UI)
+
+function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function hdFile() {
+    const f = document.getElementById('hd-file').files[0];
+    if (!f) { alert('Choose a file first.'); return null; }
+    return f;
+}
+
+async function hdPreview() {
+    const f = hdFile(); if (!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    document.getElementById('hd-result').innerHTML = 'Checking…';
+    const res = await fetch('/api/module/RP01/historical/preview', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.error) { document.getElementById('hd-result').innerHTML = `<span style="color:#c53030">${esc(d.error)}</span>`; return; }
+    hdPreviewData = d;
+    const addable = new Set(d.addable_columns || []);
+
+    let html = `<div style="margin-bottom:8px;">Parsed <b>${d.total_rows}</b> data row(s).</div>`;
+    if (d.format_errors.length) {
+        hdValid = false;
+        html += `<div style="background:#fed7d7;color:#c53030;padding:8px 12px;border-radius:4px;margin-bottom:10px;">
+            <b>${d.format_errors.length} format error(s)</b> — fix these in the file before applying:<ul style="margin:6px 0 0;">`
+            + d.format_errors.slice(0,50).map(e=>`<li>Row ${e.row}: ${esc(e.message)}</li>`).join('') + `</ul></div>`;
+    } else {
+        hdValid = true;
+        html += `<div style="background:#c6f6d5;color:#276749;padding:8px 12px;border-radius:4px;margin-bottom:10px;">No format errors — ready to apply.</div>`;
+    }
+
+    const cols = Object.entries(d.reconciliation).filter(([,i]) => i.unknown.length);
+    if (cols.length) {
+        html += `<div style="color:#718096;font-size:12px;margin:6px 0 10px;">
+            Resolve unknown values below — <b>Replace</b> with a master value (pick a suggestion or any master entry),
+            or <b>Add to master</b>. Anything left as <b>Keep as-is</b> is stored verbatim (won't match enrichment/filters).</div>`;
+    }
+
+    // One datalist per column for the searchable replace pickers.
+    for (const [col] of cols) {
+        const opts = (d.master_options && d.master_options[col]) || [];
+        html += `<datalist id="dl-${col}">` + opts.map(o => `<option value="${esc(o)}">`).join('') + `</datalist>`;
+    }
+
+    for (const [col, info] of cols) {
+        html += `<div style="margin:10px 0;"><b>${esc(col)}</b> — <span class="hd-col-remaining" data-col="${col}">${info.unknown.length}</span> of ${info.unknown.length} value(s) not in master`
+            + (addable.has(col) ? '' : ' <span style="color:#a0aec0;">(replace only)</span>')
+            + `<table style="font-size:12px;border-collapse:collapse;margin-top:4px;width:100%;max-width:980px;">
+                 <tr style="background:#edf2f7;">
+                   <th style="border:1px solid #cbd5e0;padding:3px 8px;text-align:left;">Value</th>
+                   <th style="border:1px solid #cbd5e0;padding:3px 8px;">Count</th>
+                   <th style="border:1px solid #cbd5e0;padding:3px 8px;text-align:left;">Action</th>
+                 </tr>`;
+        info.unknown.slice(0,500).forEach((u, idx) => {
+            const sugg = (u.suggestions || []).map(s =>
+                `<button type="button" class="hd-sugg" data-col="${col}" data-idx="${idx}" onclick="hdPickSugg(this,'${esc(s).replace(/'/g,"\\'")}')"
+                    style="background:#ebf8ff;border:1px solid #bee3f8;color:#2b6cb0;border-radius:10px;padding:1px 8px;font-size:11px;cursor:pointer;margin:0 3px 3px 0;">${esc(s)}</button>`
+            ).join('');
+            html += `<tr>
+                <td style="border:1px solid #cbd5e0;padding:3px 8px;">${esc(u.value)}</td>
+                <td style="border:1px solid #cbd5e0;padding:3px 8px;text-align:right;">${u.count}</td>
+                <td style="border:1px solid #cbd5e0;padding:5px 8px;">
+                    <select class="hd-action" data-col="${col}" data-idx="${idx}" onchange="hdActionChange(this)"
+                            style="font-size:12px;padding:2px 4px;">
+                        <option value="keep">Keep as-is</option>
+                        <option value="replace">Replace with…</option>
+                        ${addable.has(col) ? '<option value="add">Add to master</option>' : ''}
+                    </select>
+                    <input class="hd-replace" list="dl-${col}" placeholder="type or pick a master value"
+                           oninput="hdUpdateRemaining()" style="display:none;font-size:12px;padding:2px 6px;margin-left:6px;width:260px;">
+                    <div class="hd-sugg-wrap" style="margin-top:4px;">${sugg || '<span style="color:#a0aec0;font-size:11px;">no close match</span>'}</div>
+                </td>
+            </tr>`;
+        });
+        html += `</table></div>`;
+    }
+
+    document.getElementById('hd-result').innerHTML = html;
+    hdUpdateRemaining();
+    const applyBtn = document.getElementById('hd-apply');
+    applyBtn.disabled = !hdValid;
+    applyBtn.style.opacity = hdValid ? '1' : '0.5';
+}
+
+function hdRowCell(el) { return el.closest('td'); }
+
+function hdActionChange(sel) {
+    const inp = hdRowCell(sel).querySelector('.hd-replace');
+    inp.style.display = (sel.value === 'replace') ? 'inline-block' : 'none';
+    if (sel.value === 'replace') inp.focus();
+    hdUpdateRemaining();
+}
+
+function hdPickSugg(btn, value) {
+    const cell = hdRowCell(btn);
+    const sel = cell.querySelector('.hd-action');
+    const inp = cell.querySelector('.hd-replace');
+    sel.value = 'replace';
+    inp.style.display = 'inline-block';
+    inp.value = value;
+    hdUpdateRemaining();
+}
+
+function hdUpdateRemaining() {
+    // Per-column count of still-unresolved values (keep, or replace with empty target).
+    const counts = {};
+    document.querySelectorAll('.hd-action').forEach(sel => {
+        const col = sel.dataset.col;
+        counts[col] = counts[col] || {total:0, done:0};
+        counts[col].total++;
+        let resolved = false;
+        if (sel.value === 'add') resolved = true;
+        else if (sel.value === 'replace') {
+            const inp = hdRowCell(sel).querySelector('.hd-replace');
+            resolved = !!(inp && inp.value.trim());
+        }
+        if (resolved) counts[col].done++;
+    });
+    document.querySelectorAll('.hd-col-remaining').forEach(span => {
+        const c = counts[span.dataset.col];
+        if (c) span.textContent = (c.total - c.done);
+    });
+}
+
+function hdCollectResolutions() {
+    const res = {};
+    document.querySelectorAll('.hd-action').forEach(sel => {
+        const col = sel.dataset.col, idx = +sel.dataset.idx;
+        const value = hdPreviewData.reconciliation[col].unknown[idx].value;
+        if (sel.value === 'replace') {
+            const inp = hdRowCell(sel).querySelector('.hd-replace');
+            const target = (inp && inp.value || '').trim();
+            if (!target) return;
+            (res[col] = res[col] || {})[value] = {action:'replace', target};
+        } else if (sel.value === 'add') {
+            (res[col] = res[col] || {})[value] = {action:'add'};
+        }
+    });
+    return res;
+}
+
+async function hdApply() {
+    if (!hdValid) return;
+    const f = hdFile(); if (!f) return;
+    const resolutions = hdCollectResolutions();
+    const nRepl = Object.values(resolutions).reduce((a,m)=>a+Object.values(m).filter(x=>x.action==='replace').length,0);
+    const nAdd  = Object.values(resolutions).reduce((a,m)=>a+Object.values(m).filter(x=>x.action==='add').length,0);
+    if (!confirm(`This will DELETE all existing historical rows and insert this file.\n`
+                 + `${nRepl} value(s) will be replaced, ${nAdd} added to master. Continue?`)) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('resolutions', JSON.stringify(resolutions));
+    const res = await fetch('/api/module/RP01/historical/apply', {method:'POST', body:fd});
+    const d = await res.json();
+    if (d.error) { alert(d.error + (d.format_errors ? '\n' + d.format_errors.slice(0,10).map(e=>`Row ${e.row}: ${e.message}`).join('\n') : '')); return; }
+    document.getElementById('hd-count').textContent = d.inserted;
+    let msg = `✓ Replaced historical data — ${d.inserted} row(s) inserted.`;
+    if (d.added_to_master && d.added_to_master.length) msg += ` Added ${d.added_to_master.length} master value(s).`;
+    let extra = '';
+    if (d.add_errors && d.add_errors.length) {
+        extra = `<div style="background:#fed7d7;color:#c53030;padding:8px 12px;border-radius:4px;margin-top:8px;">
+            ${d.add_errors.length} master add(s) failed: ` + d.add_errors.slice(0,10).map(e=>`${esc(e.column)}/${esc(e.value)}`).join(', ') + `</div>`;
+    }
+    document.getElementById('hd-result').innerHTML =
+        `<div style="background:#c6f6d5;color:#276749;padding:10px 14px;border-radius:4px;">${msg}</div>` + extra;
+    hdPreviewData = null;
+    hdReloadGrid();   // show the freshly-stored data
+}
+
+// ── Stored-data editable grid ────────────────────────────────────────────────
+let hdGrid = null;
+
+async function hdSaveCell(cell) {
+    const row = cell.getRow().getData();
+    try {
+        const res = await fetch('/api/module/RP01/historical/row/update', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(row)
+        });
+        const d = await res.json();
+        if (d.error) { alert('Save failed: ' + d.error); cell.restoreOldValue(); }
+    } catch (e) { alert('Save failed (network).'); cell.restoreOldValue(); }
+}
+
+function hdDeleteRow(cell) {
+    const row = cell.getRow();
+    const id = row.getData().id;
+    if (!confirm('Delete this row?')) return;
+    fetch('/api/module/RP01/historical/row/delete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id})
+    }).then(r => r.json()).then(d => {
+        if (d.error) { alert(d.error); return; }
+        row.delete();
+        const cnt = document.getElementById('hd-count');
+        cnt.textContent = Math.max(0, (parseInt(cnt.textContent, 10) || 1) - 1);
+    });
+}
+
+function hdInitGrid() {
+    hdGrid = new Tabulator('#hd-grid', {
+        layout: 'fitDataFill',
+        height: '460px',
+        placeholder: 'No historical data uploaded yet.',
+        pagination: true,
+        paginationMode: 'remote',
+        paginationSize: 50,
+        paginationSizeSelector: [50, 100, 200],
+        // Header-filter boxes query the server across the FULL dataset (not the page).
+        filterMode: 'remote',
+        columnDefaults: {headerSort: false, headerFilter: 'input'},
+        ajaxURL: '/api/module/RP01/historical/rows',
+        ajaxParams: function () {
+            const f = hdGrid ? hdGrid.getHeaderFilters() : [];
+            return {colfilters: JSON.stringify(f)};
+        },
+        ajaxResponse: (url, params, response) => {
+            document.getElementById('hd-grid-status').textContent =
+                `${response.total} row(s) match`;
+            return response;
+        },
+        columns: [
+            {title: 'Date', field: 'entry_date', width: 110, editor: 'input', frozen: true},
+            {title: 'Shift', field: 'shift', width: 70, editor: 'input'},
+            {title: 'Equipment', field: 'equipment_name', width: 150, editor: 'input', frozen: true},
+            {title: 'From', field: 'from_time', width: 80, editor: 'input'},
+            {title: 'To', field: 'to_time', width: 80, editor: 'input'},
+            {title: 'Source (VCN/MBC)', field: 'source_display', width: 180, editor: 'input'},
+            {title: 'Barge / MBC', field: 'barge_name', width: 160, editor: 'input'},
+            {title: 'Cargo', field: 'cargo_name', width: 150, editor: 'input'},
+            {title: 'Delay', field: 'delay_name', width: 180, editor: 'input'},
+            {title: 'Qty', field: 'quantity', width: 90, hozAlign: 'right', editor: 'number'},
+            {title: 'UOM', field: 'quantity_uom', width: 70, editor: 'input'},
+            {title: 'System', field: 'system_name', width: 120, editor: 'input'},
+            {title: 'Route', field: 'route_name', width: 120, editor: 'input'},
+            {title: 'Berth', field: 'berth_name', width: 110, editor: 'input'},
+            {title: 'Shift Incharge', field: 'shift_incharge', width: 150, editor: 'input'},
+            {title: 'Operator', field: 'operator_name', width: 150, editor: 'input'},
+            {title: 'Remarks', field: 'remarks', width: 200, editor: 'input'},
+            {title: '', field: '_del', width: 50, hozAlign: 'center', headerSort: false, headerFilter: false,
+                formatter: () => '<button style="background:#fc8181;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;">X</button>',
+                cellClick: (e, cell) => hdDeleteRow(cell)},
+        ],
+    });
+    hdGrid.on('cellEdited', hdSaveCell);
+    if (localStorage.getItem('theme') === 'dark')
+        document.getElementById('hd-grid').classList.add('tabulator-dark');
+}
+
+function hdReloadGrid() {
+    if (hdGrid) hdGrid.replaceData(); else hdInitGrid();
+}
+
+function hdClearFilters() {
+    if (hdGrid) hdGrid.clearHeaderFilter();
+}
+
+document.addEventListener('DOMContentLoaded', hdInitGrid);
+</script>
+{% endblock %}

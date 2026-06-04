@@ -64,7 +64,7 @@ def custom_report_index():
 
 # ── Data sources ─────────────────────────────────────────────────────────────
 
-VALID_SOURCES = {'mbc-ops', 'vessel-ops', 'vessel-barge', 'lueu-equipment', 'mbc-tat'}
+VALID_SOURCES = {'mbc-ops', 'vessel-ops', 'vessel-barge', 'lueu-equipment', 'lueu-historical', 'mbc-tat'}
 
 # Maps date_col key → (sql_expression, is_datetime)
 # is_datetime=True  → filter uses LEFT(expr::TEXT, 10)
@@ -93,6 +93,12 @@ DATE_COL_FILTERS = {
     'lueu-equipment': {
         'entry_date': ("l.entry_date", False),
     },
+    'lueu-historical': {
+        # entry_date is TEXT in lueu_lines but DATE in rp01_historical_lueu;
+        # cast to text so NULLIF/BETWEEN works for both UNION legs (ISO dates
+        # compare lexically).
+        'entry_date': ("entry_date::TEXT", False),
+    },
     'mbc-tat': {
         'doc_date': ("h.doc_date", False),
     },
@@ -104,6 +110,7 @@ DATE_COL_DEFAULTS = {
     'vessel-ops':     'nor_tendered',
     'vessel-barge':   'nor_tendered',
     'lueu-equipment': 'entry_date',
+    'lueu-historical': 'entry_date',
     'mbc-tat':        'doc_date',
 }
 
@@ -337,6 +344,61 @@ def pivot_data(source):
                 LIMIT 10000
             """, where_params)
 
+        elif source == 'lueu-historical':
+            cur.execute(f"""
+                WITH base AS (
+                    SELECT equipment_name, shift, source_display, barge_name, cargo_name,
+                           delay_name, system_name, route_name, berth_name, shift_incharge,
+                           operator_name, quantity_uom, quantity, from_time, to_time, entry_date
+                    FROM lueu_lines
+                    WHERE {where_clause}
+                    UNION ALL
+                    SELECT equipment_name, shift, source_display, barge_name, cargo_name,
+                           delay_name, system_name, route_name, berth_name, shift_incharge,
+                           operator_name, quantity_uom, quantity, from_time, to_time,
+                           entry_date::TEXT AS entry_date
+                    FROM rp01_historical_lueu
+                    WHERE {where_clause}
+                )
+                SELECT
+                    COALESCE(b.equipment_name, '')      AS "Equipment",
+                    COALESCE(b.shift, '')               AS "Shift",
+                    COALESCE(b.source_display, '')      AS "VCN / MBC",
+                    COALESCE(b.barge_name, '')          AS "Barge / MBC Name",
+                    COALESCE(b.cargo_name, '')          AS "Cargo",
+                    COALESCE(b.delay_name, '')          AS "Delay",
+                    COALESCE(b.system_name, '')         AS "System",
+                    COALESCE(b.route_name, '')          AS "Route",
+                    COALESCE(b.berth_name, '')          AS "Berth",
+                    COALESCE(b.shift_incharge, '')      AS "Shift Incharge",
+                    COALESCE(b.operator_name, '')       AS "Operator",
+                    COALESCE(b.quantity_uom, '')        AS "UOM",
+                    COALESCE(CAST(b.quantity AS TEXT), '') AS "Quantity",
+                    COALESCE(b.from_time, '')           AS "_from_time",
+                    COALESCE(b.to_time, '')             AS "_to_time",
+                    COALESCE(pdt.to_sof, '')               AS "Delay To SOF",
+                    COALESCE(pdt.type, '')                  AS "Delay Type",
+                    COALESCE(vc.cargo_type, '')             AS "Cargo Type",
+                    COALESCE(vc.cargo_category, '')         AS "Cargo Category",
+                    COALESCE(vc.cargo_category_2, '')       AS "Cargo Category 2",
+                    COALESCE(vc.cargo_sub_category, '')     AS "Cargo Sub Category",
+                    COALESCE(vc.cargo_sub_category_2, '')   AS "Cargo Sub Category 2",
+                    COALESCE(b.entry_date::TEXT, '')        AS "Date",
+                    COALESCE(LEFT(b.entry_date::TEXT, 4), '') AS "Year",
+                    COALESCE(LEFT(b.entry_date::TEXT, 7), '') AS "Year-Month"
+                FROM base b
+                LEFT JOIN LATERAL (
+                    SELECT to_sof, type
+                    FROM port_delay_types WHERE name = b.delay_name LIMIT 1
+                ) pdt ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT cargo_type, cargo_category, cargo_category_2, cargo_sub_category, cargo_sub_category_2
+                    FROM vessel_cargo WHERE cargo_name = b.cargo_name LIMIT 1
+                ) vc ON TRUE
+                ORDER BY b.entry_date DESC
+                LIMIT 10000
+            """, where_params + where_params)
+
         elif source == 'mbc-tat':
             cur.execute(f"""
                 SELECT
@@ -374,8 +436,8 @@ def pivot_data(source):
     finally:
         conn.close()
 
-    # Post-process lueu-equipment: compute Diff Hrs from from_time / to_time (HH:MM)
-    if source == 'lueu-equipment':
+    # Post-process lueu sources: compute Diff Hrs from from_time / to_time (HH:MM)
+    if source in ('lueu-equipment', 'lueu-historical'):
         def _calc_diff_hrs(from_t, to_t):
             try:
                 fh, fm = int(from_t[:2]), int(from_t[3:5])

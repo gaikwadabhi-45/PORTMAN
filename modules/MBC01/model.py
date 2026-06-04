@@ -125,17 +125,21 @@ def save_load_port_line(data):
     if data.get('id'):
         cur.execute('''UPDATE mbc_load_port_lines SET
                       eta=%s, arrived_load_port=%s, alongside_berth=%s, loading_commenced=%s,
-                      loading_completed=%s, cast_off_load_port=%s
+                      loading_completed=%s, cast_off_load_port=%s,
+                      fwd_draft=%s, mid_draft=%s, aft_draft=%s
                       WHERE id=%s''',
                    [data.get('eta'), data.get('arrived_load_port'), data.get('alongside_berth'), data.get('loading_commenced'),
-                    data.get('loading_completed'), data.get('cast_off_load_port'), data['id']])
+                    data.get('loading_completed'), data.get('cast_off_load_port'),
+                    data.get('fwd_draft'), data.get('mid_draft'), data.get('aft_draft'), data['id']])
         row_id = data['id']
     else:
         cur.execute('''INSERT INTO mbc_load_port_lines
-                      (mbc_id, eta, arrived_load_port, alongside_berth, loading_commenced, loading_completed, cast_off_load_port)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id''',
+                      (mbc_id, eta, arrived_load_port, alongside_berth, loading_commenced, loading_completed, cast_off_load_port,
+                       fwd_draft, mid_draft, aft_draft)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
                    [data['mbc_id'], data.get('eta'), data.get('arrived_load_port'), data.get('alongside_berth'),
-                    data.get('loading_commenced'), data.get('loading_completed'), data.get('cast_off_load_port')])
+                    data.get('loading_commenced'), data.get('loading_completed'), data.get('cast_off_load_port'),
+                    data.get('fwd_draft'), data.get('mid_draft'), data.get('aft_draft')])
         row_id = cur.fetchone()['id']
     conn.commit()
     conn.close()
@@ -270,21 +274,25 @@ def save_export_load_port_line(data):
         cur.execute('''UPDATE mbc_export_load_port_lines SET
                       arrived_at_port=%s, alongside_at_berth=%s, loading_commenced=%s,
                       loading_completed=%s, cast_off_from_berth=%s, sailed_out_from_port=%s,
-                      eta_at_gull_island=%s, unloaded_by=%s, berth_master=%s
+                      eta_at_gull_island=%s, unloaded_by=%s, berth_master=%s,
+                      fwd_draft=%s, mid_draft=%s, aft_draft=%s
                       WHERE id=%s''',
                    [data.get('arrived_at_port'), data.get('alongside_at_berth'), data.get('loading_commenced'),
                     data.get('loading_completed'), data.get('cast_off_from_berth'), data.get('sailed_out_from_port'),
-                    data.get('eta_at_gull_island'), data.get('unloaded_by'), data.get('berth_master'), data['id']])
+                    data.get('eta_at_gull_island'), data.get('unloaded_by'), data.get('berth_master'),
+                    data.get('fwd_draft'), data.get('mid_draft'), data.get('aft_draft'), data['id']])
         row_id = data['id']
     else:
         cur.execute('''INSERT INTO mbc_export_load_port_lines
                       (mbc_id, arrived_at_port, alongside_at_berth, loading_commenced, loading_completed,
-                       cast_off_from_berth, sailed_out_from_port, eta_at_gull_island, unloaded_by, berth_master)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
+                       cast_off_from_berth, sailed_out_from_port, eta_at_gull_island, unloaded_by, berth_master,
+                       fwd_draft, mid_draft, aft_draft)
+                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
                    [data['mbc_id'], data.get('arrived_at_port'), data.get('alongside_at_berth'),
                     data.get('loading_commenced'), data.get('loading_completed'),
                     data.get('cast_off_from_berth'), data.get('sailed_out_from_port'),
-                    data.get('eta_at_gull_island'), data.get('unloaded_by'), data.get('berth_master')])
+                    data.get('eta_at_gull_island'), data.get('unloaded_by'), data.get('berth_master'),
+                    data.get('fwd_draft'), data.get('mid_draft'), data.get('aft_draft')])
         row_id = cur.fetchone()['id']
     conn.commit()
     conn.close()
