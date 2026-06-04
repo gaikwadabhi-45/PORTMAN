@@ -1330,74 +1330,146 @@ def _fetch_cargo_statistics(report_date):
 
     return day_rows, month_rows
 
-def _fetch_mbc_cargo(report_date):
-    """Return (day_data, month_data) as dicts { owner: { cargo_type: qty } }.
-    Month values incorporate cutoff if the cutoff date falls within the report month.
-    """
-    from datetime import date as date_type
-    prev_date = report_date - timedelta(days=1)
-    day_str   = prev_date.strftime('%Y-%m-%d')
-    month_start_date = date_type(prev_date.year, prev_date.month, 1)
+def _fetch_mbc_cargo_handling(report_date):
 
-    # ── Load cutoff ─────────────────────────────────────────────────────
-    cutoff_date_str, cutoff_vals = _load_cutoff()
-    mbc_cutoff = cutoff_vals.get('mbc_cargo', {})
+    target_date = report_date - timedelta(days=1)
 
-    cutoff_date_obj = None
-    if cutoff_date_str and mbc_cutoff:
-        try:
-            cutoff_date_obj = datetime.strptime(cutoff_date_str, '%Y-%m-%d').date()
-        except ValueError:
-            pass
-
-    use_cutoff = (cutoff_date_obj is not None
-                  and month_start_date < cutoff_date_obj
-                  and cutoff_date_obj <= prev_date)
+    month_start = date(
+        report_date.year,
+        report_date.month,
+        1
+    )
 
     conn = get_db()
-    cur  = get_cursor(conn)
+    cur = get_cursor(conn)
 
-    def _period(date_from, date_to):
+    def _period(start_date, end_date):
+
         cur.execute("""
-            SELECT COALESCE(m.mbc_owner_name, 'OTHERS') AS owner,
-                   h.cargo_type,
-                   SUM(h.bl_quantity) AS qty
-            FROM mbc_header h
-            LEFT JOIN mbc_master m ON m.mbc_name = h.mbc_name
-            WHERE h.doc_date IS NOT NULL
-              AND h.doc_date >= %s
-              AND h.doc_date <= %s
-            GROUP BY owner, h.cargo_type
-        """, (date_from, date_to))
-        data = {o: {ct: 0.0 for ct in _MBC_CARGO_TYPES} for o in _MBC_OWNERS}
-        for r in cur.fetchall():
-            owner = r['owner'] if r['owner'] in _MBC_OWNERS else 'OTHERS'
-            ct    = r['cargo_type']
-            if ct in _MBC_CARGO_TYPES:
-                data[owner][ct] += float(r['qty'] or 0)
-        return data
+            SELECT
 
-    day_data = _period(day_str, day_str)
+                h.cargo_type,
 
-    if use_cutoff:
-        # Query only from the day after cutoff onwards
-        live_from = (cutoff_date_obj + timedelta(days=1)).strftime('%Y-%m-%d')
-        live_data = _period(live_from, day_str)
-        # Merge cutoff + live
-        month_data = {o: {ct: 0.0 for ct in _MBC_CARGO_TYPES} for o in _MBC_OWNERS}
-        for owner in _MBC_OWNERS:
-            for ct in _MBC_CARGO_TYPES:
-                co_key = f'{owner}|{ct}'
-                co_val = float(mbc_cutoff.get(co_key, 0))
-                live_val = live_data[owner][ct]
-                month_data[owner][ct] = co_val + live_val
-    else:
-        mth_str = month_start_date.strftime('%Y-%m-%d')
-        month_data = _period(mth_str, day_str)
+                COALESCE(
+                    m.mbc_owner_name,
+                    'OTHERS'
+                ) AS owner,
+
+                COALESCE(
+                    SUM(l.quantity),
+                    0
+                ) AS qty
+
+            FROM lueu_lines l
+
+            JOIN mbc_header h
+                ON h.id = l.source_id
+
+            LEFT JOIN mbc_master m
+                ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
+
+            WHERE l.is_deleted = false
+              AND l.source_type = 'MBC'
+              AND l.entry_date::date BETWEEN %s AND %s
+
+            GROUP BY
+                h.cargo_type,
+                m.mbc_owner_name
+
+            ORDER BY
+                m.mbc_owner_name,
+                h.cargo_type
+
+        """, (
+            start_date,
+            end_date
+        ))
+
+        return cur.fetchall()
+
+    # Day = previous day only
+    day_rows = _period(
+        target_date,
+        target_date
+    )
+
+    # MTD = 1st of month to previous day
+    month_rows = _period(
+        month_start,
+        target_date
+    )
 
     conn.close()
-    return day_data, month_data
 
+    return day_rows, month_rows
+
+# def _fetch_mbc_cargo(report_date):
+#     """Return (day_data, month_data) as dicts { owner: { cargo_type: qty } }.
+#     Month values incorporate cutoff if the cutoff date falls within the report month.
+#     """
+#     from datetime import date as date_type
+#     prev_date = report_date - timedelta(days=1)
+#     day_str   = prev_date.strftime('%Y-%m-%d')
+#     month_start_date = date_type(prev_date.year, prev_date.month, 1)
+
+#     # ── Load cutoff ─────────────────────────────────────────────────────
+#     cutoff_date_str, cutoff_vals = _load_cutoff()
+#     mbc_cutoff = cutoff_vals.get('mbc_cargo', {})
+
+#     cutoff_date_obj = None
+#     if cutoff_date_str and mbc_cutoff:
+#         try:
+#             cutoff_date_obj = datetime.strptime(cutoff_date_str, '%Y-%m-%d').date()
+#         except ValueError:
+#             pass
+
+#     use_cutoff = (cutoff_date_obj is not None
+#                   and month_start_date < cutoff_date_obj
+#                   and cutoff_date_obj <= prev_date)
+
+#     conn = get_db()
+#     cur  = get_cursor(conn)
+
+#     def _period(date_from, date_to):
+#         cur.execute("""
+#             SELECT COALESCE(m.mbc_owner_name, 'OTHERS') AS owner,
+#                    h.cargo_type,
+#                    SUM(h.bl_quantity) AS qty
+#             FROM mbc_header h
+#             LEFT JOIN mbc_master m ON m.mbc_name = h.mbc_name
+#             WHERE h.doc_date IS NOT NULL
+#               AND h.doc_date >= %s
+#               AND h.doc_date <= %s
+#             GROUP BY owner, h.cargo_type
+#         """, (date_from, date_to))
+#         data = {o: {ct: 0.0 for ct in _MBC_CARGO_TYPES} for o in _MBC_OWNERS}
+#         for r in cur.fetchall():
+#             owner = r['owner'] if r['owner'] in _MBC_OWNERS else 'OTHERS'
+#             ct    = r['cargo_type']
+#             if ct in _MBC_CARGO_TYPES:
+#                 data[owner][ct] += float(r['qty'] or 0)
+#         return data
+
+#     day_data = _period(day_str, day_str)
+
+#     if use_cutoff:
+#         # Query only from the day after cutoff onwards
+#         live_from = (cutoff_date_obj + timedelta(days=1)).strftime('%Y-%m-%d')
+#         live_data = _period(live_from, day_str)
+#         # Merge cutoff + live
+#         month_data = {o: {ct: 0.0 for ct in _MBC_CARGO_TYPES} for o in _MBC_OWNERS}
+#         for owner in _MBC_OWNERS:
+#             for ct in _MBC_CARGO_TYPES:
+#                 co_key = f'{owner}|{ct}'
+#                 co_val = float(mbc_cutoff.get(co_key, 0))
+#                 live_val = live_data[owner][ct]
+#                 month_data[owner][ct] = co_val + live_val
+#     else:
+#         mth_str = month_start_date.strftime('%Y-%m-%d')
+#         month_data = _period(mth_str, day_str)
+
+#     conn.close()
+#     return day_data, month_data
 
 
 
@@ -2208,6 +2280,182 @@ def daily_ops_preview():
         <td style='border:1px solid #ccc;padding:8px;text-align:right'>
             {total_qty:,.0f}
         </td>
+    </tr>
+    """
+
+    html += "</table>"
+
+    mbc_day_rows, mbc_month_rows = _fetch_mbc_cargo_handling(report_date)
+
+    day_dict = {
+        (r['owner'], r['cargo_type']): float(r['qty'])
+        for r in mbc_day_rows
+    }
+
+    month_dict = {
+        (r['owner'], r['cargo_type']): float(r['qty'])
+        for r in mbc_month_rows
+    }
+
+    owners = sorted(
+        set(owner for owner, cargo in day_dict.keys()) |
+        set(owner for owner, cargo in month_dict.keys())
+    )
+
+    cargo_types = sorted(
+        set(cargo for owner, cargo in day_dict.keys()) |
+        set(cargo for owner, cargo in month_dict.keys())
+    )
+
+    html += """
+    <br><br>
+    <h3>MBC's - Cargo Handling</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+    """
+
+    # Header row 1
+    html += f"""
+    <tr style='background:#4a90d9;color:white'>
+        <th rowspan='2' style='border:1px solid #ccc;padding:8px'>Owner</th>
+
+        <th colspan='{len(cargo_types) + 1}'
+            style='border:1px solid #ccc;padding:8px'>
+            Day
+        </th>
+
+        <th colspan='{len(cargo_types) + 1}'
+            style='border:1px solid #ccc;padding:8px'>
+            MTD
+        </th>
+    </tr>
+    """
+
+    # Header row 2
+    html += "<tr style='background:#4a90d9;color:white'>"
+
+    for cargo in cargo_types:
+        html += f"""
+        <th style='border:1px solid #ccc;padding:8px'>
+            {cargo}
+        </th>
+        """
+
+    html += """
+    <th style='border:1px solid #ccc;padding:8px'>Total</th>
+    """
+
+    for cargo in cargo_types:
+        html += f"""
+        <th style='border:1px solid #ccc;padding:8px'>
+            {cargo}
+        </th>
+        """
+
+    html += """
+    <th style='border:1px solid #ccc;padding:8px'>Total</th>
+    </tr>
+    """
+
+    # Owner rows
+    # Owner rows
+    for owner in owners:
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {owner}
+            </td>
+        """
+
+        day_total = 0
+
+        for cargo in cargo_types:
+
+            qty = day_dict.get((owner, cargo), 0)
+            day_total += qty
+
+            display_qty = "-" if qty == 0 else format(qty, ",.0f")
+
+            html += f"""
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {display_qty}
+            </td>
+            """
+
+        html += f"""
+        <td style='border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold'>
+            {format(day_total, ",.0f")}
+        </td>
+        """
+
+        month_total = 0
+
+        for cargo in cargo_types:
+
+            qty = month_dict.get((owner, cargo), 0)
+            month_total += qty
+
+            display_qty = "-" if qty == 0 else format(qty, ",.0f")
+
+            html += f"""
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {display_qty}
+            </td>
+            """
+
+        html += f"""
+        <td style='border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold'>
+            {format(month_total, ",.0f")}
+        </td>
+        </tr>
+        """
+
+   
+    # Grand total row
+    html += """
+    <tr style='font-weight:bold;background:#f2f2f2'>
+        <td style='border:1px solid #ccc;padding:8px'>
+            Total
+        </td>
+    """
+
+    for cargo in cargo_types:
+
+        total = sum(
+            day_dict.get((owner, cargo), 0)
+            for owner in owners
+        )
+
+        html += f"""
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {format(total, ",.0f")}
+        </td>
+        """
+
+    html += f"""
+    <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+        {format(sum(day_dict.values()), ",.0f")}
+    </td>
+    """
+
+    for cargo in cargo_types:
+
+        total = sum(
+            month_dict.get((owner, cargo), 0)
+            for owner in owners
+        )
+
+        html += f"""
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {format(total, ",.0f")}
+        </td>
+        """
+
+    html += f"""
+    <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+        {format(sum(month_dict.values()), ",.0f")}
+    </td>
     </tr>
     """
 
