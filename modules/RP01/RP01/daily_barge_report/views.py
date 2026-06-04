@@ -111,7 +111,7 @@ def login_required(f):
     return decorated
 
 
-# ── Data fetch ──────────────────────────────────────────────────────────────
+# ── Data fetch 
 
 _STATUS_FILTERS = {
     
@@ -190,19 +190,33 @@ _STATUS_FILTERS = {
     """
     },
 
-    'in_transit': {
+'loaded_transit': {
 
-        'date_col': 'l.trip_start',
+    'date_col': 'l.cast_off_mv',
 
-        'condition': """
-            trip_start IS NOT NULL
-            AND TRIM(trip_start) <> ''
-            AND (
-                l.along_side_vessel IS NULL
-                OR TRIM(l.along_side_vessel) = ''
-            )
-        """
-    },
+    'condition': """
+        l.cast_off_mv IS NOT NULL
+        AND TRIM(l.cast_off_mv) <> ''
+        AND (
+            l.along_side_berth IS NULL
+            OR TRIM(l.along_side_berth) = ''
+        )
+    """
+},
+
+'waiting_discharge': {
+
+    'date_col': 'l.along_side_berth',
+
+    'condition': """
+        l.along_side_berth IS NOT NULL
+        AND TRIM(l.along_side_berth) <> ''
+        AND (
+            l.commence_discharge_berth IS NULL
+            OR TRIM(l.commence_discharge_berth) = ''
+        )
+    """
+},
 
     'currently_loading': {
 
@@ -323,13 +337,11 @@ def _fetch_list(from_date, to_date):
         AND l.trip_start IS NOT NULL
         AND TRIM(l.trip_start) <> ''
 
-        -- ✅ trip_start to_date पेक्षा आधी किंवा बरोबर असायला हवं
+        
         AND l.trip_start::timestamp <= %s::timestamp
 
         -- ✅ completed_discharge_berth:
-        --    NULL असेल (अजून complete नाही) → show करायची
-        --    to_date च्या आत complete झाली → show करायची
-        --    to_date नंतर complete झाली → show नाही
+       
         AND (
             l.completed_discharge_berth IS NULL
             OR TRIM(l.completed_discharge_berth) = ''
@@ -440,15 +452,15 @@ def get_barge_status(row, from_dt, to_dt):
     if not trip_start:
         return None
 
-    # ✅ trip_start to_dt नंतर आहे → show नाही
+  
     if trip_start > to_dt:
         return None
 
-    # ✅ NEW FIX: completed_discharge from_dt च्या आधी झाली → show नाही
+    
     if completed_discharge and completed_discharge < from_dt:
         return None
 
-    # ✅ NEW FIX: balance 0 आणि completed_discharge from_dt च्या आधी → show नाही
+   
     if qty_balance <= 0.001 and completed_discharge and completed_discharge < from_dt:
         return None
 
@@ -463,22 +475,26 @@ def get_barge_status(row, from_dt, to_dt):
     if discharge_start:
         return 'under_discharge'
 
-    # LOADED & WAITING
+    # WAITING FOR DISCHARGE
     if (
-        loading_end
-        and not discharge_start
-        and abs(qty_mt - qty_balance) < 0.001
+        row.get('along_side_berth')
+        and not row.get('commence_discharge_berth')
     ):
-        return 'loaded_waiting'
+        return 'waiting_discharge'
 
     # CURRENTLY LOADING
     if loading_start and not loading_end:
         return 'currently_loading'
 
-    # IN TRANSIT
-    if trip_start and not loading_start:
-        return 'in_transit'
-
+    # LOADED & TRANSIT
+    if (
+        row.get('cast_off_mv')
+        and not row.get('along_side_berth')
+    ):
+        return 'loaded_transit'
+    
+    
+    
     return None
 
 def _fetch_barge_data(barge_line_id):
@@ -1518,7 +1534,7 @@ def mv_barge_report_data():
         print(f"Date parsing error: {e}")
         return jsonify({'error': 'Invalid date format'}), 400
 
-    # ✅ from_dt आणि to_dt दोन्ही pass करतो
+    
     rows = _fetch_list(
         from_dt.strftime('%Y-%m-%d %H:%M:%S'),
         to_dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -1599,6 +1615,8 @@ def mv_barge_report_data():
 
     return jsonify(rows)
 
+
+
 @bp.route('/api/module/RP01/mv-barge-report/download-all')
 @login_required
 def mv_barge_report_download_all():
@@ -1622,7 +1640,7 @@ def mv_barge_report_download_all():
         print(f"Date parsing error: {e}")
         return jsonify({'error': 'Invalid date format'}), 400
 
-    # ✅ from_dt आणि to_dt दोन्ही pass करतो
+    
     list_rows = _fetch_list(
         from_dt.strftime('%Y-%m-%d %H:%M:%S'),
         to_dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -1694,3 +1712,154 @@ def mv_barge_report_download(barge_line_id):
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
+    
+@bp.route('/api/module/RP01/mv-barge-report/mbc-data')
+@login_required
+def get_mbc_data():
+
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    column_filter = request.args.get('column_filter')
+    status_filter = request.args.get('status_filter', 'all')
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    column_map = {
+        'trip_start': 'lp.arrived_load_port',
+        'along_side_vessel': 'lp.alongside_berth',
+        'commenced_loading': 'lp.loading_commenced',
+        'completed_loading': 'lp.loading_completed',
+        'cast_off_mv': 'lp.cast_off_load_port',
+        'anchored_gull_island_empty': 'dp.arrival_gull_island',
+        'aweigh_gull_island_empty': 'dp.departure_gull_island',
+        'amf_at_port': 'dp.vessel_arrival_port',
+        'along_side_berth': 'dp.vessel_unloading_berth',
+        'commence_discharge_berth': 'dp.unloading_commenced',
+        'completed_discharge_berth': 'dp.unloading_completed',
+        'cast_off_port': 'dp.vessel_cast_off'
+    }
+
+    query = """
+        SELECT
+
+           h.id,
+
+        h.mbc_name AS barge_name,
+
+        h.cargo_name AS cargo_type,
+
+        COALESCE(h.bl_quantity,0) AS qty_mt,
+
+        COALESCE(h.bl_quantity,0) AS qty_balance,
+
+        lp.arrived_load_port           AS trip_start,
+
+        lp.alongside_berth            AS along_side_vessel,
+
+        lp.loading_commenced          AS commenced_loading,
+
+        lp.loading_completed          AS completed_loading,
+
+        lp.cast_off_load_port         AS cast_off_mv,
+
+        dp.arrival_gull_island        AS arrival_gull_island,
+
+        dp.departure_gull_island      AS departure_gull_island,
+
+        dp.vessel_arrival_port        AS mbc_arrival_port,
+
+        dp.vessel_all_made_fast       AS mbc_amf_unloading_berth,
+
+        dp.unloading_commenced        AS unloading_commenced,
+
+        dp.cleaning_commenced         AS cleaning_commenced,
+
+        dp.unloading_completed        AS unloading_completed,
+
+        dp.vessel_cast_off            AS mbc_cast_off,
+
+        dp.sailed_out_load_port       AS sailed_out_load_port,
+
+        dp.vessel_unloaded_by         AS vessel_unloaded_by,
+
+        dp.vessel_unloading_berth     AS unloaded_berth,
+
+        dp.cleaning_completed         AS cleaning_completed
+
+        FROM mbc_header h
+
+        LEFT JOIN mbc_load_port_lines lp
+            ON lp.mbc_id = h.id
+
+        LEFT JOIN mbc_discharge_port_lines dp
+            ON dp.mbc_id = h.id
+
+        WHERE 1=1
+    """
+
+    params = []
+
+    # Date Filter
+    if from_date and to_date and column_filter:
+
+        db_col = column_map.get(column_filter)
+
+        if db_col:
+
+            query += f"""
+                AND {db_col} IS NOT NULL
+                AND NULLIF({db_col}, '') IS NOT NULL
+                AND NULLIF({db_col}, '')::timestamp
+                BETWEEN %s::timestamp
+                AND %s::timestamp
+            """
+
+            params.extend([from_date, to_date])
+
+    # Status Filter
+
+    if status_filter == 'loaded_transit':
+
+        query += """
+            AND lp.cast_off_load_port IS NOT NULL
+            AND dp.vessel_unloading_berth IS NULL
+        """
+
+    elif status_filter == 'currently_loading':
+
+        query += """
+            AND lp.loading_commenced IS NOT NULL
+            AND lp.loading_completed IS NULL
+        """
+
+    elif status_filter == 'waiting_discharge':
+
+        query += """
+            AND dp.vessel_unloading_berth IS NOT NULL
+            AND dp.unloading_commenced IS NULL
+        """
+
+    elif status_filter == 'under_discharge':
+
+        query += """
+            AND dp.unloading_commenced IS NOT NULL
+            AND dp.unloading_completed IS NULL
+        """
+
+    elif status_filter == 'completed_discharge':
+
+        query += """
+            AND dp.unloading_completed IS NOT NULL
+        """
+
+    query += " ORDER BY h.id"
+
+    cur.execute(query, params)
+
+    rows = [dict(r) for r in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    return jsonify(rows)
