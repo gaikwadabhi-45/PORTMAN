@@ -95,3 +95,40 @@ def test_parse_rows_requires_equipment_and_date():
     rows, errors = model.parse_rows(headers, raw)
     assert rows == []
     assert any('equipment_name' in e['message'] for e in errors)
+
+
+# ── apply_resolutions ─────────────────────────────────────────────────────────
+def test_apply_resolutions_replaces_matching_values():
+    rows = [
+        {'equipment_name': 'BUL 01', 'barge_name': 'Radha 02'},
+        {'equipment_name': 'BUL 01', 'barge_name': 'Falcon'},
+    ]
+    res = {
+        'equipment_name': {'BUL 01': {'action': 'replace', 'target': 'BUL-01'}},
+        'barge_name': {'Radha 02': {'action': 'replace', 'target': 'RADHA KRISHNA 2'}},
+    }
+    out = model.apply_resolutions(rows, res)
+    assert out[0]['equipment_name'] == 'BUL-01'
+    assert out[0]['barge_name'] == 'RADHA KRISHNA 2'
+    assert out[1]['equipment_name'] == 'BUL-01'
+    assert out[1]['barge_name'] == 'Falcon'  # no resolution → unchanged
+
+def test_apply_resolutions_ignores_add_and_keep():
+    rows = [{'cargo_name': 'MLV Coal'}, {'delay_name': 'PL Cleaning'}]
+    res = {
+        'cargo_name': {'MLV Coal': {'action': 'add'}},
+        'delay_name': {'PL Cleaning': {'action': 'keep'}},
+    }
+    out = model.apply_resolutions(rows, res)
+    assert out[0]['cargo_name'] == 'MLV Coal'   # add → value kept as-is
+    assert out[1]['delay_name'] == 'PL Cleaning'
+
+def test_apply_resolutions_empty_returns_copy():
+    rows = [{'a': 1}]
+    out = model.apply_resolutions(rows, {})
+    assert out == rows and out is not rows
+
+def test_apply_resolutions_replace_without_target_is_noop():
+    rows = [{'cargo_name': 'X'}]
+    out = model.apply_resolutions(rows, {'cargo_name': {'X': {'action': 'replace', 'target': ''}}})
+    assert out[0]['cargo_name'] == 'X'

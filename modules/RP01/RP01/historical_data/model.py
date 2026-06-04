@@ -29,6 +29,21 @@ MASTER_MAP = {
     'source_display': ('vessels', 'vessel_name'),
 }
 
+# Columns whose unknown values may be ADDED to a master from the preview. Only
+# single-master, name-column tables (source_display/barge_name are excluded —
+# they are vessel/barge OR MBC, so they must be replaced, not added). Value:
+# (table, name_column, {extra_fixed_columns}).
+ADDABLE_MASTERS = {
+    'equipment_name': ('equipment', 'name', {}),
+    'cargo_name':     ('vessel_cargo', 'cargo_name', {}),
+    'delay_name':     ('port_delay_types', 'name', {}),
+    'route_name':     ('conveyor_routes', 'route_name', {'is_active': 1}),
+    'system_name':    ('port_systems', 'name', {}),
+    'berth_name':     ('port_berth_master', 'berth_name', {}),
+    'operator_name':  ('port_shift_operators', 'name', {}),
+    'shift_incharge': ('port_shift_incharge', 'name', {}),
+}
+
 
 # ── Pure validators ──────────────────────────────────────────────────────────
 def _blank(v):
@@ -212,6 +227,75 @@ def reconcile(rows, masters):
                                 'suggestions': suggest_matches(value, suggest_pool)})
         out[col] = {'recognized': recognized, 'unknown': unknown}
     return out
+
+
+def master_options(masters):
+    """Return {column: [values]} the full candidate list for each reconcilable
+    column's replace-picker. source_display/barge_name use the vessel/barge ∪ MBC
+    union (sorted, de-duped, case-insensitive)."""
+    out = {}
+    for col in list(MASTER_MAP.keys()) + ['barge_name']:
+        keys = UNION_MASTER_KEYS.get(col, [col])
+        seen, vals = set(), []
+        for k in keys:
+            for v in masters.get(k, []):
+                lk = str(v).lower()
+                if lk not in seen:
+                    seen.add(lk)
+                    vals.append(v)
+        out[col] = sorted(vals, key=lambda s: str(s).lower())
+    return out
+
+
+def apply_resolutions(rows, resolutions):
+    """Apply 'replace' resolutions to parsed rows (pure). `resolutions` is
+    {column: {old_value: {'action': 'replace'|'add'|'keep', 'target': new}}}.
+    Only 'replace' with a non-empty target rewrites the cell; 'add'/'keep' leave
+    the value as-is. Returns a new list of row dicts."""
+    # Build {column: {old: new}} for replace actions only.
+    repl = {}
+    for col, mapping in (resolutions or {}).items():
+        for old, res in (mapping or {}).items():
+            if isinstance(res, dict) and res.get('action') == 'replace' and res.get('target'):
+                repl.setdefault(col, {})[old] = res['target']
+    if not repl:
+        return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        nr = dict(r)
+        for col, m in repl.items():
+            if nr.get(col) in m:
+                nr[col] = m[nr[col]]
+        out.append(nr)
+    return out
+
+
+def add_to_master(column, value):
+    """Insert `value` into the master backing `column` (only single-master,
+    addable columns). No-op if the value already exists. Returns True if a row
+    was inserted, False if it already existed. Raises KeyError for non-addable
+    columns."""
+    table, namecol, extra = ADDABLE_MASTERS[column]
+    cols = [namecol] + list(extra.keys())
+    vals = [value] + list(extra.values())
+    placeholders = ', '.join(['%s'] * len(cols))
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        cur.execute(
+            f"INSERT INTO {table} ({', '.join(cols)}) "
+            f"SELECT {placeholders} "
+            f"WHERE NOT EXISTS (SELECT 1 FROM {table} WHERE LOWER({namecol}) = LOWER(%s))",
+            vals + [value],
+        )
+        inserted = cur.rowcount > 0
+        conn.commit()
+        return inserted
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ── Full replace ─────────────────────────────────────────────────────────────
