@@ -27,6 +27,18 @@
     </div>
 
     <div id="hd-result" style="font-size:13px;"></div>
+
+    <div style="margin-top:24px;border-top:1px solid #e2e8f0;padding-top:16px;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+            <b style="font-size:14px;">Stored Data</b>
+            <span style="color:#718096;font-size:12px;">— edit a cell to save it; changes persist immediately.</span>
+            <input id="hd-search" type="text" placeholder="Search equipment, source, barge, cargo, delay, date…"
+                   oninput="hdSearchDebounced()" style="margin-left:auto;font-size:13px;padding:5px 10px;border:1px solid #cbd5e0;border-radius:4px;width:340px;">
+            <button class="btn" onclick="hdReloadGrid()" style="background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">↻ Refresh</button>
+        </div>
+        <div id="hd-grid"></div>
+        <div id="hd-grid-status" style="font-size:11px;color:#718096;margin-top:6px;"></div>
+    </div>
 </div>
 
 <script>
@@ -200,6 +212,94 @@ async function hdApply() {
     document.getElementById('hd-result').innerHTML =
         `<div style="background:#c6f6d5;color:#276749;padding:10px 14px;border-radius:4px;">${msg}</div>` + extra;
     hdPreviewData = null;
+    hdReloadGrid();   // show the freshly-stored data
 }
+
+// ── Stored-data editable grid ────────────────────────────────────────────────
+let hdGrid = null;
+
+async function hdSaveCell(cell) {
+    const row = cell.getRow().getData();
+    try {
+        const res = await fetch('/api/module/RP01/historical/row/update', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(row)
+        });
+        const d = await res.json();
+        if (d.error) { alert('Save failed: ' + d.error); cell.restoreOldValue(); }
+    } catch (e) { alert('Save failed (network).'); cell.restoreOldValue(); }
+}
+
+function hdDeleteRow(cell) {
+    const row = cell.getRow();
+    const id = row.getData().id;
+    if (!confirm('Delete this row?')) return;
+    fetch('/api/module/RP01/historical/row/delete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id})
+    }).then(r => r.json()).then(d => {
+        if (d.error) { alert(d.error); return; }
+        row.delete();
+        const cnt = document.getElementById('hd-count');
+        cnt.textContent = Math.max(0, (parseInt(cnt.textContent, 10) || 1) - 1);
+    });
+}
+
+function hdInitGrid() {
+    const txt = (title, field, width) => ({title, field, width, editor: 'input'});
+    hdGrid = new Tabulator('#hd-grid', {
+        layout: 'fitDataFill',
+        height: '460px',
+        placeholder: 'No historical data uploaded yet.',
+        pagination: true,
+        paginationMode: 'remote',
+        paginationSize: 50,
+        paginationSizeSelector: [50, 100, 200],
+        ajaxURL: '/api/module/RP01/historical/rows',
+        ajaxParams: () => ({q: (document.getElementById('hd-search').value || '').trim()}),
+        ajaxResponse: (url, params, response) => {
+            document.getElementById('hd-grid-status').textContent =
+                `${response.total} row(s) total`;
+            return response;
+        },
+        columns: [
+            {title: 'Date', field: 'entry_date', width: 110, editor: 'input', frozen: true},
+            {title: 'Shift', field: 'shift', width: 70, editor: 'input'},
+            {title: 'Equipment', field: 'equipment_name', width: 150, editor: 'input', frozen: true},
+            {title: 'From', field: 'from_time', width: 80, editor: 'input'},
+            {title: 'To', field: 'to_time', width: 80, editor: 'input'},
+            {title: 'Source (VCN/MBC)', field: 'source_display', width: 180, editor: 'input'},
+            {title: 'Barge / MBC', field: 'barge_name', width: 160, editor: 'input'},
+            {title: 'Cargo', field: 'cargo_name', width: 150, editor: 'input'},
+            {title: 'Delay', field: 'delay_name', width: 180, editor: 'input'},
+            {title: 'Qty', field: 'quantity', width: 90, hozAlign: 'right', editor: 'number'},
+            {title: 'UOM', field: 'quantity_uom', width: 70, editor: 'input'},
+            {title: 'System', field: 'system_name', width: 120, editor: 'input'},
+            {title: 'Route', field: 'route_name', width: 120, editor: 'input'},
+            {title: 'Berth', field: 'berth_name', width: 110, editor: 'input'},
+            {title: 'Shift Incharge', field: 'shift_incharge', width: 150, editor: 'input'},
+            {title: 'Operator', field: 'operator_name', width: 150, editor: 'input'},
+            {title: 'Remarks', field: 'remarks', width: 200, editor: 'input'},
+            {title: '', field: '_del', width: 50, hozAlign: 'center', headerSort: false,
+                formatter: () => '<button style="background:#fc8181;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;">X</button>',
+                cellClick: (e, cell) => hdDeleteRow(cell)},
+        ],
+    });
+    hdGrid.on('cellEdited', hdSaveCell);
+    if (localStorage.getItem('theme') === 'dark')
+        document.getElementById('hd-grid').classList.add('tabulator-dark');
+}
+
+function hdReloadGrid() {
+    if (hdGrid) hdGrid.replaceData(); else hdInitGrid();
+}
+
+let _hdSearchTimer = null;
+function hdSearchDebounced() {
+    clearTimeout(_hdSearchTimer);
+    _hdSearchTimer = setTimeout(() => { if (hdGrid) hdGrid.replaceData(); }, 350);
+}
+
+document.addEventListener('DOMContentLoaded', hdInitGrid);
 </script>
 {% endblock %}

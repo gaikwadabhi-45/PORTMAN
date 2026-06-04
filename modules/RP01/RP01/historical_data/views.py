@@ -104,3 +104,38 @@ def historical_apply():
     inserted = model.replace_all(rows, session.get('user_id'))
     return jsonify({'inserted': inserted, 'added_to_master': added,
                     'add_errors': add_errors})
+
+
+@bp.route('/api/module/RP01/historical/rows')
+@admin_required
+def historical_rows():
+    try:
+        page = int(request.args.get('page', 1))
+        size = int(request.args.get('size', 50))
+    except (TypeError, ValueError):
+        page, size = 1, 50
+    q = (request.args.get('q') or '').strip() or None
+    rows, total = model.get_rows(page, size, q)
+    return jsonify({'data': rows, 'last_page': max(1, (total + size - 1) // size), 'total': total})
+
+
+@bp.route('/api/module/RP01/historical/row/update', methods=['POST'])
+@admin_required
+def historical_row_update():
+    data = request.json or {}
+    if not data.get('id'):
+        return jsonify({'error': 'Missing id'}), 400
+    res = model.update_row(data['id'], data)
+    if res.get('error'):
+        return jsonify(res), 400
+    return jsonify(res)
+
+
+@bp.route('/api/module/RP01/historical/row/delete', methods=['POST'])
+@admin_required
+def historical_row_delete():
+    data = request.json or {}
+    if not data.get('id'):
+        return jsonify({'error': 'Missing id'}), 400
+    model.delete_row(data['id'])
+    return jsonify({'success': True})
