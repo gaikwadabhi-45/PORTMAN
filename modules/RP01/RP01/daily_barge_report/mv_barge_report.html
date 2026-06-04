@@ -811,7 +811,8 @@
         border: 1px solid #dfe6ee;
         border-radius: 8px;
         margin-bottom: 14px;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
     }
 
     .dark-theme .shift-card {
@@ -835,9 +836,11 @@
     }
 
     .shift-table {
-        width: 100%;
         border-collapse: collapse;
         font-size: 12px;
+        table-layout: fixed;
+        width: max-content;
+        min-width: 4200px;
     }
 
     .shift-table th {
@@ -910,47 +913,99 @@
     .view-switch-row {
         display: flex;
         gap: 10px;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
 
     .view-switch-btn {
+        height: 42px;
         min-width: 120px;
-        height: 34px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        background: #f8fafc;
-        cursor: pointer;
-        font-size: 13px;
+
+        padding: 0 18px;
+
+        border: 1px solid #dbe2ea;
+        border-radius: 10px;
+
+        background: #ffffff;
+        color: #475569;
+
+        font-size: 14px;
         font-weight: 600;
-        transition: .2s;
+
+        cursor: pointer;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+
+        transition: all .2s ease;
+
+        box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
     }
 
     .view-switch-btn:hover {
-        background: #e2e8f0;
+        border-color: #4a90d9;
+        color: #4a90d9;
     }
 
     .view-switch-btn.active {
         background: #4a90d9;
-        color: #fff;
+        color: #ffffff;
         border-color: #4a90d9;
     }
-    .table-spinner{
-    width:48px;
-    height:48px;
-    border:4px solid #dbeafe;
-    border-top:4px solid #4a90d9;
-    border-radius:50%;
-    animation:spinLoader 0.8s linear infinite;
-}
 
-@keyframes spinLoader{
-    from{
-        transform:rotate(0deg);
+    .dark-theme .view-switch-btn {
+        background: #1e293b;
+        color: #cbd5e1;
+        border-color: #334155;
     }
-    to{
-        transform:rotate(360deg);
+
+    .dark-theme .view-switch-btn.active {
+        background: #4a90d9;
+        border-color: #4a90d9;
     }
-}
+
+    .table-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #dbeafe;
+        border-top: 4px solid #4a90d9;
+        border-radius: 50%;
+        animation: spinLoader 0.8s linear infinite;
+    }
+
+    @keyframes spinLoader {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    #vd-table .tabulator-frozen {
+        background: #ffffff !important;
+        z-index: 30 !important;
+    }
+
+    .dark-theme #vd-table .tabulator-frozen {
+        background: #16161e !important;
+    }
+
+    #error-box {
+        display: none;
+        margin: 15px 0;
+        padding: 12px 16px;
+
+        background: #ffe5e5;
+        border: 1px solid #ff4d4f;
+        border-left: 5px solid #ff0000;
+
+        color: #b00020;
+        font-weight: 600;
+        border-radius: 6px;
+    }
 </style>
 {% endblock %}
 
@@ -1038,36 +1093,37 @@
     </div>
 
     <div class="filter-group">
-        <label for="date-field-filter">
-            Filter Basis
-        </label>
+    <label for="status-filter">
+        Filter Basis
+    </label>
 
-        <select id="status-filter">
-            <option value="all">All</option>
+    <!-- ✅ THIS IS THE VISIBLE DROPDOWN — options are swapped by JS -->
+    <select id="status-filter">
+        <option value="all">All</option>
+    </select>
 
-            <option value="loaded_transit">
-                Loaded & Transit
-            </option>
+    <!-- MBC-specific filter options (hidden, used by JS to swap) -->
+    <select id="mbc-status-options" style="display:none;">
+        <option value="all">All</option>
+        <option value="currently_loading">Currently Loading</option>
+        <option value="loaded_transit">Loaded & Transit</option>
+        <option value="waiting_gull">Waiting at Gull Island</option>
+        <option value="on_way_dharamtar">On the Way to Dharamtar</option>
+        <option value="waiting_discharge">Waiting for Discharge</option>
+        <option value="under_discharge">Under Discharge</option>
+        <option value="waiting_castoff">Waiting for Cast Off</option>
+    </select>
 
-            <option value="currently_loading">
-                Currently Loading
-            </option>
-
-            <option value="waiting_discharge">
-                Waiting For Discharge
-            </option>
-
-            <option value="under_discharge">
-                Under Discharge
-            </option>
-
-            <option value="completed_discharge">
-                Completed Discharge
-            </option>
-
-        </select>
-
-    </div>
+    <!-- Barge-specific filter options (hidden, used by JS to swap) -->
+    <select id="barge-status-options" style="display:none;">
+        <option value="all">All</option>
+        <option value="loaded_transit">Loaded & Transit</option>
+        <option value="currently_loading">Currently Loading</option>
+        <option value="waiting_discharge">Waiting For Discharge</option>
+        <option value="under_discharge">Under Discharge</option>
+        <option value="completed_discharge">Completed Discharge</option>
+    </select>
+</div>
 
     <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
     <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
@@ -1163,11 +1219,11 @@
 <div class="view-switch-row">
 
     <button id="btn-barges" class="view-switch-btn active" onclick="switchView('barges')">
-        🚢 Barges
+        Barges
     </button>
 
     <button id="btn-mbc" class="view-switch-btn" onclick="switchView('mbc')">
-        🏗 MBC
+        MBC
     </button>
 
 </div>
@@ -1202,7 +1258,7 @@
 
 </div>
 
-<!-- <div id="shift-preview-wrapper" style="margin-top:14px;">
+<div id="shift-preview-wrapper" style="margin-top:14px;">
 
     <div style="
         font-size:15px;
@@ -1213,10 +1269,15 @@
         Shift Wise Preview
     </div>
 
-    <div id="shift-preview"></div>
+    <div id="shift-preview" style="
+        width:100%;
+        overflow-x:auto;
+        overflow-y:hidden;
+     ">
+    </div>
 
-</div> -->
-
+</div>
+<div id="error-box" style="display:none;"></div>
 <script>
     /* ── Formatters ──────────────────────────────────────── */
     function dtFormatter(cell) {
@@ -1452,85 +1513,90 @@
 
         ];
     }
-function mbcDateFormatter(cell) {
+    function mbcDateFormatter(cell) {
 
-    const v = cell.getValue();
+        const v = cell.getValue();
 
-    if (!v) {
-        return '—';
+        if (!v) {
+            return '—';
+        }
+
+        const d = new Date(v);
+
+        if (isNaN(d.getTime())) {
+            return v;
+        }
+
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yy = String(d.getFullYear()).slice(-2);
+
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+
+        return `${dd}-${mm}-${yy} ${hh}:${min}`;
     }
+    function buildMbcColumns() {
 
-    const d = new Date(v);
+        return [
 
-    if (isNaN(d.getTime())) {
-        return v;
+            {
+                title: 'Sr#',
+                width: 55,
+                frozen: true,
+                hozAlign: 'center',
+                formatter: function (cell) {
+                    return cell.getRow().getPosition(true);
+                }
+            },
+
+            {
+                title: 'MBC Name',
+                field: 'mbc_name',
+                width: 180,
+                frozen: true
+            },
+
+            {
+                title: 'Cargo Type',
+                field: 'cargo_type',
+                width: 150,
+                frozen: true
+            },
+
+            {
+                title: 'BL Qty (MT)',
+                field: 'qty_mt',
+                width: 120,
+                frozen: true
+            },
+
+            {
+                title: 'Balance Qty (MT)',
+                field: 'qty_balance',
+                width: 140,
+                frozen: true
+            },
+
+            { title: 'Arrived Load Port', field: 'trip_start', width: 160, formatter: mbcDateFormatter },
+            { title: 'Alongside Berth', field: 'along_side_vessel', width: 160, formatter: mbcDateFormatter },
+            { title: 'Loading Commenced', field: 'commenced_loading', width: 170, formatter: mbcDateFormatter },
+            { title: 'Loading Completed', field: 'completed_loading', width: 170, formatter: mbcDateFormatter },
+            { title: 'Cast Off Load Port', field: 'cast_off_mv', width: 170, formatter: mbcDateFormatter },
+            { title: 'Arrival Gull Island', field: 'arrival_gull_island', width: 170, formatter: mbcDateFormatter },
+            { title: 'Departure Gull Island', field: 'departure_gull_island', width: 170, formatter: mbcDateFormatter },
+            { title: 'MBC Arrival Port', field: 'mbc_arrival_port', width: 170, formatter: mbcDateFormatter },
+            { title: 'MBC AMF At Unloading Berth', field: 'mbc_amf_unloading_berth', width: 190, formatter: mbcDateFormatter },
+            { title: 'Unloading Commenced', field: 'unloading_commenced', width: 170, formatter: mbcDateFormatter },
+            { title: 'Cleaning Commenced', field: 'cleaning_commenced', width: 170, formatter: mbcDateFormatter },
+            { title: 'Unloading Completed', field: 'unloading_completed', width: 170, formatter: mbcDateFormatter },
+            { title: 'MBC Cast Off', field: 'mbc_cast_off', width: 160, formatter: mbcDateFormatter },
+            { title: 'Sailed Out Load Port', field: 'sailed_out_load_port', width: 170, formatter: mbcDateFormatter },
+            { title: 'Unloaded By', field: 'vessel_unloaded_by', width: 150 },
+            { title: 'Unloaded Berth', field: 'unloaded_berth', width: 150 },
+            { title: 'TAT', field: 'tat', width: 100 }
+        ];
     }
-
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yy = String(d.getFullYear()).slice(-2);
-
-    const hh = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-
-    return `${dd}-${mm}-${yy} ${hh}:${min}`;
-}
-function buildMbcColumns(){
-
-    return [
-
-        {
-    title:'Sr#',
-    width:55,
-    hozAlign:'center',
-    formatter:function(cell){
-        return cell.getRow().getPosition(true);
-    }
-},
-
-        {title:'MBC Name', field:'barge_name', width:180},
-
-        {title:'Cargo Type', field:'cargo_type', width:150},
-
-        {title:'BL Qty (MT)', field:'qty_mt', width:120},
-
-        {title:'Balance Qty (MT)', field:'qty_balance', width:140},
-
-        {title:'Arrived Load Port', field:'trip_start', width:160, formatter:mbcDateFormatter},
-
-        {title:'Alongside Berth', field:'along_side_vessel', width:160 ,formatter:mbcDateFormatter},
-
-        {title:'Loading Commenced', field:'commenced_loading', width:170,formatter:mbcDateFormatter},
-
-        {title:'Loading Completed', field:'completed_loading', width:170,formatter:mbcDateFormatter},
-
-        {title:'Cast Off Load Port', field:'cast_off_mv', width:170,formatter:mbcDateFormatter},
-
-        {title:'Arrival Gull Island', field:'arrival_gull_island', width:170,formatter:mbcDateFormatter},
-
-        {title:'Departure Gull Island', field:'departure_gull_island', width:170,formatter:mbcDateFormatter},
-
-        {title:'MBC Arrival Port', field:'mbc_arrival_port', width:170,formatter:mbcDateFormatter},
-
-        {title:'MBC AMF At Unloading Berth', field:'mbc_amf_unloading_berth', width:190,formatter:mbcDateFormatter},
-
-        {title:'Unloading Commenced', field:'unloading_commenced', width:170,formatter:mbcDateFormatter},
-
-        {title:'Cleaning Commenced', field:'cleaning_commenced', width:170,formatter:mbcDateFormatter},
-
-        {title:'Unloading Completed', field:'unloading_completed', width:170,formatter:mbcDateFormatter},
-
-        {title:'MBC Cast Off', field:'mbc_cast_off', width:160,formatter:mbcDateFormatter},
-
-        {title:'Sailed Out Load Port',  field:'sailed_out_load_port' , width:170,formatter:mbcDateFormatter},
-
-        {title:'Unloaded By', field:'vessel_unloaded_by', width:150},
-
-        {title:'Unloaded Berth', field:'unloaded_berth', width:150},
-
-        {title:'TAT', field:'tat', width:100}
-    ];
-}
 
     /* ── Single shared tooltip for all rows ── */
     const _tip = document.createElement('span');
@@ -1603,6 +1669,7 @@ function buildMbcColumns(){
                 const el = row.getElement();
 
                 const STATUS_COLORS = {
+                    // Barge statuses
                     'completed_discharge': '#c6efce',
                     'under_discharge': '#ffe699',
                     'loaded_waiting': '#bdd7ee',
@@ -1610,17 +1677,26 @@ function buildMbcColumns(){
                     'loaded_transit': '#9fc5e8',
                     'waiting_discharge': '#f9cb9c',
 
+                    // ✅ MBC-specific statuses
+                    'waiting_gull': '#ffe599',
+                    'on_way_dharamtar': '#f6b26b',
+                    'waiting_castoff': '#c6efce',
                 };
 
                 const STATUS_LABELS = {
+                    // Barge
                     'completed_discharge': 'Completed Discharge',
                     'under_discharge': 'Under Discharge',
                     'loaded_waiting': 'Loaded & Waiting',
                     'currently_loading': 'Currently Loading',
                     'loaded_transit': 'Loaded & Transit',
                     'waiting_discharge': 'Waiting For Discharge',
-                };
 
+                    // ✅ MBC
+                    'waiting_gull': 'Waiting at Gull Island',
+                    'on_way_dharamtar': 'On the Way to Dharamtar',
+                    'waiting_castoff': 'Waiting for Cast Off',
+                };
                 // Backend 
                 const status = data.current_status || '';
 
@@ -1638,7 +1714,7 @@ function buildMbcColumns(){
         });
 
         updateCount(data.length);
-        // renderShiftPreview(data);
+        renderShiftPreview(data);
     }
 
     function updateCount(n) {
@@ -1762,7 +1838,7 @@ function buildMbcColumns(){
         document.getElementById('row-count').textContent =
             'Loading…';
 
-            showTableLoader();
+        showTableLoader();
 
         const apiUrl =
             currentView === 'mbc'
@@ -1783,36 +1859,40 @@ function buildMbcColumns(){
             })
 
             .then(data => {
+                hideError();
                 hideTableLoader();
 
                 if (table) {
-
                     if (currentView === 'mbc') {
-                        table.setColumns(
-                            buildMbcColumns()
-                        );
+                        table.setColumns(buildMbcColumns());
                     } else {
-                        table.setColumns(
-                            buildColumns()
-                        );
+                        table.setColumns(buildColumns());
                     }
-
                     table.setData(data);
-
                     updateCount(data.length);
-
-                    // renderShiftPreview(data);
-
                 } else {
-
                     initTable(data);
                 }
+
+                // ── Always refresh shift preview with BOTH sources ──
+                fetchAndRenderShiftPreview();
             })
 
             .catch(err => {
+
                 hideTableLoader();
 
                 console.error(err);
+
+                if (table) {
+                    table.clearData();
+                }
+
+                showError(
+                    currentView === 'mbc'
+                        ? '❌ Error loading MBC data.'
+                        : '❌ Error loading Barges data.'
+                );
 
                 document.getElementById('row-count').textContent =
                     'Error loading data.';
@@ -1977,10 +2057,52 @@ function buildMbcColumns(){
                 }, 800);
             });
     }
+
+    function fetchAndRenderShiftPreview() {
+        const selectedDate = document.getElementById('filter-from').value;
+        const selectedToDate = document.getElementById('filter-to').value;
+        const selectedColumn = document.getElementById('column-filter').value;
+        const statusFilter = document.getElementById('status-filter').value;
+
+        const params = new URLSearchParams();
+        if (selectedDate) params.set('from_date', selectedDate);
+        if (selectedToDate) params.set('to_date', selectedToDate);
+        if (selectedColumn) params.set('column_filter', selectedColumn);
+        params.set('status_filter', statusFilter);
+
+        // Fetch both Barges and MBC in parallel
+        Promise.all([
+            fetch('/api/module/RP01/mv-barge-report/data?' + params.toString())
+                .then(r => r.ok ? r.json() : [])
+                .catch(() => []),
+            fetch('/api/module/RP01/mv-barge-report/mbc-data?' + params.toString())
+                .then(r => r.ok ? r.json() : [])
+                .catch(() => [])
+        ]).then(([bargeData, mbcData]) => {
+
+            // Normalize MBC rows to match barge row shape
+            const normalizedMbc = mbcData.map(row => ({
+                ...row,
+                barge_name: row.mbc_name || '',
+                mother_vessel_name: '',
+                qty_mt: row.qty_mt || 0,
+                cargo_type: row.cargo_type || '',
+                // Use unloading_commenced as trip_start for shift assignment
+                trip_start: row.unloading_commenced || row.trip_start || '',
+                unloaded_by: row.vessel_unloaded_by || '',
+                current_status: row.current_status || '',
+                _is_mbc: true,
+            }));
+
+            const combined = [...bargeData, ...normalizedMbc];
+            renderShiftPreview(combined);
+        });
+    }
     function renderShiftPreview(data) {
         const wrapper = document.getElementById('shift-preview');
         wrapper.innerHTML = '';
 
+        // ── Equipment list (must match unloaded_by field values) ──────────────
         const equipments = [
             'Barge Unloader 1',
             'Barge Unloader 2',
@@ -1994,54 +2116,138 @@ function buildMbcColumns(){
             'BUL-05'
         ];
 
+        // ── Shift time definitions (24hr format) ──────────────────────────────
         const shiftDefs = [
             { name: 'A Shift', start: 6, end: 14 },
             { name: 'B Shift', start: 14, end: 22 },
             { name: 'C Shift', start: 22, end: 30 }  // 30 = next day 06:00
         ];
 
-        /* ── assign each row to exactly ONE shift ── */
-        function getShiftHour(row) {
-            const raw = String(row.trip_start || '');
+        // ── Get FROM and TO datetime from filter inputs ───────────────────────
+        const fromVal = document.getElementById('filter-from').value;
+        const toVal = document.getElementById('filter-to').value;
+        const fromDt = fromVal ? new Date(fromVal) : null;
+        const toDt = toVal ? new Date(toVal) : null;
+
+        // ── Parse datetime string to JS Date object ───────────────────────────
+        // Supports both "DD-MM-YYYY HH:MM" and ISO "YYYY-MM-DDTHH:MM" formats
+        function parseRowDt(raw) {
             if (!raw) return null;
-            try {
-                const timePart = raw.includes('T')
-                    ? raw.split('T')[1]
-                    : raw.split(' ')[1];
-                if (!timePart) return null;
-                return parseInt(timePart.split(':')[0]);
-            } catch (e) { return null; }
+            raw = String(raw).trim();
+
+            // Handle DD-MM-YYYY HH:MM format (barge data)
+            const m = raw.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})/);
+            if (m) {
+                return new Date(
+                    parseInt(m[3]),
+                    parseInt(m[2]) - 1,
+                    parseInt(m[1]),
+                    parseInt(m[4]),
+                    parseInt(m[5])
+                );
+            }
+
+            // Handle ISO format (MBC data): 2026-04-01T14:30
+            const dt = new Date(raw);
+            return isNaN(dt.getTime()) ? null : dt;
         }
 
+        // ── Check if a datetime string falls within the selected filter range ─
+        function inRange(raw) {
+            const dt = parseRowDt(raw);
+            if (!dt || isNaN(dt.getTime())) return false;
+            if (fromDt && dt < fromDt) return false;
+            if (toDt && dt > toDt) return false;
+            return true;
+        }
+
+        // ── Get hour (0-23) from discharge/unloading time for shift assignment ─
+        // Uses commence_discharge_berth (barge) or unloading_commenced (MBC)
+        function getShiftHour(row) {
+            const raw = String(
+                row.commence_discharge_berth ||
+                row.unloading_commenced ||
+                row.along_side_berth || ''
+            ).trim();
+
+            if (!raw) return null;
+
+            try {
+                let timePart = null;
+
+                // ISO format: 2026-04-01T14:30
+                if (raw.includes('T')) {
+                    timePart = raw.split('T')[1];
+                }
+                // DD-MM-YYYY HH:MM or YYYY-MM-DD HH:MM
+                else if (raw.includes(' ')) {
+                    timePart = raw.split(' ')[1];
+                }
+
+                if (!timePart) return null;
+                const hr = parseInt(timePart.split(':')[0]);
+                return isNaN(hr) ? null : hr;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // ── Assign shift index based on hour ──────────────────────────────────
+        // A Shift: 06:00-13:59 | B Shift: 14:00-21:59 | C Shift: 22:00-05:59
         function assignShift(hr) {
             if (hr === null) return null;
-            if (hr >= 6 && hr < 14) return 0;   // A
-            if (hr >= 14 && hr < 22) return 1;   // B
-            return 2;                              // C (22–05)
+            if (hr >= 6 && hr < 14) return 0;  // A Shift
+            if (hr >= 14 && hr < 22) return 1;  // B Shift
+            return 2;                             // C Shift (22:00 - 05:59)
         }
 
-        /* ── build per-shift equipment maps ── */
-        // shiftRows[shiftIdx][equipName] = [row, row, ...]
+        // ── Build per-shift equipment maps ────────────────────────────────────
+        // shiftRows[shiftIndex][equipmentName] = [row, row, ...]
         const shiftRows = shiftDefs.map(() => {
             const map = {};
             equipments.forEach(eq => { map[eq] = []; });
             return map;
         });
 
-        // shiftAllRows[shiftIdx] = unique rows in that shift (for shift total)
+        // shiftAllRows[shiftIndex] = all unique rows in that shift (for shift total)
         const shiftAllRows = [[], [], []];
 
+        // ── Filter and assign each row to the correct shift ───────────────────
         data.forEach(row => {
-            if (!row.trip_start) return;
-            const hr = getShiftHour(row);
-            const si = assignShift(hr);
-            if (si === null) return;
 
+            // Get the discharge/unloading start time for this row
+            // Barge: commence_discharge_berth | MBC: unloading_commenced
+            const dischargeTime =
+                row.commence_discharge_berth ||
+                row.unloading_commenced || '';
+
+            const berthTime = row.along_side_berth || '';
+
+            // Check if discharge time is within selected date range
+            if (dischargeTime) {
+                // If discharge time exists but not in range → skip this row
+                if (!inRange(dischargeTime)) return;
+            } else if (berthTime) {
+                // If no discharge time, use berth time to check range
+                if (!inRange(berthTime)) return;
+            } else {
+                // No discharge or berth time → skip
+                return;
+            }
+
+            // Determine shift based on discharge hour
+            const hr = getShiftHour(row);
+            if (hr === null) return;  // Cannot determine shift → skip
+            const si = assignShift(hr);
+
+            // Add to shift's all-rows list (for shift total calculation)
             shiftAllRows[si].push(row);
 
-            const unload = (row.unloaded_by || '').trim();
+            // Add to specific equipment bucket based on unloaded_by field
+            const unload = (row.unloaded_by || row.vessel_unloaded_by || '').trim();
             if (!unload) return;
 
+            // unloaded_by can have multiple equipments: "BUL-01, BUL-02"
             unload.split(',').map(x => x.trim()).forEach(eq => {
                 if (shiftRows[si][eq] !== undefined) {
                     shiftRows[si][eq].push(row);
@@ -2049,113 +2255,188 @@ function buildMbcColumns(){
             });
         });
 
-        /* ── grand totals per equipment (sum across all shifts, qty counted once per row per equipment) ── */
+        // ── Calculate grand totals per equipment across all shifts ────────────
         const grandEqTotals = {};
         equipments.forEach(eq => {
             grandEqTotals[eq] = shiftDefs.reduce((sum, _, si) => {
-                return sum + shiftRows[si][eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+                return sum + shiftRows[si][eq].reduce(
+                    (s, r) => s + Number(r.qty_mt || 0), 0
+                );
             }, 0);
         });
 
-        /* ── grand overall total = sum of all unique rows' qty across all shifts ── */
+        // ── Grand overall total across all shifts ─────────────────────────────
         const grandOverall = [0, 1, 2].reduce((total, si) => {
-            return total + shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+            return total + shiftAllRows[si].reduce(
+                (s, r) => s + Number(r.qty_mt || 0), 0
+            );
         }, 0);
 
-        /* ── render each shift card ── */
+        // ── Build the outer container HTML ────────────────────────────────────
+        let allHtml = `
+        <div style="overflow-x:auto; width:100%; border:1px solid #dfe6ee;">
+    `;
+
+        // ── Render each shift card (A, B, C) ──────────────────────────────────
         shiftDefs.forEach((shift, si) => {
             const map = shiftRows[si];
             const isLastShift = si === shiftDefs.length - 1;
 
-            // shift total = sum of all rows in this shift (each row counted once)
-            const shiftTotal = shiftAllRows[si].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+            // Total qty for this shift (each row counted once)
+            const shiftTotal = shiftAllRows[si].reduce(
+                (s, r) => s + Number(r.qty_mt || 0), 0
+            );
 
+            // ── Shift card header ─────────────────────────────────────────────
             let html = `
-        <div class="shift-card">
-            <div class="shift-header">${shift.name}</div>
-            <div style="overflow-x:auto;">
-            <table class="shift-table">
-                <thead><tr>`;
+            <div class="shift-card">
+                <div class="shift-header">${shift.name}</div>
+                <table class="shift-table">
+                    <thead>
+                        <tr>
+        `;
 
+            // Equipment column headers (each spans 4 sub-columns)
             equipments.forEach(eq => {
-                html += `<th colspan="4" style="background:#c6efce;color:#006100;text-align:center;">${eq}</th>`;
+                html += `
+                <th colspan="4"
+                    style="background:#c6efce;color:#006100;text-align:center;">
+                    ${eq}
+                </th>
+            `;
             });
 
             html += `</tr><tr>`;
+
+            // Sub-headers: Barge | Qty | Cargo | MV for each equipment
             equipments.forEach(() => {
-                html += `<th>Barge</th><th>Qty</th><th>Cargo</th><th>MV</th>`;
+                html += `
+                <th>Barge / MBC</th>
+                <th>Qty (MT)</th>
+                <th>Cargo</th>
+                <th>MV Name</th>
+            `;
             });
+
             html += `</tr></thead><tbody>`;
 
-            const maxRows = Math.max(...equipments.map(eq => map[eq].length), 1);
+            // ── Data rows: max rows = busiest equipment's row count ───────────
+            const maxRows = Math.max(
+                ...equipments.map(eq => map[eq].length), 1
+            );
 
             for (let i = 0; i < maxRows; i++) {
                 html += `<tr>`;
                 equipments.forEach(eq => {
                     const row = map[eq][i];
                     if (row) {
+                        // Show barge/MBC name, qty, cargo, mother vessel
                         html += `
-                    <td>${row.barge_name || ''}</td>
-                    <td style="text-align:right;">${Number(row.qty_mt || 0).toLocaleString('en-IN')}</td>
-                    <td>${row.cargo_type || ''}</td>
-                    <td>${row.mother_vessel_name || ''}</td>`;
+                        <td>${row.barge_name || row.mbc_name || ''}</td>
+                        <td style="text-align:right;">
+                            ${Number(row.qty_mt || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td>${row.cargo_type || ''}</td>
+                        <td>${row.mother_vessel_name || ''}</td>
+                    `;
                     } else {
+                        // Empty cells for equipments with fewer rows
                         html += `<td></td><td></td><td></td><td></td>`;
                     }
                 });
                 html += `</tr>`;
             }
 
-            /* equipment totals row (yellow) */
-            html += `<tr style="background:#ffe699;font-weight:700;">`;
+            // ── Equipment total row (yellow) ──────────────────────────────────
+            html += `<tr style="background:#ffe699; font-weight:700;">`;
             equipments.forEach(eq => {
-                const t = map[eq].reduce((s, r) => s + Number(r.qty_mt || 0), 0);
+                // Sum all qty for this equipment in this shift
+                const t = map[eq].reduce(
+                    (s, r) => s + Number(r.qty_mt || 0), 0
+                );
                 html += `
-            <td style="text-align:center;">Total</td>
-            <td style="text-align:right;">${t.toLocaleString('en-IN')}</td>
-            <td colspan="2"></td>`;
+                <td style="text-align:center;">Total</td>
+                <td style="text-align:right;">
+                    ${t > 0 ? t.toLocaleString('en-IN') : '-'}
+                </td>
+                <td colspan="2"></td>
+            `;
             });
             html += `</tr>`;
 
-            /* shift total row (blue) */
+            // ── Shift total row (blue) ────────────────────────────────────────
             html += `
-        <tr style="background:#bdd7ee;font-weight:700;">
-            <td colspan="${equipments.length * 4}"
-                style="text-align:right;padding-right:20px;">
-                ${shift.name} Total : ${shiftTotal.toLocaleString('en-IN')} MT
-            </td>
-        </tr>`;
+            <tr style="background:#bdd7ee; font-weight:700;">
+                <td colspan="${equipments.length * 4}"
+                    style="text-align:right; padding-right:20px;">
+                    ${shift.name} Total :
+                    ${shiftTotal > 0
+                    ? shiftTotal.toLocaleString('en-IN') + ' MT'
+                    : '— No discharge in this shift —'
+                }
+                </td>
+            </tr>
+        `;
 
-            /* grand total row — only after C Shift */
+            // ── Grand total row — only shown after C Shift ────────────────────
             if (isLastShift) {
-                html += `<tr style="background:#c6e0f5;font-weight:700;font-size:12px;color:#0c4a6e;">`;
-                html += `<td style="white-space:nowrap;text-align:center;border-left:3px solid #4a7ab5;">All Shifts</td>`;
+
+                // Per-equipment grand total row
+                html += `
+                <tr style="background:#c6e0f5; font-weight:700;
+                           font-size:12px; color:#0c4a6e;">
+                    <td style="white-space:nowrap; text-align:center;
+                               border-left:3px solid #4a7ab5;">
+                        All Shifts
+                    </td>
+            `;
                 equipments.forEach((eq, idx) => {
                     const val = grandEqTotals[eq];
                     if (idx === 0) {
-                        html += `<td style="text-align:right;">${val.toLocaleString('en-IN')}</td><td colspan="2"></td>`;
+                        html += `
+                        <td style="text-align:right;">
+                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                        </td>
+                        <td colspan="2"></td>
+                    `;
                     } else {
-                        html += `<td style="border-left:3px solid #4a7ab5;"></td>
-                             <td style="text-align:right;">${val.toLocaleString('en-IN')}</td>
-                             <td colspan="2"></td>`;
+                        html += `
+                        <td style="border-left:3px solid #4a7ab5;"></td>
+                        <td style="text-align:right;">
+                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                        </td>
+                        <td colspan="2"></td>
+                    `;
                     }
                 });
                 html += `</tr>`;
 
-                html += `<tr style="background:#bdd7ee;font-weight:700;">
-                <td colspan="${equipments.length * 4}"
-                    style="text-align:right;padding-right:20px;color:#0c4a6e;font-size:13px;">
-                    Grand Total (All Shifts) : ${grandOverall.toLocaleString('en-IN')} MT
-                </td>
-            </tr>`;
+                // Grand overall total row
+                html += `
+                <tr style="background:#bdd7ee; font-weight:700;">
+                    <td colspan="${equipments.length * 4}"
+                        style="text-align:right; padding-right:20px;
+                               color:#0c4a6e; font-size:13px;">
+                        Grand Total (All Shifts) :
+                        ${grandOverall > 0
+                        ? grandOverall.toLocaleString('en-IN') + ' MT'
+                        : '— No discharge data in selected range —'
+                    }
+                    </td>
+                </tr>
+            `;
             }
 
-            html += `</tbody></table></div></div>`;
-            wrapper.innerHTML += html;
+            html += `</tbody></table></div>`;
+            allHtml += html;
         });
+
+        allHtml += `</div>`;
+        wrapper.innerHTML = allHtml;
     }
     /* ── On load — auto-fetch current month ──────────────── */
     document.addEventListener('DOMContentLoaded', function () {
+        swapStatusFilterOptions('barges');
 
         applyFilters();
 
@@ -2406,23 +2687,79 @@ function buildMbcColumns(){
             )
             .classList
             .add("active");
-
+        swapStatusFilterOptions(view);
+        updateLegend(view);
         applyFilters();
+
+        function updateLegend(view) {
+            const legendPopup = document.querySelector('.legend-popup');
+
+            if (view === 'mbc') {
+                legendPopup.innerHTML = `
+            <div class="legend-item"><span class="legend-color" style="background:#d9d2e9;"></span> Currently Loading</div>
+            <div class="legend-item"><span class="legend-color" style="background:#9fc5e8;"></span> Loaded & Transit</div>
+            <div class="legend-item"><span class="legend-color" style="background:#ffe599;"></span> Waiting at Gull Island</div>
+            <div class="legend-item"><span class="legend-color" style="background:#f6b26b;"></span> On the Way to Dharamtar</div>
+            <div class="legend-item"><span class="legend-color" style="background:#f9cb9c;"></span> Waiting for Discharge</div>
+            <div class="legend-item"><span class="legend-color" style="background:#ffe699;"></span> Under Discharge</div>
+            <div class="legend-item"><span class="legend-color" style="background:#c6efce;"></span> Waiting for Cast Off</div>
+        `;
+            } else {
+                legendPopup.innerHTML = `
+            <div class="legend-item"><span class="legend-color" style="background:#d9d2e9;"></span> Currently Loading</div>
+            <div class="legend-item"><span class="legend-color" style="background:#bdd7ee;"></span> Loaded & Transit</div>
+            <div class="legend-item"><span class="legend-color" style="background:#ffe699;"></span> Under Discharge</div>
+            <div class="legend-item"><span class="legend-color" style="background:#f9cb9c;"></span> Waiting For Discharge</div>
+            <div class="legend-item"><span class="legend-color" style="background:#c6efce;"></span> Completed Discharge</div>
+        `;
+            }
+        }
     }
     function showTableLoader() {
 
-    document.getElementById(
-        'table-loader'
-    ).style.display = 'flex';
+        document.getElementById(
+            'table-loader'
+        ).style.display = 'flex';
 
-}
+    }
 
-function hideTableLoader() {
+    function hideTableLoader() {
 
-    document.getElementById(
-        'table-loader'
-    ).style.display = 'none';
+        document.getElementById(
+            'table-loader'
+        ).style.display = 'none';
 
-}
+    }
+    function showError(message) {
+
+        document.getElementById("vd-table").style.display = "none";
+
+        const errorBox = document.getElementById("error-box");
+
+        errorBox.innerHTML = message;
+        errorBox.style.display = "block";
+    }
+
+    function hideError() {
+
+        document.getElementById("vd-table").style.display = "";
+
+        document.getElementById("error-box").style.display = "none";
+    }
+    function swapStatusFilterOptions(view) {
+        const statusSelect = document.getElementById('status-filter');
+        const sourceId = view === 'mbc' ? 'mbc-status-options' : 'barge-status-options';
+        const source = document.getElementById(sourceId);
+
+        // Save current value to restore if same option exists
+        const currentVal = statusSelect.value;
+
+        // Replace options
+        statusSelect.innerHTML = source.innerHTML;
+
+        // Try to restore previous selection; fallback to 'all'
+        const exists = [...statusSelect.options].some(o => o.value === currentVal);
+        statusSelect.value = exists ? currentVal : 'all';
+    }
 </script>
 {% endblock %}
