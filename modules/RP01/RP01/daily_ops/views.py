@@ -951,6 +951,30 @@ def _fetch_cargo_availability(report_date):
 
     return rows
 
+def _fetch_tide_data(report_date):
+
+    start_date = report_date
+    end_date = report_date + timedelta(days=1)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            tide_datetime,
+            tide_meters
+        FROM tide_master
+        WHERE tide_datetime::date BETWEEN %s AND %s
+        ORDER BY tide_datetime
+    """, (start_date, end_date))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+
 def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
     Month values incorporate cutoff if the cutoff date falls within the report month.
@@ -1782,6 +1806,45 @@ def daily_ops_preview():
     </tr>
     </table>
     """
+
+    tide_rows = _fetch_tide_data(report_date)
+
+    html += """
+    <br><br>
+    <h3>Tide - Dharamtar Port</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+        <tr style='background:#4a90d9;color:white'>
+            <th style='border:1px solid #ccc;padding:8px'>Date</th>
+            <th style='border:1px solid #ccc;padding:8px'>Time</th>
+            <th style='border:1px solid #ccc;padding:8px'>Tide (m)</th>
+        </tr>
+    """
+
+    for t in tide_rows:
+
+        tide_dt = t['tide_datetime']
+
+        if isinstance(tide_dt, str):
+            tide_dt = datetime.fromisoformat(tide_dt)
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {tide_dt.strftime('%d-%m-%Y')}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {tide_dt.strftime('%H:%M')}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {float(t['tide_meters']):.2f}
+            </td>
+        </tr>
+        """
+
+    html += "</table>"
     return html
 
 # ── Download endpoint ───────────────────────────────────────────────────────
