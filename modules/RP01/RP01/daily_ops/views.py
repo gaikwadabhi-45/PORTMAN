@@ -539,122 +539,140 @@ def _fetch_discharging_mbcs(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
+SELECT
+    h.id,
+    h.mbc_name,
+    p.vessel_unloaded_by AS equipment,
+    h.cargo_name,
+
+    h.bl_quantity AS bl_quantity,
+
+    COALESCE(l.actual_qty, 0) AS actual_quantity,
+
+    (h.bl_quantity - COALESCE(l.actual_qty, 0)) AS discharge_quantity,
+
+    p.vessel_arrival_port,
+    p.unloading_commenced,
+    p.unloading_completed,
+
+    CASE
+        WHEN
+            NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
+            AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
+            AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
+            AND (
+                p.unloading_commenced IS NULL
+                OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
+            )
+        THEN 'ARRIVED'
+
+        WHEN
+            p.unloading_commenced IS NOT NULL
+            AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+            AND (
+                p.unloading_completed IS NULL
+                OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+            )
+            AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+            AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+        THEN 'DISCHARGING'
+
+        WHEN
+            p.unloading_completed IS NOT NULL
+            AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
+            AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
+            AND NULLIF(TRIM(p.unloading_completed), '')::timestamp <= %s
+        THEN 'COMPLETED'
+    END AS status
+
+FROM mbc_header h
+
+JOIN mbc_discharge_port_lines p
+    ON p.mbc_id = h.id
+
+LEFT JOIN (
     SELECT
-        h.id,
-        h.mbc_name,
-        p.vessel_unloaded_by AS equipment,
-        h.cargo_name,
-        h.bl_quantity AS discharge_quantity,
-        p.vessel_arrival_port,
-        p.unloading_commenced,
-        p.unloading_completed,
+        source_id AS mbc_id,
+        SUM(COALESCE(quantity, 0)) AS actual_qty
+    FROM lueu_lines
+    WHERE source_type = 'MBC'
+      AND is_deleted = false
+    GROUP BY source_id
+) l
+    ON l.mbc_id = h.id
 
-        CASE
-            WHEN
-                NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
-                AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
-                AND (
-                    p.unloading_commenced IS NULL
-                    OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
-                )
-            THEN 'ARRIVED'
+WHERE
 
-            WHEN
-                p.unloading_commenced IS NOT NULL
-                AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
-                AND (
-                    p.unloading_completed IS NULL
-                    OR TRIM(COALESCE(p.unloading_completed, '')) = ''
-                )
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
-            THEN 'DISCHARGING'
-
-            WHEN
-                p.unloading_completed IS NOT NULL
-                AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
-                AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
-                AND NULLIF(TRIM(p.unloading_completed), '')::timestamp <= %s
-            THEN 'COMPLETED'
-        END AS status
-
-    FROM mbc_header h
-    JOIN mbc_discharge_port_lines p
-        ON p.mbc_id = h.id
-
-    WHERE
-
-    (
-        NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
-        AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
-        AND (
-            p.unloading_commenced IS NULL
-            OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
-        )
+(
+    NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
+    AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
+    AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
+    AND (
+        p.unloading_commenced IS NULL
+        OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
     )
+)
 
-    OR
+OR
 
-    (
-        p.unloading_commenced IS NOT NULL
-        AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
-        AND (
-            p.unloading_completed IS NULL
-            OR TRIM(COALESCE(p.unloading_completed, '')) = ''
-        )
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+(
+    p.unloading_commenced IS NOT NULL
+    AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+    AND (
+        p.unloading_completed IS NULL
+        OR TRIM(COALESCE(p.unloading_completed, '')) = ''
     )
+    AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
+    AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+)
 
-    OR
+OR
 
-    (
-        p.unloading_completed IS NOT NULL
-        AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
-        AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
-        AND NULLIF(TRIM(p.unloading_completed), '')::timestamp <= %s
-    )
+(
+    p.unloading_completed IS NOT NULL
+    AND TRIM(COALESCE(p.unloading_completed, '')) <> ''
+    AND NULLIF(TRIM(p.unloading_completed), '')::timestamp >= %s
+    AND NULLIF(TRIM(p.unloading_completed), '')::timestamp <= %s
+)
 
-    ORDER BY
-        CASE
-            WHEN
-                NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
-                AND (
-                    p.unloading_commenced IS NULL
-                    OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
-                )
-            THEN 1
+ORDER BY
+    CASE
+        WHEN
+            NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
+            AND (
+                p.unloading_commenced IS NULL
+                OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
+            )
+        THEN 1
 
-            WHEN
-                p.unloading_commenced IS NOT NULL
-                AND (
-                    p.unloading_completed IS NULL
-                    OR TRIM(COALESCE(p.unloading_completed, '')) = ''
-                )
-            THEN 2
+        WHEN
+            p.unloading_commenced IS NOT NULL
+            AND (
+                p.unloading_completed IS NULL
+                OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+            )
+        THEN 2
 
-            WHEN
-                p.unloading_completed IS NOT NULL
-            THEN 3
-        END,
+        WHEN
+            p.unloading_completed IS NOT NULL
+        THEN 3
+    END,
 
-        COALESCE(
-            NULLIF(TRIM(p.unloading_completed), '')::timestamp,
-            NULLIF(TRIM(p.unloading_commenced), '')::timestamp,
-            NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp
-        ) DESC
+    COALESCE(
+        NULLIF(TRIM(p.unloading_completed), '')::timestamp,
+        NULLIF(TRIM(p.unloading_commenced), '')::timestamp,
+        NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp
+    ) DESC
 
-    """, (
-        window_start, window_end,          # CASE ARRIVED
-        window_start, window_end,          # CASE DISCHARGING
-        completion_start, completion_end,  # CASE COMPLETED
+""", (
+    window_start, window_end,          # CASE ARRIVED
+    window_start, window_end,          # CASE DISCHARGING
+    completion_start, completion_end,  # CASE COMPLETED
 
-        window_start, window_end,          # WHERE ARRIVED
-        window_start, window_end,          # WHERE DISCHARGING
-        completion_start, completion_end   # WHERE COMPLETED
-    ))
+    window_start, window_end,          # WHERE ARRIVED
+    window_start, window_end,          # WHERE DISCHARGING
+    completion_start, completion_end   # WHERE COMPLETED
+))
 
     rows = cur.fetchall()
 
@@ -711,7 +729,7 @@ def _fetch_upcoming_mbcs(report_date):
             CASE
                 WHEN NULLIF(TRIM(l.eta), '') IS NOT NULL
                      AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
-                THEN 'ETA DHARMTAR'
+                THEN 'ETA GULL'
 
                 WHEN NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
                      AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
@@ -719,7 +737,7 @@ def _fetch_upcoming_mbcs(report_date):
 
                 WHEN NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
                      AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
-                THEN 'ETA GULL'
+                THEN 'ETA DHARAMTAR'
             END AS status
 
         FROM mbc_header h
@@ -1356,14 +1374,43 @@ def daily_ops_preview():
     vessels = _fetch_data(report_date)
 
     html = """
-    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
-        <tr style='background:#4a90d9;color:white'>
-            <th style='border:1px solid #ccc;padding:8px'>Parameter</th>
-    """
+<div style="
+    width:100%;
+    overflow-x:auto;
+    overflow-y:hidden;
+">
+<table style="
+    border-collapse:collapse;
+    font-family:Arial;
+    table-layout:fixed;
+    min-width:max-content;
+">
+    <tr style='background:#4a90d9;color:white'>
+        <th style="
+            border:1px solid #ccc;
+            padding:8px;
+            min-width:220px;
+            width:220px;
+            position:sticky;
+            left:0;
+            background:#4a90d9;
+            z-index:10;
+        ">
+            Parameter
+        </th>
+"""
 
     for i, v in enumerate(vessels):
         html += f"""
-            <th style='border:1px solid #ccc;padding:8px'>
+            <th style="
+                border:1px solid #ccc;
+                padding:8px;
+                min-width:280px;
+                width:280px;
+                max-width:280px;
+                word-wrap:break-word;
+                white-space:normal;
+            ">
                 Vessel {i+1}<br>{v['vessel_name']}
             </th>
         """
@@ -1393,7 +1440,17 @@ def daily_ops_preview():
 
         html += f"""
         <tr>
-            <td style='border:1px solid #ccc;padding:8px;font-weight:bold'>
+            <td style="
+                border:1px solid #ccc;
+                padding:8px;
+                font-weight:bold;
+                min-width:220px;
+                width:220px;
+                position:sticky;
+                left:0;
+                background:white;
+                z-index:5;
+            ">
                 {label}
             </td>
         """
@@ -1410,14 +1467,26 @@ def daily_ops_preview():
                 value = _fmt_dt(value)
 
             html += f"""
-            <td style='border:1px solid #ccc;padding:8px'>
+            <td style="
+                border:1px solid #ccc;
+                padding:8px;
+                min-width:280px;
+                width:280px;
+                max-width:280px;
+                vertical-align:top;
+                white-space:normal;
+                word-break:break-word;
+            ">
                 {value}
             </td>
             """
 
         html += "</tr>"
 
-    html += "</table>"
+    html += """
+    </table>
+    </div>
+    """
 
     upcoming_vessels = _fetch_upcoming_vessels(report_date)
 
