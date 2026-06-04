@@ -341,22 +341,26 @@ def _fetch_data(report_date):
     
     # Barges
 
+    # Fetch actual discharged quantity for barges from lueu_lines
+
     barge_actual = {}
 
     cur.execute("""
         SELECT
-            TRIM(barge_name) AS barge_name,
-            COALESCE(SUM(quantity), 0) AS actual_qty
+            UPPER(TRIM(barge_name)) AS barge_name,
+            SUM(COALESCE(quantity, 0)) AS actual_qty
         FROM lueu_lines
-        WHERE is_deleted = false
+        WHERE source_type = 'MBC'
+        AND is_deleted = false
         AND barge_name IS NOT NULL
         AND quantity IS NOT NULL
-        AND entry_date::date <= %s
-        GROUP BY TRIM(barge_name)
+        AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+        GROUP BY UPPER(TRIM(barge_name))
     """, (report_date - timedelta(days=1),))
 
     for r in cur.fetchall():
         barge_actual[r['barge_name']] = float(r['actual_qty'])
+
 
     barge_stats = {}
 
@@ -393,10 +397,14 @@ def _fetch_data(report_date):
         for r in cur.fetchall():
 
             lid = r['ldud_id']
+
             bn = (r['barge_name'] or '').strip()
+            bn_key = bn.upper()
 
             bl_qty = float(r['discharge_quantity'] or 0)
-            actual_qty = barge_actual.get(bn, 0)
+
+            actual_qty = barge_actual.get(bn_key, 0)
+
             balance_qty = max(0, bl_qty - actual_qty)
 
             if lid not in barge_stats:
@@ -444,7 +452,6 @@ def _fetch_data(report_date):
                     entry = bn
 
                 barge_stats[lid][status].append(entry)
-
     conn.close()
 
     def _make_names(bs_dict, key):
@@ -839,52 +846,102 @@ def _fetch_cargo_availability(report_date):
 
     cur.execute("""
         SELECT
-            h.cargo_name,
+            cargo_name,
+            SUM(balance_qty) AS at_jetty_qty
 
-            SUM(
-                h.bl_quantity
-                - COALESCE(l.qty, 0)
-            ) AS at_jetty_qty
+        FROM
+        (
 
-        FROM mbc_header h
+            /* MBC Balance */
 
-        JOIN mbc_discharge_port_lines p
-            ON p.mbc_id = h.id
-
-        LEFT JOIN (
             SELECT
-                source_id,
-                SUM(COALESCE(quantity, 0)) AS qty
+                h.cargo_name,
 
-            FROM lueu_lines
+                (
+                    h.bl_quantity
+                    - COALESCE(l.qty, 0)
+                ) AS balance_qty
 
-            WHERE source_type = 'MBC'
-              AND is_deleted = false
-              AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+            FROM mbc_header h
 
-            GROUP BY source_id
+            JOIN mbc_discharge_port_lines p
+                ON p.mbc_id = h.id
 
-        ) l
-            ON l.source_id = h.id
+            LEFT JOIN (
+                SELECT
+                    source_id,
+                    SUM(COALESCE(quantity, 0)) AS qty
 
-        WHERE
+                FROM lueu_lines
 
-            p.unloading_commenced IS NOT NULL
-            AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+                WHERE source_type = 'MBC'
+                  AND is_deleted = false
+                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
-            AND (
-                p.unloading_completed IS NULL
-                OR TRIM(COALESCE(p.unloading_completed, '')) = ''
-            )
+                GROUP BY source_id
+
+            ) l
+                ON l.source_id = h.id
+
+            WHERE
+                p.unloading_commenced IS NOT NULL
+                AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+
+                AND (
+                    p.unloading_completed IS NULL
+                    OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+                )
+
+            UNION ALL
+
+            /* At Jetty Barge Balance */
+
+            SELECT
+                b.cargo_name,
+
+                GREATEST(
+                    b.discharge_quantity
+                    - COALESCE(lb.actual_qty, 0),
+                    0
+                ) AS balance_qty
+
+            FROM ldud_barge_lines b
+
+            LEFT JOIN (
+                SELECT
+                    UPPER(TRIM(barge_name)) AS barge_name,
+                    SUM(COALESCE(quantity,0)) AS actual_qty
+
+                FROM lueu_lines
+
+                WHERE is_deleted = false
+                  AND barge_name IS NOT NULL
+                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+
+                GROUP BY UPPER(TRIM(barge_name))
+
+            ) lb
+                ON lb.barge_name = UPPER(TRIM(b.barge_name))
+
+            WHERE
+                b.commence_discharge_berth IS NOT NULL
+
+                AND (
+                    b.cast_off_berth IS NULL
+                    OR TRIM(COALESCE(b.cast_off_berth,'')) = ''
+                )
+
+        ) x
 
         GROUP BY
-            h.cargo_name
+            cargo_name
 
         ORDER BY
-            h.cargo_name
+            cargo_name
 
     """, (
-        balance_date,
+        balance_date,   # MBC actual discharge till date
+        balance_date    # Barge actual discharge till date
     ))
 
     rows = cur.fetchall()
