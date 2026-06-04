@@ -1117,8 +1117,8 @@
     <!-- Barge-specific filter options (hidden, used by JS to swap) -->
     <select id="barge-status-options" style="display:none;">
         <option value="all">All</option>
-        <option value="loaded_transit">Loaded & Transit</option>
         <option value="currently_loading">Currently Loading</option>
+        <option value="loaded_transit">Loaded & Transit</option>
         <option value="waiting_discharge">Waiting For Discharge</option>
         <option value="under_discharge">Under Discharge</option>
         <option value="completed_discharge">Completed Discharge</option>
@@ -1708,9 +1708,6 @@
                 }
             },
 
-            initialSort: [
-                { column: "id", dir: "desc" }
-            ]
         });
 
         updateCount(data.length);

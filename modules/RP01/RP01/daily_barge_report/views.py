@@ -1553,6 +1553,20 @@ def mv_barge_report_data():
             filtered_rows.append(row)
 
     rows = filtered_rows
+    status_order = {
+    'currently_loading': 1,
+    'loaded_transit': 2,
+    'waiting_discharge': 3,
+    'under_discharge': 4,
+    'completed_discharge': 5
+    }
+
+    rows.sort(
+        key=lambda x: (
+            status_order.get(x.get('current_status'), 999),
+            x.get('barge_name', '')
+        )
+    )
 
     if column_filter:
         column_field_map = {
@@ -1576,9 +1590,11 @@ def mv_barge_report_data():
         db_field = column_field_map.get(column_filter)
         if db_field:
             rows = [r for r in rows if r.get(db_field)]
+            
+            
 
     for row in rows:
-
+        
         row['tat'] = _calc_tat(
             row.get('trip_start'),
             row.get('cast_off_port')
@@ -1882,5 +1898,23 @@ def get_mbc_data():
 
         if status_filter == 'all' or status == status_filter:
             filtered_rows.append(row)
+
+        status_order = {
+        'currently_loading': 1,
+        'loaded_transit': 2,
+        'waiting_gull': 3,
+        'on_way_dharamtar': 4,
+        'waiting_discharge': 5,
+        'under_discharge': 6,
+        'waiting_castoff': 7,
+        'completed_discharge': 8
+    }
+
+    filtered_rows.sort(
+        key=lambda x: status_order.get(
+            x.get('current_status'),
+            999
+        )
+    )
 
     return jsonify(filtered_rows)
