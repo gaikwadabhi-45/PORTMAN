@@ -31,9 +31,8 @@
     <div style="margin-top:24px;border-top:1px solid #e2e8f0;padding-top:16px;">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
             <b style="font-size:14px;">Stored Data</b>
-            <span style="color:#718096;font-size:12px;">— edit a cell to save it; changes persist immediately.</span>
-            <input id="hd-search" type="text" placeholder="Search equipment, source, barge, cargo, delay, date…"
-                   oninput="hdSearchDebounced()" style="margin-left:auto;font-size:13px;padding:5px 10px;border:1px solid #cbd5e0;border-radius:4px;width:340px;">
+            <span style="color:#718096;font-size:12px;">— type in any column header box to search the whole dataset; edit a cell to save it.</span>
+            <button class="btn" onclick="hdClearFilters()" style="margin-left:auto;background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">Clear filters</button>
             <button class="btn" onclick="hdReloadGrid()" style="background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">↻ Refresh</button>
         </div>
         <div id="hd-grid"></div>
@@ -246,7 +245,6 @@ function hdDeleteRow(cell) {
 }
 
 function hdInitGrid() {
-    const txt = (title, field, width) => ({title, field, width, editor: 'input'});
     hdGrid = new Tabulator('#hd-grid', {
         layout: 'fitDataFill',
         height: '460px',
@@ -255,11 +253,17 @@ function hdInitGrid() {
         paginationMode: 'remote',
         paginationSize: 50,
         paginationSizeSelector: [50, 100, 200],
+        // Header-filter boxes query the server across the FULL dataset (not the page).
+        filterMode: 'remote',
+        columnDefaults: {headerSort: false, headerFilter: 'input'},
         ajaxURL: '/api/module/RP01/historical/rows',
-        ajaxParams: () => ({q: (document.getElementById('hd-search').value || '').trim()}),
+        ajaxParams: function () {
+            const f = hdGrid ? hdGrid.getHeaderFilters() : [];
+            return {colfilters: JSON.stringify(f)};
+        },
         ajaxResponse: (url, params, response) => {
             document.getElementById('hd-grid-status').textContent =
-                `${response.total} row(s) total`;
+                `${response.total} row(s) match`;
             return response;
         },
         columns: [
@@ -280,7 +284,7 @@ function hdInitGrid() {
             {title: 'Shift Incharge', field: 'shift_incharge', width: 150, editor: 'input'},
             {title: 'Operator', field: 'operator_name', width: 150, editor: 'input'},
             {title: 'Remarks', field: 'remarks', width: 200, editor: 'input'},
-            {title: '', field: '_del', width: 50, hozAlign: 'center', headerSort: false,
+            {title: '', field: '_del', width: 50, hozAlign: 'center', headerSort: false, headerFilter: false,
                 formatter: () => '<button style="background:#fc8181;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;">X</button>',
                 cellClick: (e, cell) => hdDeleteRow(cell)},
         ],
@@ -294,10 +298,8 @@ function hdReloadGrid() {
     if (hdGrid) hdGrid.replaceData(); else hdInitGrid();
 }
 
-let _hdSearchTimer = null;
-function hdSearchDebounced() {
-    clearTimeout(_hdSearchTimer);
-    _hdSearchTimer = setTimeout(() => { if (hdGrid) hdGrid.replaceData(); }, 350);
+function hdClearFilters() {
+    if (hdGrid) hdGrid.clearHeaderFilter();
 }
 
 document.addEventListener('DOMContentLoaded', hdInitGrid);

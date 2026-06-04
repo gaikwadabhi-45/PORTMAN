@@ -109,13 +109,19 @@ def historical_apply():
 @bp.route('/api/module/RP01/historical/rows')
 @admin_required
 def historical_rows():
+    import json as _json
     try:
         page = int(request.args.get('page', 1))
         size = int(request.args.get('size', 50))
     except (TypeError, ValueError):
         page, size = 1, 50
-    q = (request.args.get('q') or '').strip() or None
-    rows, total = model.get_rows(page, size, q)
+    try:
+        filters = _json.loads(request.args.get('colfilters') or '[]')
+        if not isinstance(filters, list):
+            filters = []
+    except (ValueError, TypeError):
+        filters = []
+    rows, total = model.get_rows(page, size, filters)
     return jsonify({'data': rows, 'last_page': max(1, (total + size - 1) // size), 'total': total})
 
 

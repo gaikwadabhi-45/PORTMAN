@@ -335,22 +335,28 @@ def get_status():
 
 
 # ── Stored-rows preview + inline edit ────────────────────────────────────────
-_SEARCH_COLS = ['equipment_name', 'source_display', 'barge_name', 'cargo_name',
-                'delay_name', 'shift', 'operator_name']
+# Columns that aren't plain text need a ::TEXT cast for ILIKE filtering.
+_CAST_FILTER_COLS = {'entry_date', 'quantity'}
 
 
-def get_rows(page=1, size=50, search=None):
+def get_rows(page=1, size=50, filters=None):
     """Paginated stored rows for the preview grid. Returns (rows, total).
-    `search` matches (ILIKE) across the key columns and entry_date text."""
+    `filters` is a list of {field, value}; each is matched (ILIKE) against the
+    FULL dataset (applied before pagination) and AND-combined. Any base column is
+    filterable; `entry_date`/`quantity` are cast to text for matching."""
     conn = get_db()
     cur = get_cursor(conn)
     try:
-        where, params = '', []
-        if search:
-            like = f"%{search}%"
-            terms = [f"{c} ILIKE %s" for c in _SEARCH_COLS] + ["entry_date::TEXT ILIKE %s"]
-            where = 'WHERE ' + ' OR '.join(terms)
-            params = [like] * (len(_SEARCH_COLS) + 1)
+        allowed = set(COLUMNS)
+        where_parts, params = [], []
+        for f in (filters or []):
+            field = f.get('field')
+            val = (f.get('value') or '').strip() if f.get('value') is not None else ''
+            if field in allowed and val:
+                col = f"{field}::TEXT" if field in _CAST_FILTER_COLS else field
+                where_parts.append(f"{col} ILIKE %s")
+                params.append(f"%{val}%")
+        where = ('WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
         cur.execute(f"SELECT COUNT(*) AS c FROM rp01_historical_lueu {where}", params)
         total = cur.fetchone()['c']
         offset = (page - 1) * size
