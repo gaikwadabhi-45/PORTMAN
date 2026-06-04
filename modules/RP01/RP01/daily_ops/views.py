@@ -975,61 +975,58 @@ def _fetch_tide_data(report_date):
 
     return rows
 
-def _fetch_cargo_handled(report_date):
-    """Fetch cargo handled by route (day + month).
-    Month values incorporate cutoff if the cutoff date falls within the report month.
-    """
 
-    window_end = datetime(
-        report_date.year,
-        report_date.month,
-        report_date.day,
-        7, 0, 0
+def _fetch_cargo_handled(report_date):
+    """Fetch cargo handled by route (day + month)."""
+
+    # Previous day window
+    previous_date = report_date - timedelta(days=1)
+
+    window_start = datetime(
+        previous_date.year,
+        previous_date.month,
+        previous_date.day,
+        0, 0, 0
     )
 
-    window_start = window_end - timedelta(hours=24)
+    window_end = datetime(
+        previous_date.year,
+        previous_date.month,
+        previous_date.day,
+        23, 59, 59
+    )
 
     month_start = datetime(
         report_date.year,
         report_date.month,
         1,
-        7, 0, 0
+        0, 0, 0
     )
 
-    we_str = window_end.strftime('%Y-%m-%d %H:%M:%S')
     ws_str = window_start.strftime('%Y-%m-%d %H:%M:%S')
-
-    # ── Load cutoff ─────────────────────────────────────
+    we_str = window_end.strftime('%Y-%m-%d %H:%M:%S')
 
     cutoff_date_str, cutoff_vals = _load_cutoff()
 
     cargo_cutoff = cutoff_vals.get('cargo_handled', {})
 
-    cutoff_7am = None
+    cutoff_dt = None
 
     if cutoff_date_str and cargo_cutoff:
 
         try:
-
-            cd = datetime.strptime(
+            cutoff_dt = datetime.strptime(
                 cutoff_date_str,
                 '%Y-%m-%d'
-            )
-
-            cutoff_7am = datetime(
-                cd.year,
-                cd.month,
-                cd.day,
-                7, 0, 0
             )
 
         except ValueError:
             pass
 
     use_cutoff = (
-        cutoff_7am is not None
-        and month_start < cutoff_7am
-        and cutoff_7am <= window_end
+        cutoff_dt is not None
+        and month_start < cutoff_dt
+        and cutoff_dt <= report_date
     )
 
     conn = get_db()
@@ -1046,7 +1043,7 @@ def _fetch_cargo_handled(report_date):
               AND route_name <> ''
               AND entry_date IS NOT NULL
               AND (entry_date || ' ' || COALESCE(from_time,'00:00')) >= %s
-              AND (entry_date || ' ' || COALESCE(from_time,'00:00')) < %s
+              AND (entry_date || ' ' || COALESCE(from_time,'00:00')) <= %s
             GROUP BY route_name
             ORDER BY route_name
         """, (start, end))
@@ -1078,7 +1075,6 @@ def _fetch_cargo_handled(report_date):
                 'C-131 E',
                 'C-131 F'
             ):
-
                 grouped['DIRECT PLANT'] += qty
 
             elif route_upper in (
@@ -1087,19 +1083,15 @@ def _fetch_cargo_handled(report_date):
                 'LS-02',
                 'LS-03'
             ):
-
                 grouped['STACKER / SHED'] += qty
 
             elif route_upper == 'LS-05':
-
                 grouped['CEMENT SILO'] += qty
 
             elif route_upper == 'BY ROAD':
-
                 grouped['BY ROAD'] += qty
 
             else:
-
                 grouped['OTHERS'] += qty
 
         return {
@@ -1108,23 +1100,25 @@ def _fetch_cargo_handled(report_date):
             if v > 0
         }
 
-    # ── Day Data ─────────────────────────────────────
-
+    # Day Data (Previous Date)
     day_dict = _group_routes(
         _period(ws_str, we_str)
     )
 
-    # ── Month Data ───────────────────────────────────
-
+    # Month Data
     if use_cutoff:
 
-        cutoff_str = cutoff_7am.strftime(
-            '%Y-%m-%d %H:%M:%S'
+        cutoff_str = cutoff_dt.strftime(
+            '%Y-%m-%d 00:00:00'
+        )
+
+        live_end = report_date.strftime(
+            '%Y-%m-%d 23:59:59'
         )
 
         live_dict = _period(
             cutoff_str,
-            we_str
+            live_end
         )
 
         month_dict = {}
@@ -1136,18 +1130,9 @@ def _fetch_cargo_handled(report_date):
 
         for route in all_routes:
 
-            co_val = float(
-                cargo_cutoff.get(route, 0)
-            )
-
-            live_val = live_dict.get(
-                route,
-                0
-            )
-
             month_dict[route] = (
-                co_val +
-                live_val
+                float(cargo_cutoff.get(route, 0))
+                + live_dict.get(route, 0)
             )
 
         month_dict = _group_routes(
@@ -1156,102 +1141,20 @@ def _fetch_cargo_handled(report_date):
 
     else:
 
-        mth_str = month_start.strftime(
-            '%Y-%m-%d %H:%M:%S'
-        )
-
         month_dict = _group_routes(
-            _period(mth_str, we_str)
+            _period(
+                month_start.strftime('%Y-%m-%d %H:%M:%S'),
+                report_date.strftime('%Y-%m-%d 23:59:59')
+            )
         )
 
     conn.close()
 
     day_rows = sorted(day_dict.items())
-
     month_rows = sorted(month_dict.items())
 
     return day_rows, month_rows
 
-    def _period(start, end):
-        cur.execute("""
-            SELECT route_name, COALESCE(SUM(quantity), 0) AS qty
-            FROM lueu_lines
-            WHERE route_name IS NOT NULL AND route_name != ''
-              AND entry_date IS NOT NULL
-              AND (entry_date || ' ' || COALESCE(from_time, '00:00')) >= %s
-              AND (entry_date || ' ' || COALESCE(from_time, '00:00')) < %s
-            GROUP BY route_name
-            ORDER BY route_name
-        """, (start, end))
-        return {r['route_name']: float(r['qty']) for r in cur.fetchall()}
-
-    day_dict = _period(ws_str, we_str)
-
-    def _group_routes(data):
-
-        grouped = {
-            'DIRECT PLANT': 0,
-            'STACKER / SHED': 0,
-            'CEMENT SILO': 0,
-            'BY ROAD': 0,
-            'OTHERS': 0
-        }
-
-        for route, qty in data.items():
-
-            route_upper = (route or '').strip().upper()
-
-            if route_upper in (
-                'C-131',
-                'C-131 A',
-                'C-131 C',
-                'C-131 D',
-                'C-131 E',
-                'C-131 F'
-            ):
-                grouped['DIRECT PLANT'] += qty
-
-            elif route_upper in (
-                'COAL STACKER',
-                'LS-01',
-                'LS-02',
-                'LS-03'
-            ):
-                grouped['STACKER / SHED'] += qty
-
-            elif route_upper == 'LS-05':
-                grouped['CEMENT SILO'] += qty
-
-            elif route_upper == 'BY ROAD':
-                grouped['BY ROAD'] += qty
-
-            else:
-                grouped['OTHERS'] += qty
-
-        return {k: v for k, v in grouped.items() if v > 0}
-
-    day_dict = _group_routes(day_dict)
-
-    if use_cutoff:
-        # Query only from cutoff 7AM onwards for the month
-        cutoff_str = cutoff_7am.strftime('%Y-%m-%d %H:%M:%S')
-        live_dict = _period(cutoff_str, we_str)
-        # Merge: cutoff values + live values
-        month_dict = {}
-        all_routes = set(list(cargo_cutoff.keys()) + list(live_dict.keys()))
-        for route in all_routes:
-            co_val   = float(cargo_cutoff.get(route, 0))
-            live_val = live_dict.get(route, 0)
-            month_dict[route] = co_val + live_val
-    else:
-        mth_str = month_start.strftime('%Y-%m-%d %H:%M:%S')
-        month_dict = _period(mth_str, we_str)
-
-    conn.close()
-
-    day_rows   = sorted(day_dict.items())
-    month_rows = sorted(month_dict.items())
-    return day_rows, month_rows
 
 def _fetch_cargo_statistics(report_date):
 
@@ -2194,7 +2097,11 @@ def daily_ops_preview():
     </tr>
     """
 
+    day_total = 0
+
     for route_name, qty in day_rows:
+
+        day_total += qty
 
         html += f"""
         <tr>
@@ -2207,6 +2114,18 @@ def daily_ops_preview():
             </td>
         </tr>
         """
+
+    html += f"""
+    <tr style='font-weight:bold;background:#f2f2f2'>
+        <td style='border:1px solid #ccc;padding:8px'>
+            TOTAL
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {day_total:,.0f}
+        </td>
+    </tr>
+    """
 
     html += "</table>"
 
@@ -2221,7 +2140,11 @@ def daily_ops_preview():
     </tr>
     """
 
+    month_total = 0
+
     for route_name, qty in month_rows:
+
+        month_total += qty
 
         html += f"""
         <tr>
@@ -2234,6 +2157,18 @@ def daily_ops_preview():
             </td>
         </tr>
         """
+
+    html += f"""
+    <tr style='font-weight:bold;background:#f2f2f2'>
+        <td style='border:1px solid #ccc;padding:8px'>
+            TOTAL
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {month_total:,.0f}
+        </td>
+    </tr>
+    """
 
     html += "</table>"
 
