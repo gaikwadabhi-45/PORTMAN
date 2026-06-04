@@ -1333,26 +1333,22 @@ def _write_discharge_sheet(ws, rows):
     }
 
     shift_data = {
-    'A Shift': [],
-    'B Shift': [],
-    'C Shift': []
+        'A Shift': [],
+        'B Shift': [],
+        'C Shift': []
     }
 
     for row in rows:
 
-        status = row.get('current_status')
+        shift = (row.get('shift') or '').strip()
 
-        if status == 'currently_loading':
+        if shift in ['A Shift', 'A']:
             shift_data['A Shift'].append(row)
 
-        elif status == 'loaded_transit':
+        elif shift in ['B Shift', 'B']:
             shift_data['B Shift'].append(row)
 
-        elif status in [
-            'waiting_discharge',
-            'under_discharge',
-            'completed_discharge'
-        ]:
+        elif shift in ['C Shift', 'C']:
             shift_data['C Shift'].append(row)
 
     # =========================
@@ -1383,7 +1379,12 @@ def _write_discharge_sheet(ws, rows):
             qty = _safe_float(
                 item.get('qty_mt')
             )
-
+            print(
+                "SHIFT=", item.get('shift'),
+                "BARGE=", item.get('barge_name'),
+                "QTY=", item.get('qty_mt'),
+                "EQ=", item.get('unloaded_by')
+            )
             for equipment in equipment_list:
 
                 if equipment not in equipment_cols:
@@ -1918,3 +1919,109 @@ def get_mbc_data():
     )
 
     return jsonify(filtered_rows)
+
+@bp.route('/api/module/RP01/mv-barge-report/shift-data')
+@login_required
+def get_shift_data():
+
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+
+    try:
+        from_dt = datetime.fromisoformat(from_date) if from_date else \
+                  datetime.now().replace(hour=6, minute=0, second=0, microsecond=0)
+        to_dt   = datetime.fromisoformat(to_date) if to_date else \
+                  datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+    except Exception:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    conn = get_db()
+    cur  = get_cursor(conn)
+
+    # ── Fetch lueu_lines data within date range ──────────────────────────────
+    cur.execute("""
+        SELECT
+            ll.shift,
+            ll.barge_name,
+            ll.equipment_name,
+            ll.cargo_name,
+            ll.quantity,
+            ll.entry_date,
+            ll.from_time,
+            ll.to_time,
+            ll.source_type,
+            ll.source_id,
+
+            -- Get mother vessel name for VCN source
+            CASE
+                WHEN ll.source_type = 'VCN' THEN
+                    (SELECT h.vessel_name FROM ldud_header h WHERE h.vcn_id = ll.source_id LIMIT 1)
+                WHEN ll.source_type = 'MBC' THEN
+                    (SELECT h.mbc_name FROM mbc_header h WHERE h.id = ll.source_id LIMIT 1)
+                ELSE ''
+            END AS source_name
+
+        FROM lueu_lines ll
+
+        WHERE
+            ll.is_deleted IS NOT TRUE
+            AND ll.quantity > 0
+            AND ll.entry_date IS NOT NULL
+
+            -- Filter by entry_date within selected range
+            AND TO_DATE(ll.entry_date, 'YYYY-MM-DD') 
+                BETWEEN %s::date AND %s::date
+
+        ORDER BY
+            ll.shift,
+            ll.equipment_name,
+            ll.barge_name
+    """, (
+        from_dt.strftime('%Y-%m-%d'),
+        to_dt.strftime('%Y-%m-%d')
+    ))
+
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    # ── Organise by shift → equipment → list of items ────────────────────────
+    shift_map = {
+        'A Shift': {},
+        'B Shift': {},
+        'C Shift': {}
+    }
+
+    # Also track shift totals per equipment
+    for row in rows:
+        raw_shift = (row.get('shift') or '').strip()
+
+        # Normalise shift name
+        if raw_shift in ('A', 'A Shift'):
+            shift_key = 'A Shift'
+        elif raw_shift in ('B', 'B Shift'):
+            shift_key = 'B Shift'
+        elif raw_shift in ('C', 'C Shift'):
+            shift_key = 'C Shift'
+        else:
+            continue  # skip unknown shifts
+
+        eq = (row.get('equipment_name') or '').strip()
+        if not eq:
+            continue
+
+        if eq not in shift_map[shift_key]:
+            shift_map[shift_key][eq] = []
+
+        shift_map[shift_key][eq].append({
+            'barge_name':   row.get('barge_name', ''),
+            'cargo_name':   row.get('cargo_name', ''),
+            'quantity':     float(row.get('quantity') or 0),
+            'source_name':  row.get('source_name', ''),
+            'source_type':  row.get('source_type', ''),
+            'from_time':    row.get('from_time', ''),
+            'to_time':      row.get('to_time', ''),
+            'entry_date':   row.get('entry_date', ''),
+        })
+
+    return jsonify(shift_map)
