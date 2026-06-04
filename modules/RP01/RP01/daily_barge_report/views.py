@@ -1918,6 +1918,7 @@ def get_mbc_data():
         )
     )
 
+
     return jsonify(filtered_rows)
 
 @bp.route('/api/module/RP01/mv-barge-report/shift-data')
@@ -2025,3 +2026,5 @@ def get_shift_data():
         })
 
     return jsonify(shift_map)
+    
+
