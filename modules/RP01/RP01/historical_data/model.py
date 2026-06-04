@@ -334,6 +334,101 @@ def get_status():
         conn.close()
 
 
+# ── Stored-rows preview + inline edit ────────────────────────────────────────
+# Columns that aren't plain text need a ::TEXT cast for ILIKE filtering.
+_CAST_FILTER_COLS = {'entry_date', 'quantity'}
+
+
+def get_rows(page=1, size=50, filters=None):
+    """Paginated stored rows for the preview grid. Returns (rows, total).
+    `filters` is a list of {field, value}; each is matched (ILIKE) against the
+    FULL dataset (applied before pagination) and AND-combined. Any base column is
+    filterable; `entry_date`/`quantity` are cast to text for matching."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        allowed = set(COLUMNS)
+        where_parts, params = [], []
+        for f in (filters or []):
+            field = f.get('field')
+            val = (f.get('value') or '').strip() if f.get('value') is not None else ''
+            if field in allowed and val:
+                col = f"{field}::TEXT" if field in _CAST_FILTER_COLS else field
+                where_parts.append(f"{col} ILIKE %s")
+                params.append(f"%{val}%")
+        where = ('WHERE ' + ' AND '.join(where_parts)) if where_parts else ''
+        cur.execute(f"SELECT COUNT(*) AS c FROM rp01_historical_lueu {where}", params)
+        total = cur.fetchone()['c']
+        offset = (page - 1) * size
+        cur.execute(
+            f"SELECT * FROM rp01_historical_lueu {where} ORDER BY entry_date, id LIMIT %s OFFSET %s",
+            params + [size, offset])
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            if d.get('entry_date') is not None:
+                d['entry_date'] = str(d['entry_date'])
+            if d.get('quantity') is not None:
+                d['quantity'] = float(d['quantity'])
+            if d.get('uploaded_at') is not None:
+                d['uploaded_at'] = str(d['uploaded_at'])
+            rows.append(d)
+        return rows, total
+    finally:
+        conn.close()
+
+
+# Free-text columns editable inline (typed columns handled via parse_* below).
+_TEXT_EDIT_COLS = ['shift', 'equipment_name', 'source_display', 'barge_name',
+                   'cargo_name', 'delay_name', 'system_name', 'route_name',
+                   'berth_name', 'shift_incharge', 'operator_name', 'quantity_uom', 'remarks']
+
+
+def update_row(row_id, data):
+    """Validate + update a single stored row. Returns {'success': True} or
+    {'error': msg}. Mirrors the upload validators for the typed columns."""
+    clean = {}
+    try:
+        clean['entry_date'] = parse_date(data.get('entry_date'))
+        clean['from_time'] = parse_hhmm(data.get('from_time'))
+        clean['to_time'] = parse_hhmm(data.get('to_time'))
+        clean['quantity'] = parse_number(data.get('quantity'))
+    except ValueError as e:
+        return {'error': str(e)}
+    if not clean['entry_date']:
+        return {'error': 'entry_date is required'}
+    for k in _TEXT_EDIT_COLS:
+        v = data.get(k)
+        clean[k] = (str(v).strip() if v not in (None, '') else None)
+    if not clean.get('equipment_name'):
+        return {'error': 'equipment_name is required'}
+
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        sets = ', '.join([f"{c}=%s" for c in COLUMNS])
+        cur.execute(f"UPDATE rp01_historical_lueu SET {sets} WHERE id=%s",
+                    [clean.get(c) for c in COLUMNS] + [row_id])
+        conn.commit()
+        return {'success': True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_row(row_id):
+    """Delete one stored row by id."""
+    conn = get_db()
+    cur = get_cursor(conn)
+    try:
+        cur.execute("DELETE FROM rp01_historical_lueu WHERE id=%s", [row_id])
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ── Template / upload parsing ────────────────────────────────────────────────
 def _example_rows():
     """Illustrative sample rows for the Example sheet. Demonstrates a vessel

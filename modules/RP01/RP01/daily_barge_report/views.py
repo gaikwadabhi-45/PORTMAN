@@ -324,7 +324,17 @@ def _fetch_list(from_date, to_date):
 
         l.cast_off_port,
 
-        l.port_crane AS unloaded_by
+        l.port_crane AS unloaded_by,
+        (
+        SELECT ll.shift
+        FROM lueu_lines ll
+        WHERE
+            ll.source_type = 'VCN'
+            AND ll.source_id = h.vcn_id
+            AND ll.is_deleted IS NOT TRUE
+        ORDER BY ll.id DESC
+        LIMIT 1
+    ) AS shift
 
     FROM ldud_barge_lines l
 
@@ -1323,45 +1333,27 @@ def _write_discharge_sheet(ws, rows):
     }
 
     shift_data = {
-        'A Shift': [],
-        'B Shift': [],
-        'C Shift': []
+    'A Shift': [],
+    'B Shift': [],
+    'C Shift': []
     }
-
-    # =========================
-    # SHIFT LOGIC
-    # =========================
 
     for row in rows:
 
-        trip_time = row.get('trip_start')
+        status = row.get('current_status')
 
-        if not trip_time:
-            continue
+        if status == 'currently_loading':
+            shift_data['A Shift'].append(row)
 
-        try:
+        elif status == 'loaded_transit':
+            shift_data['B Shift'].append(row)
 
-            dt = (
-                trip_time
-                if isinstance(trip_time, datetime)
-                else datetime.fromisoformat(str(trip_time))
-            )
-
-            hr = dt.hour
-
-            if 6 <= hr < 14:
-                shift_name = 'A Shift'
-
-            elif 14 <= hr < 22:
-                shift_name = 'B Shift'
-
-            else:
-                shift_name = 'C Shift'
-
-            shift_data[shift_name].append(row)
-
-        except Exception:
-            continue
+        elif status in [
+            'waiting_discharge',
+            'under_discharge',
+            'completed_discharge'
+        ]:
+            shift_data['C Shift'].append(row)
 
     # =========================
     # WRITE DATA TO EXCEL
@@ -1615,7 +1607,42 @@ def mv_barge_report_data():
 
     return jsonify(rows)
 
+def get_mbc_status(row):
 
+    # Currently Loading: loading_commenced exists, loading_completed does NOT
+    if row.get('commenced_loading') and not row.get('completed_loading'):
+        return 'currently_loading'
+
+    # Loaded & Transit: loading_completed exists, arrival_gull_island does NOT
+    if row.get('completed_loading') and not row.get('arrival_gull_island'):
+        return 'loaded_transit'
+
+    # Waiting at Gull: arrival_gull_island exists, departure_gull_island does NOT
+    if row.get('arrival_gull_island') and not row.get('departure_gull_island'):
+        return 'waiting_gull'
+
+    # On the Way to Dharamtar: departure_gull_island exists, mbc_arrival_port does NOT
+    if row.get('departure_gull_island') and not row.get('mbc_arrival_port'):
+        return 'on_way_dharamtar'
+
+    # Waiting for Discharge: mbc_arrival_port exists, unloading_commenced does NOT
+    if row.get('mbc_arrival_port') and not row.get('unloading_commenced'):
+        return 'waiting_discharge'
+
+    # Under Discharge: unloading_commenced exists, unloading_completed does NOT
+    if row.get('unloading_commenced') and not row.get('unloading_completed'):
+        return 'under_discharge'
+
+    # Waiting for Cast Off: unloading_completed exists, mbc_cast_off does NOT
+    if row.get('unloading_completed') and not row.get('mbc_cast_off'):
+        return 'waiting_castoff'
+
+    # ✅ ADD THIS — Completed: mbc_cast_off exists (voyage fully done)
+    if row.get('mbc_cast_off'):
+        return 'completed_discharge'
+
+    # ✅ ADD THIS — No data at all yet
+    return None
 
 @bp.route('/api/module/RP01/mv-barge-report/download-all')
 @login_required
@@ -1717,149 +1744,143 @@ def mv_barge_report_download(barge_line_id):
 @login_required
 def get_mbc_data():
 
-    from_date = request.args.get('from_date')
-    to_date = request.args.get('to_date')
+    from_date     = request.args.get('from_date')
+    to_date       = request.args.get('to_date')
     column_filter = request.args.get('column_filter')
     status_filter = request.args.get('status_filter', 'all')
 
+    try:
+        from_dt = datetime.fromisoformat(from_date) if from_date else \
+                  datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        to_dt   = datetime.fromisoformat(to_date) if to_date else \
+                  datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+    except Exception as e:
+        return jsonify({'error': 'Invalid date format'}), 400
+
     conn = get_db()
-    cur = get_cursor(conn)
+    cur  = get_cursor(conn)
 
     column_map = {
-        'trip_start': 'lp.arrived_load_port',
-        'along_side_vessel': 'lp.alongside_berth',
-        'commenced_loading': 'lp.loading_commenced',
-        'completed_loading': 'lp.loading_completed',
-        'cast_off_mv': 'lp.cast_off_load_port',
+        'trip_start':                 'lp.arrived_load_port',
+        'along_side_vessel':          'lp.alongside_berth',
+        'commenced_loading':          'lp.loading_commenced',
+        'completed_loading':          'lp.loading_completed',
+        'cast_off_mv':                'lp.cast_off_load_port',
         'anchored_gull_island_empty': 'dp.arrival_gull_island',
-        'aweigh_gull_island_empty': 'dp.departure_gull_island',
-        'amf_at_port': 'dp.vessel_arrival_port',
-        'along_side_berth': 'dp.vessel_unloading_berth',
-        'commence_discharge_berth': 'dp.unloading_commenced',
-        'completed_discharge_berth': 'dp.unloading_completed',
-        'cast_off_port': 'dp.vessel_cast_off'
+        'aweigh_gull_island_empty':   'dp.departure_gull_island',
+        'amf_at_port':                'dp.vessel_arrival_port',
+        'along_side_berth':           'dp.vessel_unloading_berth',
+        'commence_discharge_berth':   'dp.unloading_commenced',
+        'completed_discharge_berth':  'dp.unloading_completed',
+        'cast_off_port':              'dp.vessel_cast_off'
     }
 
+    # ── Fetch ALL rows — no date casting in SQL to avoid corrupt data crash ──
     query = """
-        SELECT
-
-           h.id,
-
-        h.mbc_name AS barge_name,
-
-        h.cargo_name AS cargo_type,
-
-        COALESCE(h.bl_quantity,0) AS qty_mt,
-
-        COALESCE(h.bl_quantity,0) AS qty_balance,
-
-        lp.arrived_load_port           AS trip_start,
-
-        lp.alongside_berth            AS along_side_vessel,
-
-        lp.loading_commenced          AS commenced_loading,
-
-        lp.loading_completed          AS completed_loading,
-
-        lp.cast_off_load_port         AS cast_off_mv,
-
-        dp.arrival_gull_island        AS arrival_gull_island,
-
-        dp.departure_gull_island      AS departure_gull_island,
-
-        dp.vessel_arrival_port        AS mbc_arrival_port,
-
-        dp.vessel_all_made_fast       AS mbc_amf_unloading_berth,
-
-        dp.unloading_commenced        AS unloading_commenced,
-
-        dp.cleaning_commenced         AS cleaning_commenced,
-
-        dp.unloading_completed        AS unloading_completed,
-
-        dp.vessel_cast_off            AS mbc_cast_off,
-
-        dp.sailed_out_load_port       AS sailed_out_load_port,
-
-        dp.vessel_unloaded_by         AS vessel_unloaded_by,
-
-        dp.vessel_unloading_berth     AS unloaded_berth,
-
-        dp.cleaning_completed         AS cleaning_completed
-
+        SELECT DISTINCT ON (h.id)
+            h.id                          AS mbc_id,
+            h.mbc_name                    AS mbc_name,
+            h.cargo_name                  AS cargo_type,
+            COALESCE(h.bl_quantity, 0)    AS qty_mt,
+            (
+                COALESCE(h.bl_quantity, 0)
+                -
+                COALESCE(
+                    (SELECT SUM(ll.quantity) FROM lueu_lines ll
+                     WHERE ll.source_type = 'MBC'
+                       AND ll.source_id   = h.id
+                       AND (ll.is_deleted IS NOT TRUE)),
+                    0
+                )
+            ) AS qty_balance,
+            lp.arrived_load_port          AS trip_start,
+            lp.alongside_berth            AS along_side_vessel,
+            lp.loading_commenced          AS commenced_loading,
+            lp.loading_completed          AS completed_loading,
+            lp.cast_off_load_port         AS cast_off_mv,
+            dp.arrival_gull_island        AS arrival_gull_island,
+            dp.departure_gull_island      AS departure_gull_island,
+            dp.vessel_arrival_port        AS mbc_arrival_port,
+            dp.vessel_all_made_fast       AS mbc_amf_unloading_berth,
+            dp.unloading_commenced        AS unloading_commenced,
+            dp.cleaning_commenced         AS cleaning_commenced,
+            dp.unloading_completed        AS unloading_completed,
+            dp.vessel_cast_off            AS mbc_cast_off,
+            dp.sailed_out_load_port       AS sailed_out_load_port,
+            dp.vessel_unloaded_by         AS vessel_unloaded_by,
+            dp.vessel_unloading_berth     AS unloaded_berth,
+            dp.cleaning_completed         AS cleaning_completed
         FROM mbc_header h
-
-        LEFT JOIN mbc_load_port_lines lp
-            ON lp.mbc_id = h.id
-
-        LEFT JOIN mbc_discharge_port_lines dp
-            ON dp.mbc_id = h.id
-
-        WHERE 1=1
+        LEFT JOIN mbc_load_port_lines lp    ON lp.mbc_id = h.id
+        LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
+        WHERE h.mbc_name IS NOT NULL
+        ORDER BY h.id
     """
 
-    params = []
-
-    # Date Filter
-    if from_date and to_date and column_filter:
-
-        db_col = column_map.get(column_filter)
-
-        if db_col:
-
-            query += f"""
-                AND {db_col} IS NOT NULL
-                AND NULLIF({db_col}, '') IS NOT NULL
-                AND NULLIF({db_col}, '')::timestamp
-                BETWEEN %s::timestamp
-                AND %s::timestamp
-            """
-
-            params.extend([from_date, to_date])
-
-    # Status Filter
-
-    if status_filter == 'loaded_transit':
-
-        query += """
-            AND lp.cast_off_load_port IS NOT NULL
-            AND dp.vessel_unloading_berth IS NULL
-        """
-
-    elif status_filter == 'currently_loading':
-
-        query += """
-            AND lp.loading_commenced IS NOT NULL
-            AND lp.loading_completed IS NULL
-        """
-
-    elif status_filter == 'waiting_discharge':
-
-        query += """
-            AND dp.vessel_unloading_berth IS NOT NULL
-            AND dp.unloading_commenced IS NULL
-        """
-
-    elif status_filter == 'under_discharge':
-
-        query += """
-            AND dp.unloading_commenced IS NOT NULL
-            AND dp.unloading_completed IS NULL
-        """
-
-    elif status_filter == 'completed_discharge':
-
-        query += """
-            AND dp.unloading_completed IS NOT NULL
-        """
-
-    query += " ORDER BY h.id"
-
-    cur.execute(query, params)
-
+    cur.execute(query)
     rows = [dict(r) for r in cur.fetchall()]
-
     cur.close()
     conn.close()
 
-    return jsonify(rows)
+    # ── Apply date filter in Python (safe — no SQL casting of corrupt values) ─
+    filtered_rows = []
+
+    for row in rows:
+
+        trip_start          = safe_dt(row.get('trip_start'))
+        mbc_cast_off        = safe_dt(row.get('mbc_cast_off'))
+        unloading_completed = safe_dt(row.get('unloading_completed'))
+
+        # Must have a trip start
+        if not trip_start:
+            continue
+
+        # Trip must have started on or before to_dt
+        if trip_start > to_dt:
+            continue
+
+        # ── Mirror barge logic exactly ──────────────────────────────────────
+
+        # If unloading is fully completed AND completed before from_dt → exclude
+        # (same as barge: completed_discharge < from_dt → skip)
+        if unloading_completed and unloading_completed < from_dt:
+            continue
+
+        # If mbc_cast_off exists AND is before from_dt → exclude
+        # (extra safety for fully-done voyages with corrupt or old cast_off)
+        if mbc_cast_off and mbc_cast_off < from_dt:
+            continue
+
+        # ── Optional column filter ──────────────────────────────────────────
+        if column_filter:
+            col_field_map = {
+                'trip_start':                 'trip_start',
+                'along_side_vessel':          'along_side_vessel',
+                'commenced_loading':          'commenced_loading',
+                'completed_loading':          'completed_loading',
+                'cast_off_mv':                'cast_off_mv',
+                'anchored_gull_island_empty': 'arrival_gull_island',
+                'aweigh_gull_island_empty':   'departure_gull_island',
+                'amf_at_port':                'mbc_arrival_port',
+                'along_side_berth':           'unloaded_berth',
+                'commence_discharge_berth':   'unloading_commenced',
+                'completed_discharge_berth':  'unloading_completed',
+                'cast_off_port':              'mbc_cast_off',
+            }
+            py_field = col_field_map.get(column_filter)
+            if py_field:
+                col_dt = safe_dt(row.get(py_field))
+                if not col_dt or not (from_dt <= col_dt <= to_dt):
+                    continue
+
+        # ── Status determination ────────────────────────────────────────────
+        status = get_mbc_status(row)
+        row['current_status'] = status
+
+        if status is None:
+            continue
+
+        if status_filter == 'all' or status == status_filter:
+            filtered_rows.append(row)
+
+    return jsonify(filtered_rows)
