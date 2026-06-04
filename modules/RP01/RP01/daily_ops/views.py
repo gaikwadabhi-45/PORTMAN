@@ -953,8 +953,8 @@ def _fetch_cargo_availability(report_date):
 
 def _fetch_tide_data(report_date):
 
-    start_date = report_date
-    end_date = report_date + timedelta(days=1)
+    start_date = report_date.strftime('%Y-%m-%d')
+    end_date = (report_date + timedelta(days=1)).strftime('%Y-%m-%d')
 
     conn = get_db()
     cur = get_cursor(conn)
@@ -964,7 +964,7 @@ def _fetch_tide_data(report_date):
             tide_datetime,
             tide_meters
         FROM tide_master
-        WHERE tide_datetime::date BETWEEN %s AND %s
+        WHERE LEFT(CAST(tide_datetime AS TEXT), 10) IN (%s, %s)
         ORDER BY tide_datetime
     """, (start_date, end_date))
 
@@ -979,31 +979,198 @@ def _fetch_cargo_handled(report_date):
     """Fetch cargo handled by route (day + month).
     Month values incorporate cutoff if the cutoff date falls within the report month.
     """
-    window_end   = datetime(report_date.year, report_date.month, report_date.day, 7, 0, 0)
-    window_start = window_end - timedelta(hours=24)
-    month_start  = datetime(report_date.year, report_date.month, 1, 7, 0, 0)
-    we_str  = window_end.strftime('%Y-%m-%d %H:%M:%S')
-    ws_str  = window_start.strftime('%Y-%m-%d %H:%M:%S')
 
-    # ── Load cutoff ─────────────────────────────────────────────────────
+    window_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        7, 0, 0
+    )
+
+    window_start = window_end - timedelta(hours=24)
+
+    month_start = datetime(
+        report_date.year,
+        report_date.month,
+        1,
+        7, 0, 0
+    )
+
+    we_str = window_end.strftime('%Y-%m-%d %H:%M:%S')
+    ws_str = window_start.strftime('%Y-%m-%d %H:%M:%S')
+
+    # ── Load cutoff ─────────────────────────────────────
+
     cutoff_date_str, cutoff_vals = _load_cutoff()
+
     cargo_cutoff = cutoff_vals.get('cargo_handled', {})
 
-    # Determine if cutoff applies to this month
     cutoff_7am = None
+
     if cutoff_date_str and cargo_cutoff:
+
         try:
-            cd = datetime.strptime(cutoff_date_str, '%Y-%m-%d')
-            cutoff_7am = datetime(cd.year, cd.month, cd.day, 7, 0, 0)
+
+            cd = datetime.strptime(
+                cutoff_date_str,
+                '%Y-%m-%d'
+            )
+
+            cutoff_7am = datetime(
+                cd.year,
+                cd.month,
+                cd.day,
+                7, 0, 0
+            )
+
         except ValueError:
             pass
 
-    use_cutoff = (cutoff_7am is not None
-                  and month_start < cutoff_7am
-                  and cutoff_7am <= window_end)
+    use_cutoff = (
+        cutoff_7am is not None
+        and month_start < cutoff_7am
+        and cutoff_7am <= window_end
+    )
 
     conn = get_db()
-    cur  = get_cursor(conn)
+    cur = get_cursor(conn)
+
+    def _period(start, end):
+
+        cur.execute("""
+            SELECT
+                route_name,
+                COALESCE(SUM(quantity),0) AS qty
+            FROM lueu_lines
+            WHERE route_name IS NOT NULL
+              AND route_name <> ''
+              AND entry_date IS NOT NULL
+              AND (entry_date || ' ' || COALESCE(from_time,'00:00')) >= %s
+              AND (entry_date || ' ' || COALESCE(from_time,'00:00')) < %s
+            GROUP BY route_name
+            ORDER BY route_name
+        """, (start, end))
+
+        return {
+            r['route_name']: float(r['qty'])
+            for r in cur.fetchall()
+        }
+
+    def _group_routes(data):
+
+        grouped = {
+            'DIRECT PLANT': 0,
+            'STACKER / SHED': 0,
+            'CEMENT SILO': 0,
+            'BY ROAD': 0,
+            'OTHERS': 0
+        }
+
+        for route, qty in data.items():
+
+            route_upper = (route or '').strip().upper()
+
+            if route_upper in (
+                'C-131',
+                'C-131 A',
+                'C-131 C',
+                'C-131 D',
+                'C-131 E',
+                'C-131 F'
+            ):
+
+                grouped['DIRECT PLANT'] += qty
+
+            elif route_upper in (
+                'COAL STACKER',
+                'LS-01',
+                'LS-02',
+                'LS-03'
+            ):
+
+                grouped['STACKER / SHED'] += qty
+
+            elif route_upper == 'LS-05':
+
+                grouped['CEMENT SILO'] += qty
+
+            elif route_upper == 'BY ROAD':
+
+                grouped['BY ROAD'] += qty
+
+            else:
+
+                grouped['OTHERS'] += qty
+
+        return {
+            k: v
+            for k, v in grouped.items()
+            if v > 0
+        }
+
+    # ── Day Data ─────────────────────────────────────
+
+    day_dict = _group_routes(
+        _period(ws_str, we_str)
+    )
+
+    # ── Month Data ───────────────────────────────────
+
+    if use_cutoff:
+
+        cutoff_str = cutoff_7am.strftime(
+            '%Y-%m-%d %H:%M:%S'
+        )
+
+        live_dict = _period(
+            cutoff_str,
+            we_str
+        )
+
+        month_dict = {}
+
+        all_routes = set(
+            list(cargo_cutoff.keys()) +
+            list(live_dict.keys())
+        )
+
+        for route in all_routes:
+
+            co_val = float(
+                cargo_cutoff.get(route, 0)
+            )
+
+            live_val = live_dict.get(
+                route,
+                0
+            )
+
+            month_dict[route] = (
+                co_val +
+                live_val
+            )
+
+        month_dict = _group_routes(
+            month_dict
+        )
+
+    else:
+
+        mth_str = month_start.strftime(
+            '%Y-%m-%d %H:%M:%S'
+        )
+
+        month_dict = _group_routes(
+            _period(mth_str, we_str)
+        )
+
+    conn.close()
+
+    day_rows = sorted(day_dict.items())
+
+    month_rows = sorted(month_dict.items())
+
+    return day_rows, month_rows
 
     def _period(start, end):
         cur.execute("""
@@ -1019,6 +1186,51 @@ def _fetch_cargo_handled(report_date):
         return {r['route_name']: float(r['qty']) for r in cur.fetchall()}
 
     day_dict = _period(ws_str, we_str)
+
+    def _group_routes(data):
+
+        grouped = {
+            'DIRECT PLANT': 0,
+            'STACKER / SHED': 0,
+            'CEMENT SILO': 0,
+            'BY ROAD': 0,
+            'OTHERS': 0
+        }
+
+        for route, qty in data.items():
+
+            route_upper = (route or '').strip().upper()
+
+            if route_upper in (
+                'C-131',
+                'C-131 A',
+                'C-131 C',
+                'C-131 D',
+                'C-131 E',
+                'C-131 F'
+            ):
+                grouped['DIRECT PLANT'] += qty
+
+            elif route_upper in (
+                'COAL STACKER',
+                'LS-01',
+                'LS-02',
+                'LS-03'
+            ):
+                grouped['STACKER / SHED'] += qty
+
+            elif route_upper == 'LS-05':
+                grouped['CEMENT SILO'] += qty
+
+            elif route_upper == 'BY ROAD':
+                grouped['BY ROAD'] += qty
+
+            else:
+                grouped['OTHERS'] += qty
+
+        return {k: v for k, v in grouped.items() if v > 0}
+
+    day_dict = _group_routes(day_dict)
 
     if use_cutoff:
         # Query only from cutoff 7AM onwards for the month
@@ -1041,6 +1253,82 @@ def _fetch_cargo_handled(report_date):
     month_rows = sorted(month_dict.items())
     return day_rows, month_rows
 
+def _fetch_cargo_statistics(report_date):
+
+    window_end = datetime(
+        report_date.year,
+        report_date.month,
+        report_date.day,
+        7, 0, 0
+    )
+
+    window_start = window_end - timedelta(hours=24)
+
+    month_start = datetime(
+        report_date.year,
+        report_date.month,
+        1,
+        7, 0, 0
+    )
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    def _period(start_dt, end_dt):
+
+        cur.execute("""
+            SELECT
+
+                CASE
+                    WHEN source_type = 'VCN'
+                        THEN 'Mumbai Anchorage'
+
+                    WHEN source_type = 'MBC'
+                        THEN 'MBC (Jaigad/Other)'
+
+                    ELSE source_type
+                END AS cargo_source,
+
+                COALESCE(SUM(quantity),0) AS qty
+
+            FROM lueu_lines
+
+            WHERE is_deleted = false
+
+              AND entry_date IS NOT NULL
+
+              AND (entry_date || ' ' || COALESCE(from_time,'00:00'))
+                    >= %s
+
+              AND (entry_date || ' ' || COALESCE(from_time,'00:00'))
+                    < %s
+
+            GROUP BY 1
+
+            ORDER BY 1
+        """, (
+            start_dt.strftime('%Y-%m-%d %H:%M:%S'),
+            end_dt.strftime('%Y-%m-%d %H:%M:%S')
+        ))
+
+        return [
+            (r['cargo_source'], float(r['qty']))
+            for r in cur.fetchall()
+        ]
+
+    day_rows = _period(
+        window_start,
+        window_end
+    )
+
+    month_rows = _period(
+        month_start,
+        window_end
+    )
+
+    conn.close()
+
+    return day_rows, month_rows
 
 def _fetch_mbc_cargo(report_date):
     """Return (day_data, month_data) as dicts { owner: { cargo_type: qty } }.
@@ -1111,23 +1399,7 @@ def _fetch_mbc_cargo(report_date):
     return day_data, month_data
 
 
-def _fetch_tide_data(report_date):
-    window_end   = datetime(report_date.year, report_date.month, report_date.day, 7, 0, 0)
-    window_start = window_end - timedelta(hours=24)
-    we_str = window_end.strftime('%Y-%m-%dT%H:%M')
-    ws_str = window_start.strftime('%Y-%m-%dT%H:%M')
 
-    conn = get_db()
-    cur  = get_cursor(conn)
-    cur.execute("""
-        SELECT tide_datetime, tide_meters
-        FROM tide_master
-        WHERE tide_datetime >= %s AND tide_datetime < %s
-        ORDER BY tide_datetime ASC
-    """, (ws_str, we_str))
-    rows = [(r['tide_datetime'], float(r['tide_meters'])) for r in cur.fetchall()]
-    conn.close()
-    return rows
 
 
 def _fmt_tide_dt(dt_str):
@@ -1814,35 +2086,130 @@ def daily_ops_preview():
     <h3>Tide - Dharamtar Port</h3>
 
     <table style='width:100%;border-collapse:collapse;font-family:Arial'>
-        <tr style='background:#4a90d9;color:white'>
-            <th style='border:1px solid #ccc;padding:8px'>Date</th>
-            <th style='border:1px solid #ccc;padding:8px'>Time</th>
-            <th style='border:1px solid #ccc;padding:8px'>Tide (m)</th>
-        </tr>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'>Time</th>
+        <th style='border:1px solid #ccc;padding:8px'>Tide (Meters)</th>
+    </tr>
     """
 
     for t in tide_rows:
 
-        tide_dt = t['tide_datetime']
+        display_dt = str(t['tide_datetime']).replace('T', ' ')
 
-        if isinstance(tide_dt, str):
-            tide_dt = datetime.fromisoformat(tide_dt)
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {display_dt}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
+                {t['tide_meters']}
+            </td>
+        </tr>
+        """
+    html += "</table>"
+
+    day_rows, month_rows = _fetch_cargo_handled(report_date)
+
+    html += """
+    <br><br>
+    <h3>Cargo Handled - For the Day</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'>Route</th>
+        <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
+    </tr>
+    """
+
+    for route_name, qty in day_rows:
 
         html += f"""
         <tr>
             <td style='border:1px solid #ccc;padding:8px'>
-                {tide_dt.strftime('%d-%m-%Y')}
+                {route_name}
             </td>
 
-            <td style='border:1px solid #ccc;padding:8px'>
-                {tide_dt.strftime('%H:%M')}
-            </td>
-
-            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
-                {float(t['tide_meters']):.2f}
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {qty:,.0f}
             </td>
         </tr>
         """
+
+    html += "</table>"
+
+    html += """
+    <br><br>
+    <h3>Cargo Handled - MTD</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'>Route</th>
+        <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
+    </tr>
+    """
+
+    for route_name, qty in month_rows:
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {route_name}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {qty:,.0f}
+            </td>
+        </tr>
+        """
+
+    html += "</table>"
+
+    cargo_stat_day, cargo_stat_month = _fetch_cargo_statistics(report_date)
+
+    html += """
+    <br><br>
+    <h3>Cargo Statistics - For the Day</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'>Location</th>
+        <th style='border:1px solid #ccc;padding:8px'>Quantity (MT)</th>
+    </tr>
+    """
+
+    total_qty = 0
+
+    for source_name, qty in cargo_stat_day:
+
+        if not source_name:
+            continue
+
+        total_qty += qty
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {source_name}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {qty:,.0f}
+            </td>
+        </tr>
+        """
+
+    html += f"""
+    <tr style='font-weight:bold'>
+        <td style='border:1px solid #ccc;padding:8px'>
+            Total
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {total_qty:,.0f}
+        </td>
+    </tr>
+    """
 
     html += "</table>"
     return html
