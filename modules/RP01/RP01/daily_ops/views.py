@@ -338,53 +338,83 @@ def _fetch_data(report_date):
             ops_till[r['ldud_id']] = float(r['qty'])
 
     # Barges
+    
+    # Barges
+
+    barge_actual = {}
+
+    cur.execute("""
+        SELECT
+            TRIM(barge_name) AS barge_name,
+            COALESCE(SUM(quantity), 0) AS actual_qty
+        FROM lueu_lines
+        WHERE is_deleted = false
+        AND barge_name IS NOT NULL
+        AND quantity IS NOT NULL
+        AND entry_date::date <= %s
+        GROUP BY TRIM(barge_name)
+    """, (report_date - timedelta(days=1),))
+
+    for r in cur.fetchall():
+        barge_actual[r['barge_name']] = float(r['actual_qty'])
+
     barge_stats = {}
+
     _STATUS_KEYS = (
         'at_jetty', 'waiting_discharge', 'waiting_empty_jetty',
         'at_gull_loaded', 'under_loading', 'waiting_loading',
         'in_transit_jetty_to_mv', 'Non-Operational',
     )
+
     if ldud_ids:
         cur.execute("""
-    SELECT
-        ldud_id,
-        barge_name,
-        discharge_quantity,
-        port_crane,
-        along_side_vessel,
-        commenced_loading,
-        completed_loading,
-        cast_off_mv,
-        anchored_gull_island,
-        aweigh_gull_island,
-        amf_at_port,
-        along_side_berth,
-        commence_discharge_berth,
-        completed_discharge_berth,
-        cast_off_berth,
-        cast_off_port
-    FROM ldud_barge_lines
-    WHERE ldud_id = ANY(%s)
-      AND (cast_off_port IS NULL OR cast_off_port > %s)
-""", (ldud_ids, ws_str))
+            SELECT
+                ldud_id,
+                barge_name,
+                discharge_quantity,
+                port_crane,
+                along_side_vessel,
+                commenced_loading,
+                completed_loading,
+                cast_off_mv,
+                anchored_gull_island,
+                aweigh_gull_island,
+                amf_at_port,
+                along_side_berth,
+                commence_discharge_berth,
+                completed_discharge_berth,
+                cast_off_berth,
+                cast_off_port
+            FROM ldud_barge_lines
+            WHERE ldud_id = ANY(%s)
+            AND (cast_off_port IS NULL OR cast_off_port > %s)
+        """, (ldud_ids, ws_str))
+
         for r in cur.fetchall():
+
             lid = r['ldud_id']
-            bn  = (r['barge_name'] or '').strip()
-            qty = r['discharge_quantity'] or 0
+            bn = (r['barge_name'] or '').strip()
+
+            bl_qty = float(r['discharge_quantity'] or 0)
+            actual_qty = barge_actual.get(bn, 0)
+            balance_qty = max(0, bl_qty - actual_qty)
 
             if lid not in barge_stats:
-                barge_stats[lid] = {'all': set(), **{k: [] for k in _STATUS_KEYS}}
+                barge_stats[lid] = {
+                    'all': set(),
+                    **{k: [] for k in _STATUS_KEYS}
+                }
 
             if bn:
                 barge_stats[lid]['all'].add(bn)
 
-            if   r['cast_off_port']:
+            if r['cast_off_port']:
                 status = 'Non-Operational'
             elif r['completed_discharge_berth'] and not r['cast_off_berth']:
                 status = 'waiting_empty_jetty'
             elif r['commence_discharge_berth'] and not r['cast_off_berth']:
                 status = 'at_jetty'
-            elif (r['along_side_berth']and not r['commence_discharge_berth']):
+            elif r['along_side_berth'] and not r['commence_discharge_berth']:
                 status = 'waiting_discharge'
             elif r['cast_off_mv'] and not r['along_side_berth']:
                 status = 'at_gull_loaded'
@@ -400,10 +430,15 @@ def _fetch_data(report_date):
                 crane = (r['port_crane'] or '').strip()
 
                 if status == 'at_jetty':
-                    entry = f"{bn} - {crane} ({int(round(qty))} MT)"
+                    entry = (
+                        f"{bn} - {crane} "
+                        f"(BL:{int(round(bl_qty))} | "
+                        f"Act:{int(round(actual_qty))} | "
+                        f"Bal:{int(round(balance_qty))} MT)"
+                    )
 
-                elif status == 'waiting_discharge' and qty:
-                    entry = f"{bn} ({int(round(qty))} MT)"
+                elif status == 'waiting_discharge' and bl_qty:
+                    entry = f"{bn} ({int(round(bl_qty))} MT)"
 
                 else:
                     entry = bn
@@ -797,26 +832,18 @@ def _fetch_upcoming_mbcs(report_date):
 
 def _fetch_cargo_availability(report_date):
 
-    window_end = datetime(
-        report_date.year,
-        report_date.month,
-        report_date.day,
-        6, 0, 0
-    )
-
-    window_start = window_end - timedelta(days=1)
-
     conn = get_db()
     cur = get_cursor(conn)
+
+    balance_date = report_date - timedelta(days=1)
 
     cur.execute("""
         SELECT
             h.cargo_name,
 
             SUM(
-                COALESCE(h.bl_quantity, 0)
-                -
-                COALESCE(l.qty, 0)
+                h.bl_quantity
+                - COALESCE(l.qty, 0)
             ) AS at_jetty_qty
 
         FROM mbc_header h
@@ -832,18 +859,8 @@ def _fetch_cargo_availability(report_date):
             FROM lueu_lines
 
             WHERE source_type = 'MBC'
-
-              AND (
-                    TO_DATE(entry_date,'YYYY-MM-DD')
-                    +
-                    COALESCE(NULLIF(from_time,''),'00:00')::time
-                  ) >= %s
-
-              AND (
-                    TO_DATE(entry_date,'YYYY-MM-DD')
-                    +
-                    COALESCE(NULLIF(from_time,''),'00:00')::time
-                  ) < %s
+              AND is_deleted = false
+              AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
             GROUP BY source_id
 
@@ -852,21 +869,13 @@ def _fetch_cargo_availability(report_date):
 
         WHERE
 
-        (
-            h.created_date::timestamp >= %s
-            AND h.created_date::timestamp < %s
-        )
-
-        OR
-
-        (
             p.unloading_commenced IS NOT NULL
             AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+
             AND (
                 p.unloading_completed IS NULL
                 OR TRIM(COALESCE(p.unloading_completed, '')) = ''
             )
-        )
 
         GROUP BY
             h.cargo_name
@@ -875,10 +884,7 @@ def _fetch_cargo_availability(report_date):
             h.cargo_name
 
     """, (
-        window_start,
-        window_end,
-        window_start,
-        window_end
+        balance_date,
     ))
 
     rows = cur.fetchall()
