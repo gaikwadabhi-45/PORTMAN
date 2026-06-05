@@ -876,7 +876,7 @@ def _fetch_cargo_availability(report_date):
 
                 WHERE source_type = 'MBC'
                   AND is_deleted = false
-                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+                  AND TO_DATE(entry_date,'YYYY-MM-DD') = %s
 
                 GROUP BY source_id
 
@@ -916,7 +916,7 @@ def _fetch_cargo_availability(report_date):
 
                 WHERE is_deleted = false
                   AND barge_name IS NOT NULL
-                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+                  AND TO_DATE(entry_date,'YYYY-MM-DD') = %s
 
                 GROUP BY UPPER(TRIM(barge_name))
 
@@ -933,15 +933,13 @@ def _fetch_cargo_availability(report_date):
 
         ) x
 
-        GROUP BY
-            cargo_name
+        GROUP BY cargo_name
 
-        ORDER BY
-            cargo_name
+        ORDER BY cargo_name
 
     """, (
-        balance_date,   # MBC actual discharge till date
-        balance_date    # Barge actual discharge till date
+        balance_date,
+        balance_date
     ))
 
     rows = cur.fetchall()
@@ -953,8 +951,7 @@ def _fetch_cargo_availability(report_date):
 
 def _fetch_tide_data(report_date):
 
-    start_date = report_date.strftime('%Y-%m-%d')
-    end_date = (report_date + timedelta(days=1)).strftime('%Y-%m-%d')
+    start_datetime = report_date.strftime('%Y-%m-%d 00:00:00')
 
     conn = get_db()
     cur = get_cursor(conn)
@@ -964,9 +961,10 @@ def _fetch_tide_data(report_date):
             tide_datetime,
             tide_meters
         FROM tide_master
-        WHERE LEFT(CAST(tide_datetime AS TEXT), 10) IN (%s, %s)
+        WHERE tide_datetime >= %s
         ORDER BY tide_datetime
-    """, (start_date, end_date))
+        LIMIT 5
+    """, (start_datetime,))
 
     rows = cur.fetchall()
 
@@ -1306,6 +1304,101 @@ def _fetch_mbc_cargo_handling(report_date):
 
     return day_rows, month_rows
 
+def _fetch_mbc_status(report_date):
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            m.mbc_name,
+
+            CASE
+
+                WHEN h.id IS NULL
+                THEN 'EMPTY : WAITING AT DHARAMTAR'
+
+                WHEN
+                    NULLIF(TRIM(d.unloading_commenced), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.unloading_completed), '') IS NULL
+                THEN
+                    'UNDER DISCHARGE'
+
+                WHEN
+                    NULLIF(TRIM(d.vessel_arrival_port), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.unloading_commenced), '') IS NULL
+                THEN
+                    'LOADED : WAITING AT DHARAMTAR'
+
+                WHEN
+                    NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
+                THEN
+                    'LOADED : ON THE WAY TO DHARAMTAR'
+
+                WHEN
+                    NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
+                THEN
+                    'LOADED : WAITING AT GULL'
+
+                WHEN
+                    NULLIF(TRIM(l.loading_completed), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
+                THEN
+                    'LOADED : ON THE WAY TO GULL'
+
+                WHEN
+                    NULLIF(TRIM(l.loading_commenced), '') IS NOT NULL
+                    AND NULLIF(TRIM(l.loading_completed), '') IS NULL
+                THEN
+                    'UNDER LOADING'
+
+                WHEN
+                    NULLIF(TRIM(l.eta), '') IS NOT NULL
+                    AND NULLIF(TRIM(l.loading_commenced), '') IS NULL
+                THEN
+                    'EMPTY : WAITING AT LOAD PORT'
+
+                WHEN
+                    NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
+                THEN
+                    'EMPTY : WAITING AT DHARAMTAR'
+
+                ELSE
+                    'EMPTY : WAITING AT DHARAMTAR'
+
+            END AS mbc_status
+
+        FROM mbc_master m
+
+        LEFT JOIN LATERAL (
+            SELECT h.*
+            FROM mbc_header h
+            WHERE TRIM(h.mbc_name) = TRIM(m.mbc_name)
+            ORDER BY h.id DESC
+            LIMIT 1
+        ) h ON TRUE
+
+        LEFT JOIN mbc_load_port_lines l
+            ON l.mbc_id = h.id
+
+        LEFT JOIN mbc_discharge_port_lines d
+            ON d.mbc_id = h.id
+
+        WHERE
+            UPPER(TRIM(COALESCE(m.mbc_owner_name, '')))
+            IN ('JSW INFRA', 'JSW SHIPPING')
+
+        ORDER BY m.mbc_name
+    """)
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
 # def _fetch_mbc_cargo(report_date):
 #     """Return (day_data, month_data) as dicts { owner: { cargo_type: qty } }.
 #     Month values incorporate cutoff if the cutoff date falls within the report month.
@@ -2067,21 +2160,28 @@ def daily_ops_preview():
     </tr>
     """
 
-    for t in tide_rows:
+    for row in tide_rows:
 
-        display_dt = str(t['tide_datetime']).replace('T', ' ')
+        tide_dt = datetime.fromisoformat(
+            str(row['tide_datetime'])
+        ).strftime('%d-%m-%Y %H:%M')
+
+        tide_meters = f"{float(row.get('tide_meters') or 0):05.2f}"
 
         html += f"""
         <tr>
-            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
-                {display_dt}
+            <td style='border:1px solid #ccc;padding:8px'>
+                {tide_dt}
             </td>
 
-            <td style='border:1px solid #ccc;padding:8px;text-align:center'>
-                {t['tide_meters']}
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {tide_meters}
             </td>
         </tr>
         """
+
+
+
     html += "</table>"
 
     day_rows, month_rows = _fetch_cargo_handled(report_date)
@@ -2395,6 +2495,37 @@ def daily_ops_preview():
     """
 
     html += "</table>"
+
+    mbc_status_rows = _fetch_mbc_status(report_date)
+
+    html += """
+    <br><br>
+    <h3>MBC Status</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'>MBC Name</th>
+        <th style='border:1px solid #ccc;padding:8px'>Status</th>
+    </tr>
+    """
+
+    for r in mbc_status_rows:
+
+        html += f"""
+        <tr>
+            <td style='border:1px solid #ccc;padding:8px'>
+                {r['mbc_name']}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px'>
+                {r['mbc_status']}
+            </td>
+        </tr>
+        """
+
+    html += "</table>"
+
+    
     return html
 
 # ── Download endpoint ───────────────────────────────────────────────────────
