@@ -1156,6 +1156,9 @@ def _fetch_cargo_handled(report_date):
 
 def _fetch_cargo_statistics(report_date):
 
+    # Show previous day's report
+    report_date = report_date - timedelta(days=1)
+
     window_end = datetime(
         report_date.year,
         report_date.month,
@@ -1179,33 +1182,24 @@ def _fetch_cargo_statistics(report_date):
 
         cur.execute("""
             SELECT
-
                 CASE
                     WHEN source_type = 'VCN'
                         THEN 'Mumbai Anchorage'
-
                     WHEN source_type = 'MBC'
                         THEN 'MBC (Jaigad/Other)'
-
                     ELSE source_type
                 END AS cargo_source,
 
-                COALESCE(SUM(quantity),0) AS qty
+                COALESCE(SUM(quantity), 0) AS qty
 
             FROM lueu_lines
 
             WHERE is_deleted = false
-
-              AND entry_date IS NOT NULL
-
-              AND (entry_date || ' ' || COALESCE(from_time,'00:00'))
-                    >= %s
-
-              AND (entry_date || ' ' || COALESCE(from_time,'00:00'))
-                    < %s
+            AND entry_date IS NOT NULL
+            AND (entry_date || ' ' || COALESCE(from_time,'00:00')) >= %s
+            AND (entry_date || ' ' || COALESCE(from_time,'00:00')) < %s
 
             GROUP BY 1
-
             ORDER BY 1
         """, (
             start_dt.strftime('%Y-%m-%d %H:%M:%S'),
@@ -1231,13 +1225,15 @@ def _fetch_cargo_statistics(report_date):
 
     return day_rows, month_rows
 
+
+
 def _fetch_mbc_cargo_handling(report_date):
 
     target_date = report_date - timedelta(days=1)
 
     month_start = date(
-        report_date.year,
-        report_date.month,
+        target_date.year,
+        target_date.month,
         1
     )
 
@@ -1294,12 +1290,13 @@ def _fetch_mbc_cargo_handling(report_date):
         target_date
     )
 
-    # MTD = 1st of month to previous day
+    # Month-to-date till previous day
     month_rows = _period(
         month_start,
         target_date
     )
 
+    cur.close()
     conn.close()
 
     return day_rows, month_rows
@@ -1315,51 +1312,75 @@ def _fetch_mbc_status(report_date):
 
             CASE
 
+                /* Empty : Waiting at Dharamtar */
                 WHEN h.id IS NULL
                 THEN 'EMPTY : WAITING AT DHARAMTAR'
 
+                /* Empty : On the way to Load Port */
                 WHEN
-                    NULLIF(TRIM(d.unloading_commenced), '') IS NOT NULL
-                    AND NULLIF(TRIM(d.unloading_completed), '') IS NULL
+                    NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.vessel_cast_off), '') IS NOT NULL
+                    AND NULLIF(TRIM(l.arrived_load_port), '') IS NULL
                 THEN
-                    'UNDER DISCHARGE'
+                    'EMPTY : ON THE WAY TO LOAD PORT'
 
+                /* Empty : Waiting at Load Port */
                 WHEN
-                    NULLIF(TRIM(d.vessel_arrival_port), '') IS NOT NULL
-                    AND NULLIF(TRIM(d.unloading_commenced), '') IS NULL
+                    NULLIF(TRIM(l.arrived_load_port), '') IS NOT NULL
+                    AND NULLIF(TRIM(l.loading_commenced), '') IS NULL
                 THEN
-                    'LOADED : WAITING AT DHARAMTAR'
+                    'EMPTY : WAITING AT LOAD PORT'
 
-                WHEN
-                    NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
-                    AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
-                THEN
-                    'LOADED : ON THE WAY TO DHARAMTAR'
-
-                WHEN
-                    NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
-                    AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
-                THEN
-                    'LOADED : WAITING AT GULL'
-
-                WHEN
-                    NULLIF(TRIM(l.loading_completed), '') IS NOT NULL
-                    AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
-                THEN
-                    'LOADED : ON THE WAY TO GULL'
-
+                /* Under Loading */
                 WHEN
                     NULLIF(TRIM(l.loading_commenced), '') IS NOT NULL
                     AND NULLIF(TRIM(l.loading_completed), '') IS NULL
                 THEN
                     'UNDER LOADING'
 
+                /* Loaded : Waiting at Load Port */
                 WHEN
-                    NULLIF(TRIM(l.eta), '') IS NOT NULL
-                    AND NULLIF(TRIM(l.loading_commenced), '') IS NULL
+                    NULLIF(TRIM(l.loading_completed), '') IS NOT NULL
+                    AND NULLIF(TRIM(l.cast_off_load_port), '') IS NULL
                 THEN
-                    'EMPTY : WAITING AT LOAD PORT'
+                    'LOADED : WAITING AT LOAD PORT'
 
+                /* Loaded : On the way to Gull */
+                WHEN
+                    NULLIF(TRIM(l.cast_off_load_port), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.arrival_gull_island), '') IS NULL
+                THEN
+                    'LOADED : ON THE WAY TO GULL'
+
+                /* Loaded : Waiting at Gull */
+                WHEN
+                    NULLIF(TRIM(d.arrival_gull_island), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.departure_gull_island), '') IS NULL
+                THEN
+                    'LOADED : WAITING AT GULL'
+
+                /* Loaded : On the way to Dharamtar */
+                WHEN
+                    NULLIF(TRIM(d.departure_gull_island), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.vessel_arrival_port), '') IS NULL
+                THEN
+                    'LOADED : ON THE WAY TO DHARAMTAR'
+
+                /* Loaded : Waiting at Dharamtar */
+                WHEN
+                    NULLIF(TRIM(d.vessel_arrival_port), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.unloading_commenced), '') IS NULL
+                THEN
+                    'LOADED : WAITING AT DHARAMTAR'
+
+                /* Under Discharge */
+                WHEN
+                    NULLIF(TRIM(d.unloading_commenced), '') IS NOT NULL
+                    AND NULLIF(TRIM(d.unloading_completed), '') IS NULL
+                THEN
+                    'UNDER DISCHARGE'
+
+                /* Empty : Waiting at Dharamtar */
                 WHEN
                     NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
                 THEN
