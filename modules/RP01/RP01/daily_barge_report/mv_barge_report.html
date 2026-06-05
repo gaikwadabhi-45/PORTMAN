@@ -1025,15 +1025,18 @@
         border-right: 2px solid #006100 !important;
     }
 
-    .eq-left {
+    /* Left border of every equipment block */
+    .shift-table tr>*:nth-child(4n+1) {
         border-left: 2px solid #006100 !important;
     }
 
-    .eq-right {
+    /* Right border of every equipment block */
+    .shift-table tr>*:nth-child(4n) {
         border-right: 2px solid #006100 !important;
     }
 
-    .eq-bottom {
+    /* Bottom border on total row */
+    .equipment-total-row td {
         border-bottom: 2px solid #006100 !important;
     }
 
@@ -1045,6 +1048,40 @@
     .shift-total-row {
         background: #ffffff;
         font-weight: 700;
+    }
+
+    .shift-total-row td {
+        border: 2px solid #006100 !important;
+    }
+
+    .view-switch-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .table-search-wrapper {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .table-search-wrapper label {
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    #table-search {
+        width: 220px;
+        height: 28px;
+
+        border: 1px solid #bfc7d1;
+        border-radius: 3px;
+
+        padding: 0 8px;
+
+        font-size: 13px;
     }
 </style>
 {% endblock %}
@@ -1167,9 +1204,7 @@
 
     <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
     <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
-    <button type="button" class="filter-btn" onclick="toggleAdvancedFilters()" style="background:#6c5ce7;color:white;">
-        ⚙ Filters
-    </button>
+
     <button type="button" class="filter-btn dl-all" id="dl-all-btn" onclick="downloadAll()">&#8595; Download
         All</button>
 
@@ -1211,9 +1246,7 @@
 
         </div>
 
-        <!-- <div style="font-size:12px;color:var(--text-primary);line-height:1.6;padding-top:6px;">
-        <div id="date-range-display">—</div>
-    </div> -->
+
 
 
 
@@ -1225,22 +1258,7 @@
 
     <div id="filterRows"></div>
 
-    <div class="filter-actions">
-        <button class="btn-filter-add" onclick="addFilterRow()">
-            + Add Filter
-        </button>
 
-        <button class="btn-filter-apply" onclick="applyColumnFilters()">
-            Apply
-        </button>
-
-        <button class="btn-filter-clear" onclick="clearColumnFilters()">
-            Clear All
-        </button>
-        <button class="btn-filter-save" onclick="saveCurrentFilters()">
-            💾Save Filter
-        </button>
-    </div>
     <!-- Row count -->
 
 
@@ -1265,6 +1283,11 @@
     <button id="btn-mbc" class="view-switch-btn" onclick="switchView('mbc')">
         MBC
     </button>
+
+    <div class="table-search-wrapper">
+        <label>Search:</label>
+        <input type="text" id="table-search" placeholder="" onkeyup="globalSearch()">
+    </div>
 
 </div>
 
@@ -2308,7 +2331,7 @@
         equipments.forEach(eq => {
             grandEqTotals[eq] = shiftDefs.reduce((sum, _, si) => {
                 return sum + shiftRows[si][eq].reduce(
-                    (s, r) => s + Number(r.qty_mt || 0), 0
+                    (s, r) => s + Number(r.quantity || 0), 0
                 );
             }, 0);
         });
@@ -2316,7 +2339,7 @@
         // ── Grand overall total across all shifts ─────────────────────────────
         const grandOverall = [0, 1, 2].reduce((total, si) => {
             return total + shiftAllRows[si].reduce(
-                (s, r) => s + Number(r.qty_mt || 0), 0
+                (s, r) => s + Number(r.quantity || 0), 0
             );
         }, 0);
 
@@ -2332,7 +2355,7 @@
 
             // Total qty for this shift (each row counted once)
             const shiftTotal = shiftAllRows[si].reduce(
-                (s, r) => s + Number(r.qty_mt || 0), 0
+                (s, r) => s + Number(r.qty_mt || r.quantity || 0), 0
             );
 
             // ── Shift card header ─────────────────────────────────────────────
@@ -2359,10 +2382,10 @@
             // Sub-headers: Barge | Qty | Cargo | MV for each equipment
             equipments.forEach(() => {
                 html += `
-<th class="eq-sub-header">Barge / MBC</th>
-<th class="eq-sub-header">Qty (MT)</th>
-<th class="eq-sub-header">Cargo</th>
-<th class="eq-sub-header">MV Name</th>
+                <th class="eq-sub-header">Barge / MBC</th>
+                <th class="eq-sub-header">Qty (MT)</th>
+                <th class="eq-sub-header">Cargo</th>
+                <th class="eq-sub-header">MV Name</th>
             `;
             });
 
@@ -2385,7 +2408,7 @@
                             ${Number(row.quantity || 0).toLocaleString('en-IN')}
                         </td>
                         <td>${row.cargo_name || ''}</td>
-                        <td>${row.source_name || ''}</td>
+                        <td >${row.source_name || ''}</td>
                     `;
                     } else {
                         // Empty cells for equipments with fewer rows
@@ -2400,14 +2423,15 @@
             equipments.forEach(eq => {
                 // Sum all qty for this equipment in this shift
                 const t = map[eq].reduce(
-                    (s, r) => s + Number(r.qty_mt || 0), 0
+                    (s, r) => s + Number(r.quantity || 0), 0
                 );
                 html += `
-                <td style="text-align:center;">Total</td>
-                <td style="text-align:right;">
+                <td style="text-align:center;font-weight:700;">Total</td>
+                <td style="text-align:right;font-weight:700;">
                     ${t > 0 ? t.toLocaleString('en-IN') : '-'}
                 </td>
-                <td colspan="2"></td>
+                <td></td>
+                <td></td>
             `;
             });
             html += `</tr>`;
@@ -2453,7 +2477,7 @@
                         <td style="text-align:right;">
                             ${val > 0 ? val.toLocaleString('en-IN') : '-'}
                         </td>
-                        <td colspan="2"></td>
+                        <td></td>
                     `;
                     }
                 });
@@ -2484,66 +2508,66 @@
     }
 
     function renderShiftPreviewFromApi(shiftMap) {
-    // shiftMap = { "A Shift": { "BUL-01": [{barge_name, quantity, cargo_name, mv_name}] } }
+        // shiftMap = { "A Shift": { "BUL-01": [{barge_name, quantity, cargo_name, mv_name}] } }
 
-    const wrapper = document.getElementById('shift-preview');
-    wrapper.innerHTML = '';
+        const wrapper = document.getElementById('shift-preview');
+        wrapper.innerHTML = '';
 
-    // ── Equipment list — same order as backend ────────────────────────────
-    const equipments = [
-        'Barge Unloader 1',
-        'Barge Unloader 2',
-        'SANY 285-Exavator',
-        'Sennebogen J1',
-        'Sennebogen J5',
-        'BUL-01',
-        'BUL-02',
-        'BUL-03',
-        'BUL-04',
-        'BUL-05'
-    ];
+        // ── Equipment list — same order as backend ────────────────────────────
+        const equipments = [
+            'Barge Unloader 1',
+            'Barge Unloader 2',
+            'SANY 285-Exavator',
+            'Sennebogen J1',
+            'Sennebogen J5',
+            'BUL-01',
+            'BUL-02',
+            'BUL-03',
+            'BUL-04',
+            'BUL-05'
+        ];
 
-    // ── Shift order ───────────────────────────────────────────────────────
-    const shiftKeys = ['A Shift', 'B Shift', 'C Shift'];
+        // ── Shift order ───────────────────────────────────────────────────────
+        const shiftKeys = ['A Shift', 'B Shift', 'C Shift'];
 
-    // ── Calculate grand totals per equipment across all shifts ────────────
-    const grandEqTotals = {};
-    equipments.forEach(eq => {
-        grandEqTotals[eq] = shiftKeys.reduce((total, shiftKey) => {
-            const rows = (shiftMap[shiftKey] || {})[eq] || [];
-            return total + rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
-        }, 0);
-    });
+        // ── Calculate grand totals per equipment across all shifts ────────────
+        const grandEqTotals = {};
+        equipments.forEach(eq => {
+            grandEqTotals[eq] = shiftKeys.reduce((total, shiftKey) => {
+                const rows = (shiftMap[shiftKey] || {})[eq] || [];
+                return total + rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
+            }, 0);
+        });
 
-    // ── Grand overall total ───────────────────────────────────────────────
-    const grandOverall = equipments.reduce(
-        (t, eq) => t + grandEqTotals[eq], 0
-    );
-
-    let allHtml = `<div style="overflow-x:auto; width:100%;">`;
-
-    shiftKeys.forEach((shiftKey, si) => {
-
-        const isLastShift = si === shiftKeys.length - 1;
-
-        // Get equipment data for this shift
-        const shiftData = shiftMap[shiftKey] || {};
-
-        // Max rows = busiest equipment in this shift
-        const maxRows = Math.max(
-            ...equipments.map(eq => (shiftData[eq] || []).length),
-            1
+        // ── Grand overall total ───────────────────────────────────────────────
+        const grandOverall = equipments.reduce(
+            (t, eq) => t + grandEqTotals[eq], 0
         );
 
-        // Shift total = sum of all qty in this shift
-        const shiftTotal = equipments.reduce((total, eq) => {
-            return total + (shiftData[eq] || []).reduce(
-                (s, r) => s + Number(r.quantity || 0), 0
-            );
-        }, 0);
+        let allHtml = `<div style="overflow-x:auto; width:100%;">`;
 
-        // ── Shift card start ──────────────────────────────────────────────
-        let html = `
+        shiftKeys.forEach((shiftKey, si) => {
+
+            const isLastShift = si === shiftKeys.length - 1;
+
+            // Get equipment data for this shift
+            const shiftData = shiftMap[shiftKey] || {};
+
+            // Max rows = busiest equipment in this shift
+            const maxRows = Math.max(
+                ...equipments.map(eq => (shiftData[eq] || []).length),
+                1
+            );
+
+            // Shift total = sum of all qty in this shift
+            const shiftTotal = equipments.reduce((total, eq) => {
+                return total + (shiftData[eq] || []).reduce(
+                    (s, r) => s + Number(r.quantity || 0), 0
+                );
+            }, 0);
+
+            // ── Shift card start ──────────────────────────────────────────────
+            let html = `
             <div class="shift-card">
                 <div class="shift-header">${shiftKey}</div>
                 <table class="shift-table">
@@ -2551,119 +2575,112 @@
                         <tr>
         `;
 
-        // Equipment header row (green, spans 4 cols each)
-        equipments.forEach(eq => {
-            html += `
+            // Equipment header row (green, spans 4 cols each)
+            equipments.forEach(eq => {
+                html += `
                 <th colspan="4" class="equipment-head">${eq}</th>
             `;
-        });
+            });
 
-        html += `</tr><tr>`;
+            html += `</tr><tr>`;
 
-        // Sub-header row: Barge | Qty | Cargo | MV for each equipment
-        equipments.forEach(() => {
-            html += `
+            // Sub-header row: Barge | Qty | Cargo | MV for each equipment
+            equipments.forEach(() => {
+                html += `
                 <th class="eq-sub-header">Barge / MBC</th>
                 <th class="eq-sub-header">Qty (MT)</th>
                 <th class="eq-sub-header">Cargo</th>
                 <th class="eq-sub-header">MV Name</th>
             `;
-        });
-
-        html += `</tr></thead><tbody>`;
-
-        // ── Data rows ─────────────────────────────────────────────────────
-        for (let i = 0; i < maxRows; i++) {
-            html += `<tr>`;
-            equipments.forEach(eq => {
-                const rows = shiftData[eq] || [];
-                const row  = rows[i];
-                if (row) {
-                    html += `
-                        <td>${row.barge_name  || ''}</td>
-                        <td style="text-align:right;">
-                            ${Number(row.quantity || 0).toLocaleString('en-IN')}
-                        </td>
-                        <td>${row.cargo_name  || ''}</td>
-                        <td>${row.mv_name     || ''}</td>
-                    `;
-                } else {
-                    html += `<td></td><td></td><td></td><td></td>`;
-                }
             });
-            html += `</tr>`;
-        }
 
-        // ── Equipment total row ───────────────────────────────────────────
-        html += `<tr class="equipment-total-row">`;
-        equipments.forEach(eq => {
-            const t = (shiftData[eq] || []).reduce(
-                (s, r) => s + Number(r.quantity || 0), 0
-            );
-            html += `
+            html += `</tr></thead><tbody>`;
+
+            // ── Data rows ─────────────────────────────────────────────────────
+            for (let i = 0; i < maxRows; i++) {
+                html += `<tr>`;
+                equipments.forEach(eq => {
+                    const rows = shiftData[eq] || [];
+                    const row = rows[i];
+                    if (row) {
+                        html += `
+                        <td>${row.barge_name || ''}</td>
+                        <td style="text-align:right;">
+                            ${Number(row.qty_mt || row.quantity || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td>${row.cargo_name || ''}</td>
+                        <td>
+                            ${
+                                row.source_type === 'MBC'
+                                    ? row.barge_name
+                                    : (row.mv_name || '')
+                            }
+                        </td>
+                    `;
+                    } else {
+                        html += `<td></td><td></td><td></td><td></td>`;
+                    }
+                });
+                html += `</tr>`;
+            }
+
+            // ── Equipment total row ───────────────────────────────────────────
+            html += `<tr class="equipment-total-row">`;
+            equipments.forEach(eq => {
+                const t = (shiftData[eq] || []).reduce(
+                    (s, r) => s + Number(r.quantity || 0), 0
+                );
+                html += `
                 <td style="text-align:center; font-weight:700;">Total</td>
                 <td style="text-align:right; font-weight:700;">
                     ${t > 0 ? t.toLocaleString('en-IN') : '-'}
                 </td>
-                <td colspan="2"></td>
+                <td ></td>
+                <td ></td>
             `;
-        });
-        html += `</tr>`;
+            });
+            html += `</tr>`;
 
-        // ── Shift total row ───────────────────────────────────────────────
-        html += `
+            // ── Shift total row ───────────────────────────────────────────────
+            html += `
             <tr class="shift-total-row">
                 <td colspan="${equipments.length * 4}"
                     style="text-align:right; padding-right:20px;
                            font-weight:700; background:#bdd7ee;">
                     ${shiftKey} Total :
                     ${shiftTotal > 0
-                        ? shiftTotal.toLocaleString('en-IN') + ' MT'
-                        : '— No discharge in this shift —'
-                    }
+                    ? shiftTotal.toLocaleString('en-IN') + ' MT'
+                    : '— No discharge in this shift —'
+                }
                 </td>
             </tr>
         `;
 
-        // ── Grand total rows — only after C Shift ─────────────────────────
-        if (isLastShift) {
+            // ── Grand total rows — only after C Shift ─────────────────────────
+            if (isLastShift) {
 
-            // Per-equipment grand total row
-            html += `
-                <tr style="background:#c6e0f5; font-weight:700;
-                           font-size:12px; color:#0c4a6e;">
-                    <td style="text-align:center; white-space:nowrap;
-                               border-left:3px solid #4a7ab5;">
-                        All Shifts
-                    </td>
-            `;
-            equipments.forEach((eq, idx) => {
+                //  // ── Per-equipment grand total row ─────────────────────────────────
+            html += `<tr style="background:#c6e0f5; font-weight:700; font-size:12px; color:#0c4a6e;">`;
+            html += `<td style="text-align:center; white-space:nowrap;">All Shifts</td>`;
+ 
+            equipments.forEach(eq => {
                 const val = grandEqTotals[eq];
-                if (idx === 0) {
-                    html += `
-                        <td style="text-align:right;">
-                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
-                        </td>
-                        <td colspan="2"></td>
-                    `;
-                } else {
-                    html += `
-                        <td style="border-left:3px solid #4a7ab5;"></td>
-                        <td style="text-align:right;">
-                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
-                        </td>
-                        <td colspan="2"></td>
-                    `;
-                }
+                html += `
+                    <td style="text-align:right;">
+                        ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                    </td>
+                    <td></td>
+                    <td></td>
+                `;
             });
+ 
             html += `</tr>`;
-
-            // Grand overall total
+ 
+            // ── Grand overall total ───────────────────────────────────────────
             html += `
                 <tr style="background:#bdd7ee; font-weight:700;">
-                    <td colspan="${equipments.length * 4}"
-                        style="text-align:right; padding-right:20px;
-                               color:#0c4a6e; font-size:13px;">
+                    <td colspan="${equipments.length * 4 + 1}"
+                        style="text-align:right; padding-right:20px; color:#0c4a6e; font-size:13px;">
                         Grand Total (All Shifts) :
                         ${grandOverall > 0
                             ? grandOverall.toLocaleString('en-IN') + ' MT'
@@ -2672,15 +2689,15 @@
                     </td>
                 </tr>
             `;
-        }
+            }
 
-        html += `</tbody></table></div>`;
-        allHtml += html;
-    });
+            html += `</tbody></table></div>`;
+            allHtml += html;
+        });
 
-    allHtml += `</div>`;
-    wrapper.innerHTML = allHtml;
-}
+        allHtml += `</div>`;
+        wrapper.innerHTML = allHtml;
+    }
 
     /* ── On load — auto-fetch current month ──────────────── */
     document.addEventListener('DOMContentLoaded', function () {
@@ -2780,19 +2797,7 @@
         table.clearFilter(true);
     }
 
-    function toggleAdvancedFilters() {
 
-        const panel = document.getElementById('filterPanel');
-
-        if (panel.style.display === 'none') {
-
-            panel.style.display = 'block';
-
-        } else {
-
-            panel.style.display = 'none';
-        }
-    }
     let savedFilters = [];
 
     function saveCurrentFilters() {
@@ -3008,6 +3013,28 @@
         // Try to restore previous selection; fallback to 'all'
         const exists = [...statusSelect.options].some(o => o.value === currentVal);
         statusSelect.value = exists ? currentVal : 'all';
+    }
+    function globalSearch() {
+
+        const value =
+            document.getElementById('table-search')
+                .value
+                .toLowerCase();
+
+        if (!value) {
+            table.clearFilter(true);
+            return;
+        }
+
+        table.setFilter(function (data) {
+
+            return Object.values(data).some(val =>
+                String(val || '')
+                    .toLowerCase()
+                    .includes(value)
+            );
+
+        });
     }
 </script>
 {% endblock %}
