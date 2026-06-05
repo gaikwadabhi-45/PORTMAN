@@ -1333,26 +1333,22 @@ def _write_discharge_sheet(ws, rows):
     }
 
     shift_data = {
-    'A Shift': [],
-    'B Shift': [],
-    'C Shift': []
+        'A Shift': [],
+        'B Shift': [],
+        'C Shift': []
     }
 
     for row in rows:
 
-        status = row.get('current_status')
+        shift = (row.get('shift') or '').strip()
 
-        if status == 'currently_loading':
+        if shift in ['A Shift', 'A']:
             shift_data['A Shift'].append(row)
 
-        elif status == 'loaded_transit':
+        elif shift in ['B Shift', 'B']:
             shift_data['B Shift'].append(row)
 
-        elif status in [
-            'waiting_discharge',
-            'under_discharge',
-            'completed_discharge'
-        ]:
+        elif shift in ['C Shift', 'C']:
             shift_data['C Shift'].append(row)
 
     # =========================
@@ -1383,7 +1379,12 @@ def _write_discharge_sheet(ws, rows):
             qty = _safe_float(
                 item.get('qty_mt')
             )
-
+            print(
+                "SHIFT=", item.get('shift'),
+                "BARGE=", item.get('barge_name'),
+                "QTY=", item.get('qty_mt'),
+                "EQ=", item.get('unloaded_by')
+            )
             for equipment in equipment_list:
 
                 if equipment not in equipment_cols:
@@ -1917,4 +1918,125 @@ def get_mbc_data():
         )
     )
 
+
     return jsonify(filtered_rows)
+
+@bp.route('/api/module/RP01/mv-barge-report/shift-data')
+@login_required
+def get_shift_data():
+
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+
+    try:
+        # ── FROM date = shift day (06:00 starts)
+        from_dt = datetime.fromisoformat(from_date) if from_date else datetime.now()
+        to_dt   = datetime.fromisoformat(to_date)   if to_date   else datetime.now()
+
+        # ── Entry date = FROM date का date part
+        # ── Example: 2026-04-01T06:00 → entry_date = 2026-04-01
+        # ── But if time < 06:00, it belongs to previous day's shift
+        # ── So use FROM date's date directly
+        entry_date_from = from_dt.date()
+        entry_date_to   = to_dt.date()
+
+        # ── If TO time is exactly 06:00 of next day,
+        # ── then entry_date_to should be FROM date only
+        # ── Because 2026-04-02T06:00 means end of 2026-04-01 shift day
+        if (to_dt - from_dt).total_seconds() <= 24 * 3600:
+            # Single shift day — use only FROM date
+            entry_date_to = entry_date_from
+
+    except Exception:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    conn = get_db()
+    cur  = get_cursor(conn)
+
+    cur.execute("""
+        SELECT
+            ll.shift,
+            ll.equipment_name,
+            ll.barge_name,
+            ll.cargo_name,
+            COALESCE(ll.quantity, 0) AS quantity,
+            ll.source_type,
+
+            CASE
+                WHEN ll.source_type = 'VCN' THEN
+                    (SELECT h.vessel_name
+                     FROM ldud_header h
+                     WHERE h.vcn_id = ll.source_id
+                     LIMIT 1)
+                WHEN ll.source_type = 'MBC' THEN
+                    (SELECT h.mbc_name
+                     FROM mbc_header h
+                     WHERE h.id = ll.source_id
+                     LIMIT 1)
+                ELSE ''
+            END AS mv_name
+
+        FROM lueu_lines ll
+
+        WHERE
+            ll.is_deleted IS NOT TRUE
+            AND COALESCE(ll.quantity, 0) > 0
+            AND ll.entry_date IS NOT NULL
+            AND TO_DATE(ll.entry_date, 'YYYY-MM-DD')
+                BETWEEN %s AND %s
+
+        ORDER BY
+            ll.shift,
+            ll.equipment_name,
+            ll.barge_name
+    """, (entry_date_from, entry_date_to))
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    # ── Build shift map ───────────────────────────────────────
+    equipments = [
+        'Barge Unloader 1', 'Barge Unloader 2',
+        'SANY 285-Exavator',
+        'Sennebogen J1', 'Sennebogen J5',
+        'BUL-01', 'BUL-02', 'BUL-03', 'BUL-04', 'BUL-05'
+    ]
+
+    shift_map = {
+        'A Shift': {},
+        'B Shift': {},
+        'C Shift': {}
+    }
+
+    for shift in shift_map:
+        for eq in equipments:
+            shift_map[shift][eq] = []
+
+    for row in rows:
+        raw_shift = (row['shift'] or '').strip().upper()
+
+        if raw_shift == 'A':
+            shift_key = 'A Shift'
+        elif raw_shift == 'B':
+            shift_key = 'B Shift'
+        elif raw_shift == 'C':
+            shift_key = 'C Shift'
+        else:
+            continue
+
+        equipment = (row['equipment_name'] or '').strip()
+
+        # ── Equipment not in list → skip ──────────────────────
+        if equipment not in shift_map[shift_key]:
+            continue
+
+        shift_map[shift_key][equipment].append({
+            'barge_name': row['barge_name'] or '',
+            'cargo_name': row['cargo_name'] or '',
+            'quantity':   float(row['quantity'] or 0),
+            'mv_name':    row['mv_name']    or '',
+            'source_type': row['source_type'] or '',
+        })
+
+    return jsonify(shift_map)

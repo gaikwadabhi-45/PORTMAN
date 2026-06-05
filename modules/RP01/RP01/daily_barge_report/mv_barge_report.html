@@ -837,6 +837,7 @@
 
     .shift-table {
         border-collapse: collapse;
+        border: 2px solid #006100;
         font-size: 12px;
         table-layout: fixed;
         width: max-content;
@@ -846,13 +847,13 @@
     .shift-table th {
         background: #f1f5f9;
         padding: 8px;
-        border: 1px solid #dfe6ee;
+        border: 1px solid #d6dce5;
         text-align: center;
     }
 
     .shift-table td {
         padding: 7px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #d6dce5;
     }
 
     .dark-theme .shift-table th {
@@ -869,7 +870,7 @@
     }
 
     .legend-icon {
-        color: #4a90d9;
+        color: #5ba5f5;
         font-size: 16px;
         font-weight: bold;
         cursor: pointer;
@@ -1006,6 +1007,45 @@
         font-weight: 600;
         border-radius: 6px;
     }
+
+    .eq-sub-header {
+        background: #fff !important;
+        border: 1px solid #d6dce5 !important;
+        color: #444;
+    }
+
+    .equipment-head {
+        background: #fff;
+        color: #006100;
+        text-align: center;
+        font-weight: 700;
+
+        border-top: 2px solid #006100 !important;
+        border-left: 2px solid #006100 !important;
+        border-right: 2px solid #006100 !important;
+    }
+
+    .eq-left {
+        border-left: 2px solid #006100 !important;
+    }
+
+    .eq-right {
+        border-right: 2px solid #006100 !important;
+    }
+
+    .eq-bottom {
+        border-bottom: 2px solid #006100 !important;
+    }
+
+    .equipment-total-row {
+        background: #ffffff;
+        font-weight: 700;
+    }
+
+    .shift-total-row {
+        background: #ffffff;
+        font-weight: 700;
+    }
 </style>
 {% endblock %}
 
@@ -1093,37 +1133,37 @@
     </div>
 
     <div class="filter-group">
-    <label for="status-filter">
-        Filter Basis
-    </label>
+        <label for="status-filter">
+            Filter Basis
+        </label>
 
-    <!-- ✅ THIS IS THE VISIBLE DROPDOWN — options are swapped by JS -->
-    <select id="status-filter">
-        <option value="all">All</option>
-    </select>
+        <!-- ✅ THIS IS THE VISIBLE DROPDOWN — options are swapped by JS -->
+        <select id="status-filter">
+            <option value="all">All</option>
+        </select>
 
-    <!-- MBC-specific filter options (hidden, used by JS to swap) -->
-    <select id="mbc-status-options" style="display:none;">
-        <option value="all">All</option>
-        <option value="currently_loading">Currently Loading</option>
-        <option value="loaded_transit">Loaded & Transit</option>
-        <option value="waiting_gull">Waiting at Gull Island</option>
-        <option value="on_way_dharamtar">On the Way to Dharamtar</option>
-        <option value="waiting_discharge">Waiting for Discharge</option>
-        <option value="under_discharge">Under Discharge</option>
-        <option value="waiting_castoff">Waiting for Cast Off</option>
-    </select>
+        <!-- MBC-specific filter options (hidden, used by JS to swap) -->
+        <select id="mbc-status-options" style="display:none;">
+            <option value="all">All</option>
+            <option value="currently_loading">Currently Loading</option>
+            <option value="loaded_transit">Loaded & Transit</option>
+            <option value="waiting_gull">Waiting at Gull Island</option>
+            <option value="on_way_dharamtar">On the Way to Dharamtar</option>
+            <option value="waiting_discharge">Waiting for Discharge</option>
+            <option value="under_discharge">Under Discharge</option>
+            <option value="waiting_castoff">Waiting for Cast Off</option>
+        </select>
 
-    <!-- Barge-specific filter options (hidden, used by JS to swap) -->
-    <select id="barge-status-options" style="display:none;">
-        <option value="all">All</option>
-        <option value="currently_loading">Currently Loading</option>
-        <option value="loaded_transit">Loaded & Transit</option>
-        <option value="waiting_discharge">Waiting For Discharge</option>
-        <option value="under_discharge">Under Discharge</option>
-        <option value="completed_discharge">Completed Discharge</option>
-    </select>
-</div>
+        <!-- Barge-specific filter options (hidden, used by JS to swap) -->
+        <select id="barge-status-options" style="display:none;">
+            <option value="all">All</option>
+            <option value="currently_loading">Currently Loading</option>
+            <option value="loaded_transit">Loaded & Transit</option>
+            <option value="waiting_discharge">Waiting For Discharge</option>
+            <option value="under_discharge">Under Discharge</option>
+            <option value="completed_discharge">Completed Discharge</option>
+        </select>
+    </div>
 
     <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
     <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
@@ -1786,6 +1826,32 @@
             toInput.value = formatDateTimeLocal(toDate);
         }
     });
+    document.addEventListener('DOMContentLoaded', function () {
+
+        const fromInput = document.getElementById('filter-from');
+        const toInput = document.getElementById('filter-to');
+
+        function autoSetToDate() {
+
+            if (!fromInput.value) return;
+
+            const fromDate = new Date(fromInput.value);
+
+            const toDate = new Date(fromDate);
+            toDate.setDate(toDate.getDate() + 1);
+
+            const yyyy = toDate.getFullYear();
+            const mm = String(toDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(toDate.getDate()).padStart(2, '0');
+            const hh = String(toDate.getHours()).padStart(2, '0');
+            const mi = String(toDate.getMinutes()).padStart(2, '0');
+
+            toInput.value = `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+        }
+
+        fromInput.addEventListener('change', autoSetToDate);
+
+    });
 
     // Update date and time display
     function updateDateTimeDisplay() {
@@ -2056,44 +2122,29 @@
     }
 
     function fetchAndRenderShiftPreview() {
-        const selectedDate = document.getElementById('filter-from').value;
-        const selectedToDate = document.getElementById('filter-to').value;
-        const selectedColumn = document.getElementById('column-filter').value;
-        const statusFilter = document.getElementById('status-filter').value;
+
+        const fromDate =
+            document.getElementById('filter-from').value;
+
+        const toDate =
+            document.getElementById('filter-to').value;
 
         const params = new URLSearchParams();
-        if (selectedDate) params.set('from_date', selectedDate);
-        if (selectedToDate) params.set('to_date', selectedToDate);
-        if (selectedColumn) params.set('column_filter', selectedColumn);
-        params.set('status_filter', statusFilter);
 
-        // Fetch both Barges and MBC in parallel
-        Promise.all([
-            fetch('/api/module/RP01/mv-barge-report/data?' + params.toString())
-                .then(r => r.ok ? r.json() : [])
-                .catch(() => []),
-            fetch('/api/module/RP01/mv-barge-report/mbc-data?' + params.toString())
-                .then(r => r.ok ? r.json() : [])
-                .catch(() => [])
-        ]).then(([bargeData, mbcData]) => {
+        if (fromDate)
+            params.set('from_date', fromDate);
 
-            // Normalize MBC rows to match barge row shape
-            const normalizedMbc = mbcData.map(row => ({
-                ...row,
-                barge_name: row.mbc_name || '',
-                mother_vessel_name: '',
-                qty_mt: row.qty_mt || 0,
-                cargo_type: row.cargo_type || '',
-                // Use unloading_commenced as trip_start for shift assignment
-                trip_start: row.unloading_commenced || row.trip_start || '',
-                unloaded_by: row.vessel_unloaded_by || '',
-                current_status: row.current_status || '',
-                _is_mbc: true,
-            }));
+        if (toDate)
+            params.set('to_date', toDate);
 
-            const combined = [...bargeData, ...normalizedMbc];
-            renderShiftPreview(combined);
-        });
+        fetch(
+            '/api/module/RP01/mv-barge-report/shift-data?' +
+            params.toString()
+        )
+            .then(r => r.json())
+            .then(data => {
+                renderShiftPreviewFromApi(data);
+            });
     }
     function renderShiftPreview(data) {
         const wrapper = document.getElementById('shift-preview');
@@ -2294,13 +2345,13 @@
         `;
 
             // Equipment column headers (each spans 4 sub-columns)
+
             equipments.forEach(eq => {
                 html += `
-                <th colspan="4"
-                    style="background:#c6efce;color:#006100;text-align:center;">
-                    ${eq}
-                </th>
-            `;
+        <th colspan="4" class="equipment-head">
+            ${eq}
+        </th>
+    `;
             });
 
             html += `</tr><tr>`;
@@ -2308,10 +2359,10 @@
             // Sub-headers: Barge | Qty | Cargo | MV for each equipment
             equipments.forEach(() => {
                 html += `
-                <th>Barge / MBC</th>
-                <th>Qty (MT)</th>
-                <th>Cargo</th>
-                <th>MV Name</th>
+<th class="eq-sub-header">Barge / MBC</th>
+<th class="eq-sub-header">Qty (MT)</th>
+<th class="eq-sub-header">Cargo</th>
+<th class="eq-sub-header">MV Name</th>
             `;
             });
 
@@ -2329,12 +2380,12 @@
                     if (row) {
                         // Show barge/MBC name, qty, cargo, mother vessel
                         html += `
-                        <td>${row.barge_name || row.mbc_name || ''}</td>
+                        <td>${row.barge_name || ''}</td>
                         <td style="text-align:right;">
-                            ${Number(row.qty_mt || 0).toLocaleString('en-IN')}
+                            ${Number(row.quantity || 0).toLocaleString('en-IN')}
                         </td>
-                        <td>${row.cargo_type || ''}</td>
-                        <td>${row.mother_vessel_name || ''}</td>
+                        <td>${row.cargo_name || ''}</td>
+                        <td>${row.source_name || ''}</td>
                     `;
                     } else {
                         // Empty cells for equipments with fewer rows
@@ -2345,7 +2396,7 @@
             }
 
             // ── Equipment total row (yellow) ──────────────────────────────────
-            html += `<tr style="background:#ffe699; font-weight:700;">`;
+            html += `<tr class="equipment-total-row">`;
             equipments.forEach(eq => {
                 // Sum all qty for this equipment in this shift
                 const t = map[eq].reduce(
@@ -2363,7 +2414,7 @@
 
             // ── Shift total row (blue) ────────────────────────────────────────
             html += `
-            <tr style="background:#bdd7ee; font-weight:700;">
+            <tr class="shift-total-row">
                 <td colspan="${equipments.length * 4}"
                     style="text-align:right; padding-right:20px;">
                     ${shift.name} Total :
@@ -2431,6 +2482,206 @@
         allHtml += `</div>`;
         wrapper.innerHTML = allHtml;
     }
+
+    function renderShiftPreviewFromApi(shiftMap) {
+    // shiftMap = { "A Shift": { "BUL-01": [{barge_name, quantity, cargo_name, mv_name}] } }
+
+    const wrapper = document.getElementById('shift-preview');
+    wrapper.innerHTML = '';
+
+    // ── Equipment list — same order as backend ────────────────────────────
+    const equipments = [
+        'Barge Unloader 1',
+        'Barge Unloader 2',
+        'SANY 285-Exavator',
+        'Sennebogen J1',
+        'Sennebogen J5',
+        'BUL-01',
+        'BUL-02',
+        'BUL-03',
+        'BUL-04',
+        'BUL-05'
+    ];
+
+    // ── Shift order ───────────────────────────────────────────────────────
+    const shiftKeys = ['A Shift', 'B Shift', 'C Shift'];
+
+    // ── Calculate grand totals per equipment across all shifts ────────────
+    const grandEqTotals = {};
+    equipments.forEach(eq => {
+        grandEqTotals[eq] = shiftKeys.reduce((total, shiftKey) => {
+            const rows = (shiftMap[shiftKey] || {})[eq] || [];
+            return total + rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
+        }, 0);
+    });
+
+    // ── Grand overall total ───────────────────────────────────────────────
+    const grandOverall = equipments.reduce(
+        (t, eq) => t + grandEqTotals[eq], 0
+    );
+
+    let allHtml = `<div style="overflow-x:auto; width:100%;">`;
+
+    shiftKeys.forEach((shiftKey, si) => {
+
+        const isLastShift = si === shiftKeys.length - 1;
+
+        // Get equipment data for this shift
+        const shiftData = shiftMap[shiftKey] || {};
+
+        // Max rows = busiest equipment in this shift
+        const maxRows = Math.max(
+            ...equipments.map(eq => (shiftData[eq] || []).length),
+            1
+        );
+
+        // Shift total = sum of all qty in this shift
+        const shiftTotal = equipments.reduce((total, eq) => {
+            return total + (shiftData[eq] || []).reduce(
+                (s, r) => s + Number(r.quantity || 0), 0
+            );
+        }, 0);
+
+        // ── Shift card start ──────────────────────────────────────────────
+        let html = `
+            <div class="shift-card">
+                <div class="shift-header">${shiftKey}</div>
+                <table class="shift-table">
+                    <thead>
+                        <tr>
+        `;
+
+        // Equipment header row (green, spans 4 cols each)
+        equipments.forEach(eq => {
+            html += `
+                <th colspan="4" class="equipment-head">${eq}</th>
+            `;
+        });
+
+        html += `</tr><tr>`;
+
+        // Sub-header row: Barge | Qty | Cargo | MV for each equipment
+        equipments.forEach(() => {
+            html += `
+                <th class="eq-sub-header">Barge / MBC</th>
+                <th class="eq-sub-header">Qty (MT)</th>
+                <th class="eq-sub-header">Cargo</th>
+                <th class="eq-sub-header">MV Name</th>
+            `;
+        });
+
+        html += `</tr></thead><tbody>`;
+
+        // ── Data rows ─────────────────────────────────────────────────────
+        for (let i = 0; i < maxRows; i++) {
+            html += `<tr>`;
+            equipments.forEach(eq => {
+                const rows = shiftData[eq] || [];
+                const row  = rows[i];
+                if (row) {
+                    html += `
+                        <td>${row.barge_name  || ''}</td>
+                        <td style="text-align:right;">
+                            ${Number(row.quantity || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td>${row.cargo_name  || ''}</td>
+                        <td>${row.mv_name     || ''}</td>
+                    `;
+                } else {
+                    html += `<td></td><td></td><td></td><td></td>`;
+                }
+            });
+            html += `</tr>`;
+        }
+
+        // ── Equipment total row ───────────────────────────────────────────
+        html += `<tr class="equipment-total-row">`;
+        equipments.forEach(eq => {
+            const t = (shiftData[eq] || []).reduce(
+                (s, r) => s + Number(r.quantity || 0), 0
+            );
+            html += `
+                <td style="text-align:center; font-weight:700;">Total</td>
+                <td style="text-align:right; font-weight:700;">
+                    ${t > 0 ? t.toLocaleString('en-IN') : '-'}
+                </td>
+                <td colspan="2"></td>
+            `;
+        });
+        html += `</tr>`;
+
+        // ── Shift total row ───────────────────────────────────────────────
+        html += `
+            <tr class="shift-total-row">
+                <td colspan="${equipments.length * 4}"
+                    style="text-align:right; padding-right:20px;
+                           font-weight:700; background:#bdd7ee;">
+                    ${shiftKey} Total :
+                    ${shiftTotal > 0
+                        ? shiftTotal.toLocaleString('en-IN') + ' MT'
+                        : '— No discharge in this shift —'
+                    }
+                </td>
+            </tr>
+        `;
+
+        // ── Grand total rows — only after C Shift ─────────────────────────
+        if (isLastShift) {
+
+            // Per-equipment grand total row
+            html += `
+                <tr style="background:#c6e0f5; font-weight:700;
+                           font-size:12px; color:#0c4a6e;">
+                    <td style="text-align:center; white-space:nowrap;
+                               border-left:3px solid #4a7ab5;">
+                        All Shifts
+                    </td>
+            `;
+            equipments.forEach((eq, idx) => {
+                const val = grandEqTotals[eq];
+                if (idx === 0) {
+                    html += `
+                        <td style="text-align:right;">
+                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                        </td>
+                        <td colspan="2"></td>
+                    `;
+                } else {
+                    html += `
+                        <td style="border-left:3px solid #4a7ab5;"></td>
+                        <td style="text-align:right;">
+                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                        </td>
+                        <td colspan="2"></td>
+                    `;
+                }
+            });
+            html += `</tr>`;
+
+            // Grand overall total
+            html += `
+                <tr style="background:#bdd7ee; font-weight:700;">
+                    <td colspan="${equipments.length * 4}"
+                        style="text-align:right; padding-right:20px;
+                               color:#0c4a6e; font-size:13px;">
+                        Grand Total (All Shifts) :
+                        ${grandOverall > 0
+                            ? grandOverall.toLocaleString('en-IN') + ' MT'
+                            : '— No discharge data in selected range —'
+                        }
+                    </td>
+                </tr>
+            `;
+        }
+
+        html += `</tbody></table></div>`;
+        allHtml += html;
+    });
+
+    allHtml += `</div>`;
+    wrapper.innerHTML = allHtml;
+}
+
     /* ── On load — auto-fetch current month ──────────────── */
     document.addEventListener('DOMContentLoaded', function () {
         swapStatusFilterOptions('barges');
