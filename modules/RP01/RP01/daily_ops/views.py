@@ -1314,7 +1314,7 @@ def _fetch_mbc_status(report_date):
 
                 /* Empty : Waiting at Dharamtar */
                 WHEN h.id IS NULL
-                THEN 'EMPTY : WAITING AT DHARAMTAR'
+                THEN 'EMPTY : WAITING AT JAIGAD'
 
                 /* Empty : On the way to Load Port */
                 WHEN
@@ -1387,7 +1387,7 @@ def _fetch_mbc_status(report_date):
                     'EMPTY : WAITING AT DHARAMTAR'
 
                 ELSE
-                    '-'
+                    'EMPTY : WAITING AT DHARAMTAR'
 
             END AS mbc_status
 
@@ -1413,6 +1413,100 @@ def _fetch_mbc_status(report_date):
 
         ORDER BY m.mbc_name
     """)
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+
+def _fetch_cargo_type_throughput(report_date):
+
+    target_date = report_date - timedelta(days=1)
+
+    month_start = date(
+        target_date.year,
+        target_date.month,
+        1
+    )
+
+    # Financial year start (April)
+    if target_date.month >= 4:
+        fy_start = date(target_date.year, 4, 1)
+    else:
+        fy_start = date(target_date.year - 1, 4, 1)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        WITH throughput AS (
+
+            SELECT
+                COALESCE(vc.cargo_type,'OTHERS') AS cargo_type,
+                TO_DATE(l.entry_date,'YYYY-MM-DD') AS txn_date,
+                COALESCE(l.quantity,0) AS quantity
+            FROM lueu_lines l
+            LEFT JOIN vessel_cargo vc
+                ON UPPER(TRIM(vc.cargo_name))
+                 = UPPER(TRIM(l.cargo_name))
+            WHERE
+                l.is_deleted = false
+                AND l.cargo_name IS NOT NULL
+
+            UNION ALL
+
+            SELECT
+                COALESCE(vc.cargo_type,'OTHERS') AS cargo_type,
+                h.entry_date AS txn_date,
+                COALESCE(h.quantity,0) AS quantity
+            FROM rp01_historical_lueu h
+            LEFT JOIN vessel_cargo vc
+                ON UPPER(TRIM(vc.cargo_name))
+                 = UPPER(TRIM(h.cargo_name))
+        )
+
+        SELECT
+
+            cargo_type,
+
+            SUM(
+                CASE
+                    WHEN txn_date = %s
+                    THEN quantity
+                    ELSE 0
+                END
+            ) AS day_qty,
+
+            SUM(
+                CASE
+                    WHEN txn_date BETWEEN %s AND %s
+                    THEN quantity
+                    ELSE 0
+                END
+            ) AS month_qty,
+
+            SUM(
+                CASE
+                    WHEN txn_date BETWEEN %s AND %s
+                    THEN quantity
+                    ELSE 0
+                END
+            ) AS year_qty
+
+        FROM throughput
+
+        GROUP BY cargo_type
+
+        ORDER BY cargo_type
+    """, (
+        target_date,
+        month_start,
+        target_date,
+        fy_start,
+        target_date
+    ))
 
     rows = cur.fetchall()
 
@@ -2530,22 +2624,91 @@ def daily_ops_preview():
     </tr>
     """
 
-    for r in mbc_status_rows:
+    for row in mbc_status_rows:
+
+        html += f"""
+    <tr>
+        <td style='border:1px solid #ccc;padding:8px'>
+            {row['mbc_name']}
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px'>
+            {row['mbc_status']}
+        </td>
+    </tr>
+    """
+    html += "</table>"
+
+    # Cargo Type Throughput
+
+    cargo_type_rows = _fetch_cargo_type_throughput(report_date)
+
+    html += """
+    <br><br>
+    <h3>Cargo Type Throughput</h3>
+
+    <table style='width:100%;border-collapse:collapse;font-family:Arial'>
+    <tr style='background:#4a90d9;color:white'>
+        <th style='border:1px solid #ccc;padding:8px'>Cargo Type</th>
+        <th style='border:1px solid #ccc;padding:8px'>Day Qty (MT)</th>
+        <th style='border:1px solid #ccc;padding:8px'>MTD Qty (MT)</th>
+        <th style='border:1px solid #ccc;padding:8px'>YTD Qty (MT)</th>
+    </tr>
+    """
+
+    day_total = 0
+    month_total = 0
+    year_total = 0
+
+    for row in cargo_type_rows:
+
+        day_qty = float(row['day_qty'] or 0)
+        month_qty = float(row['month_qty'] or 0)
+        year_qty = float(row['year_qty'] or 0)
+
+        day_total += day_qty
+        month_total += month_qty
+        year_total += year_qty
 
         html += f"""
         <tr>
             <td style='border:1px solid #ccc;padding:8px'>
-                {r['mbc_name']}
+                {row['cargo_type']}
             </td>
 
-            <td style='border:1px solid #ccc;padding:8px'>
-                {r['mbc_status']}
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {day_qty:,.0f}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {month_qty:,.0f}
+            </td>
+
+            <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+                {year_qty:,.0f}
             </td>
         </tr>
         """
 
-    html += "</table>"
+    html += f"""
+    <tr style='background:#f2f2f2;font-weight:bold'>
+        <td style='border:1px solid #ccc;padding:8px'>Total</td>
 
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {day_total:,.0f}
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {month_total:,.0f}
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+            {year_total:,.0f}
+        </td>
+    </tr>
+    """
+
+    html += "</table>"
     
     return html
 
