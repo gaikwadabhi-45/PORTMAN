@@ -1929,102 +1929,114 @@ def get_shift_data():
     to_date   = request.args.get('to_date')
 
     try:
-        from_dt = datetime.fromisoformat(from_date) if from_date else \
-                  datetime.now().replace(hour=6, minute=0, second=0, microsecond=0)
-        to_dt   = datetime.fromisoformat(to_date) if to_date else \
-                  datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
+        # ── FROM date = shift day (06:00 starts)
+        from_dt = datetime.fromisoformat(from_date) if from_date else datetime.now()
+        to_dt   = datetime.fromisoformat(to_date)   if to_date   else datetime.now()
+
+        # ── Entry date = FROM date का date part
+        # ── Example: 2026-04-01T06:00 → entry_date = 2026-04-01
+        # ── But if time < 06:00, it belongs to previous day's shift
+        # ── So use FROM date's date directly
+        entry_date_from = from_dt.date()
+        entry_date_to   = to_dt.date()
+
+        # ── If TO time is exactly 06:00 of next day,
+        # ── then entry_date_to should be FROM date only
+        # ── Because 2026-04-02T06:00 means end of 2026-04-01 shift day
+        if (to_dt - from_dt).total_seconds() <= 24 * 3600:
+            # Single shift day — use only FROM date
+            entry_date_to = entry_date_from
+
     except Exception:
         return jsonify({'error': 'Invalid date format'}), 400
 
     conn = get_db()
     cur  = get_cursor(conn)
 
-    # ── Fetch lueu_lines data within date range ──────────────────────────────
     cur.execute("""
         SELECT
             ll.shift,
-            ll.barge_name,
             ll.equipment_name,
+            ll.barge_name,
             ll.cargo_name,
-            ll.quantity,
-            ll.entry_date,
-            ll.from_time,
-            ll.to_time,
+            COALESCE(ll.quantity, 0) AS quantity,
             ll.source_type,
-            ll.source_id,
 
-            -- Get mother vessel name for VCN source
             CASE
                 WHEN ll.source_type = 'VCN' THEN
-                    (SELECT h.vessel_name FROM ldud_header h WHERE h.vcn_id = ll.source_id LIMIT 1)
+                    (SELECT h.vessel_name
+                     FROM ldud_header h
+                     WHERE h.vcn_id = ll.source_id
+                     LIMIT 1)
                 WHEN ll.source_type = 'MBC' THEN
-                    (SELECT h.mbc_name FROM mbc_header h WHERE h.id = ll.source_id LIMIT 1)
+                    (SELECT h.mbc_name
+                     FROM mbc_header h
+                     WHERE h.id = ll.source_id
+                     LIMIT 1)
                 ELSE ''
-            END AS source_name
+            END AS mv_name
 
         FROM lueu_lines ll
 
         WHERE
             ll.is_deleted IS NOT TRUE
-            AND ll.quantity > 0
+            AND COALESCE(ll.quantity, 0) > 0
             AND ll.entry_date IS NOT NULL
-
-            -- Filter by entry_date within selected range
-            AND TO_DATE(ll.entry_date, 'YYYY-MM-DD') 
-                BETWEEN %s::date AND %s::date
+            AND TO_DATE(ll.entry_date, 'YYYY-MM-DD')
+                BETWEEN %s AND %s
 
         ORDER BY
             ll.shift,
             ll.equipment_name,
             ll.barge_name
-    """, (
-        from_dt.strftime('%Y-%m-%d'),
-        to_dt.strftime('%Y-%m-%d')
-    ))
+    """, (entry_date_from, entry_date_to))
 
-    rows = [dict(r) for r in cur.fetchall()]
+    rows = cur.fetchall()
     cur.close()
     conn.close()
 
-    # ── Organise by shift → equipment → list of items ────────────────────────
+    # ── Build shift map ───────────────────────────────────────
+    equipments = [
+        'Barge Unloader 1', 'Barge Unloader 2',
+        'SANY 285-Exavator',
+        'Sennebogen J1', 'Sennebogen J5',
+        'BUL-01', 'BUL-02', 'BUL-03', 'BUL-04', 'BUL-05'
+    ]
+
     shift_map = {
         'A Shift': {},
         'B Shift': {},
         'C Shift': {}
     }
 
-    # Also track shift totals per equipment
-    for row in rows:
-        raw_shift = (row.get('shift') or '').strip()
+    for shift in shift_map:
+        for eq in equipments:
+            shift_map[shift][eq] = []
 
-        # Normalise shift name
-        if raw_shift in ('A', 'A Shift'):
+    for row in rows:
+        raw_shift = (row['shift'] or '').strip().upper()
+
+        if raw_shift == 'A':
             shift_key = 'A Shift'
-        elif raw_shift in ('B', 'B Shift'):
+        elif raw_shift == 'B':
             shift_key = 'B Shift'
-        elif raw_shift in ('C', 'C Shift'):
+        elif raw_shift == 'C':
             shift_key = 'C Shift'
         else:
-            continue  # skip unknown shifts
-
-        eq = (row.get('equipment_name') or '').strip()
-        if not eq:
             continue
 
-        if eq not in shift_map[shift_key]:
-            shift_map[shift_key][eq] = []
+        equipment = (row['equipment_name'] or '').strip()
 
-        shift_map[shift_key][eq].append({
-            'barge_name':   row.get('barge_name', ''),
-            'cargo_name':   row.get('cargo_name', ''),
-            'quantity':     float(row.get('quantity') or 0),
-            'source_name':  row.get('source_name', ''),
-            'source_type':  row.get('source_type', ''),
-            'from_time':    row.get('from_time', ''),
-            'to_time':      row.get('to_time', ''),
-            'entry_date':   row.get('entry_date', ''),
+        # ── Equipment not in list → skip ──────────────────────
+        if equipment not in shift_map[shift_key]:
+            continue
+
+        shift_map[shift_key][equipment].append({
+            'barge_name': row['barge_name'] or '',
+            'cargo_name': row['cargo_name'] or '',
+            'quantity':   float(row['quantity'] or 0),
+            'mv_name':    row['mv_name']    or '',
+            'source_type': row['source_type'] or '',
         })
 
     return jsonify(shift_map)
-    
-
