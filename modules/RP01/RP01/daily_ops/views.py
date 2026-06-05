@@ -1159,26 +1159,12 @@ def _fetch_cargo_statistics(report_date):
     # Show previous day's report
     report_date = report_date - timedelta(days=1)
 
-    window_end = datetime(
-        report_date.year,
-        report_date.month,
-        report_date.day,
-        7, 0, 0
-    )
-
-    window_start = window_end - timedelta(hours=24)
-
-    month_start = datetime(
-        report_date.year,
-        report_date.month,
-        1,
-        7, 0, 0
-    )
+    month_start = report_date.replace(day=1)
 
     conn = get_db()
     cur = get_cursor(conn)
 
-    def _period(start_dt, end_dt):
+    def _period(start_date, end_date):
 
         cur.execute("""
             SELECT
@@ -1196,14 +1182,14 @@ def _fetch_cargo_statistics(report_date):
 
             WHERE is_deleted = false
             AND entry_date IS NOT NULL
-            AND (entry_date || ' ' || COALESCE(from_time,'00:00')) >= %s
-            AND (entry_date || ' ' || COALESCE(from_time,'00:00')) < %s
+            AND TO_DATE(entry_date,'YYYY-MM-DD') >= %s
+            AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
             GROUP BY 1
             ORDER BY 1
         """, (
-            start_dt.strftime('%Y-%m-%d %H:%M:%S'),
-            end_dt.strftime('%Y-%m-%d %H:%M:%S')
+            start_date,
+            end_date
         ))
 
         return [
@@ -1211,14 +1197,16 @@ def _fetch_cargo_statistics(report_date):
             for r in cur.fetchall()
         ]
 
+    # Day = only previous day
     day_rows = _period(
-        window_start,
-        window_end
+        report_date,
+        report_date
     )
 
+    # MTD = 1st of month to previous day
     month_rows = _period(
         month_start,
-        window_end
+        report_date
     )
 
     conn.close()
