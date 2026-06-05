@@ -1387,7 +1387,7 @@ def _fetch_mbc_status(report_date):
                     'EMPTY : WAITING AT DHARAMTAR'
 
                 ELSE
-                    'EMPTY : WAITING AT DHARAMTAR'
+                    '-'
 
             END AS mbc_status
 
