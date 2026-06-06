@@ -253,6 +253,11 @@ def _fetch_data(report_date):
 ))
 
     vessels  = [dict(r) for r in cur.fetchall()]
+    ldud_to_vcn = {
+    v['id']: v['vcn_id']
+    for v in vessels
+    if v.get('vcn_id')
+    }
     ldud_ids = [v['id'] for v in vessels]
     vcn_ids  = [v['vcn_id'] for v in vessels if v.get('vcn_id')]
 
@@ -343,23 +348,43 @@ def _fetch_data(report_date):
 
     # Fetch actual discharged quantity for barges from lueu_lines
 
+    # Actual discharged quantity from LUEU by VCN + Base Barge
+
     barge_actual = {}
 
-    cur.execute("""
-        SELECT
-            UPPER(TRIM(barge_name)) AS barge_name,
-            SUM(COALESCE(quantity, 0)) AS actual_qty
-        FROM lueu_lines
-        WHERE source_type = 'MBC'
-        AND is_deleted = false
-        AND barge_name IS NOT NULL
-        AND quantity IS NOT NULL
-        AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
-        GROUP BY UPPER(TRIM(barge_name))
-    """, (report_date - timedelta(days=1),))
+    if vcn_ids:
 
-    for r in cur.fetchall():
-        barge_actual[r['barge_name']] = float(r['actual_qty'])
+        cur.execute("""
+            SELECT
+                source_id,
+                UPPER(TRIM(SPLIT_PART(barge_name,'/',1))) AS base_barge,
+                TRIM(SPLIT_PART(barge_name,'/',2)) AS trip_no,
+                SUM(COALESCE(quantity,0)) AS actual_qty
+            FROM lueu_lines
+            WHERE source_type = 'VCN'
+            AND is_deleted = false
+            AND source_id = ANY(%s)
+            AND barge_name IS NOT NULL
+            AND quantity IS NOT NULL
+            AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+            GROUP BY
+                source_id,
+                UPPER(TRIM(SPLIT_PART(barge_name,'/',1))),
+                TRIM(SPLIT_PART(barge_name,'/',2))
+        """, (
+            vcn_ids,
+            report_date - timedelta(days=1)
+        ))
+
+        for r in cur.fetchall():
+
+            barge_actual[
+                (
+                    r['source_id'],
+                    r['base_barge'],
+                    r['trip_no']
+                )
+            ] = float(r['actual_qty'])
 
 
     barge_stats = {}
@@ -372,27 +397,50 @@ def _fetch_data(report_date):
 
     if ldud_ids:
         cur.execute("""
-            SELECT
-                ldud_id,
-                barge_name,
-                discharge_quantity,
-                port_crane,
-                along_side_vessel,
-                commenced_loading,
-                completed_loading,
-                cast_off_mv,
-                anchored_gull_island,
-                aweigh_gull_island,
-                amf_at_port,
-                along_side_berth,
-                commence_discharge_berth,
-                completed_discharge_berth,
-                cast_off_berth,
-                cast_off_port
-            FROM ldud_barge_lines
-            WHERE ldud_id = ANY(%s)
-            AND (cast_off_port IS NULL OR cast_off_port > %s)
-        """, (ldud_ids, ws_str))
+    SELECT
+        h.vcn_id,
+
+        b.ldud_id,
+        b.barge_name,
+        b.discharge_quantity,
+        b.port_crane,
+
+        b.along_side_vessel,
+        b.commenced_loading,
+        b.completed_loading,
+        b.cast_off_mv,
+
+        b.anchored_gull_island,
+        b.aweigh_gull_island,
+        b.amf_at_port,
+
+        b.along_side_berth,
+        b.commence_discharge_berth,
+        b.completed_discharge_berth,
+        b.cast_off_berth,
+        b.cast_off_port,
+
+        ROW_NUMBER() OVER (
+            PARTITION BY
+                h.vcn_id,
+                UPPER(TRIM(b.barge_name))
+            ORDER BY
+                b.commence_discharge_berth
+        ) AS trip_no
+
+        FROM ldud_barge_lines b
+
+        JOIN ldud_header h
+            ON h.id = b.ldud_id
+
+        WHERE b.ldud_id = ANY(%s)
+        AND (b.cast_off_port IS NULL OR b.cast_off_port > %s)
+
+        ORDER BY
+            h.vcn_id,
+            b.barge_name,
+            trip_no
+    """, (ldud_ids, ws_str))
 
         for r in cur.fetchall():
 
@@ -403,7 +451,18 @@ def _fetch_data(report_date):
 
             bl_qty = float(r['discharge_quantity'] or 0)
 
-            actual_qty = barge_actual.get(bn_key, 0)
+            vcn_id = ldud_to_vcn.get(lid)
+
+            trip_no = str(r['trip_no'])
+
+            actual_qty = barge_actual.get(
+                (
+                    vcn_id,
+                    bn_key,
+                    trip_no
+                ),
+                0
+            )
 
             balance_qty = max(0, bl_qty - actual_qty)
 
@@ -439,11 +498,11 @@ def _fetch_data(report_date):
 
                 if status == 'at_jetty':
                     entry = (
-                        f"{bn} - {crane} "
-                        f"(BL:{int(round(bl_qty))} | "
-                        f"Act:{int(round(actual_qty))} | "
-                        f"Bal:{int(round(balance_qty))} MT)"
-                    )
+                    f"{bn} / {trip_no} - {crane} "
+                    f"(BL:{int(round(bl_qty))} | "
+                    f"Act:{int(round(actual_qty))} | "
+                    f"Bal:{int(round(balance_qty))} MT)"
+                )
 
                 elif status == 'waiting_discharge' and bl_qty:
                     entry = f"{bn} ({int(round(bl_qty))} MT)"
