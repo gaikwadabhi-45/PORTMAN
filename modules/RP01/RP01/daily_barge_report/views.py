@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from collections import defaultdict
 import io
 import re
-
+from openpyxl import Workbook
 from .. import bp
 from database import get_db, get_cursor
 
@@ -1071,29 +1071,26 @@ def _build_excel(data):
     return buf
 
 
-def _build_all_excel(list_rows, barge_data_list):
-
-    from openpyxl import Workbook
+def _build_all_excel(
+    barge_rows,
+    mbc_rows,
+    shift_rows
+):
 
     wb = Workbook()
 
-    # =========================
-    # SHEET 1 : Barge_MBC
-    # =========================
-
+    # Sheet 1
     ws1 = wb.active
+    ws1.title = "Barge Report"
+    _write_summary_sheet(ws1, barge_rows)
 
-    ws1.title = 'Barge_MBC'
+    # Sheet 2
+    ws2 = wb.create_sheet("MBC Report")
+    _write_mbc_sheet(ws2, mbc_rows)
 
-    _write_summary_sheet(ws1, list_rows)
-
-    # =========================
-    # SHEET 2 : Discharge
-    # =========================
-
-    ws2 = wb.create_sheet('Discharge')
-
-    _write_discharge_sheet(ws2, list_rows)
+    # Sheet 3
+    ws3 = wb.create_sheet("Shift Report")
+    _write_discharge_sheet(ws3, shift_rows)
 
     buf = io.BytesIO()
 
@@ -1104,396 +1101,491 @@ def _build_all_excel(list_rows, barge_data_list):
     return buf
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  DROP-IN REPLACEMENTS  for  _write_mbc_sheet  and  _write_discharge_sheet
+#  Paste these two functions into your views.py, replacing the originals.
+#  Do NOT touch _write_summary_sheet (Barge Report) — it stays as-is.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
+from collections import defaultdict
+
+# ── Row fill colours (same as Barge Report legend) ───────────────────────────
+_FILL_COMPLETED = 'C6EFCE'   # green  – cast off done
+_FILL_DISCHARGE = 'FFE699'   # yellow – under discharge / unloading
+_FILL_WAITING   = 'F9CB9C'   # orange – waiting for discharge
+_FILL_LOADED    = 'BDD7EE'   # blue   – loaded / loading completed
+_FILL_LOADING   = 'D9D2E9'   # purple – currently loading
+_FILL_TRANSIT   = 'FFF2CC'   # pale   – trip started only
+_FILL_HEADER    = 'E6E6E6'   # grey   – header row
+
+
+def _pfill(hex_color):
+    return PatternFill(start_color=hex_color, end_color=hex_color, fill_type='solid')
+
+
+def _thin_border(color='D0D7E2'):
+    s = Side(style='thin', color=color)
+    return Border(left=s, right=s, top=s, bottom=s)
+
+
+_CTR = Alignment(horizontal='center', vertical='center', wrap_text=True)
+_LFT = Alignment(horizontal='left',   vertical='center', wrap_text=False)
+_RGT = Alignment(horizontal='right',  vertical='center', wrap_text=False)
+
+
+def _row_fill_mbc(row: dict) -> str | None:
+    if row.get('mbc_cast_off'):
+        return _FILL_COMPLETED
+    if row.get('unloading_commenced'):
+        return _FILL_DISCHARGE
+    if row.get('mbc_arrival_port') and not row.get('unloading_commenced'):
+        return _FILL_WAITING
+    if row.get('completed_loading'):
+        return _FILL_LOADED
+    if row.get('commenced_loading'):
+        return _FILL_LOADING
+    if row.get('trip_start'):
+        return _FILL_TRANSIT
+    return None
+
+
+def _safe_float(val):
+    try:
+        return float(val or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MBC REPORT SHEET — flat tabular, same style as Barge Report
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _write_mbc_sheet(ws, rows):
+ 
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    from openpyxl.utils import get_column_letter
+ 
+    thin      = Side(style='thin', color='D0D7E2')
+    border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+    hdr_fill  = PatternFill(start_color='E6E6E6', end_color='E6E6E6', fill_type='solid')
+    hdr_font  = Font(name='Calibri', bold=True,  size=10, color='000000')
+    body_font = Font(name='Calibri', bold=False, size=10, color='333333')
+    CTR = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    LFT = Alignment(horizontal='left',   vertical='center', wrap_text=False)
+    RGT = Alignment(horizontal='right',  vertical='center', wrap_text=False)
+ 
+    COLS = [
+        ('Sr#',                         7,   CTR),
+        ('MBC Name',                   28,   LFT),
+        ('Cargo Type',                  18,   LFT),
+        ('BL Qty (MT)',                 14,   RGT),
+        ('Balance Qty (MT)',            17,   RGT),
+        ('Arrived Load Port',           22,   LFT),
+        ('Alongside Berth',             22,   LFT),
+        ('Loading Commenced',           22,   LFT),
+        ('Loading Completed',           22,   LFT),
+        ('Cast Off Load Port',          22,   LFT),
+        ('Arrival Gull Island',         22,   LFT),
+        ('Departure Gull Island',       22,   LFT),
+        ('MBC Arrival Port',            22,   LFT),
+        ('MBC AMF At Unloading Berth',  26,   LFT),
+        ('Unloading Commenced',         22,   LFT),
+        ('Cleaning Commenced',          22,   LFT),
+        ('Unloading Completed',         22,   LFT),
+        ('MBC Cast Off',                22,   LFT),
+        ('Sailed Out Load Port',        22,   LFT),
+        ('Unloaded By',                 20,   LFT),
+        ('Unloaded Berth',              18,   LFT),
+        ('TAT',                         12,   CTR),
+    ]
+ 
+    # header row
+    ws.row_dimensions[1].height = 28
+    for i, (title, w, align) in enumerate(COLS, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+        c = ws.cell(row=1, column=i)
+        c.value = title; c.fill = hdr_fill
+        c.font  = hdr_font; c.border = border; c.alignment = CTR
+ 
+    # colour — matches UI STATUS_COLORS exactly
+    _STATUS_COLOR = {
+        'completed_discharge': 'C6EFCE',
+        'waiting_castoff':     'C6EFCE',
+        'under_discharge':     'FFE699',
+        'waiting_gull':        'FFE599',
+        'on_way_dharamtar':    'F6B26B',
+        'waiting_discharge':   'F9CB9C',
+        'loaded_transit':      '9FC5E8',
+        'currently_loading':   'D9D2E9',
+    }
+ 
+    def _row_fill(row):
+        hex_c = _STATUS_COLOR.get(row.get('current_status', ''))
+        if not hex_c:
+            # milestone fallback for rows without current_status
+            if   row.get('mbc_cast_off') or row.get('vessel_cast_off'):   hex_c = 'C6EFCE'
+            elif row.get('unloading_commenced'):                           hex_c = 'FFE699'
+            elif row.get('mbc_arrival_port') or row.get('vessel_arrival_port'): hex_c = 'F9CB9C'
+            elif row.get('completed_loading') or row.get('loading_completed'):  hex_c = 'BDD7EE'
+            elif row.get('commenced_loading') or row.get('loading_commenced'):  hex_c = 'D9D2E9'
+            elif row.get('trip_start') or row.get('arrived_load_port'):    hex_c = 'FFF2CC'
+        return PatternFill(start_color=hex_c, end_color=hex_c, fill_type='solid') if hex_c else None
+ 
+    # field helper with fallbacks
+    def g(row, *keys):
+        for k in keys:
+            v = row.get(k)
+            if v: return v
+        return ''
+ 
+    # data rows
+    for sr, row in enumerate(rows, 1):
+        ridx = sr + 1
+        fill = _row_fill(row)
+        values = [
+            sr,
+            g(row, 'mbc_name'),
+            g(row, 'cargo_type', 'cargo_name'),
+            g(row, 'qty_mt'),
+            g(row, 'qty_balance'),
+            _fmt_dt(g(row, 'trip_start',              'arrived_load_port')),
+            _fmt_dt(g(row, 'along_side_vessel',        'alongside_berth')),
+            _fmt_dt(g(row, 'commenced_loading',        'loading_commenced')),
+            _fmt_dt(g(row, 'completed_loading',        'loading_completed')),
+            _fmt_dt(g(row, 'cast_off_mv',              'cast_off_load_port')),
+            _fmt_dt(g(row, 'arrival_gull_island')),
+            _fmt_dt(g(row, 'departure_gull_island')),
+            _fmt_dt(g(row, 'mbc_arrival_port',         'vessel_arrival_port')),
+            _fmt_dt(g(row, 'mbc_amf_unloading_berth',  'vessel_all_made_fast')),
+            _fmt_dt(g(row, 'unloading_commenced')),
+            _fmt_dt(g(row, 'cleaning_commenced')),
+            _fmt_dt(g(row, 'unloading_completed')),
+            _fmt_dt(g(row, 'mbc_cast_off',             'vessel_cast_off')),
+            _fmt_dt(g(row, 'sailed_out_load_port')),
+            g(row,  'vessel_unloaded_by',  'unloaded_by'),
+            g(row,  'unloaded_berth',      'vessel_unloading_berth'),
+            _calc_tat(
+                g(row, 'trip_start',   'arrived_load_port'),
+                g(row, 'mbc_cast_off', 'vessel_cast_off'),
+            ),
+        ]
+        for ci, (val, (_, _, align)) in enumerate(zip(values, COLS), 1):
+            c = ws.cell(row=ridx, column=ci)
+            c.value = val; c.font = body_font
+            c.border = border; c.alignment = align
+            if fill: c.fill = fill
+ 
+    ws.freeze_panes    = 'F2'
+    ws.auto_filter.ref = ws.dimensions
+
+
+
+def get_filtered_mbc_rows(
+    from_dt,
+    to_dt,
+    column_filter=None,
+    status_filter='all',
+    selected_mbc=None,
+    selected_shift=None
+):
+    # use same query from get_mbc_data()
+
+    rows = fetch_mbc_rows()
+
+    filtered_rows = []
+
+    for row in rows:
+
+        status = get_mbc_status(row)
+        row['current_status'] = status
+
+        if status is None:
+            continue
+
+        if status_filter != 'all' and status != status_filter:
+            continue
+
+        if selected_mbc and row.get('mbc_name') != selected_mbc:
+            continue
+
+        if selected_shift and row.get('shift') != selected_shift:
+            continue
+
+        filtered_rows.append(row)
+
+    return filtered_rows
+
+
+
+#  DROP-IN REPLACEMENT  for  _write_discharge_sheet  ONLY
+
+
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
+from collections import defaultdict
+
+
+def _pfill(hex_color):
+    return PatternFill(start_color=hex_color, end_color=hex_color, fill_type='solid')
+
+
+def _bdr(color='000000'):
+    s = Side(style='thin', color=color)
+    return Border(left=s, right=s, top=s, bottom=s)
+
+
+_CTR = Alignment(horizontal='center', vertical='center', wrap_text=True)
+_LFT = Alignment(horizontal='left',   vertical='center', wrap_text=False)
+_RGT = Alignment(horizontal='right',  vertical='center', wrap_text=False)
+
+
+def _safe_float(val):
+    try:
+        return float(val or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _write_discharge_sheet(ws, rows):
 
-    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-    from openpyxl.utils import get_column_letter
+    fill_green  = _pfill('C6EFCE')
+    fill_yellow = _pfill('FFE699')
+    fill_blue   = _pfill('BDD7EE')
+    fill_grey   = _pfill('D9D9D9')
+    fill_white  = _pfill('FFFFFF')
 
-    thin = Side(style='thin', color='000000')
+    border      = _bdr()
+    bold        = Font(name='Calibri', bold=True,  size=10)
+    bold_green  = Font(name='Calibri', bold=True,  size=10, color='006100')
+    norm        = Font(name='Calibri', bold=False, size=10)
 
-    border = Border(
-        left=thin,
-        right=thin,
-        top=thin,
-        bottom=thin
-    )
+    EQUIPMENTS = [
+        'Barge Unloader 1', 'Barge Unloader 2',
+        'SANY 285-Exavator',
+        'Sennebogen J1', 'Sennebogen J5',
+        'BUL-01', 'BUL-02', 'BUL-03', 'BUL-04', 'BUL-05',
+    ]
+    SHIFTS     = ['A Shift', 'B Shift', 'C Shift']
+    DATA_ROWS  = 5
+    BLOCK_SIZE = DATA_ROWS + 1   # 5 data + 1 total = 6 rows per shift
 
-    center = Alignment(
-        horizontal='center',
-        vertical='center',
-        wrap_text=True
-    )
+    # grand_col is ONE column AFTER the last equipment column
+    # equipment cols: 2 .. (1 + len(EQUIPMENTS)*4)
+    # grand_col     : 2 + len(EQUIPMENTS)*4
+    grand_col = 2 + len(EQUIPMENTS) * 4
 
-    green_fill = PatternFill(
-        start_color='C6EFCE',
-        end_color='C6EFCE',
-        fill_type='solid'
-    )
+    # ── column widths ──────────────────────────────────────────────────────────
+    ws.column_dimensions['A'].width = 16
+    for col in range(2, grand_col + 2):
+        ws.column_dimensions[get_column_letter(col)].width = 14
 
-    yellow_fill = PatternFill(
-        start_color='FFE699',
-        end_color='FFE699',
-        fill_type='solid'
-    )
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[2].height = 20
 
-    blue_fill = PatternFill(
-        start_color='BDD7EE',
-        end_color='BDD7EE',
-        fill_type='solid'
-    )
+    # ── Row 1-2 col A: "Shift / Details" ──────────────────────────────────────
+    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
+    c = ws.cell(1, 1)           # ← write to TOP-LEFT cell of merge only
+    c.value     = 'Shift / Details'
+    c.font      = bold
+    c.alignment = _CTR
+    c.border    = border
+    c.fill      = fill_grey
 
-    grey_fill = PatternFill(
-        start_color='D9D9D9',
-        end_color='D9D9D9',
-        fill_type='solid'
-    )
+    # ── Equipment headers ──────────────────────────────────────────────────────
+    eq_start_cols = {}
+    cur_col = 2
 
-    bold = Font(bold=True)
+    for eq in EQUIPMENTS:
+        eq_start_cols[eq] = cur_col
 
-    equipments = [
-    'Barge Unloader 1',
-    'Barge Unloader 2',
-    'SANY 285-Exavator',
-    'Sennebogen J1',
-    'Sennebogen J5',
-    'BUL-01',
-    'BUL-02',
-    'BUL-03',
-    'BUL-04',
-    'BUL-05'
-]
+        # Row 1: equipment name (merged across 4 cols)
+        ws.merge_cells(start_row=1, start_column=cur_col,
+                       end_row=1,   end_column=cur_col + 3)
+        c = ws.cell(1, cur_col)   # TOP-LEFT of merge
+        c.value     = eq
+        c.font      = bold_green
+        c.fill      = fill_green
+        c.alignment = _CTR
+        c.border    = border
 
-    # =====================================
-    # COLUMN WIDTHS
-    # =====================================
+        # Row 2: sub-headers (individual cells — NOT merged)
+        for off, txt in enumerate(['Barge / MBC', 'Qty (MT)', 'Cargo', 'MV Name']):
+            c = ws.cell(2, cur_col + off)
+            c.value     = txt
+            c.font      = bold
+            c.fill      = fill_grey
+            c.alignment = _CTR
+            c.border    = border
 
-    for col in range(1, 40):
-        ws.column_dimensions[get_column_letter(col)].width = 10
+        cur_col += 4
 
-    ws.column_dimensions['A'].width = 15
+    # ── grand_col header: rows 1 & 2 separately (NO merge — avoids the bug) ──
+    for r in [1, 2]:
+        c = ws.cell(r, grand_col)
+        c.value     = 'Total Discharge' if r == 1 else ''
+        c.font      = bold
+        c.fill      = fill_blue
+        c.alignment = _CTR
+        c.border    = border
 
-    # =====================================
-    # TOP HEADERS
-    # =====================================
-
-    ws['A1'] = 'Eq Name'
-    ws['A2'] = 'Details'
-
-    ws['A1'].font = bold
-    ws['A2'].font = bold
-
-    ws['A1'].alignment = center
-    ws['A2'].alignment = center
-
-    ws['A1'].border = border
-    ws['A2'].border = border
-
-    current_col = 2
-
-    for eq in equipments:
-
-        ws.merge_cells(
-            start_row=1,
-            start_column=current_col,
-            end_row=1,
-            end_column=current_col + 3
-        )
-
-        cell = ws.cell(1, current_col)
-
-        cell.value = eq
-        cell.fill = green_fill
-        cell.font = Font(bold=True, color='006100')
-        cell.alignment = center
-        cell.border = border
-
-        sub_headers = ['Barge Name', 'Qty', 'Cargo', 'MV Name']
-
-        for i, txt in enumerate(sub_headers):
-
-            c = ws.cell(2, current_col + i)
-
-            c.value = txt
-            c.fill = grey_fill
-            c.font = bold
-            c.alignment = center
-            c.border = border
-
-        current_col += 4
-
-    # =====================================
-    # TOTAL DISCHARGE
-    # =====================================
-
-    ws.merge_cells(
-        start_row=1,
-        start_column=current_col,
-        end_row=2,
-        end_column=current_col
-    )
-
-    c = ws.cell(1, current_col)
-
-    c.value = 'Total Discharge'
-    # FREEZE HEADER
+    # freeze: header rows fixed, col A (shift label) not frozen so it scrolls
     ws.freeze_panes = 'B3'
-    c.fill = blue_fill
-    c.font = bold
-    c.alignment = center
-    c.border = border
 
-    # =====================================
-    # SHIFTS
-    # =====================================
+    # ── Build shift → equipment → [item, …] map ───────────────────────────────
+    shift_map = {s: {eq: [] for eq in EQUIPMENTS} for s in SHIFTS}
 
-    start_row = 3
-
-    shifts = ['A Shift', 'B Shift', 'C Shift']
-
-    for shift in shifts:
-
-        # shift rows
-        ws.merge_cells(
-            start_row=start_row,
-            start_column=1,
-            end_row=start_row + 4,
-            end_column=1
-        )
-
-        c = ws.cell(start_row, 1)
-
-        c.value = shift
-        c.alignment = center
-        c.font = bold
-        c.border = border
-
-        # blank cells
-        for r in range(start_row, start_row + 5):
-
-            for col in range(2, current_col + 1):
-
-                cell = ws.cell(r, col)
-
-                cell.border = border
-
-        # total row
-        total_row = start_row + 5
-
-        tc = ws.cell(total_row, 1)
-
-        tc.value = f'{shift} Total'
-
-        tc.fill = yellow_fill
-        tc.font = bold
-        tc.border = border
-
-        for col in range(2, current_col + 1):
-
-            cell = ws.cell(total_row, col)
-
-            cell.fill = yellow_fill
-            cell.border = border
-
-            # qty columns
-            if (col - 3) % 4 == 0:
-                cell.value = 0
-                cell.alignment = center
-
-        ws.cell(total_row, current_col).value = 0
-
-        start_row += 7
-
-     # =====================================
-    # FILL SHIFT DATA
-    # =====================================
-
-    shift_positions = {
-        'A Shift': 3,
-        'B Shift': 10,
-        'C Shift': 17
-    }
-
-    equipment_cols = {
-
-    'Barge Unloader 1': 2,
-    'Barge Unloader 2': 6,
-
-    'SANY 285-Exavator': 10,
-
-    'Sennebogen J1': 14,
-    'Sennebogen J5': 18,
-
-    'BUL-01': 22,
-    'BUL-02': 26,
-    'BUL-03': 30,
-    'BUL-04': 34,
-    'BUL-05': 38
-    }
-
-    shift_data = {
-        'A Shift': [],
-        'B Shift': [],
-        'C Shift': []
+    _SHIFT_KEY = {
+        'A': 'A Shift', 'B': 'B Shift', 'C': 'C Shift',
+        'A SHIFT': 'A Shift', 'B SHIFT': 'B Shift', 'C SHIFT': 'C Shift',
     }
 
     for row in rows:
+        raw = (row.get('shift') or '').strip().upper()
+        key = _SHIFT_KEY.get(raw)
+        if not key:
+            continue
+        eq_val = (row.get('unloaded_by') or row.get('equipment_name') or '').strip()
+        if not eq_val:
+            continue
+        for e in [x.strip() for x in eq_val.split(',') if x.strip()]:
+            if e in shift_map[key]:
+                shift_map[key][e].append(row)
 
-        shift = (row.get('shift') or '').strip()
+    # ── Write shift blocks ────────────────────────────────────────────────────
+    start_row = 3
 
-        if shift in ['A Shift', 'A']:
-            shift_data['A Shift'].append(row)
+    for shift in SHIFTS:
+        eq_data = shift_map[shift]
 
-        elif shift in ['B Shift', 'B']:
-            shift_data['B Shift'].append(row)
+        # Col A shift label — merge only the DATA rows (not the total row)
+        ws.merge_cells(start_row=start_row,
+                       start_column=1,
+                       end_row=start_row + DATA_ROWS - 1,
+                       end_column=1)
+        c = ws.cell(start_row, 1)   # TOP-LEFT of merge
+        c.value     = shift
+        c.font      = bold
+        c.fill      = fill_white
+        c.alignment = _CTR
+        c.border    = border
 
-        elif shift in ['C Shift', 'C']:
-            shift_data['C Shift'].append(row)
+        # Data rows
+        for dr in range(DATA_ROWS):
+            r = start_row + dr
+            ws.row_dimensions[r].height = 18
 
-    # =========================
-    # WRITE DATA TO EXCEL
-    # =========================
+            for eq in EQUIPMENTS:
+                bc    = eq_start_cols[eq]
+                items = eq_data.get(eq, [])
+                if dr < len(items):
+                    item = items[dr]
+                    qty  = _safe_float(
+                        item.get('quantity') or item.get('qty_mt')
+                    )
+                    vals = [
+                        item.get('barge_name', ''),
+                        round(qty, 2) if qty else '',
+                        item.get('cargo_name') or item.get('cargo_type', ''),
+                        item.get('mv_name') or item.get('mother_vessel_name', ''),
+                    ]
+                else:
+                    vals = ['', '', '', '']
 
-    for shift_name, items in shift_data.items():
+                for off, v in enumerate(vals):
+                    c = ws.cell(r, bc + off)
+                    c.value     = v
+                    c.font      = norm
+                    c.border    = border
+                    c.alignment = _RGT if off == 1 else _LFT
 
-        row_pointer = shift_positions[shift_name]
+            # grand_col data cell (blank for data rows)
+            c = ws.cell(r, grand_col)
+            c.border = border
 
-        equipment_row_count = defaultdict(int)
+        # Shift total row
+        total_row = start_row + DATA_ROWS
+        ws.row_dimensions[total_row].height = 18
 
-        total_discharge = 0
+        c = ws.cell(total_row, 1)
+        c.value     = f'{shift} Total'
+        c.font      = bold
+        c.fill      = fill_yellow
+        c.alignment = _CTR
+        c.border    = border
 
-        for item in items:
-
-            equipments = item.get('unloaded_by', '')
-
-            if not equipments:
-                continue
-
-            equipment_list = [
-                e.strip()
-                for e in equipments.split(',')
-                if e.strip()
-            ]
-
-            qty = _safe_float(
-                item.get('qty_mt')
+        shift_grand = 0.0
+        for eq in EQUIPMENTS:
+            bc       = eq_start_cols[eq]
+            items    = eq_data.get(eq, [])
+            eq_total = sum(
+                _safe_float(i.get('quantity') or i.get('qty_mt'))
+                for i in items
             )
-            print(
-                "SHIFT=", item.get('shift'),
-                "BARGE=", item.get('barge_name'),
-                "QTY=", item.get('qty_mt'),
-                "EQ=", item.get('unloaded_by')
-            )
-            for equipment in equipment_list:
+            shift_grand += eq_total
 
-                if equipment not in equipment_cols:
-                    continue
+            c = ws.cell(total_row, bc)
+            c.value = 'Total'; c.font = bold
+            c.fill = fill_yellow; c.alignment = _CTR; c.border = border
 
-                base_col = equipment_cols[equipment]
+            c = ws.cell(total_row, bc + 1)
+            c.value = round(eq_total, 2) if eq_total else '-'
+            c.font = bold; c.fill = fill_yellow
+            c.alignment = _RGT; c.border = border
 
-                current_row = (
-                    row_pointer +
-                    equipment_row_count[equipment]
-                )
+            for off in [2, 3]:
+                c = ws.cell(total_row, bc + off)
+                c.fill = fill_yellow; c.border = border
 
-                if current_row > row_pointer + 4:
-                    continue
+        c = ws.cell(total_row, grand_col)
+        c.value     = round(shift_grand, 2) if shift_grand else '-'
+        c.font      = bold
+        c.fill      = fill_yellow
+        c.alignment = _RGT
+        c.border    = border
 
-                ws.cell(
-                    current_row,
-                    base_col
-                ).value = item.get('barge_name', '')
+        start_row += BLOCK_SIZE
 
-                ws.cell(
-                    current_row,
-                    base_col + 1
-                ).value = qty
+    # ── All Shift Total row ───────────────────────────────────────────────────
+    ws.row_dimensions[start_row].height = 20
 
-                ws.cell(
-                    current_row,
-                    base_col + 2
-                ).value = item.get('cargo_type', '')
+    c = ws.cell(start_row, 1)
+    c.value     = 'All Shift Total'
+    c.font      = bold
+    c.fill      = fill_blue
+    c.alignment = _CTR
+    c.border    = border
 
-                ws.cell(
-                    current_row,
-                    base_col + 3
-                ).value = item.get(
-                    'mother_vessel_name',
-                    ''
-                )
+    overall_total = 0.0
+    for eq in EQUIPMENTS:
+        bc        = eq_start_cols[eq]
+        all_items = [i for s in SHIFTS for i in shift_map[s].get(eq, [])]
+        eq_total  = sum(
+            _safe_float(i.get('quantity') or i.get('qty_mt'))
+            for i in all_items
+        )
+        overall_total += eq_total
 
-                for c in range(base_col, base_col + 4):
+        c = ws.cell(start_row, bc)
+        c.value = 'Total'; c.font = bold
+        c.fill = fill_blue; c.alignment = _CTR; c.border = border
 
-                    ws.cell(
-                        current_row,
-                        c
-                    ).alignment = center
+        c = ws.cell(start_row, bc + 1)
+        c.value = round(eq_total, 2) if eq_total else '-'
+        c.font = bold; c.fill = fill_blue
+        c.alignment = _RGT; c.border = border
 
-                    ws.cell(
-                        current_row,
-                        c
-                    ).border = border
+        for off in [2, 3]:
+            c = ws.cell(start_row, bc + off)
+            c.fill = fill_blue; c.border = border
 
-                equipment_row_count[equipment] += 1
-
-                total_discharge += qty
-
-        total_row = row_pointer + 5
-
-        shift_total = 0
-
-        for col in range(3, current_col, 4):
-
-            col_total = 0
-
-            for r in range(row_pointer, row_pointer + 5):
-
-                val = ws.cell(r, col).value
-
-                try:
-                    col_total += float(val or 0)
-                except:
-                    pass
-
-            ws.cell(
-                total_row,
-                col
-            ).value = round(col_total, 2)
-
-            shift_total += col_total
-
-        ws.cell(
-            total_row,
-            current_col
-        ).value = round(shift_total, 2)
-
-        # =====================================
-        # ALL SHIFT TOTAL
-        # =====================================
-
-        final_row = start_row
-
-        fc = ws.cell(final_row, 1)
-
-        fc.value = 'All Shift Total'
-
-        fc.fill = blue_fill
-        fc.font = bold
-        fc.border = border
-
-        for col in range(2, current_col + 1):
-
-            cell = ws.cell(final_row, col)
-
-            cell.fill = blue_fill
-            cell.border = border
-
-            if (col - 3) % 4 == 0:
-                cell.value = 0
-                cell.alignment = center
-
-        ws.cell(final_row, current_col).value = 0
+    c = ws.cell(start_row, grand_col)
+    c.value     = round(overall_total, 2) if overall_total else '-'
+    c.font      = bold
+    c.fill      = fill_blue
+    c.alignment = _RGT
+    c.border    = border
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
@@ -1674,33 +1766,60 @@ def mv_barge_report_download_all():
         if from_datetime:
             from_dt = datetime.fromisoformat(from_datetime)
         else:
-            from_dt = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            from_dt = datetime.now().replace(
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
 
         if to_datetime:
             to_dt = datetime.fromisoformat(to_datetime)
         else:
-            to_dt = datetime.now().replace(hour=23, minute=59, second=59, microsecond=999999)
-    except Exception as e:
-        print(f"Date parsing error: {e}")
-        return jsonify({'error': 'Invalid date format'}), 400
+            to_dt = datetime.now().replace(
+                hour=23,
+                minute=59,
+                second=59,
+                microsecond=999999
+            )
 
-    
+    except Exception:
+        return jsonify(
+            {'error': 'Invalid date format'}
+        ), 400
+
+    # ==================================================
+    # BARGE DATA
+    # ==================================================
+
     list_rows = _fetch_list(
         from_dt.strftime('%Y-%m-%d %H:%M:%S'),
         to_dt.strftime('%Y-%m-%d %H:%M:%S')
     )
 
     filtered_rows = []
+
     for row in list_rows:
-        status = get_barge_status(row, from_dt, to_dt)
+
+        status = get_barge_status(
+            row,
+            from_dt,
+            to_dt
+        )
+
         if status is None:
             continue
+
         row['current_status'] = status
+
         if status_filter == 'all' or status == status_filter:
             filtered_rows.append(row)
-    list_rows = filtered_rows
+
+    barge_rows = filtered_rows
 
     if column_filter:
+
         column_field_map = {
             'trip_start': 'trip_start',
             'anchored_gull_island': 'anchored_gull_island',
@@ -1720,27 +1839,171 @@ def mv_barge_report_download_all():
         }
 
         db_field = column_field_map.get(column_filter)
+
         if db_field:
-            list_rows = [r for r in list_rows if r.get(db_field)]
+            barge_rows = [
+                r for r in barge_rows
+                if r.get(db_field)
+            ]
 
-    if not list_rows:
-        return Response('No records in selected range', status=404)
+    # ==================================================
+    # MBC DATA
+    # ==================================================
 
-    barge_data_list = [
-        _fetch_barge_data(r['id'])
-        for r in list_rows
-    ]
+    conn = get_db()
+    cur = get_cursor(conn)
 
-    buf = _build_all_excel(list_rows, barge_data_list)
+    
+    cur.execute("""
+        SELECT DISTINCT ON (h.id)
+            h.id                            AS mbc_id,
+            h.mbc_name,
+            h.cargo_name                    AS cargo_type,
+            COALESCE(h.bl_quantity, 0)      AS qty_mt,
+            (
+                COALESCE(h.bl_quantity, 0)
+                -
+                COALESCE(
+                    (SELECT SUM(ll.quantity)
+                     FROM lueu_lines ll
+                     WHERE ll.source_type = 'MBC'
+                       AND ll.source_id   = h.id
+                       AND ll.is_deleted IS NOT TRUE),
+                    0
+                )
+            ) AS qty_balance,
+            lp.arrived_load_port            AS trip_start,
+            lp.alongside_berth              AS along_side_vessel,
+            lp.loading_commenced            AS commenced_loading,
+            lp.loading_completed            AS completed_loading,
+            lp.cast_off_load_port           AS cast_off_mv,
+            dp.arrival_gull_island          AS arrival_gull_island,
+            dp.departure_gull_island        AS departure_gull_island,
+            dp.vessel_arrival_port          AS mbc_arrival_port,
+            dp.vessel_all_made_fast         AS mbc_amf_unloading_berth,
+            dp.unloading_commenced          AS unloading_commenced,
+            dp.cleaning_commenced           AS cleaning_commenced,
+            dp.unloading_completed          AS unloading_completed,
+            dp.vessel_cast_off              AS mbc_cast_off,
+            dp.sailed_out_load_port         AS sailed_out_load_port,
+            dp.vessel_unloaded_by           AS vessel_unloaded_by,
+            dp.vessel_unloading_berth       AS unloaded_berth
+        FROM mbc_header h
+        LEFT JOIN mbc_load_port_lines lp ON lp.mbc_id = h.id
+        LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
+        WHERE h.mbc_name IS NOT NULL
+        ORDER BY h.id
+    """)
+ 
+    all_mbc = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+ 
+    _mbc_order = {
+        'currently_loading': 1, 'loaded_transit': 2,
+        'waiting_gull': 3,      'on_way_dharamtar': 4,
+        'waiting_discharge': 5, 'under_discharge': 6,
+        'waiting_castoff': 7,   'completed_discharge': 8,
+    }
+    mbc_rows = []
+    for row in all_mbc:
+        t  = safe_dt(row.get('trip_start'))
+        co = safe_dt(row.get('mbc_cast_off'))
+        ud = safe_dt(row.get('unloading_completed'))
+        if not t or t > to_dt:
+            continue
+        if ud and ud < from_dt:
+            continue
+        if co and co < from_dt:
+            continue
+        status = get_mbc_status(row)
+        if status is None:
+            continue
+        row['current_status'] = status
+        if status_filter == 'all' or status == status_filter:
+            mbc_rows.append(row)
+    mbc_rows.sort(key=lambda x: _mbc_order.get(x.get('current_status'), 999))
+ 
+ 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CHANGE 2 of 3
+# In mv_barge_report_download_all()
+# Replace the ENTIRE SHIFT DATA cur.execute block + shift_rows = [...]
+# ═══════════════════════════════════════════════════════════════════════════════
+ 
+    conn = get_db()
+    cur  = get_cursor(conn)
+ 
+    entry_date_from = from_dt.date()
+    entry_date_to   = to_dt.date()
+    if (to_dt - from_dt).total_seconds() <= 24 * 3600:
+        entry_date_to = entry_date_from
+ 
+    cur.execute("""
+        SELECT
+            ll.shift,
+            ll.equipment_name               AS unloaded_by,
+            ll.barge_name,
+            ll.cargo_name,
+            COALESCE(ll.quantity, 0)        AS quantity,
+            ll.source_type,
+            CASE
+                WHEN ll.source_type = 'VCN' THEN
+                    (SELECT h.vessel_name FROM ldud_header h
+                     WHERE h.vcn_id = ll.source_id LIMIT 1)
+                WHEN ll.source_type = 'MBC' THEN
+                    (SELECT h.mbc_name FROM mbc_header h
+                     WHERE h.id = ll.source_id LIMIT 1)
+                ELSE ''
+            END AS mv_name
+        FROM lueu_lines ll
+        WHERE
+            ll.is_deleted IS NOT TRUE
+            AND COALESCE(ll.quantity, 0) > 0
+            AND ll.entry_date IS NOT NULL
+            AND TO_DATE(ll.entry_date, 'YYYY-MM-DD') BETWEEN %s AND %s
+        ORDER BY ll.shift, ll.equipment_name, ll.barge_name
+    """, (entry_date_from, entry_date_to))
+ 
+    shift_rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+ 
 
-    fname = f'MVBargeReport_{from_dt.strftime("%Y-%m-%d")}_to_{to_dt.strftime("%Y-%m-%d")}.xlsx'
+    # ==================================================
+    # NO DATA
+    # ==================================================
+
+    if not barge_rows and not mbc_rows and not shift_rows:
+        return Response(
+            'No records found',
+            status=404
+        )
+
+    # ==================================================
+    # EXCEL
+    # ==================================================
+
+    buf = _build_all_excel(
+        barge_rows,
+        mbc_rows,
+        shift_rows
+    )
+
+    fname = (
+        f'MVBargeReport_'
+        f'{from_dt.strftime("%Y-%m-%d")}'
+        f'_to_'
+        f'{to_dt.strftime("%Y-%m-%d")}.xlsx'
+    )
 
     return Response(
         buf.getvalue(),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={
-            'Content-Disposition': f'attachment; filename="{fname}"'
-        },
+            'Content-Disposition':
+            f'attachment; filename="{fname}"'
+        }
     )
 @bp.route('/api/module/RP01/mv-barge-report/<int:barge_line_id>/download')
 @login_required
@@ -1765,6 +2028,8 @@ def get_mbc_data():
     to_date       = request.args.get('to_date')
     column_filter = request.args.get('column_filter')
     status_filter = request.args.get('status_filter', 'all')
+    
+    
 
     try:
         from_dt = datetime.fromisoformat(from_date) if from_date else \
@@ -1896,6 +2161,7 @@ def get_mbc_data():
 
         if status is None:
             continue
+        
 
         if status_filter == 'all' or status == status_filter:
             filtered_rows.append(row)
