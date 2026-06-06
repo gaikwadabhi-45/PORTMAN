@@ -146,7 +146,7 @@ def login_required(f):
 # ── Data fetch ──────────────────────────────────────────────────────────────
 
 _DATE_FIELDS = {
-    "discharge_commenced": "pla_commenced.pla_discharge_started",
+    "discharge_commenced": "pla_commenced.first_discharge_started",
     "discharge_completed": "a.discharge_commenced",
     "nor_tendered": "h.nor_tendered",
 }
@@ -173,8 +173,8 @@ def _fetch_list(from_date, to_date, date_field=None):
 
         pla.anchored AS pla_date,
 
-        pla_commenced.pla_discharge_started
-            AS discharge_commenced,
+        pla_commenced.first_discharge_started
+        AS discharge_commenced,
 
         a.discharge_commenced
             AS discharge_completed,
@@ -228,23 +228,17 @@ def _fetch_list(from_date, to_date, date_field=None):
     -- PLA COMMENCED DATE
     -- =====================================
 
-    LEFT JOIN LATERAL (
+LEFT JOIN LATERAL (
 
-        SELECT
-            aa.discharge_started
-                AS pla_discharge_started
+    SELECT
+        MIN(aa.discharge_started) AS first_discharge_started
 
-        FROM ldud_anchorage aa
+    FROM ldud_anchorage aa
 
-        WHERE aa.ldud_id = h.id
-        AND UPPER(aa.anchorage_name)
-            LIKE '%%PLA%%'
+    WHERE aa.ldud_id = h.id
+      AND aa.discharge_started IS NOT NULL
 
-        ORDER BY aa.anchored ASC
-
-        LIMIT 1
-
-    ) pla_commenced ON TRUE
+) pla_commenced ON TRUE
 
     -- =====================================
     -- PLA ARRIVAL DATE
@@ -298,7 +292,7 @@ def _fetch_list(from_date, to_date, date_field=None):
             v.vessel_agent_name,
             v.operation_type,
             pla.anchored,
-            pla_commenced.pla_discharge_started,
+            pla_commenced.first_discharge_started,
             a.discharge_started,
             a.discharge_commenced
 
@@ -455,10 +449,9 @@ def _write_vessel_sheet(ws, data):
     disc_end = None
 
     started_list = [
-        _parse_dt(a.get("discharge_started"))
-        for a in anchorages
-        if "PLA" in (a.get("anchorage_name") or "").upper()
-        and a.get("discharge_started")
+    _parse_dt(a.get("discharge_started"))
+    for a in anchorages
+    if a.get("discharge_started")
     ]
 
     completed_list = [
@@ -470,11 +463,24 @@ def _write_vessel_sheet(ws, data):
     started_list = [x for x in started_list if x]
     completed_list = [x for x in completed_list if x]
 
+    disc_start = min(started_list) if started_list else None
+    
+    is_active = any(
+    a.get("discharge_started")
+    and not a.get("discharge_commenced")
+    for a in anchorages
+    )
+
+    started_list = [x for x in started_list if x]
+    completed_list = [x for x in completed_list if x]
+
     if started_list:
         disc_start = min(started_list)
 
-    if completed_list:
+    if not is_active and completed_list:
         disc_end = max(completed_list)
+    else:
+        disc_end = None
 
     disc_start_str = _fmt_dt(disc_start) or "-"
 
@@ -1424,24 +1430,59 @@ def vessel_discharged_preview(ldud_id):
     # ANCHORAGE DATA
     # =========================
 
+    # =========================
+# ANCHORAGE DATA
+# =========================
+
     cur.execute(
         """
 
-        SELECT
-            anchorage_name,
-            anchored
+            SELECT
+                anchorage_name,
+                anchored,
+                discharge_started,
+                discharge_commenced
 
-        FROM ldud_anchorage
+            FROM ldud_anchorage
 
-        WHERE ldud_id = %s
+            WHERE ldud_id = %s
 
-        ORDER BY anchored
+            ORDER BY anchored
 
-    """,
+        """,
         (ldud_id,),
     )
 
-    anchorages = cur.fetchall()
+    anchorages = [dict(r) for r in cur.fetchall()]
+    
+    started_dates = [
+    _parse_dt(a.get("discharge_started"))
+    for a in anchorages
+    if a.get("discharge_started")
+    ]
+
+    completed_dates = [
+        _parse_dt(a.get("discharge_commenced"))
+        for a in anchorages
+        if a.get("discharge_commenced")
+    ]
+
+    is_active = any(
+        a.get("discharge_started")
+        and not a.get("discharge_commenced")
+        for a in anchorages
+    )
+
+    commence_discharge_berth = (
+        min(started_dates)
+        if started_dates else None
+    )
+
+    completed_discharge_berth = (
+        max(completed_dates)
+        if completed_dates and not is_active
+        else None
+    )
 
     mfl_date = None
     pla_date = None
@@ -1655,9 +1696,9 @@ def vessel_discharged_preview(ldud_id):
 
         try:
 
-            start = _parse_dt(header["commence_discharge_berth"])
+            start = commence_discharge_berth
 
-            end = _parse_dt(header["completed_discharge_berth"])
+            end = completed_discharge_berth
 
             if start and end:
 
@@ -1697,9 +1738,9 @@ def vessel_discharged_preview(ldud_id):
 
     custom_cleared_fmt = _fmt_dt(header.get("custom_clearance")) or "N/A"
 
-    discharge_commenced_fmt = _fmt_dt(header["commence_discharge_berth"])
+    discharge_commenced_fmt = _fmt_dt(commence_discharge_berth)
 
-    discharge_completed_fmt = _fmt_dt(header["completed_discharge_berth"])
+    discharge_completed_fmt = _fmt_dt(completed_discharge_berth)
 
     # FILTER DISPLAY LOGIC
 
