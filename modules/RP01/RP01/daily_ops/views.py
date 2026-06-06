@@ -917,10 +917,23 @@ def _fetch_cargo_availability(report_date):
 
     cur.execute("""
         SELECT
-            cargo_name,
-            ROUND(SUM(balance_qty)::numeric,0) AS at_jetty_qty
+            c.cargo_name,
+            ROUND(COALESCE(SUM(x.balance_qty),0)::numeric,0) AS at_jetty_qty
 
         FROM
+        (
+            SELECT DISTINCT cargo_name
+            FROM mbc_header
+            WHERE cargo_name IS NOT NULL
+
+            UNION
+
+            SELECT DISTINCT cargo_name
+            FROM ldud_barge_lines
+            WHERE cargo_name IS NOT NULL
+        ) c
+
+        LEFT JOIN
         (
 
             /* MBC Balance */
@@ -929,7 +942,7 @@ def _fetch_cargo_availability(report_date):
                 h.cargo_name,
 
                 GREATEST(
-                    h.bl_quantity - COALESCE(l.qty, 0),
+                    h.bl_quantity - COALESCE(l.qty,0),
                     0
                 ) AS balance_qty
 
@@ -958,7 +971,6 @@ def _fetch_cargo_availability(report_date):
             WHERE
                 p.unloading_commenced IS NOT NULL
                 AND TRIM(COALESCE(p.unloading_commenced,'')) <> ''
-
                 AND (
                     p.unloading_completed IS NULL
                     OR TRIM(COALESCE(p.unloading_completed,'')) = ''
@@ -998,16 +1010,16 @@ def _fetch_cargo_availability(report_date):
 
             WHERE
                 b.commence_discharge_berth IS NOT NULL
-
                 AND (
                     b.cast_off_berth IS NULL
                     OR TRIM(COALESCE(b.cast_off_berth,'')) = ''
                 )
 
         ) x
+            ON x.cargo_name = c.cargo_name
 
-        GROUP BY cargo_name
-        ORDER BY cargo_name
+        GROUP BY c.cargo_name
+        ORDER BY c.cargo_name
 
     """, (
         balance_date,
@@ -1376,14 +1388,6 @@ def _fetch_mbc_status(report_date):
                 WHEN h.id IS NULL
                 THEN 'EMPTY : WAITING AT JAIGAD'
 
-                /* Empty : On the way to Load Port */
-                WHEN
-                    NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
-                    AND NULLIF(TRIM(d.vessel_cast_off), '') IS NOT NULL
-                    AND NULLIF(TRIM(l.arrived_load_port), '') IS NULL
-                THEN
-                    'EMPTY : ON THE WAY TO LOAD PORT'
-
                 /* Empty : Waiting at Load Port */
                 WHEN
                     NULLIF(TRIM(l.arrived_load_port), '') IS NOT NULL
@@ -1447,7 +1451,7 @@ def _fetch_mbc_status(report_date):
                     'EMPTY : WAITING AT DHARAMTAR'
 
                 ELSE
-                    'EMPTY : WAITING AT DHARAMTAR'
+                    'NA'
 
             END AS mbc_status
 
@@ -1645,13 +1649,13 @@ def _fetch_cargo_type_throughput(report_date):
 
 
 
-def _fmt_tide_dt(dt_str):
-    """'2026-01-27T16:00' -> '27/16:00'"""
-    try:
-        dt = datetime.fromisoformat(dt_str)
-        return dt.strftime('%d/%H:%M')
-    except Exception:
-        return dt_str
+# def _fmt_tide_dt(dt_str):
+#     """'2026-01-27T16:00' -> '27/16:00'"""
+#     try:
+#         dt = datetime.fromisoformat(dt_str)
+#         return dt.strftime('%d/%H:%M')
+#     except Exception:
+#         return dt_str
 
 
 # ── Excel builder ───────────────────────────────────────────────────────────
@@ -2241,34 +2245,56 @@ def daily_ops_preview():
     html += """
     </table>
     """
+
     cargo_availability = _fetch_cargo_availability(report_date)
 
     html += """
     <br><br>
     <h3>Cargo Availability for the Day</h3>
 
-    <table style='width:100%;border-collapse:collapse;font-family:Arial;font-size:12px'>
+    <div style="overflow-x:auto;width:100%;">
+    <table style="
+        border-collapse:collapse;
+        font-family:Arial;
+        font-size:12px;
+        white-space:nowrap;
+    ">
     """
 
-    # Header Row
+    # Header
     html += """
-    <tr style='background:#4a90d9;color:white'>
-        <th style='border:1px solid #ccc;padding:8px'></th>
+    <tr style="background:#4a90d9;color:white;">
+        <th contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;min-width:120px;">
+        </th>
     """
 
     for c in cargo_availability:
         html += f"""
-        <th style='border:1px solid #ccc;padding:8px;text-align:center;min-width:100px'>
+        <th contenteditable="true"
+            style="
+            border:1px solid #ccc;
+            padding:8px;
+            min-width:120px;
+            text-align:center;
+        ">
             {c['cargo_name']}
         </th>
         """
 
-    html += "</tr>"
+    html += """
+    <th contenteditable="true"
+        style="border:1px solid #ccc;padding:8px;min-width:120px;">
+        Total
+    </th>
+    </tr>
+    """
 
     # At Jetty Row
     html += """
     <tr>
-        <td style='border:1px solid #ccc;padding:8px;font-weight:bold'>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;font-weight:bold;">
             At Jetty
         </td>
     """
@@ -2277,49 +2303,128 @@ def daily_ops_preview():
 
     for c in cargo_availability:
 
-        qty = c["at_jetty_qty"]
+        qty = c["at_jetty_qty"] or 0
+        grand_total += float(qty)
 
-        display_value = ""
+        display = ""
 
-        if qty is not None:
-            qty = float(qty)
-            grand_total += qty
-            display_value = f"{qty:,.0f}"
+        if float(qty) > 0:
+            display = f"{float(qty):,.0f}"
 
         html += f"""
-        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
-            {display_value}
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;text-align:right;">
+            {display}
         </td>
         """
 
-    html += "</tr>"
+    html += f"""
+    <td contenteditable="true"
+        style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;">
+        {grand_total:,.0f}
+    </td>
+    </tr>
+    """
+
+    # Hardcoded Row 1
+    html += """
+    <tr>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;">
+            08/16:15
+        </td>
+    """
+
+    for _ in cargo_availability:
+        html += """
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;"></td>
+        """
+
+    html += """
+    <td contenteditable="true"
+        style="border:1px solid #ccc;padding:8px;"></td>
+    </tr>
+    """
+
+    # Hardcoded Row 2
+    html += """
+    <tr>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;">
+            4.19 mtr
+        </td>
+    """
+
+    for _ in cargo_availability:
+        html += """
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;"></td>
+        """
+
+    html += """
+    <td contenteditable="true"
+        style="border:1px solid #ccc;padding:8px;"></td>
+    </tr>
+    """
+
+    # Hardcoded Row 3
+    html += """
+    <tr>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;">
+            09/03:56
+        </td>
+    """
+
+    for _ in cargo_availability:
+        html += """
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;"></td>
+        """
+
+    html += """
+    <td contenteditable="true"
+        style="border:1px solid #ccc;padding:8px;"></td>
+    </tr>
+    """
 
     # Total Row
     html += """
-    <tr style='background:#f2f2f2;font-weight:bold'>
-        <td style='border:1px solid #ccc;padding:8px'>
+    <tr style="background:#f2f2f2;font-weight:bold;">
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;">
             Total
         </td>
     """
 
     for c in cargo_availability:
 
-        qty = c["at_jetty_qty"]
+        qty = c["at_jetty_qty"] or 0
 
-        display_value = ""
+        display = ""
 
-        if qty is not None:
-            display_value = f"{float(qty):,.0f}"
+        if float(qty) > 0:
+            display = f"{float(qty):,.0f}"
 
         html += f"""
-        <td style='border:1px solid #ccc;padding:8px;text-align:right'>
-            {display_value}
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:8px;text-align:right;">
+            {display}
         </td>
         """
 
-    html += """
+    html += f"""
+    <td contenteditable="true"
+        style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;">
+        {grand_total:,.0f}
+    </td>
     </tr>
+    """
+
+    html += """
     </table>
+    </div>
     """
 
     tide_rows = _fetch_tide_data(report_date)
@@ -2769,7 +2874,228 @@ def daily_ops_preview():
     """
 
     html += "</table>"
-    
+
+    html += """
+    <br><br>
+
+    <div style="
+        display:flex;
+        align-items:flex-start;
+        justify-content:flex-start;
+        gap:20px;
+        width:100%;
+    ">
+
+        <!-- RM STOCK DETAILS -->
+        <div>
+
+            <h3 style="margin-top:0;">RM Stock Details</h3>
+
+            <table style="
+                border-collapse:collapse;
+                font-family:Arial;
+                font-size:12px;
+                width:250px;
+            ">
+
+                <tr style="background:#4a90d9;color:white;">
+                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">
+                        Material
+                    </th>
+
+                    <th style="border:1px solid #ccc;padding:8px;text-align:right;">
+                        Qty (LMT)
+                    </th>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px;">IBRM</td>
+                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px;">CBRM</td>
+                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px;">FLUXES</td>
+                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+                </tr>
+
+                <tr style="font-weight:bold;background:#f2f2f2;">
+                    <td style="border:1px solid #ccc;padding:8px;">TOTAL</td>
+                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+                </tr>
+
+            </table>
+
+        </div>
+
+
+        <!-- BF PRODUCTION DETAILS -->
+        <div>
+
+            <h3 style="margin-top:0;">BF Production Details</h3>
+
+            <table style="
+                border-collapse:collapse;
+                font-family:Arial;
+                font-size:12px;
+                width:500px;
+            ">
+
+                <tr style="background:#4a90d9;color:white;">
+                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">
+                        Plant
+                    </th>
+
+                    <th style="border:1px solid #ccc;padding:8px;text-align:right;">
+                        Target Production (TPD)
+                    </th>
+
+                    <th style="border:1px solid #ccc;padding:8px;text-align:right;">
+                        Actual Production (TPD)
+                    </th>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px;">BF1</td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    </td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:8px;">BF2</td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    </td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    </td>
+                </tr>
+
+            </table>
+
+        </div>
+
+
+        <!-- RAINFALL DETAILS -->
+        <div>
+
+            <h3 style="margin-top:0;">Rainfall Details</h3>
+
+            <table style="
+                border-collapse:collapse;
+                font-family:Arial;
+                font-size:12px;
+                width:330px;
+            ">
+
+                <tr style="background:#4a90d9;color:white;">
+                    <th colspan="4"
+                        style="border:1px solid #ccc;padding:8px;text-align:center;">
+                        Rainfall Details
+                    </th>
+                </tr>
+
+                <tr style="background:#f2f2f2;">
+                    <th style="border:1px solid #ccc;padding:6px;">Year</th>
+                    <th style="border:1px solid #ccc;padding:6px;">Period</th>
+                    <th style="border:1px solid #ccc;padding:6px;">Rainfall</th>
+                    <th style="border:1px solid #ccc;padding:6px;">Max.</th>
+                </tr>
+
+                <tr>
+                    <td rowspan="3" style="border:1px solid #ccc;padding:6px;text-align:center;">
+                        2025
+                    </td>
+
+                    <td style="border:1px solid #ccc;padding:6px;">
+                        For the Day
+                    </td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:right;">
+                    </td>
+
+                    <td rowspan="3"
+                        contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:center;">
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:6px;">MTD</td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:right;">
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:6px;font-weight:bold;">
+                        YTD
+                    </td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:right;">
+                    </td>
+                </tr>
+
+                <tr>
+                    <td rowspan="3" style="border:1px solid #ccc;padding:6px;text-align:center;">
+                        2024
+                    </td>
+
+                    <td style="border:1px solid #ccc;padding:6px;">
+                        For the Day
+                    </td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:right;">
+                    </td>
+
+                    <td rowspan="3"
+                        contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:center;">
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:6px;">Month</td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:right;">
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="border:1px solid #ccc;padding:6px;font-weight:bold;">
+                        Year
+                    </td>
+
+                    <td contenteditable="true"
+                        style="border:1px solid #ccc;padding:6px;text-align:right;">
+                    </td>
+                </tr>
+
+            </table>
+
+        </div>
+
+    </div>
+    """
+
+        
     return html
 
 # ── Download endpoint ───────────────────────────────────────────────────────
