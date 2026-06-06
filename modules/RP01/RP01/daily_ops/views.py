@@ -359,14 +359,21 @@ def _fetch_data(report_date):
                 source_id,
                 UPPER(TRIM(SPLIT_PART(barge_name,'/',1))) AS base_barge,
                 TRIM(SPLIT_PART(barge_name,'/',2)) AS trip_no,
+
+                MAX(route_name) AS route_name,
+                MAX(equipment_name) AS crane,
+
                 SUM(COALESCE(quantity,0)) AS actual_qty
+
             FROM lueu_lines
+
             WHERE source_type = 'VCN'
             AND is_deleted = false
             AND source_id = ANY(%s)
             AND barge_name IS NOT NULL
             AND quantity IS NOT NULL
             AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+
             GROUP BY
                 source_id,
                 UPPER(TRIM(SPLIT_PART(barge_name,'/',1))),
@@ -384,7 +391,11 @@ def _fetch_data(report_date):
                     r['base_barge'],
                     r['trip_no']
                 )
-            ] = float(r['actual_qty'])
+            ] = {
+                'actual_qty': float(r['actual_qty']),
+                'route_name': r['route_name'] or '',
+                'crane': r['crane'] or ''
+            }
 
 
     barge_stats = {}
@@ -455,14 +466,18 @@ def _fetch_data(report_date):
 
             trip_no = str(r['trip_no'])
 
-            actual_qty = barge_actual.get(
+            barge_info = barge_actual.get(
                 (
                     vcn_id,
                     bn_key,
                     trip_no
                 ),
-                0
+                {}
             )
+
+            actual_qty = float(barge_info.get('actual_qty', 0))
+            route_name = barge_info.get('route_name', '')
+            crane = barge_info.get('crane', '') or (r['port_crane'] or '').strip()
 
             balance_qty = max(0, bl_qty - actual_qty)
 
@@ -494,16 +509,13 @@ def _fetch_data(report_date):
 
             if status and bn:
 
-                crane = (r['port_crane'] or '').strip()
-
                 if status == 'at_jetty':
                     entry = (
-                    f"{bn} / {trip_no} - {crane} "
-                    f"(BL:{int(round(bl_qty))} | "
-                    f"Act:{int(round(actual_qty))} | "
-                    f"Bal:{int(round(balance_qty))} MT)"
-                )
-
+                        f"{bn} / {trip_no}"
+                        f"{' - ' + route_name if route_name else ''}"
+                        f"{' - ' + crane if crane else ''} "
+                        f"(Bal:{int(round(balance_qty))} MT)"
+                    )
                 elif status == 'waiting_discharge' and bl_qty:
                     entry = f"{bn} ({int(round(bl_qty))} MT)"
 
@@ -906,7 +918,7 @@ def _fetch_cargo_availability(report_date):
     cur.execute("""
         SELECT
             cargo_name,
-            SUM(balance_qty) AS at_jetty_qty
+            ROUND(SUM(balance_qty)::numeric,0) AS at_jetty_qty
 
         FROM
         (
@@ -916,9 +928,9 @@ def _fetch_cargo_availability(report_date):
             SELECT
                 h.cargo_name,
 
-                (
-                    h.bl_quantity
-                    - COALESCE(l.qty, 0)
+                GREATEST(
+                    h.bl_quantity - COALESCE(l.qty, 0),
+                    0
                 ) AS balance_qty
 
             FROM mbc_header h
@@ -926,16 +938,17 @@ def _fetch_cargo_availability(report_date):
             JOIN mbc_discharge_port_lines p
                 ON p.mbc_id = h.id
 
-            LEFT JOIN (
+            LEFT JOIN
+            (
                 SELECT
                     source_id,
-                    SUM(COALESCE(quantity, 0)) AS qty
+                    SUM(COALESCE(quantity,0)) AS qty
 
                 FROM lueu_lines
 
                 WHERE source_type = 'MBC'
                   AND is_deleted = false
-                  AND TO_DATE(entry_date,'YYYY-MM-DD') = %s
+                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
                 GROUP BY source_id
 
@@ -944,29 +957,30 @@ def _fetch_cargo_availability(report_date):
 
             WHERE
                 p.unloading_commenced IS NOT NULL
-                AND TRIM(COALESCE(p.unloading_commenced, '')) <> ''
+                AND TRIM(COALESCE(p.unloading_commenced,'')) <> ''
 
                 AND (
                     p.unloading_completed IS NULL
-                    OR TRIM(COALESCE(p.unloading_completed, '')) = ''
+                    OR TRIM(COALESCE(p.unloading_completed,'')) = ''
                 )
 
             UNION ALL
 
-            /* At Jetty Barge Balance */
+            /* Barge Balance */
 
             SELECT
                 b.cargo_name,
 
                 GREATEST(
-                    b.discharge_quantity
-                    - COALESCE(lb.actual_qty, 0),
+                    COALESCE(b.discharge_quantity,0)
+                    - COALESCE(lb.actual_qty,0),
                     0
                 ) AS balance_qty
 
             FROM ldud_barge_lines b
 
-            LEFT JOIN (
+            LEFT JOIN
+            (
                 SELECT
                     UPPER(TRIM(barge_name)) AS barge_name,
                     SUM(COALESCE(quantity,0)) AS actual_qty
@@ -975,7 +989,7 @@ def _fetch_cargo_availability(report_date):
 
                 WHERE is_deleted = false
                   AND barge_name IS NOT NULL
-                  AND TO_DATE(entry_date,'YYYY-MM-DD') = %s
+                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
                 GROUP BY UPPER(TRIM(barge_name))
 
@@ -993,7 +1007,6 @@ def _fetch_cargo_availability(report_date):
         ) x
 
         GROUP BY cargo_name
-
         ORDER BY cargo_name
 
     """, (
