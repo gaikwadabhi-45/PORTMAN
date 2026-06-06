@@ -3,6 +3,7 @@
 {% block title %}MV Daily Loading Report — RP01{% endblock %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
     /* ── Page layout ─────────────────────────────────────────────── */
     .page-header {
@@ -1028,6 +1029,21 @@
         const fromDate = document.getElementById('filter-from').value;
         const toDate = document.getElementById('filter-to').value;
         // ── Date Validation ─────────────────────
+        if (fromDate && new Date(fromDate) < new Date('2026-05-01T00:00')) {
+
+            Swal.fire({
+                icon: 'info',
+                title: 'Report Not Available',
+                html: `
+            <b>Cutoff Date:</b> 01-May-2026<br><br>
+            Reports before this date are not available.
+        `,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#4a90d9'
+            });
+
+            return;
+        }
 
         if (!fromDate || !toDate) {
 
