@@ -5,6 +5,7 @@
 {% block head %}
 <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
 <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
     /* ── Page layout ─────────────────────────────────────────────── */
     .page-header {
@@ -179,30 +180,8 @@
 
 
 
-    /* Shine animation */
-    @keyframes dlAllShine {
 
-        0% {
-            left: -80px;
-        }
 
-        100% {
-            left: 140%;
-        }
-    }
-
-    /* Download arrow bounce */
-    @keyframes dlAllBounce {
-
-        0%,
-        100% {
-            transform: translateY(0);
-        }
-
-        50% {
-            transform: translateY(2px);
-        }
-    }
 
     /* ── Row count ───────────────────────────────────────────────── */
     .row-count {
@@ -305,375 +284,9 @@
 
     /* ───────────────── DOWNLOAD LOADER ───────────────── */
 
-    .download-loader {
-        position: fixed;
-        inset: 0;
-
-        background: rgba(220, 220, 220, .55);
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        z-index: 99999;
-
-        opacity: 0;
-        visibility: hidden;
-
-        transition:
-            opacity .35s ease,
-            visibility .35s ease;
-    }
-
-    .download-loader.show {
-        opacity: 1;
-        visibility: visible;
-    }
-
-    .loader-box {
-
-        background: #ffffff;
-
-        border: 1px solid #dbe4f0;
-
-        border-radius: 20px;
-
-        padding: 32px 36px;
-
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-
-        gap: 16px;
-
-        min-width: 300px;
-
-        box-shadow:
-            0 20px 60px rgba(0, 0, 0, .45);
-    }
-
-    /* ── Orbit Animation ── */
-
-    .orbit-stage {
-        position: relative;
-        width: 120px;
-        height: 120px;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .orbit-ring {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-
-        border-radius: 50%;
-        border: 1px dashed rgba(74, 144, 217, .25);
-
-        transform: translate(-50%, -50%);
-    }
-
-    .ring1 {
-        width: 76px;
-        height: 76px;
-    }
-
-    .ring2 {
-        width: 108px;
-        height: 108px;
-    }
-
-    .orbit-center {
-        width: 44px;
-        height: 44px;
-
-        background: #cee3fd;
-
-        border-radius: 50%;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        font-size: 22px;
-
-        z-index: 2;
-
-        animation:
-            orbitPulse 2.4s ease-in-out infinite,
-            orbitGlow 2.8s ease-in-out infinite;
-    }
-
-    .orbiter {
-        position: absolute;
-
-        top: 50%;
-        left: 50%;
-
-        margin-top: -10px;
-        margin-left: -10px;
-
-        width: 20px;
-        height: 20px;
-
-        border-radius: 50%;
-
-        background: #ccdef5;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        font-size: 13px;
-
-        animation: orbitA 2.4s linear infinite;
-    }
-
-    .orbiter.o2 {
-        animation-delay: -0.8s;
-    }
-
-    .orbiter.o3 {
-        animation-delay: -1.6s;
-    }
-
-    .orbiter2 {
-        position: absolute;
-
-        top: 50%;
-        left: 50%;
-
-        margin-top: -8px;
-        margin-left: -8px;
-
-        width: 16px;
-        height: 16px;
-
-        border-radius: 50%;
-
-        background: #312e81;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        font-size: 11px;
-
-        color: #a5b4fc;
-
-        animation: orbitB 4.8s linear infinite;
-    }
-
-    .orbiter2.o2r {
-        animation-delay: -1.6s;
-        background: #4c1d95;
-    }
-
-    .orbiter2.o3r {
-        animation-delay: -3.2s;
-        background: #cbdef7;
-    }
-
-    @keyframes orbitA {
-
-        0% {
-            transform:
-                rotate(0deg) translateX(38px) rotate(0deg);
-        }
-
-        100% {
-            transform:
-                rotate(360deg) translateX(38px) rotate(-360deg);
-        }
-    }
-
-    @keyframes orbitB {
-
-        0% {
-            transform:
-                rotate(0deg) translateX(54px) rotate(0deg);
-        }
-
-        100% {
-            transform:
-                rotate(-360deg) translateX(54px) rotate(360deg);
-        }
-    }
-
-    @keyframes orbitPulse {
-
-        0%,
-        100% {
-            transform: scale(1);
-        }
-
-        50% {
-            transform: scale(1.08);
-        }
-    }
-
-    @keyframes orbitGlow {
-
-        0%,
-        100% {
-            opacity: .85;
-        }
-
-        50% {
-            opacity: .45;
-        }
-    }
 
     /* ── Loader Text ── */
 
-    .loader-title {
-        font-size: 15px;
-        font-weight: 700;
-        color: #1e293b;
-        margin: 0;
-    }
-
-    .loader-subtitle {
-        font-size: 12px;
-        color: #64748b;
-        margin: 0;
-    }
-
-    /* ── Progress Bar ── */
-
-    .pbar2-wrap {
-        width: 100%;
-        height: 6px;
-
-        background: #3076e6;
-
-        border-radius: 99px;
-
-        overflow: hidden;
-        position: relative;
-    }
-
-    .pbar2-fill {
-        height: 100%;
-        width: 0%;
-
-        border-radius: 99px;
-
-        background: linear-gradient(90deg,
-                #3b82f6,
-                #06b6d4,
-                #22c55e);
-
-        transition: width .8s ease;
-    }
-
-    .pbar2-shine {
-        position: absolute;
-
-        top: 0;
-        left: -60px;
-
-        width: 60px;
-        height: 100%;
-
-        background: linear-gradient(90deg,
-                transparent,
-                rgba(255, 255, 255, .3),
-                transparent);
-
-        animation: shineSlide 1.5s ease-in-out infinite;
-    }
-
-    @keyframes shineSlide {
-
-        0% {
-            left: -60px;
-        }
-
-        100% {
-            left: 110%;
-        }
-    }
-
-    .loader-pct {
-        font-size: 11px;
-        font-weight: 700;
-        color: #60a5fa;
-    }
-
-    /* ───────── STEP DOTS ───────── */
-
-    .step-dots {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .dot {
-        width: 10px;
-        height: 10px;
-
-        border-radius: 50%;
-
-        background: #cbd5e1;
-
-        transition:
-            transform .25s ease,
-            background .25s ease,
-            box-shadow .25s ease;
-    }
-
-    /* Current step */
-    .dot.active {
-
-        background: #3b82f6;
-
-        transform: scale(1.25);
-
-        box-shadow:
-            0 0 10px rgba(59, 130, 246, .7);
-
-        animation: dotPulse 1s infinite;
-    }
-
-    /* Completed step */
-    .dot.done {
-
-        background: #22c55e;
-
-        box-shadow:
-            0 0 8px rgba(34, 197, 94, .5);
-    }
-
-    @keyframes dotPulse {
-
-        0%,
-        100% {
-            transform: scale(1.1);
-        }
-
-        50% {
-            transform: scale(1.4);
-        }
-    }
-
-    .svg-ring {
-        position: absolute;
-        animation: spinRing 8s linear infinite;
-    }
-
-    @keyframes spinRing {
-
-        from {
-            transform: rotate(0deg);
-        }
-
-        to {
-            transform: rotate(360deg);
-        }
-    }
 
 
     #vd-table .tabulator-tableholder {
@@ -699,112 +312,6 @@
         box-sizing: border-box;
     }
 
-    .filter-panel {
-        background: #f7fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        padding: 10px 14px;
-        margin-bottom: 8px;
-    }
-
-    .filter-row {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 6px;
-        flex-wrap: wrap;
-    }
-
-    .filter-col-select,
-    .filter-text-input {
-        padding: 4px 8px;
-        border: 1px solid #cbd5e0;
-        border-radius: 4px;
-        font-size: 12px;
-        background: white;
-    }
-
-    .filter-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 6px;
-        flex-wrap: wrap;
-    }
-
-    .btn-filter-add {
-        background: #edf2f7;
-        color: #2d3748;
-        border: 1px solid #cbd5e0;
-        padding: 4px 12px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-    }
-
-    .btn-filter-apply {
-        background: #3182ce;
-        color: white;
-        border: none;
-        padding: 5px 14px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-    }
-
-    .btn-filter-clear {
-        background: #e2e8f0;
-        color: #2d3748;
-        border: none;
-        padding: 5px 14px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-    }
-
-    .filter-remove {
-        background: none;
-        border: none;
-        color: #e53e3e;
-        cursor: pointer;
-        font-size: 16px;
-    }
-
-    .btn-filter-save {
-        background: #27ae60;
-        color: white;
-        border: none;
-        padding: 5px 14px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-        font-weight: 600;
-    }
-
-    .btn-filter-save:hover {
-        background: #1e8449;
-    }
-
-    .saved-filter-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: #e8f1ff;
-        color: #2b6cb0;
-        border: 1px solid #bcd2f7;
-        border-radius: 14px;
-        padding: 3px 10px;
-        font-size: 11px;
-        font-weight: 600;
-    }
-
-    .saved-filter-chip button {
-        border: none;
-        background: none;
-        color: #e53e3e;
-        cursor: pointer;
-        font-size: 13px;
-        line-height: 1;
-    }
 
     .shift-card {
         background: #ffffff;
@@ -1097,42 +604,15 @@
 
 
 <!-- Download Loader -->
-<div id="download-loader" class="download-loader" style="display:none;">
-    <div class="loader-box">
-        <div class="orbit-stage">
-            <svg class="svg-ring" width="120" height="120" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="45" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="283"
-                    stroke-dashoffset="70" stroke-linecap="round" opacity="0.5" />
-            </svg>
-            <div class="orbit-ring ring1"></div>
-            <div class="orbit-ring ring2"></div>
-            <div class="orbit-center">
-                📊
-            </div>
-            <div class="orbiter">📄</div>
-            <div class="orbiter o2">📋</div>
-            <div class="orbiter o3">🗂️</div>
-            <div class="orbiter2">✦</div>
-            <div class="orbiter2 o2r">✦</div>
-            <div class="orbiter2 o3r">✦</div>
+<div id="download-loader"
+    style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:99999; align-items:center; justify-content:center;">
+    <div
+        style="background:#fff; border-radius:10px; padding:28px 36px; text-align:center; min-width:220px; box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+        <div
+            style="width:40px; height:40px; border:4px solid #e2e8f0; border-top:4px solid #4a90d9; border-radius:50%; animation:spinLoader 0.8s linear infinite; margin:0 auto 16px;">
         </div>
-        <p class="loader-title">
-            Preparing Excel Download
-        </p>
-        <p class="loader-subtitle" id="loader-msg">Connecting to server...</p>
-        <div class="pbar2-wrap">
-            <div class="pbar2-fill"></div>
-            <div class="pbar2-shine"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
-            <div class="step-dots">
-                <div class="dot" id="ld1"></div>
-                <div class="dot" id="ld2"></div>
-                <div class="dot" id="ld3"></div>
-                <div class="dot" id="ld4"></div>
-            </div>
-            <span class="loader-pct" id="loader-pct">0%</span>
-        </div>
+        <p style="margin:0; font-size:14px; font-weight:600; color:#1e293b;">Preparing Download...</p>
+        <p id="loader-msg" style="margin:6px 0 0; font-size:12px; color:#64748b;">Please wait</p>
     </div>
 </div>
 <!-- Filter bar -->
@@ -1254,26 +734,7 @@
 </div>
 
 
-<div id="filterPanel" class="filter-panel" style="display:none;">
 
-    <div id="filterRows"></div>
-
-
-    <!-- Row count -->
-
-
-    <div id="savedFiltersBar" style="margin-top:8px;display:none;align-items:center;flex-wrap:wrap;gap:6px;">
-
-        <span style="font-size:11px;color:#718096;font-weight:600;">
-            Saved Filters:
-        </span>
-
-        <div id="savedFiltersList" style="display:inline-flex;flex-wrap:wrap;gap:6px;">
-        </div>
-
-    </div>
-
-</div>
 <div class="view-switch-row">
 
     <button id="btn-barges" class="view-switch-btn active" onclick="switchView('barges')">
@@ -1783,37 +1244,6 @@
     }
 
     /* ── Filters ─────────────────────────────────────────── */
-    function updateDateRangeDisplay() {
-        const selectedDate = document.getElementById('filter-from').value;
-        const displayEl = document.getElementById('date-range-display');
-
-        if (!selectedDate) {
-            displayEl.innerHTML = '—';
-            return;
-        }
-
-        // Parse selected date
-        const [year, month, day] = selectedDate.split('-');
-
-        // Start: selected date at 06:00 AM
-        const startDate = new Date(year, parseInt(month) - 1, parseInt(day), 6, 0, 0);
-
-        // End: next day at 06:00 AM
-        const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 1);
-
-        // Format: DD-MM-YYYY HH:MM
-        const formatDT = (dt) => {
-            const dd = String(dt.getDate()).padStart(2, '0');
-            const mm = String(dt.getMonth() + 1).padStart(2, '0');
-            const yyyy = dt.getFullYear();
-            const hh = String(dt.getHours()).padStart(2, '0');
-            const min = String(dt.getMinutes()).padStart(2, '0');
-            return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
-        };
-
-        displayEl.innerHTML = `${formatDT(startDate)}<br>${formatDT(endDate)}`;
-    }
 
     // Update display when date input changes
     document.addEventListener('DOMContentLoaded', function () {
@@ -1876,20 +1306,30 @@
 
     });
 
-    // Update date and time display
-    function updateDateTimeDisplay() {
-        const fromDate = document.getElementById('filter-from').value;
-        const toDate = document.getElementById('filter-to').value;
-        const selectedColumn = document.getElementById('column-filter').value;
 
-        console.log('From:', fromDate, 'To:', toDate, 'Column:', selectedColumn);
-    }
 
     function applyFilters() {
+
+
 
         const selectedDate =
             document.getElementById('filter-from').value;
 
+        if (selectedDate && new Date(selectedDate) < new Date('2026-05-01T00:00')) {
+
+            Swal.fire({
+                icon: 'info',
+                title: 'Report Not Available',
+                html: `
+        <b>Cutoff Date:</b> 01-May-2026<br><br>
+        Reports before this date are not available.
+    `,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#4a90d9'
+            });
+
+            return;
+        }
         const selectedToDate =
             document.getElementById('filter-to').value;
 
@@ -2057,35 +1497,9 @@
         }, 10);
 
         // Reset animation state
-        const bar = document.querySelector('.pbar2-fill');
-        const pct = document.getElementById('loader-pct');
         const msg = document.getElementById('loader-msg');
-        bar.style.width = '0%';
-        pct.textContent = '0%';
-        ['ld1', 'ld2', 'ld3', 'ld4'].forEach(id => {
-            document.getElementById(id).className = 'dot';
-        });
-
-        const steps = [
-            { msg: 'Connecting to server...', pct: 15, dots: [1, 0, 0, 0] },
-            { msg: 'Fetching barge records...', pct: 35, dots: [2, 1, 0, 0] },
-            { msg: 'Building Excel sheets...', pct: 60, dots: [2, 2, 1, 0] },
-            { msg: 'Calculating totals...', pct: 82, dots: [2, 2, 2, 1] },
-        ];
-
-        let stepIdx = 0;
-        const stepTimer = setInterval(() => {
-            if (stepIdx >= steps.length) { clearInterval(stepTimer); return; }
-            const s = steps[stepIdx];
-            msg.textContent = s.msg;
-            bar.style.width = s.pct + '%';
-            pct.textContent = s.pct + '%';
-            s.dots.forEach((state, i) => {
-                const el = document.getElementById('ld' + (i + 1));
-                el.className = 'dot' + (state === 1 ? ' active' : state === 2 ? ' done' : '');
-            });
-            stepIdx++;
-        }, 1100);
+        msg.textContent = 'Fetching data...';
+        const stepTimer = null;
 
         const params = new URLSearchParams();
         if (selectedDate) params.set('from_date', selectedDate);
@@ -2110,12 +1524,7 @@
                 return res.blob().then(blob => ({ blob, filename }));
             })
             .then(({ blob, filename }) => {
-                bar.style.width = '100%';
-                pct.textContent = '100%';
                 msg.textContent = 'Download ready!';
-                ['ld1', 'ld2', 'ld3', 'ld4'].forEach(id => {
-                    document.getElementById(id).className = 'dot done';
-                });
                 setTimeout(() => {
                     const a = document.createElement('a');
                     a.href = URL.createObjectURL(blob);
@@ -2131,7 +1540,7 @@
                 alert('Download failed.');
             })
             .finally(() => {
-                clearInterval(stepTimer);
+                if (stepTimer) clearInterval(stepTimer);
                 setTimeout(() => {
                     loader.classList.remove('show');
 
@@ -2455,21 +1864,22 @@
 
                 // Per-equipment grand total row
                 html += `
-                <tr style="background:#c6e0f5; font-weight:700;
-                           font-size:12px; color:#0c4a6e;">
-                    <td style="white-space:nowrap; text-align:center;
-                               border-left:3px solid #4a7ab5;">
-                        All Shifts
-                    </td>
+                <tr style="background:#e5e7eb; font-weight:700;
+                           font-size:12px; color:#374151;">
             `;
                 equipments.forEach((eq, idx) => {
                     const val = grandEqTotals[eq];
                     if (idx === 0) {
                         html += `
+                        <td style="white-space:nowrap; text-align:center;
+                                   border-left:3px solid #4a7ab5;">
+                            All Shifts
+                        </td>
                         <td style="text-align:right;">
                             ${val > 0 ? val.toLocaleString('en-IN') : '-'}
                         </td>
-                        <td colspan="2"></td>
+                        <td></td>
+                        <td></td>
                     `;
                     } else {
                         html += `
@@ -2478,6 +1888,7 @@
                             ${val > 0 ? val.toLocaleString('en-IN') : '-'}
                         </td>
                         <td></td>
+                        <td></td>
                     `;
                     }
                 });
@@ -2485,10 +1896,10 @@
 
                 // Grand overall total row
                 html += `
-                <tr style="background:#bdd7ee; font-weight:700;">
+                <tr style="background:#d1d5db; font-weight:700;">
                     <td colspan="${equipments.length * 4}"
                         style="text-align:right; padding-right:20px;
-                               color:#0c4a6e; font-size:13px;">
+                               color:#374151; font-size:13px;">
                         Grand Total (All Shifts) :
                         ${grandOverall > 0
                         ? grandOverall.toLocaleString('en-IN') + ' MT'
@@ -2531,11 +1942,13 @@
         const shiftKeys = ['A Shift', 'B Shift', 'C Shift'];
 
         // ── Calculate grand totals per equipment across all shifts ────────────
+        const getQty = row => Number(row.qty_mt || row.quantity || 0);
+
         const grandEqTotals = {};
         equipments.forEach(eq => {
             grandEqTotals[eq] = shiftKeys.reduce((total, shiftKey) => {
                 const rows = (shiftMap[shiftKey] || {})[eq] || [];
-                return total + rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
+                return total + rows.reduce((s, r) => s + getQty(r), 0);
             }, 0);
         });
 
@@ -2562,7 +1975,7 @@
             // Shift total = sum of all qty in this shift
             const shiftTotal = equipments.reduce((total, eq) => {
                 return total + (shiftData[eq] || []).reduce(
-                    (s, r) => s + Number(r.quantity || 0), 0
+                    (s, r) => s + getQty(r), 0
                 );
             }, 0);
 
@@ -2610,10 +2023,9 @@
                         </td>
                         <td>${row.cargo_name || ''}</td>
                         <td>
-                            ${
-                                row.source_type === 'MBC'
-                                    ? row.barge_name
-                                    : (row.mv_name || '')
+                            ${row.source_type === 'MBC'
+                                ? row.barge_name
+                                : (row.mv_name || '')
                             }
                         </td>
                     `;
@@ -2628,7 +2040,7 @@
             html += `<tr class="equipment-total-row">`;
             equipments.forEach(eq => {
                 const t = (shiftData[eq] || []).reduce(
-                    (s, r) => s + Number(r.quantity || 0), 0
+                    (s, r) => s + getQty(r), 0
                 );
                 html += `
                 <td style="text-align:center; font-weight:700;">Total</td>
@@ -2646,7 +2058,7 @@
             <tr class="shift-total-row">
                 <td colspan="${equipments.length * 4}"
                     style="text-align:right; padding-right:20px;
-                           font-weight:700; background:#bdd7ee;">
+                           font-weight:700; background:#d1d5db;">
                     ${shiftKey} Total :
                     ${shiftTotal > 0
                     ? shiftTotal.toLocaleString('en-IN') + ' MT'
@@ -2660,32 +2072,43 @@
             if (isLastShift) {
 
                 //  // ── Per-equipment grand total row ─────────────────────────────────
-            html += `<tr style="background:#c6e0f5; font-weight:700; font-size:12px; color:#0c4a6e;">`;
-            html += `<td style="text-align:center; white-space:nowrap;">All Shifts</td>`;
- 
-            equipments.forEach(eq => {
-                const val = grandEqTotals[eq];
+                html += `<tr style="background:#e5e7eb; font-weight:700; font-size:12px; color:#374151;">`;
+
+                equipments.forEach((eq, idx) => {
+                    const val = grandEqTotals[eq];
+                    if (idx === 0) {
+                        html += `
+                        <td style="text-align:center; white-space:nowrap;">All Shifts</td>
+                        <td style="text-align:right;">
+                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                        </td>
+                        <td></td>
+                        <td></td>
+                    `;
+                    } else {
+                        html += `
+                        <td></td>
+                        <td style="text-align:right;">
+                            ${val > 0 ? val.toLocaleString('en-IN') : '-'}
+                        </td>
+                        <td></td>
+                        <td></td>
+                    `;
+                    }
+                });
+
+                html += `</tr>`;
+
+                // ── Grand overall total ───────────────────────────────────────────
                 html += `
-                    <td style="text-align:right;">
-                        ${val > 0 ? val.toLocaleString('en-IN') : '-'}
-                    </td>
-                    <td></td>
-                    <td></td>
-                `;
-            });
- 
-            html += `</tr>`;
- 
-            // ── Grand overall total ───────────────────────────────────────────
-            html += `
-                <tr style="background:#bdd7ee; font-weight:700;">
-                    <td colspan="${equipments.length * 4 + 1}"
-                        style="text-align:right; padding-right:20px; color:#0c4a6e; font-size:13px;">
+                <tr style="background:#d1d5db; font-weight:700;">
+                    <td colspan="${equipments.length * 4}"
+                        style="text-align:right; padding-right:20px; color:#374151; font-size:13px;">
                         Grand Total (All Shifts) :
                         ${grandOverall > 0
-                            ? grandOverall.toLocaleString('en-IN') + ' MT'
-                            : '— No discharge data in selected range —'
-                        }
+                        ? grandOverall.toLocaleString('en-IN') + ' MT'
+                        : '— No discharge data in selected range —'
+                    }
                     </td>
                 </tr>
             `;
