@@ -113,163 +113,6 @@ def login_required(f):
 
 # ── Data fetch 
 
-_STATUS_FILTERS = {
-    
-    'all': {
-
-'date_col': 'l.trip_start',
-
-'condition': """
-    (
-        -- IN TRANSIT
-        (
-            l.trip_start IS NOT NULL
-            AND TRIM(l.trip_start) <> ''
-            AND (
-                l.along_side_vessel IS NULL
-                OR TRIM(l.along_side_vessel) = ''
-            )
-        )
-
-        OR
-
-        -- CURRENTLY LOADING
-        (
-            l.commenced_loading IS NOT NULL
-            AND TRIM(l.commenced_loading) <> ''
-            AND (
-                l.completed_loading IS NULL
-                OR TRIM(l.completed_loading) = ''
-            )
-        )
-
-        OR
-
-        -- AT GULL ISLAND LOADED: cast off MV, not yet alongside berth
-        (
-            l.cast_off_mv IS NOT NULL
-            AND TRIM(l.cast_off_mv) <> ''
-            AND (
-                l.along_side_berth IS NULL
-                OR TRIM(l.along_side_berth) = ''
-            )
-        )
-
-        OR
-
-        -- WAITING AT JETTY: alongside berth, discharge not started
-        (
-            l.along_side_berth IS NOT NULL
-            AND TRIM(l.along_side_berth) <> ''
-            AND (
-                l.commence_discharge_berth IS NULL
-                OR TRIM(l.commence_discharge_berth) = ''
-            )
-        )
-
-        OR
-
-        -- UNDER DISCHARGE
-        (
-            l.commence_discharge_berth IS NOT NULL
-            AND TRIM(l.commence_discharge_berth) <> ''
-            AND (
-                l.completed_discharge_berth IS NULL
-                OR TRIM(l.completed_discharge_berth) = ''
-            )
-        )
-
-        OR
-
-        -- COMPLETED DISCHARGE
-        (
-            l.completed_discharge_berth IS NOT NULL
-            AND TRIM(l.completed_discharge_berth) <> ''
-        )
-    )
-    """
-    },
-
-'loaded_transit': {
-
-    'date_col': 'l.cast_off_mv',
-
-    'condition': """
-        l.cast_off_mv IS NOT NULL
-        AND TRIM(l.cast_off_mv) <> ''
-        AND (
-            l.along_side_berth IS NULL
-            OR TRIM(l.along_side_berth) = ''
-        )
-    """
-},
-
-'waiting_discharge': {
-
-    'date_col': 'l.along_side_berth',
-
-    'condition': """
-        l.along_side_berth IS NOT NULL
-        AND TRIM(l.along_side_berth) <> ''
-        AND (
-            l.commence_discharge_berth IS NULL
-            OR TRIM(l.commence_discharge_berth) = ''
-        )
-    """
-},
-
-    'currently_loading': {
-
-        'date_col': 'l.commenced_loading',
-
-        'condition': """
-            commenced_loading IS NOT NULL
-            AND TRIM(commenced_loading) <> ''
-            AND (
-                l.completed_loading IS NULL
-                OR TRIM(l.completed_loading) = ''
-            )
-        """
-    },
-
-    'loaded_waiting': {
-
-        'date_col': 'l.completed_loading',
-
-        'condition': """
-            completed_loading IS NOT NULL
-            AND TRIM(completed_loading) <> ''
-            AND (
-                l.commence_discharge_berth IS NULL
-                OR TRIM(l.commence_discharge_berth) = ''
-            )
-        """
-    },
-
-    'under_discharge': {
-
-        'date_col': 'l.commence_discharge_berth',
-
-        'condition': """
-            l.commence_discharge_berth IS NOT NULL
-            AND TRIM(l.commence_discharge_berth) <> ''
-            AND (
-                l.completed_discharge_berth IS NULL
-                OR TRIM(l.completed_discharge_berth) = ''
-            )
-        """
-    },
-
-    'completed_discharge': {
-
-        'date_col': 'l.completed_discharge_berth',
-
-        'condition': """
-            l.completed_discharge_berth IS NOT NULL
-            AND TRIM(l.completed_discharge_berth) <> ''
-        """
-    }
-}
 
 
 
@@ -844,8 +687,7 @@ from openpyxl.utils import get_column_letter
 
 def _write_summary_sheet(ws, rows):
 
-    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-    from openpyxl.utils import get_column_letter
+
 
     thin = Side(style='thin', color='D0D7E2')
 
@@ -1107,8 +949,7 @@ def _build_all_excel(
 #  Do NOT touch _write_summary_sheet (Barge Report) — it stays as-is.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-from openpyxl.utils import get_column_letter
+
 from collections import defaultdict
 
 # ── Row fill colours (same as Barge Report legend) ───────────────────────────
@@ -1164,8 +1005,7 @@ def _safe_float(val):
 
 def _write_mbc_sheet(ws, rows):
  
-    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-    from openpyxl.utils import get_column_letter
+    
  
     thin      = Side(style='thin', color='D0D7E2')
     border    = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -1266,10 +1106,7 @@ def _write_mbc_sheet(ws, rows):
             _fmt_dt(g(row, 'sailed_out_load_port')),
             g(row,  'vessel_unloaded_by',  'unloaded_by'),
             g(row,  'unloaded_berth',      'vessel_unloading_berth'),
-            _calc_tat(
-                g(row, 'trip_start',   'arrived_load_port'),
-                g(row, 'mbc_cast_off', 'vessel_cast_off'),
-            ),
+            '',  # TAT — blank for MBC
         ]
         for ci, (val, (_, _, align)) in enumerate(zip(values, COLS), 1):
             c = ws.cell(row=ridx, column=ci)
@@ -1322,8 +1159,7 @@ def get_filtered_mbc_rows(
 #  DROP-IN REPLACEMENT  for  _write_discharge_sheet  ONLY
 
 
-from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
-from openpyxl.utils import get_column_letter
+
 from collections import defaultdict
 
 
@@ -1376,13 +1212,25 @@ def _write_discharge_sheet(ws, rows):
     # grand_col     : 2 + len(EQUIPMENTS)*4
     grand_col = 2 + len(EQUIPMENTS) * 4
 
+    
     # ── column widths ──────────────────────────────────────────────────────────
-    ws.column_dimensions['A'].width = 16
+    ws.column_dimensions['A'].width = 18
     for col in range(2, grand_col + 2):
-        ws.column_dimensions[get_column_letter(col)].width = 14
+        # Every 4th col starting at col 2 = Barge/MBC col → wider
+        offset = (col - 2) % 4
+        if offset == 0:   # Barge / MBC
+            ws.column_dimensions[get_column_letter(col)].width = 22
+        elif offset == 1: # Qty (MT)
+            ws.column_dimensions[get_column_letter(col)].width = 12
+        elif offset == 2: # Cargo
+            ws.column_dimensions[get_column_letter(col)].width = 20
+        else:             # MV Name
+            ws.column_dimensions[get_column_letter(col)].width = 20
+    # grand_col (Total Discharge)
+    ws.column_dimensions[get_column_letter(grand_col)].width = 16
 
-    ws.row_dimensions[1].height = 22
-    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[1].height = 28
+    ws.row_dimensions[2].height = 24
 
     # ── Row 1-2 col A: "Shift / Details" ──────────────────────────────────────
     ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
@@ -1416,7 +1264,7 @@ def _write_discharge_sheet(ws, rows):
             c.value     = txt
             c.font      = bold
             c.fill      = fill_grey
-            c.alignment = _CTR
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             c.border    = border
 
         cur_col += 4
@@ -1441,6 +1289,8 @@ def _write_discharge_sheet(ws, rows):
         'A SHIFT': 'A Shift', 'B SHIFT': 'B Shift', 'C SHIFT': 'C Shift',
     }
 
+    agg = {}
+
     for row in rows:
         raw = (row.get('shift') or '').strip().upper()
         key = _SHIFT_KEY.get(raw)
@@ -1450,8 +1300,25 @@ def _write_discharge_sheet(ws, rows):
         if not eq_val:
             continue
         for e in [x.strip() for x in eq_val.split(',') if x.strip()]:
-            if e in shift_map[key]:
-                shift_map[key][e].append(row)
+            if e not in shift_map[key]:
+                continue
+            barge  = row.get('barge_name', '')
+            cargo  = row.get('cargo_name') or row.get('cargo_type', '')
+            mv     = row.get('mv_name') or row.get('mother_vessel_name', '')
+            qty    = _safe_float(row.get('quantity') or row.get('qty_mt'))
+            agg_key = (key, e, barge, cargo, mv)
+            if agg_key in agg:
+                agg[agg_key]['quantity'] += qty
+            else:
+                agg[agg_key] = {
+                    'barge_name': barge,
+                    'cargo_name': cargo,
+                    'quantity':   qty,
+                    'mv_name':    mv,
+                }
+
+    for (shift_key, eq, barge, cargo, mv), item in agg.items():
+        shift_map[shift_key][eq].append(item)
 
     # ── Write shift blocks ────────────────────────────────────────────────────
     start_row = 3
@@ -1474,7 +1341,7 @@ def _write_discharge_sheet(ws, rows):
         # Data rows
         for dr in range(DATA_ROWS):
             r = start_row + dr
-            ws.row_dimensions[r].height = 18
+            ws.row_dimensions[r].height = 28
 
             for eq in EQUIPMENTS:
                 bc    = eq_start_cols[eq]
@@ -1498,7 +1365,11 @@ def _write_discharge_sheet(ws, rows):
                     c.value     = v
                     c.font      = norm
                     c.border    = border
-                    c.alignment = _RGT if off == 1 else _LFT
+                    c.alignment = Alignment(
+                        horizontal='right' if off == 1 else 'left',
+                        vertical='center',
+                        wrap_text=True
+                    )
 
             # grand_col data cell (blank for data rows)
             c = ws.cell(r, grand_col)
@@ -1506,7 +1377,7 @@ def _write_discharge_sheet(ws, rows):
 
         # Shift total row
         total_row = start_row + DATA_ROWS
-        ws.row_dimensions[total_row].height = 18
+        ws.row_dimensions[total_row].height = 22
 
         c = ws.cell(total_row, 1)
         c.value     = f'{shift} Total'
@@ -1548,7 +1419,7 @@ def _write_discharge_sheet(ws, rows):
         start_row += BLOCK_SIZE
 
     # ── All Shift Total row ───────────────────────────────────────────────────
-    ws.row_dimensions[start_row].height = 20
+    ws.row_dimensions[start_row].height = 24
 
     c = ws.cell(start_row, 1)
     c.value     = 'All Shift Total'
@@ -2042,20 +1913,7 @@ def get_mbc_data():
     conn = get_db()
     cur  = get_cursor(conn)
 
-    column_map = {
-        'trip_start':                 'lp.arrived_load_port',
-        'along_side_vessel':          'lp.alongside_berth',
-        'commenced_loading':          'lp.loading_commenced',
-        'completed_loading':          'lp.loading_completed',
-        'cast_off_mv':                'lp.cast_off_load_port',
-        'anchored_gull_island_empty': 'dp.arrival_gull_island',
-        'aweigh_gull_island_empty':   'dp.departure_gull_island',
-        'amf_at_port':                'dp.vessel_arrival_port',
-        'along_side_berth':           'dp.vessel_unloading_berth',
-        'commence_discharge_berth':   'dp.unloading_commenced',
-        'completed_discharge_berth':  'dp.unloading_completed',
-        'cast_off_port':              'dp.vessel_cast_off'
-    }
+
 
     # ── Fetch ALL rows — no date casting in SQL to avoid corrupt data crash ──
     query = """
@@ -2279,6 +2137,9 @@ def get_shift_data():
         for eq in equipments:
             shift_map[shift][eq] = []
 
+    # ── First pass: aggregate by (shift, equipment, barge_name, cargo_name, mv_name) ──
+    agg = {}  # key → combined item
+
     for row in rows:
         raw_shift = (row['shift'] or '').strip().upper()
 
@@ -2293,16 +2154,30 @@ def get_shift_data():
 
         equipment = (row['equipment_name'] or '').strip()
 
-        # ── Equipment not in list → skip ──────────────────────
         if equipment not in shift_map[shift_key]:
             continue
 
-        shift_map[shift_key][equipment].append({
-            'barge_name': row['barge_name'] or '',
-            'cargo_name': row['cargo_name'] or '',
-            'quantity':   float(row['quantity'] or 0),
-            'mv_name':    row['mv_name']    or '',
-            'source_type': row['source_type'] or '',
-        })
+        barge   = row['barge_name'] or ''
+        cargo   = row['cargo_name'] or ''
+        mv      = row['mv_name']    or ''
+        source  = row['source_type'] or ''
+        qty     = float(row['quantity'] or 0)
+
+        key = (shift_key, equipment, barge, cargo, mv)
+
+        if key in agg:
+            agg[key]['quantity'] += qty
+        else:
+            agg[key] = {
+                'barge_name':  barge,
+                'cargo_name':  cargo,
+                'quantity':    qty,
+                'mv_name':     mv,
+                'source_type': source,
+            }
+
+    # ── Second pass: populate shift_map from aggregated data ──
+    for (shift_key, equipment, barge, cargo, mv), item in agg.items():
+        shift_map[shift_key][equipment].append(item)
 
     return jsonify(shift_map)

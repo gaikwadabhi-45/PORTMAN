@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/exporting.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/export-data.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highcharts/11.4.1/modules/drilldown.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <!-- WebDataRocks ↔ Highcharts connector -->
 <script src="https://cdn.webdatarocks.com/latest/webdatarocks.highcharts.js"></script>
@@ -661,6 +662,25 @@ $(document).on('change', '.material-po-input', async function () {
     }
 });
 function validateDates(fromDate, toDate) {
+
+        const cutoffDate = '2026-05-01';
+
+    if (fromDate && fromDate < cutoffDate) {
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Report Not Available',
+            html: `
+                <b>Cutoff Date:</b> 01-May-2026<br><br>
+                Reports before this date are not available.
+            `,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#4a90d9',
+            iconColor: '#44B5E6'
+        });
+
+        return false;
+    }
 
     if (!fromDate) {
         alert('From Date is required');
