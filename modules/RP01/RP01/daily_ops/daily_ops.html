@@ -381,43 +381,132 @@ document.addEventListener('click', function(e) {
 
 /* ── FY Matrix Preview ─────────────────────────────────────────────────── */
 
+function getCurrentFyStart() {
+    const now = new Date();
+    return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function getCurrentFyLabel() {
+    const start = getCurrentFyStart();
+    return `${start}-${start + 1}`;
+}
+
+function parseVal(v) {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+}
+
 function renderFYPreview(fyData) {
     const host = document.getElementById('fy-cutoff-preview');
-    const fys = Object.keys(fyData).sort();
-    if (fys.length === 0) {
-        host.innerHTML = '<p class="cutoff-hint">No snapshot yet. Pick a cutoff date and click Save.</p>';
-        return;
-    }
+    const currentFyLabel = getCurrentFyLabel();
+    const firstFyStart = 2012;
+    const lastFyStart = getCurrentFyStart();
+
     const typeSet = new Set();
-    fys.forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
-    const types = Array.from(typeSet).sort();
+    Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
+    let types = Array.from(typeSet).sort();
+    if (types.length === 0) {
+        types = ['CBRM', 'CLINKER', 'FLUXES', 'IBRM', 'OTHERS'];
+    }
 
     const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    const parseVal = v => {
+        const x = Number(v);
+        return Number.isFinite(x) ? x : 0;
+    };
 
     const colTotals = {};
-    types.forEach(t => colTotals[t] = 0);
+    types.forEach(t => { colTotals[t] = 0; });
     let grand = 0;
 
     let html = '<table class="cutoff-grid"><thead><tr><th>FY</th>';
     types.forEach(t => { html += `<th>${t}</th>`; });
     html += '<th>Total</th></tr></thead><tbody>';
 
-    fys.forEach(fy => {
+    for (let fyStart = firstFyStart; fyStart <= lastFyStart; fyStart++) {
+        const fy = `${fyStart}-${fyStart + 1}`;
+        const isCurrent = fy === currentFyLabel;
         let rowTotal = 0;
-        html += `<tr><td>${fy}</td>`;
+        html += `<tr data-fy="${fy}"${isCurrent ? ' class="current-fy-row"' : ''}><td>${fy}</td>`;
+
         types.forEach(t => {
-            const v = fyData[fy][t] || 0;
-            rowTotal += v; colTotals[t] += v; grand += v;
-            html += `<td style="text-align:right">${fmt(v)}</td>`;
+            const value = parseVal((fyData[fy] || {})[t]);
+            if (isCurrent) {
+                html += `\
+                    <td>\
+                        <input\
+                            type="number"\
+                            min="0"\
+                            step="1"\
+                            data-fy="${fy}"\
+                            data-cargo="${t}"\
+                            value="${value ? value : ''}"\
+                        />\
+                    </td>`;
+                rowTotal += value;
+                colTotals[t] += value;
+            } else {
+                rowTotal += value;
+                colTotals[t] += value;
+                html += `<td data-cargo="${t}" data-value="${value}" style="text-align:right">${fmt(value)}</td>`;
+            }
         });
-        html += `<td style="text-align:right"><b>${fmt(rowTotal)}</b></td></tr>`;
-    });
+
+        html += `<td style="text-align:right"><b class="fy-row-total">${fmt(rowTotal)}</b></td></tr>`;
+        grand += rowTotal;
+    }
 
     html += '<tr style="font-weight:bold;background:#f2f2f2"><td>Total</td>';
-    types.forEach(t => { html += `<td style="text-align:right">${fmt(colTotals[t])}</td>`; });
-    html += `<td style="text-align:right">${fmt(grand)}</td></tr>`;
+    types.forEach(t => {
+        html += `<td data-total-cargo="${t}" style="text-align:right">${fmt(colTotals[t])}</td>`;
+    });
+    html += `<td data-grand-total style="text-align:right">${fmt(grand)}</td></tr>`;
     html += '</tbody></table>';
     host.innerHTML = html;
+
+    host.querySelectorAll('input[data-fy][data-cargo]').forEach(input => {
+        input.addEventListener('input', updateFYTotals);
+    });
+}
+
+function updateFYTotals() {
+    const host = document.getElementById('fy-cutoff-preview');
+    const headerCells = host.querySelectorAll('thead th');
+    const types = Array.from(headerCells).slice(1, -1).map(th => th.textContent);
+    const rows = host.querySelectorAll('tbody tr[data-fy]');
+
+    const colTotals = {};
+    types.forEach(t => { colTotals[t] = 0; });
+    let grand = 0;
+
+    rows.forEach(row => {
+        let rowTotal = 0;
+        const fy = row.dataset.fy;
+        types.forEach(t => {
+            const input = row.querySelector(`input[data-fy="${fy}"][data-cargo="${t}"]`);
+            const cell = row.querySelector(`td[data-cargo="${t}"]`);
+            const value = input ? parseVal(input.value) : parseVal(cell.dataset.value);
+            rowTotal += value;
+            colTotals[t] += value;
+        });
+
+        const totalEl = row.querySelector('.fy-row-total');
+        if (totalEl) {
+            totalEl.textContent = rowTotal.toLocaleString('en-IN');
+        }
+        grand += rowTotal;
+    });
+
+    types.forEach(t => {
+        const totalCell = host.querySelector(`td[data-total-cargo="${t}"]`);
+        if (totalCell) {
+            totalCell.textContent = colTotals[t].toLocaleString('en-IN');
+        }
+    });
+    const grandCell = host.querySelector('td[data-grand-total]');
+    if (grandCell) {
+        grandCell.textContent = grand.toLocaleString('en-IN');
+    }
 }
 
 /* ── Save ──────────────────────────────────────────────────────────────── */
@@ -429,6 +518,16 @@ function saveCutoff() {
         return;
     }
 
+    const currentFyLabel = getCurrentFyLabel();
+    const currentFyValues = {};
+    document.querySelectorAll(`#fy-cutoff-preview input[data-fy="${currentFyLabel}"]`).forEach(input => {
+        const cargo = input.dataset.cargo;
+        const value = input.value.trim();
+        if (value !== '') {
+            currentFyValues[cargo] = Number(value);
+        }
+    });
+
     const btn = document.getElementById('save-cutoff-btn');
     btn.disabled = true;
     btn.textContent = 'Computing\u2026';
@@ -436,7 +535,7 @@ function saveCutoff() {
     fetch('/api/module/RP01/daily-ops/cutoff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cutoff_date: cutoffDate })
+        body: JSON.stringify({ cutoff_date: cutoffDate, current_fy_values: currentFyValues })
     })
     .then(r => {
         if (r.status === 403) throw new Error('Admin access required.');

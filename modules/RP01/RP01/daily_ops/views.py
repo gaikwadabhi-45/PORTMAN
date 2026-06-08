@@ -117,13 +117,14 @@ def daily_ops_cutoff_save():
     if not session.get('is_admin'):
         return Response('Admin access required', status=403)
 
-    data        = request.get_json(force=True)
-    cutoff_date = data.get('cutoff_date', '')
+    data              = request.get_json(force=True)
+    cutoff_date       = data.get('cutoff_date', '')
+    current_fy_values = data.get('current_fy_values') or {}
 
     if not cutoff_date:
         return Response('cutoff_date is required', status=400)
 
-    fy_throughput = _compute_fy_throughput(cutoff_date)
+    fy_throughput = _compute_fy_throughput(cutoff_date, current_fy_values)
     values_json   = json.dumps({'fy_throughput': fy_throughput})
     user          = session.get('username', '')
 
@@ -142,7 +143,7 @@ def daily_ops_cutoff_save():
 
 # ── FY throughput snapshot ───────────────────────────────────────────────────
 
-def _compute_fy_throughput(cutoff_date):
+def _compute_fy_throughput(cutoff_date, current_fy_values=None):
     """Aggregate quantity by (financial year, cargo type) up to cutoff_date.
 
     Unions historical (rp01_historical_lueu) and live (lueu_lines) rows, maps
@@ -219,9 +220,19 @@ def _compute_fy_throughput(cutoff_date):
     # Current FY should remain empty (user enters values manually)
     current_fy_label = f"{current_fy_start}-{current_fy_start + 1}"
     if current_fy_label in fy_data:
-        # Remove current FY data so user can enter it manually
         del fy_data[current_fy_label]
-    
+
+    if current_fy_values:
+        cleaned_values = {}
+        for cargo_type, qty in (current_fy_values or {}).items():
+            try:
+                cleaned_qty = float(qty)
+            except (TypeError, ValueError):
+                continue
+            cleaned_values[cargo_type] = cleaned_qty
+        if cleaned_values:
+            fy_data[current_fy_label] = cleaned_values
+
     return fy_data
 
 
