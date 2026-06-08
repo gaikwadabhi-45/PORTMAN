@@ -129,3 +129,14 @@ def test_compute_partial_billed_defaults_to_full_balance_when_missing():
 
 def test_compute_partial_billed_rounds_to_three_decimals():
     assert cutover.compute_partial_billed(10, 0, 3.3335) == (3.334, 0)
+
+
+def test_compute_partial_billed_negative_qty_defaults_to_balance():
+    # negative bill_qty is treated like None/0 -> mark the whole remaining balance
+    assert cutover.compute_partial_billed(100, 30, -5) == (100.0, 1)
+
+
+def test_compute_partial_billed_stale_already_over_total_never_negative():
+    # legacy inconsistency: already billed > total -> balance clamps to 0,
+    # nothing more is billed and the line reads as fully billed
+    assert cutover.compute_partial_billed(100, 120, 10) == (120.0, 1)

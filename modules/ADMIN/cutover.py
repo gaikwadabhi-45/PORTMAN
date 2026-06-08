@@ -43,7 +43,7 @@ def compute_partial_billed(total, already, bill_qty):
     total = float(total or 0)
     already = float(already or 0)
     balance = max(total - already, 0)
-    if bill_qty is None or float(bill_qty) <= 0:
+    if bill_qty in (None, '') or float(bill_qty) <= 0:
         bill_qty = balance
     else:
         bill_qty = min(float(bill_qty), balance)
