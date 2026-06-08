@@ -2391,7 +2391,7 @@ def _build_excel_a4(
     # =====================================================
     # TIDE - DHARAMTAR PORT
     # =====================================================
-
+    dashboard_row = current_row
     tide_start_row = data_row + 3
     TIDE_COL = 12   # Same column as cargo availability
 
@@ -2475,7 +2475,7 @@ def _build_excel_a4(
 
         row_no += 1
 
-    current_row = max(current_row, row_no + 2)
+    # current_row = max(current_row, row_no + 2)
 
     # =====================================================
     # PORT THROUGHPUT
@@ -2659,7 +2659,7 @@ def _build_excel_a4(
     data_start += 1
 
     # -- 8. Advance current_row ----------------------------------------------------
-    current_row = max(current_row, data_start + 2)
+    # current_row = max(current_row, data_start + 2)
         
 
     # =====================================================
@@ -3438,7 +3438,7 @@ def _build_excel_a4(
     # =====================================================
     # UPCOMING MOTHER VESSELS (MBCs)
     # =====================================================
-
+    current_row = dashboard_row
     upcoming_mbcs = upcoming_mbcs or []
 
     # Column widths for MBC section
