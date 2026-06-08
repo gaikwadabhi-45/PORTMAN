@@ -26,9 +26,14 @@ def _fill(hex_color):
     return PatternFill('solid', fgColor=hex_color)
 
 
-def _font(bold=False, size=XL_NORM_SZ):
-    return Font(name='Calibri', bold=bold, size=size)
-
+# def _font(bold=False, size=XL_NORM_SZ):
+#     return Font(name='Calibri', bold=bold, size=size)
+def _font(bold=False):
+    return Font(
+        name="Calibri",
+        size=14,
+        bold=bold
+    )
 
 def _parse_dt(val):
     if not val:
@@ -2427,14 +2432,13 @@ def _build_excel_a4(
 
     # Title — merged across TIME + TIDE columns
     safe_merge(ws, tide_start_row, TIDE_COL, tide_start_row, TIDE_COL + 1)
-    c = safe_cell(ws, tide_start_row, TIDE_COL, "Tide - Dharamtar Port")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
-    ws.row_dimensions[tide_start_row].height = 18
     for cc in range(TIDE_COL, TIDE_COL + 2):
+        ws.cell(tide_start_row, cc).fill   = _fill("D9EAF7")
         ws.cell(tide_start_row, cc).border = _bdr
+        ws.cell(tide_start_row, cc).font   = _font(bold=True)
+    ws.cell(tide_start_row, TIDE_COL).value     = "Tide - Dharamtar Port"
+    ws.cell(tide_start_row, TIDE_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[tide_start_row].height    = 18
 
     # Header Row
     header_row = tide_start_row + 1
@@ -2486,19 +2490,13 @@ def _build_excel_a4(
     ws.column_dimensions[get_column_letter(PT_COL)].width = 24
     ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 12
 
-    safe_merge(
-        ws,
-        tide_start_row,
-        PT_COL,
-        tide_start_row,
-        PT_COL + 1
-    )
-
-    c = safe_cell(ws, tide_start_row, PT_COL, "Port Throughput")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    safe_merge(ws, tide_start_row, PT_COL, tide_start_row, PT_COL + 1)
+    for cc in range(PT_COL, PT_COL + 2):
+        ws.cell(tide_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(tide_start_row, cc).border = _bdr
+        ws.cell(tide_start_row, cc).font   = _font(bold=True)
+    ws.cell(tide_start_row, PT_COL).value     = "Port Throughput"
+    ws.cell(tide_start_row, PT_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     port_throughput = port_throughput or {}
 
@@ -2685,24 +2683,13 @@ def _build_excel_a4(
     # -----------------------------
     # Title
     # -----------------------------
-    safe_merge(
-        ws,
-        cargo_start_row,
-        CARGO_COL,
-        cargo_start_row,
-        CARGO_COL + 2
-    )
-
-    c = safe_cell(
-        ws,
-        cargo_start_row,
-        CARGO_COL,
-        "Cargo Handled"
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    safe_merge(ws, cargo_start_row, CARGO_COL, cargo_start_row, CARGO_COL + 2)
+    for cc in range(CARGO_COL, CARGO_COL + 3):
+        ws.cell(cargo_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(cargo_start_row, cc).border = _bdr
+        ws.cell(cargo_start_row, cc).font   = _font(bold=True)
+    ws.cell(cargo_start_row, CARGO_COL).value     = "Cargo Handled"
+    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     r = cargo_start_row + 1
 
@@ -2839,24 +2826,15 @@ def _build_excel_a4(
     # -----------------------------
     # Title
     # -----------------------------
-    safe_merge(
-        ws,
-        THR_ROW,
-        THR_COL,
-        THR_ROW,
-        THR_COL + 3
-    )
-
-    c = safe_cell(
-        ws,
-        THR_ROW,
-        THR_COL,
-        "Cargo Wise Throughput"
-    )
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.fill = _fill("D9EAF7")
-    c.border = _bdr
+    safe_merge(ws, THR_ROW, THR_COL, THR_ROW, THR_COL + 3)
+    for cc in range(THR_COL, THR_COL + 4):
+        ws.cell(THR_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(THR_ROW, cc).border = _bdr
+        ws.cell(THR_ROW, cc).font   = _font(bold=True)
+    ws.cell(THR_ROW, THR_COL).value     = "Cargo Wise Throughput"
+    ws.cell(THR_ROW, THR_COL).alignment = Alignment(horizontal="center", vertical="center")
+    for cc in range(THR_COL, THR_COL + 4):
+        ws.cell(THR_ROW, cc).border = _bdr
 
     # -----------------------------
     # Header
@@ -2984,24 +2962,13 @@ def _build_excel_a4(
     # -----------------------------------
     # Title
     # -----------------------------------
-    safe_merge(
-        ws,
-        RAINFALL_ROW,
-        RAINFALL_COL,
-        RAINFALL_ROW,
-        RAINFALL_COL + 3
-    )
-
-    c = safe_cell(
-        ws,
-        RAINFALL_ROW,
-        RAINFALL_COL,
-        "Rainfall Details"
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    safe_merge(ws, RAINFALL_ROW, RAINFALL_COL, RAINFALL_ROW, RAINFALL_COL + 3)
+    for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
+        ws.cell(RAINFALL_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(RAINFALL_ROW, cc).border = _bdr
+        ws.cell(RAINFALL_ROW, cc).font   = _font(bold=True)
+    ws.cell(RAINFALL_ROW, RAINFALL_COL).value     = "Rainfall Details"
+    ws.cell(RAINFALL_ROW, RAINFALL_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     # -----------------------------------
     # Header
@@ -3136,24 +3103,13 @@ def _build_excel_a4(
     # -----------------------------------
     # Title
     # -----------------------------------
-    safe_merge(
-        ws,
-        STAT_ROW,
-        STAT_COL,
-        STAT_ROW,
-        STAT_COL + 2
-    )
-
-    c = safe_cell(
-        ws,
-        STAT_ROW,
-        STAT_COL,
-        "Cargo Statistics"
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    safe_merge(ws, STAT_ROW, STAT_COL, STAT_ROW, STAT_COL + 2)
+    for cc in range(STAT_COL, STAT_COL + 3):
+        ws.cell(STAT_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(STAT_ROW, cc).border = _bdr
+        ws.cell(STAT_ROW, cc).font   = _font(bold=True)
+    ws.cell(STAT_ROW, STAT_COL).value     = "Cargo Statistics"
+    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     # -----------------------------------
     # Header
@@ -3238,29 +3194,14 @@ def _build_excel_a4(
     # -----------------------------
     # Title
     # -----------------------------
-    safe_merge(
-        ws,
-        BF_ROW,
-        BF_COL,
-        BF_ROW,
-        BF_COL + 2
-    )
-
-    c = safe_cell(
-        ws,
-        BF_ROW,
-        BF_COL,
-        "BF Production Details"
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-    c.border = _bdr
-
-    ws.row_dimensions[BF_ROW].height = 24
+    safe_merge(ws, BF_ROW, BF_COL, BF_ROW, BF_COL + 2)
+    for cc in range(BF_COL, BF_COL + 3):
+        ws.cell(BF_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(BF_ROW, cc).border = _bdr
+        ws.cell(BF_ROW, cc).font   = _font(bold=True)
+    ws.cell(BF_ROW, BF_COL).value     = "BF Production Details"
+    ws.cell(BF_ROW, BF_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[BF_ROW].height  = 24
 
     # -----------------------------
     # Header Row
@@ -3351,24 +3292,17 @@ def _build_excel_a4(
     # -----------------------------
     # Title
     # -----------------------------
-    safe_merge(
-        ws,
-        RM_ROW,
-        RM_COL,
-        RM_ROW,
-        RM_COL + 1
+    # RM Stock Details title
+    ws.merge_cells(
+        start_row=RM_ROW, start_column=RM_COL,
+        end_row=RM_ROW, end_column=RM_COL + 1
     )
-
-    c = safe_cell(
-        ws,
-        RM_ROW,
-        RM_COL,
-        "RM Stock Details"
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    for cc in range(RM_COL, RM_COL + 2):
+        ws.cell(RM_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(RM_ROW, cc).border = _bdr
+        ws.cell(RM_ROW, cc).font   = _font(bold=True)
+    ws.cell(RM_ROW, RM_COL).value     = "RM Stock Details"
+    ws.cell(RM_ROW, RM_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     # -----------------------------
     # Header
