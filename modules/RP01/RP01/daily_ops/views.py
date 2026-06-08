@@ -149,6 +149,9 @@ def _compute_fy_throughput(cutoff_date):
     cargo_name -> cargo_type via the VCG01 vessel_cargo master, buckets by
     April-start financial year, and returns {fy_label: {cargo_type: qty}}.
     The cutoff FY is naturally partial (entry_date <= cutoff_date).
+    
+    Ensures all fiscal years from 2012 to the current fiscal year are displayed,
+    with zero values for years that have no data.
     """
     conn = get_db()
     cur  = get_cursor(conn)
@@ -191,7 +194,29 @@ def _compute_fy_throughput(cutoff_date):
 
     rows = cur.fetchall()
     conn.close()
-    return build_fy_throughput(rows)
+    fy_data = build_fy_throughput(rows)
+    
+    # Ensure all years from 2012 to current FY are present
+    current_year = date.today().year
+    current_month = date.today().month
+    current_fy_start = current_year if current_month >= 4 else current_year - 1
+    
+    # Get all cargo types from the data
+    all_cargo_types = set()
+    for fy_dict in fy_data.values():
+        all_cargo_types.update(fy_dict.keys())
+    
+    # Fill in missing years with zeros
+    for fy_start in range(2012, current_fy_start + 1):
+        fy_label = f"{fy_start}-{fy_start + 1}"
+        if fy_label not in fy_data:
+            fy_data[fy_label] = {cargo_type: 0.0 for cargo_type in all_cargo_types}
+        else:
+            # Ensure all cargo types exist for this year, even with 0 value
+            for cargo_type in all_cargo_types:
+                fy_data[fy_label].setdefault(cargo_type, 0.0)
+    
+    return fy_data
 
 
 # ── Data fetchers ───────────────────────────────────────────────────────────
