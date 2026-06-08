@@ -196,7 +196,7 @@ def _compute_fy_throughput(cutoff_date):
     conn.close()
     fy_data = build_fy_throughput(rows)
     
-    # Ensure all years from 2012 to current FY are present
+    # Ensure all years from 2012 to prior FY are present
     current_year = date.today().year
     current_month = date.today().month
     current_fy_start = current_year if current_month >= 4 else current_year - 1
@@ -206,8 +206,8 @@ def _compute_fy_throughput(cutoff_date):
     for fy_dict in fy_data.values():
         all_cargo_types.update(fy_dict.keys())
     
-    # Fill in missing years with zeros
-    for fy_start in range(2012, current_fy_start + 1):
+    # Fill in missing years with zeros (excluding current FY, which user enters manually)
+    for fy_start in range(2012, current_fy_start):
         fy_label = f"{fy_start}-{fy_start + 1}"
         if fy_label not in fy_data:
             fy_data[fy_label] = {cargo_type: 0.0 for cargo_type in all_cargo_types}
@@ -215,6 +215,12 @@ def _compute_fy_throughput(cutoff_date):
             # Ensure all cargo types exist for this year, even with 0 value
             for cargo_type in all_cargo_types:
                 fy_data[fy_label].setdefault(cargo_type, 0.0)
+    
+    # Current FY should remain empty (user enters values manually)
+    current_fy_label = f"{current_fy_start}-{current_fy_start + 1}"
+    if current_fy_label in fy_data:
+        # Remove current FY data so user can enter it manually
+        del fy_data[current_fy_label]
     
     return fy_data
 
