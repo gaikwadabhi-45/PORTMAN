@@ -2179,21 +2179,102 @@ async function cutSetBillSeed() {
 async function cutLoadBillables() {
     const type = document.getElementById('cut-cust-type').value;
     const id = document.getElementById('cut-cust-id').value;
-    const r = await fetch(`/api/module/FIN01/customer-billables/${type}/${id}`);
-    const data = await r.json();
+    const host = document.getElementById('cut-billables');
+    if (!id) { host.innerHTML = '<p class="cut-muted">Select a customer/agent and click Load items.</p>'; return; }
+    host.innerHTML = '<p class="cut-muted">Loading…</p>';
+    let data;
+    try {
+        data = await (await fetch(`/api/module/FIN01/customer-billables/${type}/${id}`)).json();
+    } catch (e) { host.innerHTML = '<p class="cut-muted">Failed to load items.</p>'; return; }
     const cargo = data.cargo_handling || [];
     const svcs = data.other_services || [];
-    let html = '';
-    if (cargo.length || svcs.length) {
-        html += '<label style="font-weight:600"><input type="checkbox" id="cut-select-all" onclick="cutToggleAll(this)"> Select all</label><br><br>';
+
+    let html = '<h4 class="cut-subhead">Cargo</h4>';
+    if (!cargo.length) {
+        html += '<p class="cut-muted">No unbilled cargo for this customer.</p>';
+    } else {
+        html += '<div class="cut-table-wrap"><table class="admin-table cut-cargo-table"><thead><tr>'
+            + '<th><input type="checkbox" id="cut-select-all" onclick="cutToggleAll(this)"></th>'
+            + '<th>Source</th><th>Status</th><th>Service</th><th>Cargo</th><th>Proof Docs</th>'
+            + '<th>BL Date</th><th class="num">BL Qty</th><th class="num">Billed</th>'
+            + '<th class="num">Balance</th><th class="num">Bill Qty</th><th class="num">Rate</th>'
+            + '<th class="num">Amount</th></tr></thead><tbody>';
+        cargo.forEach(c => {
+            const total = Number(c.total_quantity || 0);
+            const billed = Number(c.billed_quantity || 0);
+            const balance = Number(c.billable_quantity || 0);
+            const uom = c.uom || '';
+            const tag = c.cargo_source_type === 'VCN_IMPORT' ? 'Import'
+                      : c.cargo_source_type === 'VCN_EXPORT' ? 'Export' : 'MBC';
+            const chip = c.is_billable ? 'cut-chip-ok' : 'cut-chip-block';
+            html += `<tr>
+                <td><input type="checkbox" class="cut-cargo" data-st="${c.cargo_source_type}" data-id="${c.cargo_source_id}"></td>
+                <td>${c.doc_label || ''} <span class="cut-tag">${tag}</span></td>
+                <td><span class="cut-chip ${chip}">${c.doc_status || '—'}</span></td>
+                <td>${c.service_name || ''}</td>
+                <td>${c.cargo_name || ''}</td>
+                <td>${cutProofCell(c)}</td>
+                <td>${c.bl_date || ''}</td>
+                <td class="num">${total} ${uom}</td>
+                <td class="num">${billed}</td>
+                <td class="num">${balance}</td>
+                <td class="num"><input type="number" class="cut-billqty" min="0" max="${balance}" step="any" value="${balance}" oninput="cutCalcAmount(this)"></td>
+                <td class="num"><input type="number" class="cut-rate" min="0" step="any" placeholder="0" oninput="cutCalcAmount(this)"></td>
+                <td class="num cut-amount">0.00</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
     }
-    html += '<b>Cargo</b><br>';
-    html += cargo.map(c =>
-        `<label><input type="checkbox" class="cut-cargo" data-st="${c.cargo_source_type}" data-id="${c.cargo_source_id}"> ${c.doc_label||''} &mdash; ${c.cargo_name||''} (${c.billable_quantity})</label><br>`).join('');
-    html += '<br><b>Services</b><br>';
-    html += svcs.map(s =>
-        `<label><input type="checkbox" class="cut-svc" data-id="${s.id}"> ${s.service_name||''} (${s.id})</label><br>`).join('');
-    document.getElementById('cut-billables').innerHTML = html;
+
+    html += '<h4 class="cut-subhead">Other Services</h4>';
+    if (!svcs.length) {
+        html += '<p class="cut-muted">No unbilled services for this customer.</p>';
+    } else {
+        html += '<div class="cut-table-wrap"><table class="admin-table"><thead><tr>'
+            + '<th></th><th>Service</th><th>Source</th></tr></thead><tbody>';
+        html += svcs.map(s =>
+            `<tr><td><input type="checkbox" class="cut-svc" data-id="${s.id}"></td>`
+            + `<td>${s.service_name || ''}</td>`
+            + `<td>${(s.source_type || '')} #${(s.source_id || '')}</td></tr>`).join('');
+        html += '</tbody></table></div>';
+    }
+    host.innerHTML = html;
+}
+
+function cutProofCell(c) {
+    // VCN cargo -> LDUD proof docs (needs ldud_id); MBC -> MBC docs (source_id = mbc_id)
+    let mod = '', sid = '';
+    if (c.cargo_source_type === 'MBC') { mod = 'MBC'; sid = c.source_id; }
+    else if (c.ldud_id) { mod = 'LDUD'; sid = c.ldud_id; }
+    if (!mod || !sid) return '<span class="cut-muted">—</span>';
+    return `<a href="#" class="cut-proof-link" onclick="cutShowProofs(event, '${mod}', ${sid})">📎 View</a>`;
+}
+
+async function cutShowProofs(ev, mod, sid) {
+    ev.preventDefault();
+    const link = ev.currentTarget;
+    link.textContent = 'Loading…';
+    try {
+        const j = await (await fetch(`/api/module/FIN01/proof_docs/by_source/${mod}/${sid}`)).json();
+        const docs = j.docs || [];
+        if (!docs.length) { link.textContent = 'No docs'; return; }
+        const wrap = document.createElement('span');
+        wrap.className = 'cut-proof-list';
+        wrap.innerHTML = docs.map(d => `<a href="${d.file_url}" target="_blank">${d.original_filename}</a>`).join('<br>');
+        link.replaceWith(wrap);
+    } catch (e) { link.textContent = 'Error'; }
+}
+
+function cutCalcAmount(el) {
+    const tr = el.closest('tr');
+    const qtyEl = tr.querySelector('.cut-billqty');
+    const rateEl = tr.querySelector('.cut-rate');
+    let qty = Number(qtyEl.value || 0);
+    const bal = Number(qtyEl.max || 0);
+    if (qty > bal) { qty = bal; qtyEl.value = bal; }   // clamp to balance
+    if (qty < 0) { qty = 0; qtyEl.value = 0; }
+    const rate = Number(rateEl.value || 0);
+    tr.querySelector('.cut-amount').textContent = (qty * rate).toFixed(2);
 }
 
 function cutToggleAll(master) {
@@ -2202,11 +2283,22 @@ function cutToggleAll(master) {
 }
 
 async function cutMarkBilled(billed) {
-    const cargo_items = [...document.querySelectorAll('.cut-cargo:checked')].map(e => ({source_type: e.dataset.st, id: parseInt(e.dataset.id,10)}));
-    const service_ids = [...document.querySelectorAll('.cut-svc:checked')].map(e => parseInt(e.dataset.id,10));
+    const cargo_items = [...document.querySelectorAll('.cut-cargo:checked')].map(e => {
+        const item = { source_type: e.dataset.st, id: parseInt(e.dataset.id, 10) };
+        if (billed) {
+            const q = e.closest('tr').querySelector('.cut-billqty');
+            item.bill_quantity = q ? Number(q.value || 0) : 0;
+        }
+        return item;
+    });
+    const service_ids = [...document.querySelectorAll('.cut-svc:checked')].map(e => parseInt(e.dataset.id, 10));
     if (!cargo_items.length && !service_ids.length) { alert('Select at least one item'); return; }
+    if (billed && cargo_items.some(c => !(c.bill_quantity > 0))) {
+        alert('Enter a Bill Qty greater than 0 for each selected cargo line.');
+        return;
+    }
     if (!confirm(`${billed ? 'Mark' : 'Unmark'} ${cargo_items.length} cargo + ${service_ids.length} services?`)) return;
-    const ok = await _cutPost('/admin/api/cutover/mark-billed', {cargo_items, service_ids, billed});
+    const ok = await _cutPost('/admin/api/cutover/mark-billed', { cargo_items, service_ids, billed });
     if (ok) { alert('Done'); cutLoadBillables(); }
 }
 
