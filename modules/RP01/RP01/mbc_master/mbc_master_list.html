@@ -5,6 +5,7 @@
 {% block head %}
 <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
 <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
     /* ── Page layout ───────────────────────────────────────────── */
     .page-header {
@@ -555,10 +556,15 @@ function populateFilterDropdowns(data) {
 
 /* ── filters ─────────────────────────────────────────── */
 function applyFilters() {
+
+    
+
     const fromDate = document.getElementById('filter-from').value;
     const toDate   = document.getElementById('filter-to').value;
     const month    = document.getElementById('filter-month').value;
     const fy       = document.getElementById('filter-fy').value;
+
+    
 
     const params = new URLSearchParams();
     if (fromDate) params.set('from_date', fromDate);
@@ -657,28 +663,24 @@ function buildTatTable(d) {
       <tr class="hdr-period">
         <td></td>
         <td class="col-date">${d.date_label}</td>
-        <td class="col-mtd">MTD</td>
-        <td class="col-ytd">YTD</td>
+ 
       </tr>
       <tr class="hdr-cols">
         <td>Activity</td>
         <td>${d.date_label}</td>
-        <td>${d.mtd_label}</td>
-        <td>${d.ytd_label}</td>
+
       </tr>
       <tr class="row-trips">
         <td>Trips</td>
         <td>${d.date_trips}</td>
-        <td>${d.mtd_trips}</td>
-        <td>${d.ytd_trips}</td>
+
       </tr>`;
     for (const row of d.rows) {
         const cls = styleClass[row.style] || 'row-data';
         html += `<tr class="${cls}">
           <td>${row.label}</td>
           <td>${fmtVal(row.date_val)}</td>
-          <td>${fmtVal(row.mtd_val)}</td>
-          <td>${fmtVal(row.ytd_val)}</td>
+
         </tr>`;
     }
     html += `<tr class="row-footnote"><td colspan="4">

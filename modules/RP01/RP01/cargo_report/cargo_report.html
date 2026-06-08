@@ -941,16 +941,13 @@
             })
             .finally(() => {
 
-                setTimeout(() => {
+                loader.removeClass('show');
 
-                    loader.removeClass('show');
+                btn.prop('disabled', false);
 
-                    btn.prop('disabled', false);
+                btn.html('↓ Download Excel');
 
-                    btn.html('↓ Download Excel');
-
-                }, 900);
-            });
+            });;
     });
     // // Uses the bulk download endpoint filtered to a single record's date range.
     // // If you later add a per-ID Flask route, update the URL below.
