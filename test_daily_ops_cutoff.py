@@ -41,3 +41,15 @@ def test_build_fy_throughput_null_cargo_type_becomes_others():
 
 def test_build_fy_throughput_empty_rows():
     assert model.build_fy_throughput([]) == {}
+
+
+def test_fy_label_accepts_string():
+    assert model.fy_label('2015') == '2015-2016'
+
+
+def test_build_fy_throughput_accumulates_same_cargo_type():
+    rows = [
+        {'fy_start': 2020, 'cargo_type': 'IBRM', 'qty': 100},
+        {'fy_start': 2020, 'cargo_type': 'IBRM', 'qty': 50},
+    ]
+    assert model.build_fy_throughput(rows) == {'2020-2021': {'IBRM': 150.0}}

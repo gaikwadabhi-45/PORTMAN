@@ -10,9 +10,9 @@ def fy_label(start_year):
 def build_fy_throughput(rows):
     """Nest aggregated rows into {fy_label: {cargo_type: float_qty}}.
 
-    rows: iterable of mappings with keys 'fy_start' (int April-start year),
-    'cargo_type' (str or None) and 'qty' (number-ish). Zero/None quantities
-    are skipped; a missing cargo_type becomes 'OTHERS'.
+    rows: iterable of mappings. 'fy_start' (int April-start year) is required;
+    'cargo_type' (str or None) and 'qty' (number-ish) may be missing/None.
+    Zero/None quantities are skipped; a missing cargo_type becomes 'OTHERS'.
     """
     out = {}
     for r in rows:
