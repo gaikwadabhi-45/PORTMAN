@@ -410,10 +410,6 @@ function renderFYPreview(fyData) {
     }
 
     const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-    const parseVal = v => {
-        const x = Number(v);
-        return Number.isFinite(x) ? x : 0;
-    };
 
     const colTotals = {};
     types.forEach(t => { colTotals[t] = 0; });
@@ -425,31 +421,24 @@ function renderFYPreview(fyData) {
 
     for (let fyStart = firstFyStart; fyStart <= lastFyStart; fyStart++) {
         const fy = `${fyStart}-${fyStart + 1}`;
-        const isCurrent = fy === currentFyLabel;
         let rowTotal = 0;
-        html += `<tr data-fy="${fy}"${isCurrent ? ' class="current-fy-row"' : ''}><td>${fy}</td>`;
+        html += `<tr data-fy="${fy}"><td>${fy}</td>`;
 
         types.forEach(t => {
             const value = parseVal((fyData[fy] || {})[t]);
-            if (isCurrent) {
-                html += `\
-                    <td>\
-                        <input\
-                            type="number"\
-                            min="0"\
-                            step="1"\
-                            data-fy="${fy}"\
-                            data-cargo="${t}"\
-                            value="${value ? value : ''}"\
-                        />\
-                    </td>`;
-                rowTotal += value;
-                colTotals[t] += value;
-            } else {
-                rowTotal += value;
-                colTotals[t] += value;
-                html += `<td data-cargo="${t}" data-value="${value}" style="text-align:right">${fmt(value)}</td>`;
-            }
+            rowTotal += value;
+            colTotals[t] += value;
+            html += `\
+                <td>\
+                    <input\
+                        type="number"\
+                        min="0"\
+                        step="1"\
+                        data-fy="${fy}"\
+                        data-cargo="${t}"\
+                        value="${value ? value : ''}"\
+                    />\
+                </td>`;
         });
 
         html += `<td style="text-align:right"><b class="fy-row-total">${fmt(rowTotal)}</b></td></tr>`;
@@ -518,24 +507,25 @@ function saveCutoff() {
         return;
     }
 
-    const currentFyLabel = getCurrentFyLabel();
-    const currentFyValues = {};
-    document.querySelectorAll(`#fy-cutoff-preview input[data-fy="${currentFyLabel}"]`).forEach(input => {
+    const editableFyValues = {};
+    document.querySelectorAll('#fy-cutoff-preview input[data-fy][data-cargo]').forEach(input => {
+        const fy = input.dataset.fy;
         const cargo = input.dataset.cargo;
         const value = input.value.trim();
-        if (value !== '') {
-            currentFyValues[cargo] = Number(value);
+        if (!editableFyValues[fy]) {
+            editableFyValues[fy] = {};
         }
+        editableFyValues[fy][cargo] = value === '' ? 0 : Number(value);
     });
 
     const btn = document.getElementById('save-cutoff-btn');
     btn.disabled = true;
-    btn.textContent = 'Computing\u2026';
+    btn.textContent = 'Computing…';
 
     fetch('/api/module/RP01/daily-ops/cutoff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cutoff_date: cutoffDate, current_fy_values: currentFyValues })
+        body: JSON.stringify({ cutoff_date: cutoffDate, editable_fy_values: editableFyValues })
     })
     .then(r => {
         if (r.status === 403) throw new Error('Admin access required.');
