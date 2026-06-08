@@ -153,9 +153,11 @@ def set_bill_seed(start_seq, username):
 # ===== Mark / unmark items billed (pure flag, no invoice, no SAP) =====
 
 def _apply_billed(cur, cargo_items, service_ids, billed):
-    """Flip billed flags. cargo_items: list of {'source_type','id'}.
-    billed=True  -> is_billed=1, billed_quantity=<declared qty>
-    billed=False -> is_billed=0, billed_quantity=0
+    """Flip billed flags. cargo_items: list of {'source_type','id','bill_quantity'}.
+    billed=True  -> billed_quantity += bill_quantity (capped at total),
+                    is_billed=1 only once fully covered. A missing/<=0
+                    bill_quantity marks the whole remaining balance.
+    billed=False -> is_billed=0, billed_quantity=0 (full reset).
     Returns counts dict. Raises ValueError on unknown source_type."""
     cargo_done, svc_done = 0, 0
     for item in cargo_items or []:
@@ -164,10 +166,20 @@ def _apply_billed(cur, cargo_items, service_ids, billed):
             raise ValueError(f"Unknown cargo source_type: {item.get('source_type')}")
         table, qty_col = mapping
         if billed:
-            # qty_col and table are trusted constants from CARGO_SOURCES (never user input)
+            # qty_col and table are trusted constants from CARGO_SOURCES (never
+            # user input). Read current totals to support partial marking.
             cur.execute(
-                f"UPDATE {table} SET is_billed=1, billed_quantity={qty_col} WHERE id=%s",
+                f"SELECT {qty_col} AS total, COALESCE(billed_quantity, 0) AS already "
+                f"FROM {table} WHERE id=%s",
                 [item.get('id')])
+            row = cur.fetchone()
+            if not row:
+                continue
+            new_billed, is_billed = compute_partial_billed(
+                row['total'], row['already'], item.get('bill_quantity'))
+            cur.execute(
+                f"UPDATE {table} SET is_billed=%s, billed_quantity=%s WHERE id=%s",
+                [is_billed, new_billed, item.get('id')])
         else:
             cur.execute(
                 f"UPDATE {table} SET is_billed=0, billed_quantity=0 WHERE id=%s",

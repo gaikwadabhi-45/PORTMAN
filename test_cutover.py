@@ -59,9 +59,15 @@ class _FakeCursor:
     def __init__(self):
         self.calls = []
         self.rowcount = 1
+        # fetchone() returns a dict representing a row with total=100, already=0
+        # so that compute_partial_billed gets sensible inputs in the billed=True path.
+        self._fetchone_row = {'total': 100, 'already': 0}
 
     def execute(self, sql, params=None):
         self.calls.append((' '.join(sql.split()), params))
+
+    def fetchone(self):
+        return self._fetchone_row
 
 
 def test_apply_billed_marks_cargo_and_services():
@@ -74,7 +80,9 @@ def test_apply_billed_marks_cargo_and_services():
     )
     assert counts == {'cargo': 1, 'services': 1}
     sqls = [c[0] for c in cur.calls]
-    assert any("UPDATE vcn_cargo_declaration SET is_billed=1, billed_quantity=bl_quantity WHERE id=%s" in s for s in sqls)
+    # New behaviour: SELECT totals first, then UPDATE with explicit param values.
+    assert any("SELECT bl_quantity AS total, COALESCE(billed_quantity, 0) AS already FROM vcn_cargo_declaration WHERE id=%s" in s for s in sqls)
+    assert any("UPDATE vcn_cargo_declaration SET is_billed=%s, billed_quantity=%s WHERE id=%s" in s for s in sqls)
     assert any("UPDATE service_records SET is_billed=1 WHERE id=%s" in s for s in sqls)
 
 
