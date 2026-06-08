@@ -5,6 +5,7 @@
 {% block head %}
 <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css" rel="stylesheet">
 <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
     /* ── Page layout ─────────────────────────────────────────────── */
     .page-header {
@@ -15,7 +16,13 @@
         padding-bottom: 12px;
         border-bottom: 2px solid var(--border-color);
     }
-    .page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+
+    .page-header h2 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--text-primary);
+    }
+
     .module-badge {
         background: #4a90d9;
         color: #fff;
@@ -25,11 +32,21 @@
         font-weight: 700;
         letter-spacing: 0.5px;
     }
+
     .breadcrumb {
-        font-size: 11px; color: var(--text-secondary); margin-bottom: 14px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 14px;
     }
-    .breadcrumb a { color: #4a90d9; text-decoration: none; }
-    .breadcrumb a:hover { text-decoration: underline; }
+
+    .breadcrumb a {
+        color: #4a90d9;
+        text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
 
     /* ── Filter bar ──────────────────────────────────────────────── */
     .filter-bar {
@@ -43,11 +60,13 @@
         border-radius: 6px;
         padding: 12px 14px;
     }
+
     .filter-group {
         display: flex;
         flex-direction: column;
         gap: 4px;
     }
+
     .filter-group label {
         font-size: 10px;
         font-weight: 600;
@@ -55,6 +74,7 @@
         text-transform: uppercase;
         letter-spacing: 0.4px;
     }
+
     .filter-group input {
         padding: 5px 9px;
         border: 1px solid var(--border-color);
@@ -64,10 +84,12 @@
         color: var(--text-primary);
         height: 30px;
     }
+
     .filter-group input:focus {
         outline: none;
         border-color: #4a90d9;
     }
+
     .filter-btn {
         padding: 0 18px;
         height: 30px;
@@ -78,13 +100,39 @@
         cursor: pointer;
         align-self: flex-end;
     }
-    .filter-btn.primary { background: #4a90d9; color: #fff; }
-    .filter-btn.primary:hover { background: #357abd; }
-    .filter-btn.reset { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-color); }
-    .filter-btn.reset:hover { background: var(--border-color); }
-    .filter-btn.dl-all { background: #27ae60; color: #fff; }
-    .filter-btn.dl-all:hover { background: #1e8449; }
-    .filter-btn.dl-all:disabled { background: #aaa; cursor: not-allowed; }
+
+    .filter-btn.primary {
+        background: #4a90d9;
+        color: #fff;
+    }
+
+    .filter-btn.primary:hover {
+        background: #357abd;
+    }
+
+    .filter-btn.reset {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+    }
+
+    .filter-btn.reset:hover {
+        background: var(--border-color);
+    }
+
+    .filter-btn.dl-all {
+        background: #27ae60;
+        color: #fff;
+    }
+
+    .filter-btn.dl-all:hover {
+        background: #1e8449;
+    }
+
+    .filter-btn.dl-all:disabled {
+        background: #aaa;
+        cursor: not-allowed;
+    }
 
     /* ── Row count ───────────────────────────────────────────────── */
     .row-count {
@@ -100,6 +148,7 @@
         overflow: hidden;
         font-size: 11.5px;
     }
+
     .tabulator-header .tabulator-col-title {
         white-space: normal !important;
         line-height: 1.3;
@@ -108,10 +157,22 @@
     }
 
     /* Dark theme table */
-    .dark-theme #vd-table .tabulator-header { background: #1e1e2e; }
-    .dark-theme #vd-table .tabulator-row { background: #16161e; color: #cdd6f4; }
-    .dark-theme #vd-table .tabulator-row:nth-child(even) { background: #1c1c2a; }
-    .dark-theme #vd-table .tabulator-row:hover { background: #2a2a3e !important; }
+    .dark-theme #vd-table .tabulator-header {
+        background: #1e1e2e;
+    }
+
+    .dark-theme #vd-table .tabulator-row {
+        background: #16161e;
+        color: #cdd6f4;
+    }
+
+    .dark-theme #vd-table .tabulator-row:nth-child(even) {
+        background: #1c1c2a;
+    }
+
+    .dark-theme #vd-table .tabulator-row:hover {
+        background: #2a2a3e !important;
+    }
 
     /* ── Status badges ───────────────────────────────────────────── */
     .status-badge {
@@ -123,12 +184,36 @@
         letter-spacing: 0.3px;
         text-transform: uppercase;
     }
-    .status-badge.approved { background: #d4edda; color: #155724; }
-    .status-badge.pending  { background: #fff3cd; color: #856404; }
-    .status-badge.other    { background: #e2e3e5; color: #383d41; }
-    .dark-theme .status-badge.approved { background: #1a3a22; color: #68d391; }
-    .dark-theme .status-badge.pending  { background: #3a3000; color: #f6e05e; }
-    .dark-theme .status-badge.other    { background: #2a2a3a; color: #a0aec0; }
+
+    .status-badge.approved {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-badge.pending {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .status-badge.other {
+        background: #e2e3e5;
+        color: #383d41;
+    }
+
+    .dark-theme .status-badge.approved {
+        background: #1a3a22;
+        color: #68d391;
+    }
+
+    .dark-theme .status-badge.pending {
+        background: #3a3000;
+        color: #f6e05e;
+    }
+
+    .dark-theme .status-badge.other {
+        background: #2a2a3a;
+        color: #a0aec0;
+    }
 
     /* ── Download button in cell ─────────────────────────────────── */
     .dl-btn {
@@ -142,389 +227,174 @@
         cursor: pointer;
         white-space: nowrap;
     }
-    .dl-btn:hover { background: #1e8449; }
-    .dark-theme .dl-btn { background: #1e6b3a; }
-    .dark-theme .dl-btn:hover { background: #27ae60; }
 
-/* ───────────────── DOWNLOAD LOADER ───────────────── */
-
-.download-loader{
-    position:fixed;
-    inset:0;
-     background:rgba(220,220,220,.55);
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    z-index:99999;
-
-    opacity:0;
-    visibility:hidden;
-
-    transition:
-        opacity .35s ease,
-        visibility .35s ease;
-}
-
-.download-loader.show{
-    opacity:1;
-    visibility:visible;
-}
-
-.loader-box{
-
-    background:#ffffff;
-
-    border:1px solid #dbe4f0;
-
-    border-radius:20px;
-
-    padding:32px 36px;
-
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-
-    gap:16px;
-
-    min-width:300px;
-
-    box-shadow:
-        0 20px 60px rgba(0,0,0,.45);
-}
-
-.dark-theme .loader-box{
-    background:#b0bdda;
-}
-
-/* ── Orbit Animation ── */
-
-.orbit-stage{
-    position:relative;
-    width:120px;
-    height:120px;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-}
-
-.orbit-ring{
-    position:absolute;
-    top:50%;
-    left:50%;
-
-    border-radius:50%;
-    border:1px dashed rgba(74,144,217,.25);
-
-    transform:translate(-50%,-50%);
-}
-
-.ring1{
-    width:76px;
-    height:76px;
-}
-
-.ring2{
-    width:108px;
-    height:108px;
-}
-
-.orbit-center{
-    width:44px;
-    height:44px;
-
-    background:#cee3fd;
-
-    border-radius:50%;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    font-size:22px;
-
-    z-index:2;
-
-    animation:
-        orbitPulse 2.4s ease-in-out infinite,
-        orbitGlow 2.8s ease-in-out infinite;
-}
-
-.orbiter{
-    position:absolute;
-
-    top:50%;
-    left:50%;
-
-    margin-top:-10px;
-    margin-left:-10px;
-
-    width:20px;
-    height:20px;
-
-    border-radius:50%;
-
-    background:#ccdef5;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    font-size:13px;
-
-    animation:orbitA 2.4s linear infinite;
-}
-
-.orbiter.o2{
-    animation-delay:-0.8s;
-}
-
-.orbiter.o3{
-    animation-delay:-1.6s;
-}
-
-.orbiter2{
-    position:absolute;
-
-    top:50%;
-    left:50%;
-
-    margin-top:-8px;
-    margin-left:-8px;
-
-    width:16px;
-    height:16px;
-
-    border-radius:50%;
-
-    background:#312e81;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    font-size:11px;
-
-    color:#a5b4fc;
-
-    animation:orbitB 4.8s linear infinite;
-}
-
-.orbiter2.o2r{
-    animation-delay:-1.6s;
-    background:#4c1d95;
-}
-
-.orbiter2.o3r{
-    animation-delay:-3.2s;
-    background:#cbdef7;
-}
-
-@keyframes orbitA{
-
-    0%{
-        transform:
-            rotate(0deg)
-            translateX(38px)
-            rotate(0deg);
+    .dl-btn:hover {
+        background: #1e8449;
     }
 
-    100%{
-        transform:
-            rotate(360deg)
-            translateX(38px)
-            rotate(-360deg);
-    }
-}
-
-@keyframes orbitB{
-
-    0%{
-        transform:
-            rotate(0deg)
-            translateX(54px)
-            rotate(0deg);
+    .dark-theme .dl-btn {
+        background: #1e6b3a;
     }
 
-    100%{
-        transform:
-            rotate(-360deg)
-            translateX(54px)
-            rotate(360deg);
-    }
-}
-
-@keyframes orbitPulse{
-
-    0%,100%{
-        transform:scale(1);
+    .dark-theme .dl-btn:hover {
+        background: #27ae60;
     }
 
-    50%{
-        transform:scale(1.08);
-    }
-}
+    /* ───────────────── DOWNLOAD LOADER ───────────────── */
 
-@keyframes orbitGlow{
+    .download-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
 
-    0%,100%{
-        opacity:.85;
-    }
+        display: flex;
+        align-items: center;
+        justify-content: center;
 
-    50%{
-        opacity:.45;
-    }
-}
+        background: rgba(220, 220, 220, .55);
 
-/* ── Loader Text ── */
+        z-index: 999999;
 
-.loader-title{
-    font-size:15px;
-    font-weight:700;
-     color:#1e293b;
-    margin:0;
-}
+        opacity: 0;
+        visibility: hidden;
 
-.loader-subtitle{
-    font-size:12px;
-    color:#64748b;
-    margin:0;
-}
-
-/* ── Progress Bar ── */
-
-.pbar2-wrap{
-    width:100%;
-    height:6px;
-
-    background:#3076e6;
-
-    border-radius:99px;
-
-    overflow:hidden;
-    position:relative;
-}
-
-.pbar2-fill{
-    height:100%;
-    width:0%;
-
-    border-radius:99px;
-
-    background:linear-gradient(
-        90deg,
-        #3b82f6,
-        #06b6d4,
-        #22c55e
-    );
-
-    transition:width .8s ease;
-}
-
-.pbar2-shine{
-    position:absolute;
-
-    top:0;
-    left:-60px;
-
-    width:60px;
-    height:100%;
-
-    background:linear-gradient(
-        90deg,
-        transparent,
-        rgba(255,255,255,.3),
-        transparent
-    );
-
-    animation:shineSlide 1.5s ease-in-out infinite;
-}
-
-@keyframes shineSlide{
-
-    0%{
-        left:-60px;
+        transition: opacity .3s ease;
     }
 
-    100%{
-        left:110%;
+    .download-loader.show {
+        opacity: 1;
+        visibility: visible;
     }
-}
 
-.loader-pct{
-    font-size:11px;
-    font-weight:700;
-    color:#60a5fa;
-}
 
-.download-popup{
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.45);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 999999;
-}
+    /* ── Loader Text ── */
 
-.download-popup.show{
-    display:flex;
-}
 
-.download-popup-content{
-    width: 320px;
-    background:#fff;
-    border-radius:10px;
-    overflow:hidden;
-    box-shadow:0 10px 30px rgba(0,0,0,0.25);
-}
+    .loader-subtitle {
+        margin-top: 8px;
 
-.download-popup-header{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:14px 18px;
-    border-bottom:1px solid #ddd;
-}
+        font-size: 11px;
 
-.download-popup-header h3{
-    margin:0;
-    font-size:16px;
-}
+        color: #6b7280;
+    }
 
-.download-popup-header button{
-    border:none;
-    background:none;
-    font-size:22px;
-    cursor:pointer;
-}
+    /* ── Progress Bar ── */
 
-.download-popup-body{
-    padding:20px;
-    display:flex;
-    flex-direction:column;
-    gap:14px;
-}
 
-.popup-btn{
-    border:none;
-    border-radius:6px;
-    padding:12px;
-    color:#fff;
-    font-size:13px;
-    font-weight:600;
-    cursor:pointer;
-}
+    .download-popup {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+    }
 
-.popup-btn.blue{
-    background:#3498db;
-}
+    .download-popup.show {
+        display: flex;
+    }
 
-.popup-btn.green{
-    background:#27ae60;
-}
+    .download-popup-content {
+        width: 320px;
+        background: #fff;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .download-popup-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .download-popup-header h3 {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .download-popup-header button {
+        border: none;
+        background: none;
+        font-size: 22px;
+        cursor: pointer;
+    }
+
+    .download-popup-body {
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .popup-btn {
+        border: none;
+        border-radius: 6px;
+        padding: 12px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .popup-btn.blue {
+        background: #3498db;
+    }
+
+    .popup-btn.green {
+        background: #27ae60;
+    }
+
+    .simple-spinner {
+        width: 40px;
+        height: 40px;
+
+        margin: 0 auto 18px;
+
+        border: 4px solid #dfe5ec;
+        border-top: 4px solid #4a90d9;
+
+        border-radius: 50%;
+
+        animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .loader-box {
+        background: #fff;
+        border-radius: 12px;
+
+        width: 220px;
+
+        padding: 28px 20px;
+
+        text-align: center;
+
+        box-shadow: 0 8px 25px rgba(0, 0, 0, .12);
+    }
+
+    .loader-title {
+        margin: 0;
+
+        font-size: 13px;
+        font-weight: 600;
+
+        color: #4b5563;
+    }
 </style>
 {% endblock %}
 
@@ -541,7 +411,8 @@
 <div class="filter-bar">
     <div class="filter-group">
         <label for="filter-date-field">Filter By Date</label>
-        <select id="filter-date-field" style="height:30px;padding:5px 9px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);min-width:180px;">
+        <select id="filter-date-field"
+            style="height:30px;padding:5px 9px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);min-width:180px;">
             <option value="discharge_commenced">Discharge Commenced</option>
             <option value="discharge_completed">Discharge Completed</option>
             <option value="nor_tendered">NOR Tendered</option>
@@ -556,8 +427,9 @@
         <input type="date" id="filter-to" title="To Date" value="">
     </div>
     <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
-    <button type="button" class="filter-btn reset"   onclick="resetFilters()">Reset</button>
-    <button type="button" class="filter-btn dl-all" id="dl-all-btn" onclick="downloadAll()">&#8595; Download All</button>
+    <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
+    <button type="button" class="filter-btn dl-all" id="dl-all-btn" onclick="downloadAll()">&#8595; Download
+        All</button>
 </div>
 
 <!-- Row count -->
@@ -565,49 +437,20 @@
 
 <div id="download-loader" class="download-loader">
 
+
     <div class="loader-box">
 
-        <div class="orbit-stage">
-
-            <div class="orbit-ring ring1"></div>
-            <div class="orbit-ring ring2"></div>
-
-            <div class="orbit-center">
-                📊
-            </div>
-
-            <div class="orbiter">📄</div>
-            <div class="orbiter o2">📋</div>
-            <div class="orbiter o3">🗂️</div>
-
-            <div class="orbiter2">✦</div>
-            <div class="orbiter2 o2r">✦</div>
-            <div class="orbiter2 o3r">✦</div>
-
-        </div>
+        <div class="simple-spinner"></div>
 
         <p class="loader-title">
-            Preparing Download
+            Preparing Download...
         </p>
 
         <p class="loader-subtitle" id="loader-msg">
-            Initializing...
+            Fetching data...
         </p>
 
-        <div class="pbar2-wrap">
-
-            <div class="pbar2-fill"></div>
-
-            <div class="pbar2-shine"></div>
-
-        </div>
-
-        <span class="loader-pct" id="loader-pct">
-            0%
-        </span>
-
     </div>
-
 </div>
 
 <!-- Tabulator table -->
@@ -643,543 +486,476 @@
 </div>
 
 <script>
-/* ── Formatters ──────────────────────────────────────── */
-function statusFormatter(cell) {
-    const v = cell.getValue();
-    if (!v) return '<span style="color:var(--text-secondary)">—</span>';
-    let cls = 'other';
-    if (v === 'Approved') cls = 'approved';
-    else if (v === 'Pending') cls = 'pending';
-    const safe = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `<span class="status-badge ${cls}">${safe}</span>`;
-}
-
-function dtFormatter(cell) {
-
-    const v = cell.getValue();
-
-    // IMPORTANT:
-    // return blank instead of dash
-
-    if (
-        v === null ||
-        v === undefined ||
-        v === ''
-    ) {
-        return '';
+    /* ── Formatters ──────────────────────────────────────── */
+    function statusFormatter(cell) {
+        const v = cell.getValue();
+        if (!v) return '<span style="color:var(--text-secondary)">—</span>';
+        let cls = 'other';
+        if (v === 'Approved') cls = 'approved';
+        else if (v === 'Pending') cls = 'pending';
+        const safe = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<span class="status-badge ${cls}">${safe}</span>`;
     }
 
-    const d = new Date(v);
+    function dtFormatter(cell) {
 
-    if (isNaN(d)) {
-        return '';
-    }
+        const v = cell.getValue();
 
-    const dd = String(d.getDate()).padStart(2, '0');
+        // IMPORTANT:
+        // return blank instead of dash
 
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-
-    const yyyy = d.getFullYear();
-
-    const hh = String(d.getHours()).padStart(2, '0');
-
-    const mi = String(d.getMinutes()).padStart(2, '0');
-
-    return `${dd}-${mm}-${yyyy} ${hh}:${mi}`;
-}
-
-function numFormatter(cell) {
-    const v = cell.getValue();
-    if (v === '' || v === null || v === undefined) return '—';
-    return parseFloat(v).toLocaleString('en-IN');
-}
-
-function downloadBtnFormatter(cell) {
-    return '<button class="dl-btn">&#8595; Excel</button>';
-}
-
-/* ── Column definitions ──────────────────────────────── */
-function buildColumns() {
-    return [
-        {
-            title: 'Sr#',
-            field: '_sr',
-            width: 55,
-            hozAlign: 'center',
-            headerHozAlign: 'center',
-            formatter: function(cell, formatterParams, onRendered) {
-                return cell.getRow().getPosition(true);
-            },
-            headerSort: false,
-        },
-        {
-            title: 'VCN#',
-            field: 'vcn_doc_num',
-            width: 120,
-            headerHozAlign: 'center',
-        },
-        {
-            title: 'Doc#',
-            field: 'doc_num',
-            width: 120,
-            headerHozAlign: 'center',
-        },
-        {
-            title: 'Vessel Name',
-            field: 'vessel_name',
-            width: 180,
-            headerHozAlign: 'center',
-        },
-        {
-            title: 'Cargo',
-            field: 'cargo_names',
-            width: 160,
-            headerHozAlign: 'center',
-        },
-        {
-            title: 'BL Qty MT',
-            field: 'bl_qty',
-            width: 110,
-            hozAlign: 'right',
-            headerHozAlign: 'center',
-            formatter: numFormatter,
-        },
-        {
-            title: 'Discharge Commenced',
-            field: 'discharge_commenced',
-            width: 150,
-            headerHozAlign: 'center',
-            formatter: dtFormatter,
-        },
-        {
-            title: 'Discharge Completed',
-            field: 'discharge_completed',
-            width: 150,
-            headerHozAlign: 'center',
-            formatter: dtFormatter,
-        },
-        {
-            title: 'NOR Tendered',
-            field: 'nor_tendered',
-            width: 150,
-            headerHozAlign: 'center',
-            formatter: dtFormatter,
-            visible: false,
-        },
-        {
-            title: 'Status',
-            field: 'doc_status',
-            width: 100,
-            hozAlign: 'center',
-            headerHozAlign: 'center',
-            formatter: statusFormatter,
-        },
-        {
-            title: 'Download',
-            field: '_download',
-            width: 120,
-            hozAlign: 'center',
-            headerHozAlign: 'center',
-            headerSort: false,
-            formatter: downloadBtnFormatter,
-           cellClick: function(e, cell) {
-             const d = cell.getRow().getData();
-             openDownloadPopup(d);
-            },
-        },
-    ];
-}
-
-/* ── Table instance ──────────────────────────────────── */
-let table;
-
-function initTable(data) {
-table = new Tabulator('#vd-table', {
-    data: data,
-    columns: buildColumns(),
-
-    layout: 'fitDataFill',
-
-    height: 'calc(100vh - 260px)',
-
-    rowHeight: 30,
-
-    placeholder: 'No records found.',
-
-    initialSort:[
-        {
-            column: document.getElementById('filter-date-field').value,
-            dir:"desc"
+        if (
+            v === null ||
+            v === undefined ||
+            v === ''
+        ) {
+            return '';
         }
-    ]
-});
-    updateCount(data.length);
-}
 
-function updateCount(n) {
-    document.getElementById('row-count').textContent =
-        n === 1 ? '1 record' : `${n.toLocaleString('en-IN')} records`;
-}
+        const d = new Date(v);
 
-/* ── Filters ─────────────────────────────────────────── */
-function applyFilters() {
-    const fromDate  = document.getElementById('filter-from').value;
-    const toDate    = document.getElementById('filter-to').value;
-    const dateField = document.getElementById('filter-date-field').value;
+        if (isNaN(d)) {
+            return '';
+        }
 
-    const params = new URLSearchParams();
-    if (fromDate)  params.set('from_date',  fromDate);
-    if (toDate)    params.set('to_date',    toDate);
-    if (dateField) params.set('date_field', dateField);
+        const dd = String(d.getDate()).padStart(2, '0');
 
-    document.getElementById('row-count').textContent = 'Loading…';
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
 
-    fetch('/api/module/RP01/vessel-discharged/data?' + params.toString())
-        .then(r => r.json())
-        .then(data => {
-            if (table) {
-                table.setData(data);
-                table.setSort([
+        const yyyy = d.getFullYear();
+
+        const hh = String(d.getHours()).padStart(2, '0');
+
+        const mi = String(d.getMinutes()).padStart(2, '0');
+
+        return `${dd}-${mm}-${yyyy} ${hh}:${mi}`;
+    }
+
+    function numFormatter(cell) {
+        const v = cell.getValue();
+        if (v === '' || v === null || v === undefined) return '—';
+        return parseFloat(v).toLocaleString('en-IN');
+    }
+
+    function downloadBtnFormatter(cell) {
+        return '<button class="dl-btn">&#8595; Excel</button>';
+    }
+
+    /* ── Column definitions ──────────────────────────────── */
+    function buildColumns() {
+        return [
+            {
+                title: 'Sr#',
+                field: '_sr',
+                width: 55,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                formatter: function (cell, formatterParams, onRendered) {
+                    return cell.getRow().getPosition(true);
+                },
+                headerSort: false,
+            },
+            {
+                title: 'VCN#',
+                field: 'vcn_doc_num',
+                width: 120,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'Doc#',
+                field: 'doc_num',
+                width: 120,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'Vessel Name',
+                field: 'vessel_name',
+                width: 180,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'Cargo',
+                field: 'cargo_names',
+                width: 160,
+                headerHozAlign: 'center',
+            },
+            {
+                title: 'BL Qty MT',
+                field: 'bl_qty',
+                width: 110,
+                hozAlign: 'right',
+                headerHozAlign: 'center',
+                formatter: numFormatter,
+            },
+            {
+                title: 'Discharge Commenced',
+                field: 'discharge_commenced',
+                width: 150,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'Discharge Completed',
+                field: 'discharge_completed',
+                width: 150,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+            },
+            {
+                title: 'NOR Tendered',
+                field: 'nor_tendered',
+                width: 150,
+                headerHozAlign: 'center',
+                formatter: dtFormatter,
+                visible: false,
+            },
+            {
+                title: 'Status',
+                field: 'doc_status',
+                width: 100,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                formatter: statusFormatter,
+            },
+            {
+                title: 'Download',
+                field: '_download',
+                width: 120,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                formatter: downloadBtnFormatter,
+                cellClick: function (e, cell) {
+                    const d = cell.getRow().getData();
+                    openDownloadPopup(d);
+                },
+            },
+        ];
+    }
+
+    /* ── Table instance ──────────────────────────────────── */
+    let table;
+
+    function initTable(data) {
+        table = new Tabulator('#vd-table', {
+            data: data,
+            columns: buildColumns(),
+
+            layout: 'fitDataFill',
+
+            height: 'calc(100vh - 260px)',
+
+            rowHeight: 30,
+
+            placeholder: 'No records found.',
+
+            initialSort: [
                 {
-                    column: dateField,
+                    column: document.getElementById('filter-date-field').value,
                     dir: "desc"
                 }
-            ]);
-                updateCount(data.length);
-            } else {
-                initTable(data);
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            document.getElementById('row-count').textContent = 'Error loading data.';
+            ]
         });
-}
+        updateCount(data.length);
+    }
 
-function resetFilters() {
-    const now = new Date();
-    const year  = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day   = String(now.getDate()).padStart(2, '0');
-    document.getElementById('filter-from').value = `${year}-${month}-01`;
-    document.getElementById('filter-to').value   = `${year}-${month}-${day}`;
-    applyFilters();
-}
+    function updateCount(n) {
+        document.getElementById('row-count').textContent =
+            n === 1 ? '1 record' : `${n.toLocaleString('en-IN')} records`;
+    }
 
-function showLoader(){
-    document
-        .getElementById('download-loader')
-        .classList.add('show');
-}
+    /* ── Filters ─────────────────────────────────────────── */
+    function applyFilters() {
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const dateField = document.getElementById('filter-date-field').value;
 
-function hideLoader(){
-    document
-        .getElementById('download-loader')
-        .classList.remove('show');
-}
+        if (fromDate && new Date(fromDate) < new Date('2026-05-01T00:00')) {
 
-/* ── Download Excel per vessel ───────────────────────── */
-function downloadExcel(ldudId, vesselName) {
-    const dateField =
-    document.getElementById('filter-date-field').value;
-
- const url =
-    `/api/module/RP01/vessel-discharged/${ldudId}/download?date_field=${dateField}`;
-    fetch(url)
-        .then(res => {
-            if (!res.ok) throw new Error('Server error ' + res.status);
-            const disposition = res.headers.get('Content-Disposition') || '';
-            const match = disposition.match(/filename="(.+?)"/);
-            const filename = match ? match[1] : `MVDischarged_${vesselName}.xlsx`;
-            return res.blob().then(blob => ({ blob, filename }));
-        })
-        .then(({ blob, filename }) => {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Download failed. Please try again.');
-        });
-}
-
-/* ── Download All (multi-sheet) ──────────────────────── */
-function downloadAll(){
-
-    const fromDate =
-        document.getElementById('filter-from').value;
-
-    const toDate =
-        document.getElementById('filter-to').value;
-
-    const dateField =
-        document.getElementById('filter-date-field').value;
-
-    const btn =
-        document.getElementById('dl-all-btn');
-
-    const loader =
-        document.getElementById('download-loader');
-
-    btn.disabled = true;
-
-    btn.textContent = 'Preparing...';
-
-    loader.classList.add('show');
-
-    /* ── Loader Elements ── */
-
-    const bar =
-        document.querySelector('.pbar2-fill');
-
-    const pct =
-        document.getElementById('loader-pct');
-
-    const msg =
-        document.getElementById('loader-msg');
-
-    /* ── Reset ── */
-
-    bar.style.width = '0%';
-
-    pct.textContent = '0%';
-
-    msg.textContent = 'Initializing download...';
-
-    /* ── Fake Progress ── */
-
-    const steps = [
-
-        {
-            pct: 18,
-            msg: 'Fetching vessel records...'
-        },
-
-        {
-            pct: 42,
-            msg: 'Preparing report sheets...'
-        },
-
-        {
-            pct: 73,
-            msg: 'Generating Excel workbook...'
-        },
-
-        {
-            pct: 92,
-            msg: 'Finalizing download...'
-        }
-
-    ];
-
-    let step = 0;
-
-    const timer = setInterval(() => {
-
-        if(step >= steps.length){
-
-            clearInterval(timer);
+            Swal.fire({
+                icon: 'info',
+                title: 'Report Not Available',
+                html: `
+            <b>Cutoff Date:</b> 01-May-2026<br><br>
+            Reports before this date are not available.
+        `,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#4a90d9'
+            });
 
             return;
         }
 
-        const s = steps[step];
+        const params = new URLSearchParams();
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+        if (dateField) params.set('date_field', dateField);
 
-        bar.style.width =
-            s.pct + '%';
+        document.getElementById('row-count').textContent = 'Loading…';
 
-        pct.textContent =
-            s.pct + '%';
-
-        msg.textContent =
-            s.msg;
-
-        step++;
-
-    }, 900);
-
-    const params = new URLSearchParams();
-
-    if(fromDate){
-        params.set('from_date', fromDate);
+        fetch('/api/module/RP01/vessel-discharged/data?' + params.toString())
+            .then(r => r.json())
+            .then(data => {
+                if (table) {
+                    table.setData(data);
+                    table.setSort([
+                        {
+                            column: dateField,
+                            dir: "desc"
+                        }
+                    ]);
+                    updateCount(data.length);
+                } else {
+                    initTable(data);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('row-count').textContent = 'Error loading data.';
+            });
     }
 
-    if(toDate){
-        params.set('to_date', toDate);
+    function resetFilters() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        document.getElementById('filter-from').value = `${year}-${month}-01`;
+        document.getElementById('filter-to').value = `${year}-${month}-${day}`;
+        applyFilters();
     }
 
-    if(dateField){
-        params.set('date_field', dateField);
+
+
+    /* ── Download Excel per vessel ───────────────────────── */
+    function downloadExcel(ldudId, vesselName) {
+        const dateField =
+            document.getElementById('filter-date-field').value;
+
+        const url =
+            `/api/module/RP01/vessel-discharged/${ldudId}/download?date_field=${dateField}`;
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error('Server error ' + res.status);
+                const disposition = res.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="(.+?)"/);
+                const filename = match ? match[1] : `MVDischarged_${vesselName}.xlsx`;
+                return res.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Download failed. Please try again.');
+            });
     }
 
-    fetch(
-        '/api/module/RP01/vessel-discharged/download-all?' +
-        params.toString()
-    )
+    /* ── Download All (multi-sheet) ──────────────────────── */
+    function downloadAll() {
 
-    .then(res => {
+        const fromDate =
+            document.getElementById('filter-from').value;
 
-        if(!res.ok){
+        const toDate =
+            document.getElementById('filter-to').value;
 
-            throw new Error(
-                'Server error ' + res.status
-            );
+        const dateField =
+            document.getElementById('filter-date-field').value;
+
+        const btn =
+            document.getElementById('dl-all-btn');
+
+        const loader =
+            document.getElementById('download-loader');
+
+        btn.disabled = true;
+
+        btn.textContent = 'Preparing...';
+        const msg =
+            document.getElementById('loader-msg');
+        msg.textContent = 'Fetching data...';
+
+        loader.classList.add('show');
+
+        /* ── Loader Elements ── */
+
+
+
+        const params = new URLSearchParams();
+
+        if (fromDate) {
+            params.set('from_date', fromDate);
         }
 
-        const disposition =
-            res.headers.get('Content-Disposition') || '';
+        if (toDate) {
+            params.set('to_date', toDate);
+        }
 
-        const match =
-            disposition.match(/filename="(.+?)"/);
+        if (dateField) {
+            params.set('date_field', dateField);
+        }
 
-        const filename =
-            match
-                ? match[1]
-                : 'MVDischarged.xlsx';
+        fetch(
+            '/api/module/RP01/vessel-discharged/download-all?' +
+            params.toString()
+        )
 
-        return res.blob().then(blob => ({
-            blob,
-            filename
-        }));
-    })
+            .then(res => {
 
-    .then(({ blob, filename }) => {
+                if (!res.ok) {
 
-        clearInterval(timer);
+                    throw new Error(
+                        'Server error ' + res.status
+                    );
+                }
 
-        bar.style.width = '100%';
+                const disposition =
+                    res.headers.get('Content-Disposition') || '';
 
-        pct.textContent = '100%';
+                const match =
+                    disposition.match(/filename="(.+?)"/);
 
-        msg.textContent = 'Download Ready';
+                const filename =
+                    match
+                        ? match[1]
+                        : 'MVDischarged.xlsx';
 
-        setTimeout(() => {
+                return res.blob().then(blob => ({
+                    blob,
+                    filename
+                }));
+            })
 
-            const a =
-                document.createElement('a');
+            .then(({ blob, filename }) => {
+                msg.textContent = 'Download Ready';
 
-            a.href =
-                URL.createObjectURL(blob);
 
-            a.download =
-                filename;
+                setTimeout(() => {
 
-            document.body.appendChild(a);
+                    const a =
+                        document.createElement('a');
 
-            a.click();
+                    a.href =
+                        URL.createObjectURL(blob);
 
-            document.body.removeChild(a);
+                    a.download =
+                        filename;
 
-            URL.revokeObjectURL(a.href);
+                    document.body.appendChild(a);
 
-        }, 450);
+                    a.click();
 
-    })
+                    document.body.removeChild(a);
 
-    .catch(err => {
+                    URL.revokeObjectURL(a.href);
 
-        clearInterval(timer);
+                }, 450);
 
-        console.error(err);
+            })
 
-        msg.textContent =
-            'Download Failed';
+            .catch(err => {
 
-        pct.textContent = '0%';
 
-        bar.style.width = '0%';
+                console.error(err);
 
-        alert('Download failed. Please try again.');
+                msg.textContent =
+                    'Download Failed';
 
-    })
 
-    .finally(() => {
 
-        setTimeout(() => {
+                alert('Download failed. Please try again.');
 
-            loader.classList.remove('show');
+            })
 
-            btn.disabled = false;
+            .finally(() => {
 
-            btn.textContent = '↓ Download All';
+                setTimeout(() => {
 
-        }, 900);
+                    loader.classList.remove('show');
+
+                    btn.disabled = false;
+
+                    btn.textContent = '↓ Download All';
+
+                }, 900);
+
+            });
+    }
+
+    /* ── On load ─────────────────────────────────────────── */
+    document.addEventListener('DOMContentLoaded', function () {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+
+        document.getElementById('filter-from').value = `${year}-${month}-01`;
+        document.getElementById('filter-to').value = `${year}-${month}-${day}`;
+
+        applyFilters();
+    });
+
+    let selectedDownloadRow = null;
+
+    function openDownloadPopup(data) {
+
+        selectedDownloadRow = data;
+
+        document
+            .getElementById('download-popup')
+            .classList.add('show');
+
+    }
+
+    function closeDownloadPopup() {
+
+        document
+            .getElementById('download-popup')
+            .classList.remove('show');
+
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+
+        document
+            .getElementById('open-sof-btn')
+            .onclick = function () {
+
+                if (!selectedDownloadRow) return;
+
+                const dateField = document.getElementById(
+                    'filter-date-field'
+                ).value;
+
+                window.open(
+                    `/api/module/RP01/vessel-discharged/${selectedDownloadRow.id}/preview?date_field=${dateField}`,
+                    '_blank'
+                );
+
+            };
+
+        document
+            .getElementById('download-excel-btn')
+            .onclick = function () {
+
+                if (!selectedDownloadRow) return;
+
+                closeDownloadPopup();
+
+                downloadExcel(
+                    selectedDownloadRow.id,
+                    selectedDownloadRow.vessel_name
+                );
+
+            };
 
     });
-}
-
-/* ── On load ─────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', function () {
-    const now   = new Date();
-    const year  = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day   = String(now.getDate()).padStart(2, '0');
-
-    document.getElementById('filter-from').value = `${year}-${month}-01`;
-    document.getElementById('filter-to').value   = `${year}-${month}-${day}`;
-
-    applyFilters();
-});
-
-let selectedDownloadRow = null;
-
-function openDownloadPopup(data){
-
-    selectedDownloadRow = data;
-
-    document
-        .getElementById('download-popup')
-        .classList.add('show');
-
-}
-
-function closeDownloadPopup(){
-
-    document
-        .getElementById('download-popup')
-        .classList.remove('show');
-
-}
-
-document.addEventListener('DOMContentLoaded', function(){
-
-    document
-    .getElementById('open-sof-btn')
-    .onclick = function(){
-
-        if(!selectedDownloadRow) return;
-
-        const dateField = document.getElementById(
-            'filter-date-field'
-        ).value;
-
-        window.open(
-            `/api/module/RP01/vessel-discharged/${selectedDownloadRow.id}/preview?date_field=${dateField}`,
-            '_blank'
-        );
-
-    };
-
-    document
-        .getElementById('download-excel-btn')
-        .onclick = function(){
-
-            if(!selectedDownloadRow) return;
-
-            closeDownloadPopup();
-
-            downloadExcel(
-                selectedDownloadRow.id,
-                selectedDownloadRow.vessel_name
-            );
-
-        };
-
-});
 </script>
 {% endblock %}
