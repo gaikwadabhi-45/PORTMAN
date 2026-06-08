@@ -590,6 +590,16 @@
 
         font-size: 13px;
     }
+    /* Full row hover effect */
+#vd-table .tabulator-row:hover {
+    background-color: #eedfed !important;
+    cursor: pointer;
+}
+
+/* Frozen columns also change color */
+#vd-table .tabulator-row:hover .tabulator-cell {
+    background-color: #eedfed !important;
+}
 </style>
 {% endblock %}
 
