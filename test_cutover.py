@@ -163,3 +163,8 @@ def test_compute_partial_billed_stale_already_over_total_never_negative():
     # legacy inconsistency: already billed > total -> balance clamps to 0,
     # nothing more is billed and the line reads as fully billed
     assert cutover.compute_partial_billed(100, 120, 10) == (120.0, 1)
+
+
+def test_compute_partial_billed_high_precision_total_still_flags():
+    # bl_quantity with >3 decimals: a full-balance mark must still flip is_billed=1
+    assert cutover.compute_partial_billed(100.0001, 0, 100.0001) == (100.0, 1)

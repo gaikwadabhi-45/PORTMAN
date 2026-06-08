@@ -40,8 +40,11 @@ def compute_partial_billed(total, already, bill_qty):
 
     Mirrors FIN01's _mark_cargo_source_billed: is_billed flips to 1 only once the
     accumulated billed quantity reaches the total."""
-    total = float(total or 0)
-    already = float(already or 0)
+    # Round inputs to 3 dp up front so the is_billed comparison below is at the
+    # same precision as new_billed (and as FIN01's billable_quantity); otherwise a
+    # bl_quantity with >3 decimals could never flip is_billed to 1 on a full mark.
+    total = round(float(total or 0), 3)
+    already = round(float(already or 0), 3)
     balance = max(total - already, 0)
     if bill_qty in (None, '') or float(bill_qty) <= 0:
         bill_qty = balance
