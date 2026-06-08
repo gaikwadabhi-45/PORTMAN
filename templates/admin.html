@@ -595,38 +595,52 @@
 </div>
 
 <div id="cutover-tab" class="tab-content">
-    <div class="admin-section">
-        <div id="cutover-locked-banner" style="display:none;background:#b00020;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:10px">
-            Cutover is LOCKED. Unlock to make changes.
-        </div>
+    <div id="cutover-locked-banner" class="cut-banner" style="display:none">
+        🔒 Cutover is LOCKED. Unlock to make changes.
+    </div>
 
-        <h3>Document numbers</h3>
-        <div>
-            <label>Series</label> <select id="cut-inv-series"></select>
-            <label>FY</label> <input id="cut-inv-fy" placeholder="e.g. 2026-27">
-            <label>Start at</label> <input id="cut-inv-start" type="number" min="1">
+    <!-- Card 1: Document numbers -->
+    <div class="admin-section cut-card">
+        <h3 class="cut-card-title">Document Numbers</h3>
+        <p class="cut-help">Set the first number the new system should issue after go-live. The seed acts as a floor — once real documents pass it, normal incrementing takes over.</p>
+        <div class="cut-form-row">
+            <div class="cut-field"><label>Invoice series</label><select id="cut-inv-series"></select></div>
+            <div class="cut-field"><label>Financial year</label><input id="cut-inv-fy" placeholder="e.g. 2026-27"></div>
+            <div class="cut-field"><label>Start at</label><input id="cut-inv-start" type="number" min="1"></div>
             <button class="btn" onclick="cutSetInvoiceSeed()">Set invoice start</button>
         </div>
-        <div style="margin-top:8px">
-            <label>Bill start at</label> <input id="cut-bill-start" type="number" min="1">
+        <div class="cut-form-row">
+            <div class="cut-field"><label>Bill start at</label><input id="cut-bill-start" type="number" min="1"></div>
             <button class="btn" onclick="cutSetBillSeed()">Set bill start</button>
         </div>
-        <table class="admin-table" id="cutSeedTable" style="margin-top:10px">
+        <table class="admin-table" id="cutSeedTable">
             <thead><tr><th>Type</th><th>Series</th><th>FY</th><th>Start</th><th>By</th></tr></thead>
             <tbody></tbody>
         </table>
+    </div>
 
-        <h3 style="margin-top:18px">Mark items billed (no invoice / no SAP)</h3>
-        <div>
-            <select id="cut-cust-type" onchange="cutLoadCustomers()"><option>Customer</option><option>Agent</option></select>
-            <select id="cut-cust-id"></select>
+    <!-- Card 2: Mark items billed (partial) -->
+    <div class="admin-section cut-card">
+        <h3 class="cut-card-title">Mark Items Billed <span class="cut-pill">no invoice · no SAP · no GST</span></h3>
+        <p class="cut-help">Record what was already billed in the legacy system. Enter a <b>Bill Qty</b> per cargo line for partial billing — the remaining balance stays billable in FIN01. Rate &amp; Amount are for your reference only and are not saved.</p>
+        <div class="cut-form-row">
+            <div class="cut-field"><label>Type</label>
+                <select id="cut-cust-type" onchange="cutLoadCustomers()"><option>Customer</option><option>Agent</option></select>
+            </div>
+            <div class="cut-field"><label>Customer / Agent</label><select id="cut-cust-id"></select></div>
             <button class="btn" onclick="cutLoadBillables()">Load items</button>
         </div>
-        <div id="cut-billables" style="margin-top:10px"></div>
-        <button class="btn" onclick="cutMarkBilled(true)">Mark selected billed</button>
-        <button class="btn" onclick="cutMarkBilled(false)">Unmark selected</button>
+        <div id="cut-billables" class="cut-billables"><p class="cut-muted">Select a customer/agent and click Load items.</p></div>
+        <div class="cut-actions">
+            <button class="btn" onclick="cutMarkBilled(true)">Mark selected billed</button>
+            <button class="btn btn-danger" onclick="cutMarkBilled(false)">Unmark selected</button>
+        </div>
+    </div>
 
-        <h3 style="margin-top:18px">Lock</h3>
+    <!-- Card 3: Lock -->
+    <div class="admin-section cut-card">
+        <h3 class="cut-card-title">Lock</h3>
+        <p class="cut-help">Locking blocks all cutover writes (seeds and mark-billed). Do this once go-live data is finalized.</p>
         <button class="btn" onclick="cutToggleLock()" id="cut-lock-btn">Mark cutover complete (lock)</button>
     </div>
 </div>
@@ -664,6 +678,37 @@ body.dark-theme .form-group input { background: #1a202c; border-color: #4a5568; 
 body.dark-theme .tab-btn { background: #4a5568; color: #e2e8f0; }
 body.dark-theme .tab-btn.active { background: #4299e1; color: white; }
 body.dark-theme #banksTable input[type="text"] { background: #1a202c; border-color: #4a5568; color: #e2e8f0; }
+
+/* ===== Cutover tab ===== */
+.cut-banner { background:#b00020; color:#fff; padding:10px 14px; border-radius:6px; margin-bottom:14px; font-weight:600; }
+.cut-card { margin-bottom:16px; }
+.cut-card-title { margin:0 0 4px 0; display:flex; align-items:center; gap:10px; }
+.cut-help { color:#718096; font-size:13px; margin:0 0 14px 0; max-width:900px; }
+.cut-pill { font-size:11px; font-weight:600; color:#2b6cb0; background:#ebf8ff; border:1px solid #bee3f8; padding:2px 8px; border-radius:999px; }
+.cut-form-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin-bottom:12px; }
+.cut-field { display:flex; flex-direction:column; gap:4px; }
+.cut-field label { font-size:12px; font-weight:600; color:#4a5568; }
+.cut-field input, .cut-field select { padding:7px 9px; border:1px solid #e2e8f0; border-radius:4px; min-width:160px; }
+.cut-billables { margin:4px 0 12px 0; }
+.cut-table-wrap { overflow-x:auto; border:1px solid #e2e8f0; border-radius:6px; }
+.cut-cargo-table th.num, .cut-cargo-table td.num { text-align:right; white-space:nowrap; }
+.cut-cargo-table input[type="number"] { width:90px; padding:5px 6px; border:1px solid #cbd5e0; border-radius:4px; text-align:right; }
+.cut-subhead { margin:16px 0 6px 0; font-size:14px; color:#4a5568; }
+.cut-muted { color:#a0aec0; font-style:italic; }
+.cut-tag { font-size:10px; font-weight:700; color:#4a5568; background:#edf2f7; padding:1px 6px; border-radius:4px; vertical-align:middle; }
+.cut-chip { font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.cut-chip-ok { color:#22543d; background:#c6f6d5; }
+.cut-chip-block { color:#742a2a; background:#fed7d7; }
+.cut-proof-link { color:#3182ce; text-decoration:none; }
+.cut-proof-list a { display:inline-block; color:#3182ce; }
+.cut-actions { display:flex; gap:10px; margin-top:6px; }
+
+body.dark-theme .cut-help, body.dark-theme .cut-field label, body.dark-theme .cut-subhead { color:#a0aec0; }
+body.dark-theme .cut-field input, body.dark-theme .cut-field select,
+body.dark-theme .cut-cargo-table input[type="number"] { background:#1a202c; border-color:#4a5568; color:#e2e8f0; }
+body.dark-theme .cut-table-wrap { border-color:#4a5568; }
+body.dark-theme .cut-pill { background:#1a365d; border-color:#2c5282; color:#bee3f8; }
+body.dark-theme .cut-tag { background:#4a5568; color:#e2e8f0; }
 
 /* Permissions table */
 #permissionsTable td { text-align: left; vertical-align: middle; }
