@@ -84,6 +84,21 @@ def test_apply_billed_marks_cargo_and_services():
     assert any("SELECT bl_quantity AS total, COALESCE(billed_quantity, 0) AS already FROM vcn_cargo_declaration WHERE id=%s" in s for s in sqls)
     assert any("UPDATE vcn_cargo_declaration SET is_billed=%s, billed_quantity=%s WHERE id=%s" in s for s in sqls)
     assert any("UPDATE service_records SET is_billed=1 WHERE id=%s" in s for s in sqls)
+    # The computed values must thread through: total=100, already=0, no bill_quantity
+    # -> compute_partial_billed(100, 0, None) -> (100.0, 1); UPDATE params [is_billed, new_billed, id].
+    update_call = next(c for c in cur.calls if "UPDATE vcn_cargo_declaration" in c[0])
+    assert update_call[1] == [1, 100.0, 7]
+
+
+def test_apply_billed_skips_missing_row():
+    cur = _FakeCursor()
+    cur._fetchone_row = None  # row not found
+    counts = cutover._apply_billed(cur, [{'source_type': 'VCN_IMPORT', 'id': 9}], [], billed=True)
+    assert counts == {'cargo': 0, 'services': 0}
+    sqls = [c[0] for c in cur.calls]
+    # SELECT happens, but no UPDATE on the declaration table for a missing row.
+    assert any("SELECT bl_quantity AS total" in s for s in sqls)
+    assert not any("UPDATE vcn_cargo_declaration" in s for s in sqls)
 
 
 def test_apply_billed_unknown_source_raises():
