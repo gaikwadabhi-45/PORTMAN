@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from .. import bp
 from database import get_db, get_cursor
+from .model import build_fy_throughput
 
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -63,7 +64,11 @@ _MBC_CARGO_TYPES = ['Break Bulk', 'Container', 'Liquid', 'Bulk']
 @bp.route('/module/RP01/daily-ops/')
 @login_required
 def daily_ops_index():
-    return render_template('daily_ops/daily_ops.html', username=session.get('username'))
+    return render_template(
+        'daily_ops/daily_ops.html',
+        username=session.get('username'),
+        is_admin=session.get('is_admin'),
+    )
 
 
 # ── Routes API (from CRM01 conveyor_routes) ─────────────────────────────────
@@ -104,27 +109,31 @@ def daily_ops_cutoff_get():
     return jsonify({
         'id':            None,
         'cutoff_date':   '',
-        'cutoff_values': {'mbc_cargo': {}, 'cargo_handled': {}},
+        'cutoff_values': {'fy_throughput': {}},
     })
 
 
 @bp.route('/api/module/RP01/daily-ops/cutoff', methods=['POST'])
 @login_required
 def daily_ops_cutoff_save():
-    """Upsert cutoff: replace any existing row with the new values."""
-    data = request.get_json(force=True)
-    cutoff_date   = data.get('cutoff_date', '')
-    cutoff_values = data.get('cutoff_values', {})
+    """Admin-only: set the cutoff date and store the computed FY snapshot."""
+    if not session.get('is_admin'):
+        return Response('Admin access required', status=403)
+
+    data               = request.get_json(force=True)
+    cutoff_date        = data.get('cutoff_date', '')
+    editable_fy_values = data.get('editable_fy_values') or {}
 
     if not cutoff_date:
         return Response('cutoff_date is required', status=400)
 
-    values_json = json.dumps(cutoff_values)
-    user = session.get('username', '')
+    fy_throughput = _compute_fy_throughput(cutoff_date, editable_fy_values)
+    values_json   = json.dumps({'fy_throughput': fy_throughput})
+    user          = session.get('username', '')
 
     conn = get_db()
     cur  = get_cursor(conn)
-    # Delete all existing rows (single-row table)
+    # Single-row table: clear then insert.
     cur.execute("DELETE FROM daily_ops_cutoff")
     cur.execute("""
         INSERT INTO daily_ops_cutoff (cutoff_date, cutoff_values, created_by)
@@ -132,25 +141,106 @@ def daily_ops_cutoff_save():
     """, (cutoff_date, values_json, user))
     conn.commit()
     conn.close()
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'fy_throughput': fy_throughput})
 
 
-# ── Cutoff helper ───────────────────────────────────────────────────────────
+# ── FY throughput snapshot ───────────────────────────────────────────────────
 
-def _load_cutoff():
-    """Return (cutoff_date_str, cutoff_values_dict) or (None, {})."""
+def _compute_fy_throughput(cutoff_date, editable_fy_values=None):
+    """Aggregate quantity by (financial year, cargo type) up to cutoff_date.
+
+    Unions historical (rp01_historical_lueu) and live (lueu_lines) rows, maps
+    cargo_name -> cargo_type via the VCG01 vessel_cargo master, buckets by
+    April-start financial year, and returns {fy_label: {cargo_type: qty}}.
+    The cutoff FY is naturally partial (entry_date <= cutoff_date).
+    
+    Ensures all fiscal years from 2012 to the current fiscal year are displayed,
+    with zero values for years that have no data.
+    """
     conn = get_db()
     cur  = get_cursor(conn)
     cur.execute("""
-        SELECT cutoff_date, cutoff_values
-        FROM daily_ops_cutoff
-        ORDER BY id DESC LIMIT 1
-    """)
-    row = cur.fetchone()
+        WITH throughput AS (
+            SELECT
+                COALESCE(vc.cargo_type, 'OTHERS') AS cargo_type,
+                (EXTRACT(YEAR FROM TO_DATE(l.entry_date, 'YYYY-MM-DD'))::int
+                    - CASE WHEN EXTRACT(MONTH FROM TO_DATE(l.entry_date, 'YYYY-MM-DD')) < 4
+                           THEN 1 ELSE 0 END) AS fy_start,
+                COALESCE(l.quantity, 0) AS quantity
+            FROM lueu_lines l
+            LEFT JOIN vessel_cargo vc
+                ON UPPER(TRIM(vc.cargo_name)) = UPPER(TRIM(l.cargo_name))
+            WHERE l.is_deleted = false
+              AND l.cargo_name IS NOT NULL
+              AND TO_DATE(l.entry_date, 'YYYY-MM-DD') <= %s::date
+
+            UNION ALL
+
+            SELECT
+                COALESCE(vc.cargo_type, 'OTHERS') AS cargo_type,
+                (EXTRACT(YEAR FROM h.entry_date)::int
+                    - CASE WHEN EXTRACT(MONTH FROM h.entry_date) < 4
+                           THEN 1 ELSE 0 END) AS fy_start,
+                COALESCE(h.quantity, 0) AS quantity
+            FROM rp01_historical_lueu h
+            LEFT JOIN vessel_cargo vc
+                ON UPPER(TRIM(vc.cargo_name)) = UPPER(TRIM(h.cargo_name))
+            WHERE h.entry_date <= %s::date
+        )
+        SELECT
+            fy_start,
+            cargo_type,
+            SUM(quantity) AS qty
+        FROM throughput
+        GROUP BY fy_start, cargo_type
+        ORDER BY fy_start, cargo_type
+    """, (cutoff_date, cutoff_date))
+
+    rows = cur.fetchall()
     conn.close()
-    if row:
-        return row['cutoff_date'], json.loads(row['cutoff_values'])
-    return None, {}
+    fy_data = build_fy_throughput(rows)
+    
+    # Ensure all years from 2012 through current FY are present
+    current_year = date.today().year
+    current_month = date.today().month
+    current_fy_start = current_year if current_month >= 4 else current_year - 1
+
+    # Get all cargo types from the computed data and any editable values
+    all_cargo_types = set()
+    for fy_dict in fy_data.values():
+        all_cargo_types.update(fy_dict.keys())
+    for fy_dict in (editable_fy_values or {}).values():
+        if isinstance(fy_dict, dict):
+            all_cargo_types.update(fy_dict.keys())
+
+    for fy_start in range(2012, current_fy_start + 1):
+        fy_label = f"{fy_start}-{fy_start + 1}"
+        if fy_label not in fy_data:
+            fy_data[fy_label] = {cargo_type: 0.0 for cargo_type in all_cargo_types}
+        else:
+            for cargo_type in all_cargo_types:
+                fy_data[fy_label].setdefault(cargo_type, 0.0)
+
+    if editable_fy_values:
+        for fy_label, cargo_map in editable_fy_values.items():
+            if not isinstance(cargo_map, dict):
+                continue
+            row = fy_data.setdefault(fy_label, {})
+            for cargo_type, qty in cargo_map.items():
+                try:
+                    cleaned_qty = float(qty)
+                except (TypeError, ValueError):
+                    continue
+                row[cargo_type] = cleaned_qty
+
+        all_cargo_types = set()
+        for fy_dict in fy_data.values():
+            all_cargo_types.update(fy_dict.keys())
+        for fy_dict in fy_data.values():
+            for cargo_type in all_cargo_types:
+                fy_dict.setdefault(cargo_type, 0.0)
+
+    return fy_data
 
 
 # ── Data fetchers ───────────────────────────────────────────────────────────
@@ -1091,29 +1181,6 @@ def _fetch_cargo_handled(report_date):
     ws_str = window_start.strftime('%Y-%m-%d %H:%M:%S')
     we_str = window_end.strftime('%Y-%m-%d %H:%M:%S')
 
-    cutoff_date_str, cutoff_vals = _load_cutoff()
-
-    cargo_cutoff = cutoff_vals.get('cargo_handled', {})
-
-    cutoff_dt = None
-
-    if cutoff_date_str and cargo_cutoff:
-
-        try:
-            cutoff_dt = datetime.strptime(
-                cutoff_date_str,
-                '%Y-%m-%d'
-            )
-
-        except ValueError:
-            pass
-
-    use_cutoff = (
-        cutoff_dt is not None
-        and month_start < cutoff_dt
-        and cutoff_dt <= report_date
-    )
-
     conn = get_db()
     cur = get_cursor(conn)
 
@@ -1190,48 +1257,13 @@ def _fetch_cargo_handled(report_date):
         _period(ws_str, we_str)
     )
 
-    # Month Data
-    if use_cutoff:
-
-        cutoff_str = cutoff_dt.strftime(
-            '%Y-%m-%d 00:00:00'
+    # Month Data (live, 1st of month -> report date)
+    month_dict = _group_routes(
+        _period(
+            month_start.strftime('%Y-%m-%d %H:%M:%S'),
+            report_date.strftime('%Y-%m-%d 23:59:59')
         )
-
-        live_end = report_date.strftime(
-            '%Y-%m-%d 23:59:59'
-        )
-
-        live_dict = _period(
-            cutoff_str,
-            live_end
-        )
-
-        month_dict = {}
-
-        all_routes = set(
-            list(cargo_cutoff.keys()) +
-            list(live_dict.keys())
-        )
-
-        for route in all_routes:
-
-            month_dict[route] = (
-                float(cargo_cutoff.get(route, 0))
-                + live_dict.get(route, 0)
-            )
-
-        month_dict = _group_routes(
-            month_dict
-        )
-
-    else:
-
-        month_dict = _group_routes(
-            _period(
-                month_start.strftime('%Y-%m-%d %H:%M:%S'),
-                report_date.strftime('%Y-%m-%d 23:59:59')
-            )
-        )
+    )
 
     conn.close()
 

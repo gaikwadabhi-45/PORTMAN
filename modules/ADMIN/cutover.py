@@ -2,6 +2,7 @@
 have no DB dependency so they are unit-testable; DB functions open their own
 connection like the rest of the codebase."""
 from database import get_db, get_cursor, get_module_config, save_module_config
+from decimal import Decimal, ROUND_HALF_UP
 import json
 
 # cargo_source_type -> (declaration table, total-quantity column)
@@ -26,6 +27,34 @@ def validate_start_seq(start_seq, current_max):
         return False, (f'Start number must be greater than the highest number '
                        f'already issued ({current_max or 0}).')
     return True, ''
+
+
+def compute_partial_billed(total, already, bill_qty):
+    """New (billed_quantity, is_billed) for a partial cutover mark.
+
+    total    -- declared total quantity on the row
+    already  -- quantity already billed
+    bill_qty -- quantity to mark billed now; None or <= 0 means "mark the whole
+                remaining balance" (preserves the original all-or-nothing
+                behaviour). Capped so we never bill past the total.
+
+    Mirrors FIN01's _mark_cargo_source_billed: is_billed flips to 1 only once the
+    accumulated billed quantity reaches the total."""
+    # Round inputs to 3 dp up front so the is_billed comparison below is at the
+    # same precision as new_billed (and as FIN01's billable_quantity); otherwise a
+    # bl_quantity with >3 decimals could never flip is_billed to 1 on a full mark.
+    total = round(float(total or 0), 3)
+    already = round(float(already or 0), 3)
+    balance = max(total - already, 0)
+    if bill_qty in (None, '') or float(bill_qty) <= 0:
+        bill_qty = balance
+    else:
+        bill_qty = min(float(bill_qty), balance)
+    new_billed = float(
+        Decimal(str(already + bill_qty)).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
+    )
+    is_billed = 1 if new_billed >= total else 0
+    return new_billed, is_billed
 
 
 # ===== Lock state + audit =====
@@ -127,9 +156,11 @@ def set_bill_seed(start_seq, username):
 # ===== Mark / unmark items billed (pure flag, no invoice, no SAP) =====
 
 def _apply_billed(cur, cargo_items, service_ids, billed):
-    """Flip billed flags. cargo_items: list of {'source_type','id'}.
-    billed=True  -> is_billed=1, billed_quantity=<declared qty>
-    billed=False -> is_billed=0, billed_quantity=0
+    """Flip billed flags. cargo_items: list of {'source_type','id','bill_quantity'}.
+    billed=True  -> billed_quantity += bill_quantity (capped at total),
+                    is_billed=1 only once fully covered. A missing/<=0
+                    bill_quantity marks the whole remaining balance.
+    billed=False -> is_billed=0, billed_quantity=0 (full reset).
     Returns counts dict. Raises ValueError on unknown source_type."""
     cargo_done, svc_done = 0, 0
     for item in cargo_items or []:
@@ -138,10 +169,20 @@ def _apply_billed(cur, cargo_items, service_ids, billed):
             raise ValueError(f"Unknown cargo source_type: {item.get('source_type')}")
         table, qty_col = mapping
         if billed:
-            # qty_col and table are trusted constants from CARGO_SOURCES (never user input)
+            # qty_col and table are trusted constants from CARGO_SOURCES (never
+            # user input). Read current totals to support partial marking.
             cur.execute(
-                f"UPDATE {table} SET is_billed=1, billed_quantity={qty_col} WHERE id=%s",
+                f"SELECT {qty_col} AS total, COALESCE(billed_quantity, 0) AS already "
+                f"FROM {table} WHERE id=%s",
                 [item.get('id')])
+            row = cur.fetchone()
+            if not row:
+                continue
+            new_billed, is_billed = compute_partial_billed(
+                row['total'], row['already'], item.get('bill_quantity'))
+            cur.execute(
+                f"UPDATE {table} SET is_billed=%s, billed_quantity=%s WHERE id=%s",
+                [is_billed, new_billed, item.get('id')])
         else:
             cur.execute(
                 f"UPDATE {table} SET is_billed=0, billed_quantity=0 WHERE id=%s",

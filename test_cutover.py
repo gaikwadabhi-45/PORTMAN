@@ -59,9 +59,15 @@ class _FakeCursor:
     def __init__(self):
         self.calls = []
         self.rowcount = 1
+        # fetchone() returns a dict representing a row with total=100, already=0
+        # so that compute_partial_billed gets sensible inputs in the billed=True path.
+        self._fetchone_row = {'total': 100, 'already': 0}
 
     def execute(self, sql, params=None):
         self.calls.append((' '.join(sql.split()), params))
+
+    def fetchone(self):
+        return self._fetchone_row
 
 
 def test_apply_billed_marks_cargo_and_services():
@@ -74,8 +80,25 @@ def test_apply_billed_marks_cargo_and_services():
     )
     assert counts == {'cargo': 1, 'services': 1}
     sqls = [c[0] for c in cur.calls]
-    assert any("UPDATE vcn_cargo_declaration SET is_billed=1, billed_quantity=bl_quantity WHERE id=%s" in s for s in sqls)
+    # New behaviour: SELECT totals first, then UPDATE with explicit param values.
+    assert any("SELECT bl_quantity AS total, COALESCE(billed_quantity, 0) AS already FROM vcn_cargo_declaration WHERE id=%s" in s for s in sqls)
+    assert any("UPDATE vcn_cargo_declaration SET is_billed=%s, billed_quantity=%s WHERE id=%s" in s for s in sqls)
     assert any("UPDATE service_records SET is_billed=1 WHERE id=%s" in s for s in sqls)
+    # The computed values must thread through: total=100, already=0, no bill_quantity
+    # -> compute_partial_billed(100, 0, None) -> (100.0, 1); UPDATE params [is_billed, new_billed, id].
+    update_call = next(c for c in cur.calls if "UPDATE vcn_cargo_declaration" in c[0])
+    assert update_call[1] == [1, 100.0, 7]
+
+
+def test_apply_billed_skips_missing_row():
+    cur = _FakeCursor()
+    cur._fetchone_row = None  # row not found
+    counts = cutover._apply_billed(cur, [{'source_type': 'VCN_IMPORT', 'id': 9}], [], billed=True)
+    assert counts == {'cargo': 0, 'services': 0}
+    sqls = [c[0] for c in cur.calls]
+    # SELECT happens, but no UPDATE on the declaration table for a missing row.
+    assert any("SELECT bl_quantity AS total" in s for s in sqls)
+    assert not any("UPDATE vcn_cargo_declaration" in s for s in sqls)
 
 
 def test_apply_billed_unknown_source_raises():
@@ -97,3 +120,51 @@ def test_mark_items_billed_blocked_when_locked(monkeypatch):
     monkeypatch.setattr(cutover, 'is_locked', lambda: True)
     ok, msg, counts = cutover.mark_items_billed([{'source_type': 'VCN_IMPORT', 'id': 1}], [], 'tester')
     assert ok is False and 'locked' in msg.lower() and counts == {}
+
+
+# --- Partial cutover billing math ------------------------------------------
+
+def test_compute_partial_billed_partial_below_total():
+    # 50 of 100, nothing billed yet -> stays open (is_billed=0)
+    assert cutover.compute_partial_billed(100, 0, 50) == (50.0, 0)
+
+
+def test_compute_partial_billed_accumulates_onto_existing():
+    # 20 already billed + 30 now = 50 of 100 -> still open
+    assert cutover.compute_partial_billed(100, 20, 30) == (50.0, 0)
+
+
+def test_compute_partial_billed_reaches_total_sets_flag():
+    # 50 already + 50 now = 100 of 100 -> fully billed
+    assert cutover.compute_partial_billed(100, 50, 50) == (100.0, 1)
+
+
+def test_compute_partial_billed_caps_over_balance():
+    # only 20 left, asking for 50 -> capped at 20, fully billed
+    assert cutover.compute_partial_billed(100, 80, 50) == (100.0, 1)
+
+
+def test_compute_partial_billed_defaults_to_full_balance_when_missing():
+    # bill_qty None or 0 -> mark the whole remaining balance (back-compat)
+    assert cutover.compute_partial_billed(100, 30, None) == (100.0, 1)
+    assert cutover.compute_partial_billed(100, 30, 0) == (100.0, 1)
+
+
+def test_compute_partial_billed_rounds_to_three_decimals():
+    assert cutover.compute_partial_billed(10, 0, 3.3335) == (3.334, 0)
+
+
+def test_compute_partial_billed_negative_qty_defaults_to_balance():
+    # negative bill_qty is treated like None/0 -> mark the whole remaining balance
+    assert cutover.compute_partial_billed(100, 30, -5) == (100.0, 1)
+
+
+def test_compute_partial_billed_stale_already_over_total_never_negative():
+    # legacy inconsistency: already billed > total -> balance clamps to 0,
+    # nothing more is billed and the line reads as fully billed
+    assert cutover.compute_partial_billed(100, 120, 10) == (120.0, 1)
+
+
+def test_compute_partial_billed_high_precision_total_still_flags():
+    # bl_quantity with >3 decimals: a full-balance mark must still flip is_billed=1
+    assert cutover.compute_partial_billed(100.0001, 0, 100.0001) == (100.0, 1)
