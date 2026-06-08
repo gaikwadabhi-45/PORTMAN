@@ -97,3 +97,35 @@ def test_mark_items_billed_blocked_when_locked(monkeypatch):
     monkeypatch.setattr(cutover, 'is_locked', lambda: True)
     ok, msg, counts = cutover.mark_items_billed([{'source_type': 'VCN_IMPORT', 'id': 1}], [], 'tester')
     assert ok is False and 'locked' in msg.lower() and counts == {}
+
+
+# --- Partial cutover billing math ------------------------------------------
+
+def test_compute_partial_billed_partial_below_total():
+    # 50 of 100, nothing billed yet -> stays open (is_billed=0)
+    assert cutover.compute_partial_billed(100, 0, 50) == (50.0, 0)
+
+
+def test_compute_partial_billed_accumulates_onto_existing():
+    # 20 already billed + 30 now = 50 of 100 -> still open
+    assert cutover.compute_partial_billed(100, 20, 30) == (50.0, 0)
+
+
+def test_compute_partial_billed_reaches_total_sets_flag():
+    # 50 already + 50 now = 100 of 100 -> fully billed
+    assert cutover.compute_partial_billed(100, 50, 50) == (100.0, 1)
+
+
+def test_compute_partial_billed_caps_over_balance():
+    # only 20 left, asking for 50 -> capped at 20, fully billed
+    assert cutover.compute_partial_billed(100, 80, 50) == (100.0, 1)
+
+
+def test_compute_partial_billed_defaults_to_full_balance_when_missing():
+    # bill_qty None or 0 -> mark the whole remaining balance (back-compat)
+    assert cutover.compute_partial_billed(100, 30, None) == (100.0, 1)
+    assert cutover.compute_partial_billed(100, 30, 0) == (100.0, 1)
+
+
+def test_compute_partial_billed_rounds_to_three_decimals():
+    assert cutover.compute_partial_billed(10, 0, 3.3335) == (3.334, 0)

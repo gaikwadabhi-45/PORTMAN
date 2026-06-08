@@ -2,6 +2,7 @@
 have no DB dependency so they are unit-testable; DB functions open their own
 connection like the rest of the codebase."""
 from database import get_db, get_cursor, get_module_config, save_module_config
+from decimal import Decimal, ROUND_HALF_UP
 import json
 
 # cargo_source_type -> (declaration table, total-quantity column)
@@ -26,6 +27,31 @@ def validate_start_seq(start_seq, current_max):
         return False, (f'Start number must be greater than the highest number '
                        f'already issued ({current_max or 0}).')
     return True, ''
+
+
+def compute_partial_billed(total, already, bill_qty):
+    """New (billed_quantity, is_billed) for a partial cutover mark.
+
+    total    -- declared total quantity on the row
+    already  -- quantity already billed
+    bill_qty -- quantity to mark billed now; None or <= 0 means "mark the whole
+                remaining balance" (preserves the original all-or-nothing
+                behaviour). Capped so we never bill past the total.
+
+    Mirrors FIN01's _mark_cargo_source_billed: is_billed flips to 1 only once the
+    accumulated billed quantity reaches the total."""
+    total = float(total or 0)
+    already = float(already or 0)
+    balance = max(total - already, 0)
+    if bill_qty is None or float(bill_qty) <= 0:
+        bill_qty = balance
+    else:
+        bill_qty = min(float(bill_qty), balance)
+    new_billed = float(
+        Decimal(str(already + bill_qty)).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
+    )
+    is_billed = 1 if new_billed >= total else 0
+    return new_billed, is_billed
 
 
 # ===== Lock state + audit =====
