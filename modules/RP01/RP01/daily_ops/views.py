@@ -1680,6 +1680,7 @@ def _fetch_port_throughput(report_date):
         1
     )
 
+    # Financial Year Start (April)
     if target_date.month >= 4:
         fy_start = date(target_date.year, 4, 1)
     else:
@@ -1778,15 +1779,38 @@ def _fetch_port_throughput(report_date):
 
     row = cur.fetchone()
 
-    # Month TPD
-    days_elapsed = (target_date - month_start).days + 1
+    # =====================================================
+    # MONTH TPD
+    # =====================================================
+
+    month_days_elapsed = (
+        target_date - month_start
+    ).days + 1
 
     month_tpd = round(
-        float(row["month_qty"] or 0) / days_elapsed,
+        float(row["month_qty"] or 0) /
+        month_days_elapsed,
         2
-    ) if days_elapsed else 0
+    ) if month_days_elapsed else 0
 
-    # Cumulative Since Oct 2012
+    # =====================================================
+    # YEAR TPD (FINANCIAL YEAR)
+    # =====================================================
+
+    fy_days_elapsed = (
+        target_date - fy_start
+    ).days + 1
+
+    year_tpd = round(
+        float(row["year_qty"] or 0) /
+        fy_days_elapsed,
+        2
+    ) if fy_days_elapsed else 0
+
+    # =====================================================
+    # CUMULATIVE SINCE OCT 2012
+    # =====================================================
+
     cur.execute("""
         SELECT
             COALESCE(
@@ -1820,9 +1844,9 @@ def _fetch_port_throughput(report_date):
         "mtd_qty": int(row["month_qty"] or 0),
         "ytd_qty": int(row["year_qty"] or 0),
         "cumulative_qty": int(cumulative_row["cumulative_qty"] or 0),
-        "month_tpd": float(month_tpd)
+        "month_tpd": float(month_tpd),
+        "year_tpd": float(year_tpd)
     }
-
 def _build_excel_a4(
     vessels,
     report_date,
@@ -2614,7 +2638,8 @@ def _build_excel_a4(
         ("Month", port_throughput.get("mtd_qty", "")),
         ("Year", port_throughput.get("ytd_qty", "")),
         ("Cumulative Since Oct 2012", port_throughput.get("cumulative_qty", "")),
-        ("Month TPD", f"{port_throughput.get('month_tpd', 0):,.2f}")
+        ("Month TPD", f"{port_throughput.get('month_tpd', 0):,.2f}"),
+        ("Year TPD", f"{port_throughput.get('year_tpd', 0):,.2f}")
     ]
 
     pt_row = pt_start_row + 1
@@ -5411,6 +5436,15 @@ def daily_ops_preview():
                             {port_throughput['month_tpd']:,.2f}
                         </td>
                     </tr>
+
+                    <tr>
+                    <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                        Year TPD
+                    </td>
+                    <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                        {port_throughput['year_tpd']:,.2f}
+                    </td>
+                </tr>
                 </tr>
 
                 </table>
