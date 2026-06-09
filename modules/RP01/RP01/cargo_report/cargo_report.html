@@ -20,270 +20,405 @@
 <script src="https://cdn.webdatarocks.com/latest/webdatarocks.highcharts.js"></script>
 
 <style>
-/* ── Page header ─────────────────────────────────────────── */
-.page-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid var(--border-color);
-}
-.page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
-.module-badge {
-    background: #4a90d9; color: #fff;
-    padding: 3px 10px; border-radius: 4px;
-    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
-}
-.breadcrumb {
-    font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;
-}
-.breadcrumb a { color: #4a90d9; text-decoration: none; }
-.breadcrumb a:hover { text-decoration: underline; }
+    /* ── Page header ─────────────────────────────────────────── */
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--border-color);
+    }
 
-/* ── Toolbar ─────────────────────────────────────────────── */
-.toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: flex-end;
-    margin-bottom: 10px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 10px 12px;
-}
-.toolbar-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-.toolbar-group label {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-.toolbar-group select,
-.toolbar-group input[type="datetime-local"] {
-    padding: 4px 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 12px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    height: 28px;
-}
-.toolbar-group select:focus,
-.toolbar-group input[type="datetime-local"]:focus { outline: none; border-color: #4a90d9; }
-.tb-btn {
-    padding: 0 14px;
-    height: 28px;
-    border: none;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    align-self: flex-end;
-    white-space: nowrap;
-}
-.tb-btn.primary  { background: #4a90d9; color: #fff; }
-.tb-btn.primary:hover  { background: #357abd; }
-.tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .page-header h2 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--text-primary);
+    }
 
-/* ── Status bar ──────────────────────────────────────────── */
-.status-bar {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-    min-height: 16px;
-}
-.status-bar.error { color: #e74c3c; }
+    .module-badge {
+        background: #4a90d9;
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
 
-/* ── Pivot wrapper ───────────────────────────────────────── */
-#wdr-component {
-    margin-bottom: 16px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
+    .breadcrumb {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+    }
 
-/* ── Chart panels ────────────────────────────────────────── */
-.chart-panels {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-top: 4px;
-}
-.chart-panel {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
-.chart-type-sel {
-    padding: 3px 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 11px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-}
-.chart-type-sel:focus { outline: none; border-color: #4a90d9; }
-.chart-container {
-    height: 350px;
-    padding: 4px;
-}
+    .breadcrumb a {
+        color: #4a90d9;
+        text-decoration: none;
+    }
 
-/* ── KPI stat cards ──────────────────────────────────────── */
-.kpi-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 14px;
-}
-.kpi-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 14px 16px 12px;
-    border-left: 4px solid #2E75B6;
-    transition: border-color 0.2s;
-}
-.kpi-card:nth-child(2) { border-left-color: #ED7D31; }
-.kpi-card:nth-child(3) { border-left-color: #A9D18E; }
-.kpi-card:nth-child(4) { border-left-color: #FFC000; }
-.kpi-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-secondary);
-    margin-bottom: 4px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.kpi-label select {
-    font-size: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    padding: 1px 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-    max-width: 120px;
-}
-.kpi-value {
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1.2;
-    font-variant-numeric: tabular-nums;
-}
-.kpi-sub {
-    font-size: 10px;
-    color: var(--text-secondary);
-    margin-top: 2px;
-}
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
 
-/* ── Chart panel settings ───────────────────────────────── */
-.chart-panel-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    flex-wrap: wrap;
-}
-.chart-panel-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-right: auto;
-}
-.chart-opt-group {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    color: var(--text-secondary);
-}
-.chart-opt-group select {
-    font-size: 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    padding: 2px 4px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-}
-.chart-opt-group input[type="checkbox"] {
-    cursor: pointer;
-    margin: 0;
-}
-.chart-opt-group label {
-    cursor: pointer;
-    user-select: none;
-}
+    /* ── Toolbar ─────────────────────────────────────────────── */
+    .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: flex-end;
+        margin-bottom: 10px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 10px 12px;
+    }
 
-#cargo-report-table thead th {
-    background: #e8e7b5 !important;
-    color: #000 !important;
-    font-size: 13px;
-    font-weight: 700;
-    text-align: center;
-    vertical-align: middle;
-}
+    .toolbar-group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
 
-#cargo-report-table tbody td {
-    font-size: 13px;
-    color: #344054;
-    border: 1px solid #d9dee7;
-    padding: 10px;
-    vertical-align: middle;
-}
+    .toolbar-group label {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
 
-#cargo-report-table tbody tr:nth-child(even) {
-    background: #f9fafb;
-}
+    .toolbar-group select,
+    .toolbar-group input[type="datetime-local"] {
+        padding: 4px 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 12px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        height: 28px;
+    }
 
-/* Space between filter section and table */
-.report-spacing {
-    margin-top: 20px;
-}
+    .toolbar-group select:focus,
+    .toolbar-group input[type="datetime-local"]:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
 
-/* DataTable top controls spacing */
-.dataTables_wrapper .dataTables_length,
-.dataTables_wrapper .dataTables_filter {
-    margin-bottom: 14px;
-}
+    .tb-btn {
+        padding: 0 14px;
+        height: 28px;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        align-self: flex-end;
+        white-space: nowrap;
+    }
 
-/* Space below table */
-.dataTables_wrapper .dataTables_info,
-.dataTables_wrapper .dataTables_paginate {
-    margin-top: 14px;
-}
+    .tb-btn.primary {
+        background: #4a90d9;
+        color: #fff;
+    }
 
-/* Better table container spacing */
-#cargo-report-table_wrapper {
-    padding: 16px;
-}
-/* ── Placeholder ─────────────────────────────────────────── */
-.chart-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #aaa;
-    font-size: 12px;
-    font-family: Verdana, sans-serif;
-}
+    .tb-btn.primary:hover {
+        background: #357abd;
+    }
+
+    .tb-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* ── Status bar ──────────────────────────────────────────── */
+    .status-bar {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        min-height: 16px;
+    }
+
+    .status-bar.error {
+        color: #e74c3c;
+    }
+
+    /* ── Pivot wrapper ───────────────────────────────────────── */
+    #wdr-component {
+        margin-bottom: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    /* ── Chart panels ────────────────────────────────────────── */
+    .chart-panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 4px;
+    }
+
+    .chart-panel {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .chart-type-sel {
+        padding: 3px 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 11px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        cursor: pointer;
+    }
+
+    .chart-type-sel:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
+
+    .chart-container {
+        height: 350px;
+        padding: 4px;
+    }
+
+    /* ── KPI stat cards ──────────────────────────────────────── */
+    .kpi-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .kpi-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 14px 16px 12px;
+        border-left: 4px solid #2E75B6;
+        transition: border-color 0.2s;
+    }
+
+    .kpi-card:nth-child(2) {
+        border-left-color: #ED7D31;
+    }
+
+    .kpi-card:nth-child(3) {
+        border-left-color: #A9D18E;
+    }
+
+    .kpi-card:nth-child(4) {
+        border-left-color: #FFC000;
+    }
+
+    .kpi-label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .kpi-label select {
+        font-size: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 3px;
+        padding: 1px 4px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        cursor: pointer;
+        max-width: 120px;
+    }
+
+    .kpi-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: var(--text-primary);
+        line-height: 1.2;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-sub {
+        font-size: 10px;
+        color: var(--text-secondary);
+        margin-top: 2px;
+    }
+
+    /* ── Chart panel settings ───────────────────────────────── */
+    .chart-panel-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-primary);
+        flex-wrap: wrap;
+    }
+
+    .chart-panel-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        margin-right: auto;
+    }
+
+    .chart-opt-group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        color: var(--text-secondary);
+    }
+
+    .chart-opt-group select {
+        font-size: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 3px;
+        padding: 2px 4px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        cursor: pointer;
+    }
+
+    .chart-opt-group input[type="checkbox"] {
+        cursor: pointer;
+        margin: 0;
+    }
+
+    .chart-opt-group label {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    #cargo-report-table thead th {
+        background: #e8e7b5 !important;
+        color: #000 !important;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    #cargo-report-table tbody td {
+        font-size: 13px;
+        color: #344054;
+        border: 1px solid #d9dee7;
+        padding: 10px;
+        vertical-align: middle;
+    }
+
+    #cargo-report-table tbody tr:nth-child(even) {
+        background: #f9fafb;
+    }
+
+    /* Space between filter section and table */
+    .report-spacing {
+        margin-top: 20px;
+    }
+
+    /* DataTable top controls spacing */
+    .dataTables_wrapper .dataTables_length,
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 14px;
+    }
+
+    /* Space below table */
+    .dataTables_wrapper .dataTables_info,
+    .dataTables_wrapper .dataTables_paginate {
+        margin-top: 14px;
+    }
+
+    /* Better table container spacing */
+    #cargo-report-table_wrapper {
+        padding: 16px;
+    }
+
+    /* ── Placeholder ─────────────────────────────────────────── */
+    .chart-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #aaa;
+        font-size: 12px;
+        font-family: Verdana, sans-serif;
+    }
+
+    #cargo-report-table td[rowspan] {
+        vertical-align: middle !important;
+        padding-left: 9px;
+    }
+
+    /* Download Loader */
+    .download-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(220, 220, 220, .55);
+        z-index: 999999;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity .3s ease;
+    }
+
+    .download-loader.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .download-loader-content {
+        width: 220px;
+        background: #fff;
+        border-radius: 12px;
+        padding: 30px 20px;
+        text-align: center;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
+    }
+
+    .download-spinner {
+        width: 42px;
+        height: 42px;
+        margin: 0 auto;
+        border: 4px solid #e5e7eb;
+        border-top: 4px solid #4a90d9;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    .download-title {
+        margin-top: 15px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #475467;
+    }
+
+    .download-subtitle {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #667085;
+    }
+
+    @keyframes spin {
+        100% {
+            transform: rotate(360deg);
+        }
+    }
 </style>
 {% endblock %}
 
@@ -299,12 +434,12 @@
 
 <!-- <div class="report-page"> -->
 
-    <!-- Header -->
-    <!-- <div class="report-header">
+<!-- Header -->
+<!-- <div class="report-header">
         <h2>Cargo Handling Report</h2>
     </div> -->
 
-    <!-- Filter Section -->
+<!-- Filter Section -->
 <div style="
     background:#f8f9fb;
     border:1px solid #d9dee7;
@@ -332,11 +467,7 @@
                 FROM DATE
             </label>
 
-            <input
-                type="date"
-                id="from-date"
-                class="form-control"
-                style="
+            <input type="date" id="from-date" class="form-control" style="
                     width:160px;
                     height:38px;
                     border:1px solid #d0d5dd;
@@ -359,11 +490,7 @@
                 TO DATE
             </label>
 
-            <input
-                type="date"
-                id="to-date"
-                class="form-control"
-                style="
+            <input type="date" id="to-date" class="form-control" style="
                     width:160px;
                     height:38px;
                     border:1px solid #d0d5dd;
@@ -375,9 +502,7 @@
         </div>
 
         <!-- APPLY BUTTON -->
-        <button
-            id="apply-filter-btn"
-            style="
+        <button id="apply-filter-btn" style="
                 height:38px;
                 min-width:90px;
                 background:#4a90d9;
@@ -392,9 +517,7 @@
         </button>
 
         <!-- RESET BUTTON -->
-        <button
-            id="reset-filter-btn"
-            style="
+        <button id="reset-filter-btn" style="
                 height:38px;
                 min-width:90px;
                 background:#ffffff;
@@ -409,9 +532,7 @@
         </button>
 
         <!-- DOWNLOAD BUTTON -->
-        <button
-            id="download-report-btn"
-            style="
+        <button id="download-report-btn" style="
                 height:38px;
                 min-width:200px;
                 background:#22c55e;
@@ -429,8 +550,8 @@
 
 </div>
 
-    <!-- Table Section -->
-    <!-- Table Container -->
+<!-- Table Section -->
+<!-- Table Container -->
 <div style="
     background:#ffffff;
     border:1px solid #d9dee7;
@@ -453,10 +574,7 @@
     <!-- Table -->
     <div style="padding:0;overflow:auto;">
 
-        <table
-            id="cargo-report-table"
-            class="display nowrap"
-            style="
+        <table id="cargo-report-table" class="display nowrap" style="
                 width:100%;
                 border-collapse:collapse;
             ">
@@ -527,12 +645,24 @@
     </div>
 
 </div>
+<div id="downloadLoader" class="download-loader">
+    <div class="download-loader-content">
+        <div class="download-spinner"></div>
+
+        <div class="download-title">
+            Preparing Download...
+        </div>
+
+        <div class="download-subtitle">
+            Please wait
+        </div>
+    </div>
+</div>
 <!-- jQuery -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
 <!-- DataTables -->
-<link rel="stylesheet"
-      href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 
@@ -544,196 +674,293 @@ $(document).ready(function () {
         pageLength: 25,
         searching: true,
         ordering: true,
-        responsive: true
+        responsive: false,
+
+        drawCallback: function () {
+            mergeActualDischargeCells();
+        }
     });
 
 });
 
 
-const BASE_URL = '/module/RP01';
+    const BASE_URL = '/module/RP01';
 
 
-$('#apply-filter-btn').on('click', async function () {
+    $('#apply-filter-btn').on('click', async function () {
 
-    const fromDate = $('#from-date').val();
-    const toDate   = $('#to-date').val();
+        const fromDate = $('#from-date').val();
+        const toDate = $('#to-date').val();
 
-    // Validation
-    if (!validateDates(fromDate, toDate)) {
-        return;
-    }
-
-    try {
-
-        const response = await fetch(
-            `/api/cargo-report?from_date=${fromDate}&to_date=${toDate}`
-        );
-
-        if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
+        // Validation
+        if (!validateDates(fromDate, toDate)) {
+            return;
         }
 
-        const result = await response.json();
+        try {
 
-        console.log(result);
+            const response = await fetch(
+                `/api/cargo-report?from_date=${fromDate}&to_date=${toDate}`
+            );
 
-        renderCargoTable(result.data || []);
+            if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+            }
 
-    } catch (error) {
+            const result = await response.json();
 
-        console.error('Fetch Error:', error);
-        alert('Failed to fetch report data');
+            console.log(result);
 
-    }
+            renderCargoTable(result.data || []);
 
-});
+        } catch (error) {
 
-function renderCargoTable(data) {
-    const table = $('#cargo-report-table').DataTable();
-    table.clear();
+            console.error('Fetch Error:', error);
+            alert('Failed to fetch report data');
 
-    data.forEach((item, index) => {
-table.row.add([
-    index + 1,
-    item.vessel_name || '-',
-    item.vessel_type || '-',
+        }
 
-    `<input type="text"
+    });
+
+    function renderCargoTable(data) {
+        const table = $('#cargo-report-table').DataTable();
+        table.clear();
+
+        data.forEach((item, index) => {
+            table.row.add([
+                index + 1,
+                item.vessel_name || '-',
+                item.vessel_type || '-',
+
+                `<input type="text"
         class="material-po-input"
         value="${item.material_po || ''}"
         data-id="${item.id || ''}"
         data-vessel-type="${item.vessel_type || ''}"
         style="width:120px;padding:4px;">`,
 
-    item.cargo_type || '-',
-    item.cargo_name || '-',
-    item.bl_qty_mt || '-',
-    item.actual_discharge || '-',
-    item.load_port || '-',
-    item.discharge_commenced || '-',
-    item.discharge_completed || '-',
-    item.consignee || '-',
-    item.flag || '-'
-]);
-    });
-
-    table.draw();
-}
-
-$(document).on('change', '.material-po-input', async function () {
-
-    const materialPo = $(this).val();
-    const id = $(this).data('id');
-    const vesselType = $(this).data('vessel-type');
-
-    console.log({
-        id: id,
-        vessel_type: vesselType,
-        material_po: materialPo
-    });
-
-    try {
-
-        const response = await fetch('/api/update-material-po', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                id: id,
-                vessel_type: vesselType,
-                material_po: materialPo
-            })
+                item.cargo_type || '-',
+                item.cargo_name || '-',
+                item.bl_qty_mt || '-',
+                item.actual_discharge || '-',
+                item.load_port || '-',
+                item.discharge_commenced || '-',
+                item.discharge_completed || '-',
+                item.consignee || '-',
+                item.flag || '-'
+            ]);
         });
 
-        const result = await response.json();
+        table.draw();
 
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-
-        alert('Material PO updated successfully');
-
-    } catch (err) {
-
-        console.error(err);
-        alert(err.message || 'Failed to update Material PO');
 
     }
-});
-function validateDates(fromDate, toDate) {
+    function mergeActualDischargeCells() {
+
+    const rows = $('#cargo-report-table tbody tr');
+
+    let prevKey = '';
+    let firstCell = null;
+    let rowspan = 1;
+
+    rows.each(function () {
+
+        const cells = $(this).find('td');
+
+        if (cells.length < 13) return;
+
+        const vesselName = cells.eq(1).text().trim();
+        const vesselType = cells.eq(2).text().trim();
+
+        const key = vesselName + '|' + vesselType;
+
+        const actualCell = cells.eq(7);
+
+        if (key === prevKey) {
+
+            rowspan++;
+
+            firstCell.attr('rowspan', rowspan);
+
+            actualCell.remove();
+
+        } else {
+
+            prevKey = key;
+            firstCell = actualCell;
+            rowspan = 1;
+        }
+    });
+
+    $('#cargo-report-table td[rowspan]').css({
+        'vertical-align': 'middle',
+    });
+}
+    $(document).on('change', '.material-po-input', async function () {
+
+        const materialPo = $(this).val();
+        const id = $(this).data('id');
+        const vesselType = $(this).data('vessel-type');
+
+        console.log({
+            id: id,
+            vessel_type: vesselType,
+            material_po: materialPo
+        });
+
+        try {
+
+            const response = await fetch('/api/update-material-po', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: id,
+                    vessel_type: vesselType,
+                    material_po: materialPo
+                })
+            });
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.message);
+            }
+
+            alert('Material PO updated successfully');
+
+        } catch (err) {
+
+            console.error(err);
+            alert(err.message || 'Failed to update Material PO');
+
+        }
+    });
+    function validateDates(fromDate, toDate) {
 
         const cutoffDate = '2026-05-01';
 
-    if (fromDate && fromDate < cutoffDate) {
+        if (fromDate && fromDate < cutoffDate) {
 
-        Swal.fire({
-            icon: 'warning',
-            title: 'Report Not Available',
-            html: `
+            Swal.fire({
+                icon: 'warning',
+                title: 'Report Not Available',
+                html: `
                 <b>Cutoff Date:</b> 01-May-2026<br><br>
                 Reports before this date are not available.
             `,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#4a90d9',
-            iconColor: '#44B5E6'
-        });
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#4a90d9',
+                iconColor: '#44B5E6'
+            });
 
-        return false;
+            return false;
+        }
+
+        if (!fromDate) {
+            alert('From Date is required');
+            return false;
+        }
+
+        if (!toDate) {
+            alert('To Date is required');
+            return false;
+        }
+
+        if (fromDate > toDate) {
+            alert('From Date should not be greater than To Date');
+            return false;
+        }
+
+        return true;
     }
 
-    if (!fromDate) {
-        alert('From Date is required');
-        return false;
-    }
 
-    if (!toDate) {
-        alert('To Date is required');
-        return false;
-    }
+    $('#reset-filter-btn').on('click', function () {
 
-    if (fromDate > toDate) {
-        alert('From Date should not be greater than To Date');
-        return false;
-    }
+        $('#from-date').val('');
+        $('#to-date').val('');
 
-    return true;
-}
+        const table = $('#cargo-report-table').DataTable();
+
+        table.clear().draw();
+
+    });
 
 
-$('#reset-filter-btn').on('click', function () {
+    $('#download-report-btn').on('click', function () {
 
-    $('#from-date').val('');
-    $('#to-date').val('');
+        const fromDate = $('#from-date').val();
+        const toDate = $('#to-date').val();
 
-    const table = $('#cargo-report-table').DataTable();
+        if (!validateDates(fromDate, toDate)) {
+            return;
+        }
 
-    table.clear().draw();
+        const btn = $('#download-report-btn');
+        const loader = $('#downloadLoader');
 
-});
+        btn.prop('disabled', true);
+        btn.text('Preparing...');
+
+        $('.download-subtitle').text('Fetching data...');
+
+        loader.addClass('show');
+
+        fetch(
+            `/api/module/RP01/cargo-report/download/?from_date=${fromDate}&to_date=${toDate}`
+        )
+            .then(response => {
+
+                if (!response.ok) {
+                    throw new Error('Download failed');
+                }
+
+                return response.blob();
+            })
+            .then(blob => {
+
+                $('.download-subtitle').text('Download Ready');
+
+                const url = window.URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+
+                a.href = url;
+                a.download = 'Cargo_Handling_Report.xlsx';
+
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+
+                console.error(error);
+
+                $('.download-subtitle').text('Download Failed');
+            })
+            .finally(() => {
+
+                loader.removeClass('show');
+
+                btn.prop('disabled', false);
+
+                btn.html('↓ Download Excel');
+
+            });;
+    });
+    // // Uses the bulk download endpoint filtered to a single record's date range.
+    // // If you later add a per-ID Flask route, update the URL below.
+    // function downloadSingleReport(id) {
+
+    //     alert('Single-record download is not yet configured on the server.');
+
+    // }
 
 
-$('#download-report-btn').on('click', function () {
-
-    const fromDate = $('#from-date').val();
-    const toDate   = $('#to-date').val();
-
-    // Validation
-    if (!validateDates(fromDate, toDate)) {
-        return;
-    }
-
-    window.location.href =
-        `/api/module/RP01/cargo-report/download/?from_date=${fromDate}&to_date=${toDate}`;
-});
-
-// // Uses the bulk download endpoint filtered to a single record's date range.
-// // If you later add a per-ID Flask route, update the URL below.
-// function downloadSingleReport(id) {
-
-//     alert('Single-record download is not yet configured on the server.');
-
-// }
 
 </script>
 

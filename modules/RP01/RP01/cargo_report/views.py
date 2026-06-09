@@ -105,7 +105,7 @@ SELECT
         ELSE dp.unloading_completed::text
     END AS discharge_completed,
 
-    COALESCE(v.nationality, '-') AS flag
+    'INDIA' AS flag
 
 FROM mbc_header h
 
@@ -313,6 +313,8 @@ ORDER BY discharge_commenced DESC;
     'bl_qty_mt': float(row['bl_qty_mt']) if row['bl_qty_mt'] else 0,
     'actual_discharge': float(row['actual_discharge']) if row['actual_discharge'] else 0,
     'load_port': row['load_port'] or '-',
+    'consignee': row['consignee'] or '-',
+    'customer_detail_id': row['customer_detail_id'] or '-',
 
     'discharge_commenced':
         datetime.fromisoformat(

@@ -590,6 +590,16 @@
 
         font-size: 13px;
     }
+    /* Full row hover effect */
+#vd-table .tabulator-row:hover {
+    background-color: #eedfed !important;
+    cursor: pointer;
+}
+
+/* Frozen columns also change color */
+#vd-table .tabulator-row:hover .tabulator-cell {
+    background-color: #eedfed !important;
+}
 </style>
 {% endblock %}
 
@@ -1202,7 +1212,7 @@
                     'waiting_discharge': '#f9cb9c',
 
                     // ✅ MBC-specific statuses
-                    'waiting_gull': '#ffe599',
+                    'waiting_gull': '#f4cccc',
                     'on_way_dharamtar': '#f6b26b',
                     'waiting_castoff': '#c6efce',
                 };
@@ -2371,7 +2381,7 @@
                 legendPopup.innerHTML = `
             <div class="legend-item"><span class="legend-color" style="background:#d9d2e9;"></span> Currently Loading</div>
             <div class="legend-item"><span class="legend-color" style="background:#9fc5e8;"></span> Loaded & Transit</div>
-            <div class="legend-item"><span class="legend-color" style="background:#ffe599;"></span> Waiting at Gull Island</div>
+            <div class="legend-item"><span class="legend-color" style="background:#f4cccc;"></span> Waiting at Gull Island</div>
             <div class="legend-item"><span class="legend-color" style="background:#f6b26b;"></span> On the Way to Dharamtar</div>
             <div class="legend-item"><span class="legend-color" style="background:#f9cb9c;"></span> Waiting for Discharge</div>
             <div class="legend-item"><span class="legend-color" style="background:#ffe699;"></span> Under Discharge</div>

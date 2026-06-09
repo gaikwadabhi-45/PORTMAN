@@ -3,6 +3,9 @@ from functools import wraps
 from datetime import date, datetime, timedelta
 import io
 import json
+from copy import copy
+from openpyxl.styles import Alignment
+from datetime import timedelta
 
 from .. import bp
 from database import get_db, get_cursor
@@ -23,9 +26,14 @@ def _fill(hex_color):
     return PatternFill('solid', fgColor=hex_color)
 
 
-def _font(bold=False, size=XL_NORM_SZ):
-    return Font(name='Calibri', bold=bold, size=size)
-
+# def _font(bold=False, size=XL_NORM_SZ):
+#     return Font(name='Calibri', bold=bold, size=size)
+def _font(bold=False):
+    return Font(
+        name="Calibri",
+        size=14,
+        bold=bold
+    )
 
 def _parse_dt(val):
     if not val:
@@ -632,7 +640,12 @@ def _fetch_data(report_date):
         v['ops_till']               = ops_till.get(lid, 0)
         v['balance']                = round(bl_qty - ops_till.get(lid, 0),2
     )
-        v['num_barges']             = len(bs.get('all', set())) or ''
+        active_statuses = ('at_jetty', 'at_gull_loaded', 'waiting_discharge', 'under_loading')
+        v['num_barges'] = len({
+            name.split('/')[0].strip()
+            for key in active_statuses
+            for name in bs.get(key, [])
+        }) or ''
         v['at_jetty']               = _make_names(bs, 'at_jetty')
         v['waiting_discharge']      = _make_names(bs, 'waiting_discharge')
         v['waiting_empty_jetty']    = _make_names(bs, 'waiting_empty_jetty')
@@ -1333,6 +1346,7 @@ def _fetch_cargo_statistics(report_date):
 
 def _fetch_mbc_cargo_handling(report_date):
 
+
     target_date = report_date - timedelta(days=1)
 
     month_start = date(
@@ -1340,6 +1354,12 @@ def _fetch_mbc_cargo_handling(report_date):
         target_date.month,
         1
     )
+
+    # Financial Year Start (April)
+    if target_date.month >= 4:
+        fy_start = date(target_date.year, 4, 1)
+    else:
+        fy_start = date(target_date.year - 1, 4, 1)
 
     conn = get_db()
     cur = get_cursor(conn)
@@ -1370,8 +1390,8 @@ def _fetch_mbc_cargo_handling(report_date):
                 ON TRIM(m.mbc_name) = TRIM(h.mbc_name)
 
             WHERE l.is_deleted = false
-              AND l.source_type = 'MBC'
-              AND l.entry_date::date BETWEEN %s AND %s
+            AND l.source_type = 'MBC'
+            AND l.entry_date::date BETWEEN %s AND %s
 
             GROUP BY
                 h.cargo_type,
@@ -1388,22 +1408,29 @@ def _fetch_mbc_cargo_handling(report_date):
 
         return cur.fetchall()
 
-    # Day = previous day only
+    # Previous Day
     day_rows = _period(
         target_date,
         target_date
     )
 
-    # Month-to-date till previous day
+    # Month To Date
     month_rows = _period(
         month_start,
+        target_date
+    )
+
+    # Financial Year To Date
+    year_rows = _period(
+        fy_start,
         target_date
     )
 
     cur.close()
     conn.close()
 
-    return day_rows, month_rows
+    return day_rows, month_rows, year_rows
+
 
 def _fetch_mbc_status(report_date):
 
@@ -1527,7 +1554,6 @@ def _fetch_cargo_type_throughput(report_date):
         1
     )
 
-    # Financial year start (April)
     if target_date.month >= 4:
         fy_start = date(target_date.year, 4, 1)
     else:
@@ -1537,59 +1563,89 @@ def _fetch_cargo_type_throughput(report_date):
     cur = get_cursor(conn)
 
     cur.execute("""
-        WITH throughput AS (
-
-            SELECT
-                COALESCE(vc.cargo_type,'OTHERS') AS cargo_type,
-                TO_DATE(l.entry_date,'YYYY-MM-DD') AS txn_date,
-                COALESCE(l.quantity,0) AS quantity
-            FROM lueu_lines l
-            LEFT JOIN vessel_cargo vc
-                ON UPPER(TRIM(vc.cargo_name))
-                 = UPPER(TRIM(l.cargo_name))
-            WHERE
-                l.is_deleted = false
-                AND l.cargo_name IS NOT NULL
-
-            UNION ALL
+        WITH hist AS (
 
             SELECT
                 COALESCE(vc.cargo_type,'OTHERS') AS cargo_type,
                 h.entry_date AS txn_date,
-                COALESCE(h.quantity,0) AS quantity
+                SUM(COALESCE(h.quantity,0)) AS quantity
             FROM rp01_historical_lueu h
             LEFT JOIN vessel_cargo vc
                 ON UPPER(TRIM(vc.cargo_name))
-                 = UPPER(TRIM(h.cargo_name))
+                = UPPER(TRIM(h.cargo_name))
+            WHERE h.cargo_name IS NOT NULL
+            GROUP BY
+                COALESCE(vc.cargo_type,'OTHERS'),
+                h.entry_date
+        ),
+
+        live AS (
+
+            SELECT
+                COALESCE(vc.cargo_type,'OTHERS') AS cargo_type,
+                TO_DATE(l.entry_date,'YYYY-MM-DD') AS txn_date,
+                SUM(COALESCE(l.quantity,0)) AS quantity
+            FROM lueu_lines l
+            LEFT JOIN vessel_cargo vc
+                ON UPPER(TRIM(vc.cargo_name))
+                = UPPER(TRIM(l.cargo_name))
+            WHERE
+                l.is_deleted = false
+                AND l.cargo_name IS NOT NULL
+            GROUP BY
+                COALESCE(vc.cargo_type,'OTHERS'),
+                TO_DATE(l.entry_date,'YYYY-MM-DD')
+        ),
+
+        throughput AS (
+
+            SELECT
+                cargo_type,
+                txn_date,
+                quantity
+            FROM hist
+
+            UNION ALL
+
+            SELECT
+                l.cargo_type,
+                l.txn_date,
+                l.quantity
+            FROM live l
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM hist h
+                WHERE h.txn_date = l.txn_date
+            )
         )
 
         SELECT
 
             cargo_type,
 
-            SUM(
+            COALESCE(SUM(
                 CASE
                     WHEN txn_date = %s
                     THEN quantity
                     ELSE 0
                 END
-            ) AS day_qty,
+            ),0) AS day_qty,
 
-            SUM(
+            COALESCE(SUM(
                 CASE
                     WHEN txn_date BETWEEN %s AND %s
                     THEN quantity
                     ELSE 0
                 END
-            ) AS month_qty,
+            ),0) AS month_qty,
 
-            SUM(
+            COALESCE(SUM(
                 CASE
                     WHEN txn_date BETWEEN %s AND %s
                     THEN quantity
                     ELSE 0
                 END
-            ) AS year_qty
+            ),0) AS year_qty
 
         FROM throughput
 
@@ -1611,6 +1667,186 @@ def _fetch_cargo_type_throughput(report_date):
 
     return rows
 
+
+
+
+def _fetch_port_throughput(report_date):
+
+    target_date = report_date - timedelta(days=1)
+
+    month_start = date(
+        target_date.year,
+        target_date.month,
+        1
+    )
+
+    # Financial Year Start (April)
+    if target_date.month >= 4:
+        fy_start = date(target_date.year, 4, 1)
+    else:
+        fy_start = date(target_date.year - 1, 4, 1)
+
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    cur.execute("""
+        WITH hist AS (
+
+            SELECT
+                entry_date,
+                SUM(quantity) qty
+            FROM rp01_historical_lueu
+            WHERE cargo_name IS NOT NULL
+            GROUP BY entry_date
+
+        ),
+
+        live AS (
+
+            SELECT
+                TO_DATE(entry_date,'YYYY-MM-DD') AS entry_date,
+                SUM(quantity) qty
+            FROM lueu_lines
+            WHERE is_deleted = false
+              AND cargo_name IS NOT NULL
+            GROUP BY TO_DATE(entry_date,'YYYY-MM-DD')
+
+        ),
+
+        throughput AS (
+
+            SELECT
+                h.entry_date,
+                h.qty
+            FROM hist h
+
+            UNION ALL
+
+            SELECT
+                l.entry_date,
+                l.qty
+            FROM live l
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM hist h
+                WHERE h.entry_date = l.entry_date
+            )
+        )
+
+        SELECT
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN entry_date = %s
+                        THEN qty
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS day_qty,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN entry_date BETWEEN %s AND %s
+                        THEN qty
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS month_qty,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN entry_date BETWEEN %s AND %s
+                        THEN qty
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS year_qty
+
+        FROM throughput
+    """, (
+        target_date,
+        month_start,
+        target_date,
+        fy_start,
+        target_date
+    ))
+
+    row = cur.fetchone()
+
+    # =====================================================
+    # MONTH TPD
+    # =====================================================
+
+    month_days_elapsed = (
+        target_date - month_start
+    ).days + 1
+
+    month_tpd = round(
+        float(row["month_qty"] or 0) /
+        month_days_elapsed,
+        2
+    ) if month_days_elapsed else 0
+
+    # =====================================================
+    # YEAR TPD (FINANCIAL YEAR)
+    # =====================================================
+
+    fy_days_elapsed = (
+        target_date - fy_start
+    ).days + 1
+
+    year_tpd = round(
+        float(row["year_qty"] or 0) /
+        fy_days_elapsed,
+        2
+    ) if fy_days_elapsed else 0
+
+    # =====================================================
+    # CUMULATIVE SINCE OCT 2012
+    # =====================================================
+
+    cur.execute("""
+        SELECT
+            COALESCE(
+                SUM(cargo.value::numeric),
+                0
+            ) AS cumulative_qty
+
+        FROM (
+            SELECT cutoff_values::jsonb AS j
+            FROM daily_ops_cutoff
+            ORDER BY cutoff_date DESC
+            LIMIT 1
+        ) d,
+
+        LATERAL jsonb_each(
+            d.j->'fy_throughput'
+        ) fy,
+
+        LATERAL jsonb_each_text(
+            fy.value
+        ) cargo
+    """)
+
+    cumulative_row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    return {
+        "day_qty": int(row["day_qty"] or 0),
+        "mtd_qty": int(row["month_qty"] or 0),
+        "ytd_qty": int(row["year_qty"] or 0),
+        "cumulative_qty": int(cumulative_row["cumulative_qty"] or 0),
+        "month_tpd": float(month_tpd),
+        "year_tpd": float(year_tpd)
+    }
 def _build_excel_a4(
     vessels,
     report_date,
@@ -1619,11 +1855,21 @@ def _build_excel_a4(
     tide_rows=None,
     mbc_day=None,
     mbc_month=None,
-    upcoming_vessels=None,      # ? ADD THIS
+    mbc_year =None,
+    upcoming_vessels=None,
     upcoming_mbcs=None,
     discharging_mbcs=None,
-    mbc_status_rows=None,       # ? ADD THIS
-    cargo_availability=None
+    mbc_status_rows=None,
+    cargo_availability=None,
+    mbc_day_rows=None,
+    mbc_month_rows=None,
+    mbc_year_rows=None,
+    # mbc_cargo_month=None,
+    cargo_type_throughput=None,
+    cargo_stats_day=None,
+    cargo_stats_month=None,
+    port_throughput=None
+    
 ):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
@@ -1689,6 +1935,7 @@ def _build_excel_a4(
     ws.column_dimensions["C"].width = 20
     ws.column_dimensions["D"].width = 20
 
+    COLS_PER_V = 4
     for i in range(vessel_count):
 
         for dc in range(COLS_PER_V):
@@ -1697,7 +1944,7 @@ def _build_excel_a4(
                 v_start(i) + dc
             )
 
-            ws.column_dimensions[col].width = 14
+            ws.column_dimensions[col].width = 5
 
     # =====================================================
     # HELPERS
@@ -1877,7 +2124,7 @@ def _build_excel_a4(
             return v
 
     STATUS_ROWS = [
-        ("Stevedore / Barge Group",     "stevedore_group",          lambda x: x or "",  _left),
+        ("Stevedore / Barge Group",     "stevedore_group",          lambda x: x or "",  _ctr),
         ("BL Qty",                      "bl_qty",                   _fmt_num,            _ctr),
         ("24 Hrs Discharge",            "ops_24h",                  _fmt_num,            _ctr),
         ("Unloaded Till Date",          "ops_till",                 _fmt_num,            _ctr),
@@ -1888,7 +2135,7 @@ def _build_excel_a4(
         (None, None, None, None),
         ("No Of Barges",                "num_barges",               lambda x: x or "",   _ctr),
         ("At Jetty",                    "at_jetty",                 lambda x: x or "",   _left),
-        ("Waiting For Discharge",       "waiting_discharge",        lambda x: x or "",   _left),
+        ("At Jetty Waiting For Discharge",       "waiting_discharge",        lambda x: x or "",   _left),
         ("Waiting Empty At Jetty",      "waiting_empty_jetty",      lambda x: x or "",   _left),
         ("At Gull - Waiting (Loaded)",  "at_gull_loaded",           lambda x: x or "",   _left),
         ("Under Loading",               "under_loading",            lambda x: x or "",   _left),
@@ -1989,7 +2236,7 @@ def _build_excel_a4(
     current_row += 2
 
 
-# =====================================================
+    # =====================================================
     # UPCOMING VESSELS
     # =====================================================
 
@@ -2060,12 +2307,15 @@ def _build_excel_a4(
     # =====================================================
     # CARGO AVAILABILITY (RIGHT OF UPCOMING VESSELS)
     # =====================================================
-
     cargo_availability = cargo_availability or []
+
+    # Always define data_row so Tide section never crashes
+    data_row = current_row
 
     if cargo_availability:
 
-        CA_START_COL = 12   # moved left
+        CA_START_COL = 12
+        CARGO_WIDTH = 12
 
         cargo_names = [
             row["cargo_name"]
@@ -2079,12 +2329,14 @@ def _build_excel_a4(
 
         uv_start_row = current_row - len(upcoming_vessels) - 4
 
+        # -------------------------
         # Title
+        # -------------------------
         ws.merge_cells(
             start_row=uv_start_row,
             start_column=CA_START_COL,
             end_row=uv_start_row,
-            end_column=CA_START_COL + len(cargo_names)
+            end_column=CA_START_COL + len(cargo_names) + 1
         )
 
         c = ws.cell(
@@ -2097,49 +2349,102 @@ def _build_excel_a4(
         c.alignment = _ctr
         c.border = _bdr
 
-        # Header
-        hdr_row = uv_start_row + 1
+        # Border for merged title
+        for cc in range(
+            CA_START_COL,
+            CA_START_COL + len(cargo_names) + 2
+        ):
+            ws.cell(uv_start_row, cc).border = _bdr
 
+        # -------------------------
+        # Header
+        # -------------------------
+        hdr_row = uv_start_row + 1
         col = CA_START_COL
 
         c = ws.cell(hdr_row, col, "")
         c.font = _font(bold=True)
         c.fill = _fill("D9EAF7")
+        c.alignment = _ctr
         c.border = _bdr
+
+        # Row-label column
+        ws.column_dimensions[
+            get_column_letter(col)
+        ].width = 15
 
         col += 1
 
+        # Cargo columns (ALL SAME WIDTH)
         for cargo in cargo_names:
 
             c = ws.cell(hdr_row, col, cargo)
             c.font = _font(bold=True)
             c.fill = _fill("D9EAF7")
-            c.alignment = _ctr
+
+            c.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=True
+            )
+
             c.border = _bdr
 
             ws.column_dimensions[
                 get_column_letter(col)
-            ].width = 14
+            ].width = CARGO_WIDTH
 
             col += 1
 
+        # Total column
         c = ws.cell(hdr_row, col, "Total")
         c.font = _font(bold=True)
         c.fill = _fill("D9EAF7")
-        c.alignment = _ctr
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True
+        )
         c.border = _bdr
 
-        # At Jetty Row
+        ws.column_dimensions[
+            get_column_letter(col)
+        ].width = CARGO_WIDTH
+
+        total_col = col
+
+        # Header height
+        ws.row_dimensions[hdr_row].height = 45
+
+        # -------------------------
+        # Data Rows
+        # -------------------------
         data_row = hdr_row + 1
 
-        c = ws.cell(
-            data_row,
-            CA_START_COL,
-            "At Jetty"
-        )
-        c.font = _font(bold=True)
-        c.border = _bdr
+        row_labels = [
+            "At Jetty",
+            "08/16:15",
+            "4.19 mtr",
+            "09/03:56",
+            "Total"
+        ]
 
+        for r, label in enumerate(row_labels):
+
+            c = ws.cell(
+                data_row + r,
+                CA_START_COL,
+                label
+            )
+
+            c.font = _font(
+                bold=(label in ["At Jetty", "Total"])
+            )
+
+            c.border = _bdr
+            c.alignment = _left
+
+        # Cargo quantities
         col = CA_START_COL + 1
 
         for row in cargo_availability:
@@ -2155,23 +2460,1228 @@ def _build_excel_a4(
                 col,
                 qty if qty else ""
             )
+
             c.alignment = _ctr
             c.border = _bdr
 
+            for rr in range(1, 4):
+                ws.cell(
+                    data_row + rr,
+                    col,
+                    ""
+                ).border = _bdr
+
             col += 1
 
+        # -------------------------
+        # Total Column
+        # -------------------------
         c = ws.cell(
-            data_row,
-            col,
+            data_row + 4,
+            total_col,
             int(round(grand_total))
         )
+
         c.font = _font(bold=True)
         c.alignment = _ctr
         c.border = _bdr
+
+        for cc in range(
+            CA_START_COL,
+            total_col + 1
+        ):
+            ws.cell(
+                data_row + 4,
+                cc
+            ).border = _bdr
+
+        for rr in range(
+            hdr_row,
+            data_row + 5
+        ):
+            ws.cell(
+                rr,
+                total_col
+            ).border = _bdr
+
+        # Full table border
+        for rr in range(
+            uv_start_row,
+            data_row + 5
+        ):
+            for cc in range(
+                CA_START_COL,
+                total_col + 1
+            ):
+                ws.cell(rr, cc).border = _bdr
+
+        # Tide starts below cargo table
+        data_row = data_row + 4
+
+    # =====================================================
+    # TIDE - DHARAMTAR PORT
+    # =====================================================
+    dashboard_row = current_row
+    tide_start_row = data_row + 3
+    TIDE_COL = 12   # Same column as cargo availability
+
+    # ✅ Override the width=5 set by cargo availability
+    ws.column_dimensions[get_column_letter(TIDE_COL)].width = 18
+    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 10
+
+    def safe_cell(ws, row, col, value=None):
+        from openpyxl.utils import get_column_letter
+        cell_coord = f"{get_column_letter(col)}{row}"
+        for merge in list(ws.merged_cells.ranges):
+            if cell_coord in merge:
+                ws.unmerge_cells(str(merge))
+                break
+        c = ws.cell(row, col)
+        if value is not None:
+            c.value = value
+        return c
+
+    def safe_merge(ws, start_row, start_col, end_row, end_col):
+        from openpyxl.utils import get_column_letter
+        for r in range(start_row, end_row + 1):
+            for c in range(start_col, end_col + 1):
+                coord = f"{get_column_letter(c)}{r}"
+                for merge in list(ws.merged_cells.ranges):
+                    if coord in merge:
+                        ws.unmerge_cells(str(merge))
+                        break
+        ws.merge_cells(
+            start_row=start_row, start_column=start_col,
+            end_row=end_row, end_column=end_col
+        )
+
+    # Title — merged across TIME + TIDE columns
+    safe_merge(ws, tide_start_row, TIDE_COL, tide_start_row, TIDE_COL + 1)
+    for cc in range(TIDE_COL, TIDE_COL + 2):
+        ws.cell(tide_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(tide_start_row, cc).border = _bdr
+        ws.cell(tide_start_row, cc).font   = _font(bold=True)
+    ws.cell(tide_start_row, TIDE_COL).value     = "Tide - Dharamtar Port"
+    ws.cell(tide_start_row, TIDE_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[tide_start_row].height    = 18
+
+    # Header Row
+    header_row = tide_start_row + 1
+    ws.row_dimensions[header_row].height = 18
+    c = safe_cell(ws, header_row, TIDE_COL, "Time")
+    c.font = _font(bold=True)
+    c.fill = _fill("D9EAF7")
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border = _bdr
+
+    c = safe_cell(ws, header_row, TIDE_COL + 1, "Tide")
+    c.font = _font(bold=True)
+    c.fill = _fill("D9EAF7")
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border = _bdr
+
+    # Data Rows
+    row_no = header_row + 1
+    for tide in (tide_rows or []):
+        tide_dt = ""
+        if tide.get("tide_datetime"):
+            try:
+                dt = tide["tide_datetime"]
+                if isinstance(dt, str):
+                    dt = datetime.fromisoformat(dt)
+                tide_dt = dt.strftime("%d/%H:%M")
+            except Exception:
+                tide_dt = str(tide["tide_datetime"])
+
+        c = safe_cell(ws, row_no, TIDE_COL, tide_dt)
+        c.border = _bdr
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[row_no].height = 18
+
+        c = safe_cell(ws, row_no, TIDE_COL + 1, tide.get("tide_meters", ""))
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = _bdr
+
+        row_no += 1
+
+    # current_row = max(current_row, row_no + 2)
+
+    # =====================================================
+    # PORT THROUGHPUT
+    # =====================================================
+
+    PT_COL = TIDE_COL + 3
+
+    # Move Port Throughput section 1 row up
+    pt_start_row = tide_start_row - 1
+
+    ws.column_dimensions[get_column_letter(PT_COL)].width = 24
+    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 12
+
+    safe_merge(ws, pt_start_row, PT_COL, pt_start_row, PT_COL + 1)
+
+    for cc in range(PT_COL, PT_COL + 2):
+        ws.cell(pt_start_row, cc).fill = _fill("D9EAF7")
+        ws.cell(pt_start_row, cc).border = _bdr
+        ws.cell(pt_start_row, cc).font = _font(bold=True)
+
+    ws.cell(pt_start_row, PT_COL).value = "Port Throughput"
+    ws.cell(pt_start_row, PT_COL).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+
+    port_throughput = port_throughput or {}
+
+    pt_rows = [
+        ("Jetty Throughput (Day)", port_throughput.get("day_qty", "")),
+        ("Month", port_throughput.get("mtd_qty", "")),
+        ("Year", port_throughput.get("ytd_qty", "")),
+        ("Cumulative Since Oct 2012", port_throughput.get("cumulative_qty", "")),
+        ("Month TPD", f"{port_throughput.get('month_tpd', 0):,.2f}"),
+        ("Year TPD", f"{port_throughput.get('year_tpd', 0):,.2f}")
+    ]
+
+    pt_row = pt_start_row + 1
+
+    for label, value in pt_rows:
+
+        c = safe_cell(ws, pt_row, PT_COL, label)
+        c.font = _font(bold=True)
+        c.border = _bdr
+        c.alignment = Alignment(
+            horizontal="left",
+            vertical="center"
+        )
+
+        c = safe_cell(ws, pt_row, PT_COL + 1, value)
+        c.font = _font(bold=True)
+        c.border = _bdr
+        c.alignment = Alignment(
+            horizontal="right",
+            vertical="center"
+        )
+
+        pt_row += 1
+
+    # =====================================================
+    # MBC CARGO HANDLING TABLE
+    # =====================================================
+    MBC_COL = PT_COL + 3
+    mbc_start_row = tide_start_row - 1
+
+    # -- 1. Organise fetched data --------------------------------------------------
+    # -- 1. Organise fetched data --------------------------------------------------
+
+    day_lookup = {
+        (r['owner'], r['cargo_type']): float(r['qty'] or 0)
+        for r in (mbc_day_rows or [])
+    }
+
+    month_lookup = {
+        (r['owner'], r['cargo_type']): float(r['qty'] or 0)
+        for r in (mbc_month_rows or [])
+    }
+
+    year_lookup = {
+        (r['owner'], r['cargo_type']): float(r['qty'] or 0)
+        for r in (mbc_year_rows or [])
+    }
+
+    all_rows = (
+        list(mbc_day_rows or []) +
+        list(mbc_month_rows or []) +
+        list(mbc_year_rows or [])
+    )
+
+    cargo_types = list(
+        dict.fromkeys(r['cargo_type'] for r in all_rows)
+    )
+
+    owners = list(
+        dict.fromkeys(r['owner'] for r in all_rows)
+    )
+
+    n_cargo = len(cargo_types)
+
+    # Day + MTD + YTD
+    DAY_COLS = n_cargo + 1
+    MTD_COLS = n_cargo + 1
+    YTD_COLS = 1
+
+    total_cols = 1 + DAY_COLS + MTD_COLS + YTD_COLS
+    
+    # -- 2. Column widths ----------------------------------------------------------
+    ws.column_dimensions[get_column_letter(MBC_COL)].width = 16
+    for i in range(n_cargo):
+        ws.column_dimensions[get_column_letter(MBC_COL + 1 + i * 2)].width = 10
+        ws.column_dimensions[get_column_letter(MBC_COL + 2 + i * 2)].width = 10
+
+    # -- 3. Title row --------------------------------------------------------------
+    safe_merge(ws, mbc_start_row, MBC_COL, mbc_start_row, MBC_COL + total_cols - 1)
+    for cc in range(MBC_COL, MBC_COL + total_cols):
+        ws.cell(mbc_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(mbc_start_row, cc).border = _bdr
+        ws.cell(mbc_start_row, cc).font   = _font(bold=True)
+    ws.cell(mbc_start_row, MBC_COL).value     = "MBC Cargo Handling"
+    ws.cell(mbc_start_row, MBC_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[mbc_start_row].height   = 18
+    ws.row_dimensions[mbc_start_row].height = 18
+    for cc in range(MBC_COL, MBC_COL + total_cols):
+        ws.cell(mbc_start_row, cc).border = _bdr
+
+    # =====================================================
+    # HEADER ROWS
+    # =====================================================
+
+    cargo_hdr_row = mbc_start_row + 1
+    col_hdr_row = cargo_hdr_row + 1
+
+    day_start = MBC_COL + 1
+    mtd_start = day_start + n_cargo + 1
+    ytd_start = mtd_start + n_cargo + 1
+
+    # Owner
+    safe_merge(ws, cargo_hdr_row, MBC_COL, col_hdr_row, MBC_COL)
+
+    c = safe_cell(ws, cargo_hdr_row, MBC_COL, "Owner")
+    c.font = _font(bold=True)
+    c.fill = _fill("D9EAF7")
+    c.border = _bdr
+    c.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Day Header
+    safe_merge(
+        ws,
+        cargo_hdr_row,
+        day_start,
+        cargo_hdr_row,
+        day_start + n_cargo
+    )
+
+    c = safe_cell(ws, cargo_hdr_row, day_start, "Day")
+    c.font = _font(bold=True)
+    c.fill = _fill("D9EAF7")
+    c.border = _bdr
+    c.alignment = Alignment(horizontal="center")
+
+    # MTD Header
+    safe_merge(
+        ws,
+        cargo_hdr_row,
+        mtd_start,
+        cargo_hdr_row,
+        mtd_start + n_cargo
+    )
+
+    c = safe_cell(ws, cargo_hdr_row, mtd_start, "MTD")
+    c.font = _font(bold=True)
+    c.fill = _fill("D9EAF7")
+    c.border = _bdr
+    c.alignment = Alignment(horizontal="center")
+
+    # YTD Header
+    safe_merge(
+        ws,
+        cargo_hdr_row,
+        ytd_start,
+        cargo_hdr_row,
+        ytd_start
+    )
+
+    c = safe_cell(ws, cargo_hdr_row, ytd_start, "YTD")
+    c.font = _font(bold=True)
+    c.fill = _fill("D9EAF7")
+    c.border = _bdr
+    c.alignment = Alignment(horizontal="center")
+
+    # Second Header Row
+    for i, ct in enumerate(cargo_types):
+
+        c = safe_cell(ws, col_hdr_row, day_start + i, ct)
+        c.font = _font(bold=True)
+        c.fill = _fill("D9EAF7")
+        c.border = _bdr
+        c.alignment = Alignment(horizontal="center")
+
+    safe_cell(
+        ws,
+        col_hdr_row,
+        day_start + n_cargo,
+        "Total"
+    ).border = _bdr
+
+    for i, ct in enumerate(cargo_types):
+
+        c = safe_cell(ws, col_hdr_row, mtd_start + i, ct)
+        c.font = _font(bold=True)
+        c.fill = _fill("D9EAF7")
+        c.border = _bdr
+        c.alignment = Alignment(horizontal="center")
+
+    safe_cell(
+        ws,
+        col_hdr_row,
+        mtd_start + n_cargo,
+        "Total"
+    ).border = _bdr
+
+    safe_cell(
+        ws,
+        col_hdr_row,
+        ytd_start,
+        "Total"
+    ).border = _bdr
+
+    # =====================================================
+    # DATA ROWS
+    # =====================================================
+
+    data_start = col_hdr_row + 1
+
+    for owner in owners:
+
+        c = safe_cell(ws, data_start, MBC_COL, owner)
+        c.border = _bdr
+
+        day_total = 0
+        month_total = 0
+
+        for i, ct in enumerate(cargo_types):
+
+            qty = day_lookup.get((owner, ct), 0)
+            day_total += qty
+
+            safe_cell(
+                ws,
+                data_start,
+                day_start + i,
+                qty if qty else ""
+            ).border = _bdr
+
+        safe_cell(
+            ws,
+            data_start,
+            day_start + n_cargo,
+            day_total if day_total else ""
+        ).border = _bdr
+
+        for i, ct in enumerate(cargo_types):
+
+            qty = month_lookup.get((owner, ct), 0)
+            month_total += qty
+
+            safe_cell(
+                ws,
+                data_start,
+                mtd_start + i,
+                qty if qty else ""
+            ).border = _bdr
+
+        safe_cell(
+            ws,
+            data_start,
+            mtd_start + n_cargo,
+            month_total if month_total else ""
+        ).border = _bdr
+
+        year_total = sum(
+            year_lookup.get((owner, ct), 0)
+            for ct in cargo_types
+        )
+
+        safe_cell(
+            ws,
+            data_start,
+            ytd_start,
+            year_total if year_total else ""
+        ).border = _bdr
+
+        data_start += 1
+
+    # =====================================================
+    # TOTAL ROW
+    # =====================================================
+
+    c = safe_cell(ws, data_start, MBC_COL, "Total")
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
+
+    for i, ct in enumerate(cargo_types):
+
+        total_day = sum(
+            day_lookup.get((o, ct), 0)
+            for o in owners
+        )
+
+        c = safe_cell(
+            ws,
+            data_start,
+            day_start + i,
+            total_day if total_day else ""
+        )
+        c.font = _font(bold=True)
+        c.fill = _fill("F2F2F2")
+        c.border = _bdr
+
+    safe_cell(
+        ws,
+        data_start,
+        day_start + n_cargo,
+        sum(day_lookup.values())
+    ).border = _bdr
+
+    for i, ct in enumerate(cargo_types):
+
+        total_mtd = sum(
+            month_lookup.get((o, ct), 0)
+            for o in owners
+        )
+
+        c = safe_cell(
+            ws,
+            data_start,
+            mtd_start + i,
+            total_mtd if total_mtd else ""
+        )
+        c.font = _font(bold=True)
+        c.fill = _fill("F2F2F2")
+        c.border = _bdr
+
+    safe_cell(
+        ws,
+        data_start,
+        mtd_start + n_cargo,
+        sum(month_lookup.values())
+    ).border = _bdr
+
+    safe_cell(
+        ws,
+        data_start,
+        ytd_start,
+        sum(year_lookup.values())
+    ).border = _bdr
+
+    data_start += 1
+
+    # -- 8. Advance current_row ----------------------------------------------------
+    # current_row = max(current_row, data_start + 2)
+        
+
+    # =====================================================
+    # CARGO HANDLED
+    # =====================================================
+
+    cargo_start_row = row_no + 5
+    CARGO_COL = TIDE_COL
+
+    day_dict = dict(day_rows or [])
+    month_dict = dict(month_rows or [])
+
+    all_routes = []
+
+    for route, _ in (day_rows or []):
+        if route not in all_routes:
+            all_routes.append(route)
+
+    for route, _ in (month_rows or []):
+        if route not in all_routes:
+            all_routes.append(route)
+
+    # -----------------------------
+    # Title
+    # -----------------------------
+    safe_merge(ws, cargo_start_row, CARGO_COL, cargo_start_row, CARGO_COL + 2)
+    for cc in range(CARGO_COL, CARGO_COL + 3):
+        ws.cell(cargo_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(cargo_start_row, cc).border = _bdr
+        ws.cell(cargo_start_row, cc).font   = _font(bold=True)
+    ws.cell(cargo_start_row, CARGO_COL).value     = "Cargo Handled"
+    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(horizontal="center", vertical="center")
+
+    r = cargo_start_row + 1
+
+    # =====================================================
+    # FOR THE DAY
+    # =====================================================
+
+    day_start = r
+    day_end = day_start + len(all_routes)
+
+    safe_merge(
+        ws,
+        day_start,
+        CARGO_COL,
+        day_end,
+        CARGO_COL
+    )
+
+    c = safe_cell(ws, day_start, CARGO_COL, "For The Day")
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border = _bdr
+
+    for route in all_routes:
+
+        qty = int(round(day_dict.get(route, 0)))
+
+        c = safe_cell(ws, r, CARGO_COL + 1, route)
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        c.border = _bdr
+
+        c = safe_cell(ws, r, CARGO_COL + 2, qty)
+        c.alignment = Alignment(horizontal="right", vertical="center")
+        c.border = _bdr
+
+        r += 1
+
+    # Day Total
+    c = safe_cell(ws, r, CARGO_COL + 1, "Total")
+    c.border = _bdr
+
+    c = safe_cell(
+        ws,
+        r,
+        CARGO_COL + 2,
+        int(round(sum(day_dict.values())))
+    )
+    c.alignment = Alignment(horizontal="right", vertical="center")
+    c.border = _bdr
+
+    r += 1
+
+    # =====================================================
+    # FOR THE MONTH
+    # =====================================================
+
+    month_start = r
+    month_end = month_start + len(all_routes)
+
+    safe_merge(
+        ws,
+        month_start,
+        CARGO_COL,
+        month_end,
+        CARGO_COL
+    )
+
+    c = safe_cell(ws, month_start, CARGO_COL, "For The Month")
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border = _bdr
+
+    for route in all_routes:
+
+        qty = int(round(month_dict.get(route, 0)))
+
+        c = safe_cell(ws, r, CARGO_COL + 1, route)
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        c.border = _bdr
+
+        c = safe_cell(ws, r, CARGO_COL + 2, qty)
+        c.alignment = Alignment(horizontal="right", vertical="center")
+        c.border = _bdr
+
+        r += 1
+
+    # Month Total
+    c = safe_cell(ws, r, CARGO_COL + 1, "Total")
+    c.border = _bdr
+
+    c = safe_cell(
+        ws,
+        r,
+        CARGO_COL + 2,
+        int(round(sum(month_dict.values())))
+    )
+    c.alignment = Alignment(horizontal="right", vertical="center")
+    c.border = _bdr
+
+    # =====================================================
+    # APPLY BORDER TO COMPLETE TABLE
+    # =====================================================
+
+    for rr in range(cargo_start_row, r + 1):
+        for cc in range(CARGO_COL, CARGO_COL + 3):
+            ws.cell(rr, cc).border = _bdr
+
+    # Re-apply borders to merged cells
+    for rr in range(day_start, day_end + 1):
+        ws.cell(rr, CARGO_COL).border = _bdr
+
+    for rr in range(month_start, month_end + 1):
+        ws.cell(rr, CARGO_COL).border = _bdr
+
+    # Column Widths
+    ws.column_dimensions[get_column_letter(CARGO_COL)].width = 18
+    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 20
+    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 12
+
+    # IMPORTANT:
+    # Do NOT update current_row here
+    cargo_end_row = r
+
+    # =====================================================
+    # CARGO WISE THROUGHPUT
+    # =====================================================
+
+    throughput_rows = cargo_type_throughput or []
+    print("throughput_rows =", throughput_rows)
+
+    THR_COL = CARGO_COL + 4
+    THR_ROW = cargo_start_row
+
+    # -----------------------------
+    # Title
+    # -----------------------------
+    safe_merge(ws, THR_ROW, THR_COL, THR_ROW, THR_COL + 3)
+    for cc in range(THR_COL, THR_COL + 4):
+        ws.cell(THR_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(THR_ROW, cc).border = _bdr
+        ws.cell(THR_ROW, cc).font   = _font(bold=True)
+    ws.cell(THR_ROW, THR_COL).value     = "Cargo Wise Throughput"
+    ws.cell(THR_ROW, THR_COL).alignment = Alignment(horizontal="center", vertical="center")
+    for cc in range(THR_COL, THR_COL + 4):
+        ws.cell(THR_ROW, cc).border = _bdr
+
+    # -----------------------------
+    # Header
+    # -----------------------------
+    hdr_row = THR_ROW + 1
+
+    headers = ["Cargo", "Day", "Month", "YTD"]
+
+    for i, hdr in enumerate(headers):
+
+        c = safe_cell(
+            ws,
+            hdr_row,
+            THR_COL + i,
+            hdr
+        )
+        c.font = _font(bold=True)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = _bdr
+
+    # -----------------------------
+    # Data
+    # -----------------------------
+    r = hdr_row + 1
+
+    total_day = 0
+    total_month = 0
+    total_year = 0
+
+    for row in throughput_rows:
+
+        print("ROW =", row)
+
+        cargo_type = row["cargo_type"]
+        day_qty = row["day_qty"]
+        month_qty = row["month_qty"]
+        year_qty = row["year_qty"]
+
+        day_qty = int(float(day_qty or 0))
+        month_qty = int(float(month_qty or 0))
+        year_qty = int(float(year_qty or 0))
+
+        total_day += day_qty
+        total_month += month_qty
+        total_year += year_qty
+
+        safe_cell(ws, r, THR_COL, cargo_type).border = _bdr
+
+        c = safe_cell(
+            ws,
+            r,
+            THR_COL + 1,
+            int(round(day_qty or 0)) if day_qty else "-"
+        )
+        c.alignment = Alignment(horizontal="right")
+        c.border = _bdr
+
+        c = safe_cell(
+            ws,
+            r,
+            THR_COL + 2,
+            int(round(month_qty or 0)) if month_qty else "-"
+        )
+        c.alignment = Alignment(horizontal="right")
+        c.border = _bdr
+
+        c = safe_cell(
+            ws,
+            r,
+            THR_COL + 3,
+            int(round(year_qty or 0)) if year_qty else "-"
+        )
+        c.alignment = Alignment(horizontal="right")
+        c.border = _bdr
+
+        r += 1
+
+    # -----------------------------
+    # Total Row
+    # -----------------------------
+    c = safe_cell(ws, r, THR_COL, "Total")
+    c.font = _font(bold=True)
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 1, int(round(total_day)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 2, int(round(total_month)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 3, int(round(total_year)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    # -----------------------------
+    # Column Widths
+    # -----------------------------
+    ws.column_dimensions[get_column_letter(THR_COL)].width = 18
+    ws.column_dimensions[get_column_letter(THR_COL + 1)].width = 12
+    ws.column_dimensions[get_column_letter(THR_COL + 2)].width = 12
+    ws.column_dimensions[get_column_letter(THR_COL + 3)].width = 14
+
+    # -----------------------------
+    # Full Border
+    # -----------------------------
+    for rr in range(THR_ROW, r + 1):
+        for cc in range(THR_COL, THR_COL + 4):
+            ws.cell(rr, cc).border = _bdr
+
+    # =====================================================
+    # RAINFALL DETAILS
+    # =====================================================
+
+    RAINFALL_COL = THR_COL + 6
+    RAINFALL_ROW = THR_ROW
+
+    current_year = report_date.year - 1
+    prev_year = current_year - 1
+
+    # -----------------------------------
+    # Title
+    # -----------------------------------
+    safe_merge(ws, RAINFALL_ROW, RAINFALL_COL, RAINFALL_ROW, RAINFALL_COL + 3)
+    for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
+        ws.cell(RAINFALL_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(RAINFALL_ROW, cc).border = _bdr
+        ws.cell(RAINFALL_ROW, cc).font   = _font(bold=True)
+    ws.cell(RAINFALL_ROW, RAINFALL_COL).value     = "Rainfall Details"
+    ws.cell(RAINFALL_ROW, RAINFALL_COL).alignment = Alignment(horizontal="center", vertical="center")
+
+    # -----------------------------------
+    # Header
+    # -----------------------------------
+    hdr_row = RAINFALL_ROW + 1
+
+    headers = ["Year", "Period", "Rainfall", "Max."]
+
+    for i, hdr in enumerate(headers):
+        c = safe_cell(ws, hdr_row, RAINFALL_COL + i, hdr)
+        c.font = _font(bold=True)
+        c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = _bdr
+
+    r = hdr_row + 1
+
+    # =====================================================
+    # CURRENT YEAR
+    # =====================================================
+
+    safe_merge(
+        ws,
+        r,
+        RAINFALL_COL,
+        r + 2,
+        RAINFALL_COL
+    )
+
+    c = safe_cell(ws, r, RAINFALL_COL, current_year)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border = _bdr
+
+    periods = ["For The Day", "MTD", "YTD"]
+
+    for i, period in enumerate(periods):
+
+        c = safe_cell(ws, r + i, RAINFALL_COL + 1, period)
+        c.border = _bdr
+
+        c = safe_cell(ws, r + i, RAINFALL_COL + 2, "")
+        c.border = _bdr
+
+    safe_merge(
+        ws,
+        r,
+        RAINFALL_COL + 3,
+        r + 2,
+        RAINFALL_COL + 3
+    )
+
+    c = safe_cell(ws, r, RAINFALL_COL + 3, "")
+    c.border = _bdr
+
+    r += 3
+
+    # =====================================================
+    # PREVIOUS YEAR
+    # =====================================================
+
+    safe_merge(
+        ws,
+        r,
+        RAINFALL_COL,
+        r + 2,
+        RAINFALL_COL
+    )
+
+    c = safe_cell(ws, r, RAINFALL_COL, prev_year)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border = _bdr
+
+    periods = ["For The Day", "Month", "Year"]
+
+    for i, period in enumerate(periods):
+
+        c = safe_cell(ws, r + i, RAINFALL_COL + 1, period)
+        c.border = _bdr
+
+        c = safe_cell(ws, r + i, RAINFALL_COL + 2, "")
+        c.border = _bdr
+
+    safe_merge(
+        ws,
+        r,
+        RAINFALL_COL + 3,
+        r + 2,
+        RAINFALL_COL + 3
+    )
+
+    c = safe_cell(ws, r, RAINFALL_COL + 3, "")
+    c.border = _bdr
+
+    # -----------------------------------
+    # Full Borders
+    # -----------------------------------
+    for rr in range(RAINFALL_ROW, r + 3):
+        for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
+            ws.cell(rr, cc).border = _bdr
+
+    # -----------------------------------
+    # Column Widths
+    # -----------------------------------
+    ws.column_dimensions[get_column_letter(RAINFALL_COL)].width = 10
+    ws.column_dimensions[get_column_letter(RAINFALL_COL + 1)].width = 16
+    ws.column_dimensions[get_column_letter(RAINFALL_COL + 2)].width = 12
+    ws.column_dimensions[get_column_letter(RAINFALL_COL + 3)].width = 10
+
+    # =====================================================
+    # CARGO STATISTICS
+    # =====================================================
+
+    STAT_COL = RAINFALL_COL + 6
+    STAT_ROW = THR_ROW
+
+    cargo_stats_day = cargo_stats_day or []
+    cargo_stats_month = cargo_stats_month or []
+
+    day_dict = dict(cargo_stats_day)
+    month_dict = dict(cargo_stats_month)
+
+    sources = []
+
+    for src, _ in cargo_stats_day:
+        if src not in sources:
+            sources.append(src)
+
+    for src, _ in cargo_stats_month:
+        if src not in sources:
+            sources.append(src)
+
+    # -----------------------------------
+    # Title
+    # -----------------------------------
+    safe_merge(ws, STAT_ROW, STAT_COL, STAT_ROW, STAT_COL + 2)
+    for cc in range(STAT_COL, STAT_COL + 3):
+        ws.cell(STAT_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(STAT_ROW, cc).border = _bdr
+        ws.cell(STAT_ROW, cc).font   = _font(bold=True)
+    ws.cell(STAT_ROW, STAT_COL).value     = "Cargo Statistics"
+    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(horizontal="center", vertical="center")
+
+    # -----------------------------------
+    # Header
+    # -----------------------------------
+    hdr_row = STAT_ROW + 1
+
+    for idx, hdr in enumerate(["Source", "Day", "MTD"]):
+        c = safe_cell(ws, hdr_row, STAT_COL + idx, hdr)
+        c.font = _font(bold=True)
+        c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = _bdr
+
+    # -----------------------------------
+    # Data
+    # -----------------------------------
+    r = hdr_row + 1
+
+    total_day = 0
+    total_month = 0
+
+    for src in sources:
+
+        day_qty = float(day_dict.get(src, 0) or 0)
+        month_qty = float(month_dict.get(src, 0) or 0)
+
+        total_day += day_qty
+        total_month += month_qty
+
+        c = safe_cell(ws, r, STAT_COL, src)
+        c.border = _bdr
+
+        c = safe_cell(ws, r, STAT_COL + 1, int(round(day_qty)) if day_qty else "")
+        c.alignment = Alignment(horizontal="right")
+        c.border = _bdr
+
+        c = safe_cell(ws, r, STAT_COL + 2, int(round(month_qty)) if month_qty else "")
+        c.alignment = Alignment(horizontal="right")
+        c.border = _bdr
+
+        r += 1
+
+    # -----------------------------------
+    # Total
+    # -----------------------------------
+    c = safe_cell(ws, r, STAT_COL, "Total")
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, STAT_COL + 1, int(round(total_day)))
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, STAT_COL + 2, int(round(total_month)))
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
+
+    # -----------------------------------
+    # Widths
+    # -----------------------------------
+    ws.column_dimensions[get_column_letter(STAT_COL)].width = 24
+    ws.column_dimensions[get_column_letter(STAT_COL + 1)].width = 12
+    ws.column_dimensions[get_column_letter(STAT_COL + 2)].width = 12
+
+    # -----------------------------------
+    # Borders
+    # -----------------------------------
+    for rr in range(STAT_ROW, r + 1):
+        for cc in range(STAT_COL, STAT_COL + 3):
+            ws.cell(rr, cc).border = _bdr
+
+    # =====================================================
+    # BF PRODUCTION DETAILS
+    # =====================================================
+
+    BF_COL = STAT_COL
+    BF_ROW = r + 3
+
+    # -----------------------------
+    # Title
+    # -----------------------------
+    safe_merge(ws, BF_ROW, BF_COL, BF_ROW, BF_COL + 2)
+    for cc in range(BF_COL, BF_COL + 3):
+        ws.cell(BF_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(BF_ROW, cc).border = _bdr
+        ws.cell(BF_ROW, cc).font   = _font(bold=True)
+    ws.cell(BF_ROW, BF_COL).value     = "BF Production Details"
+    ws.cell(BF_ROW, BF_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[BF_ROW].height  = 24
+
+    # -----------------------------
+    # Header Row
+    # -----------------------------
+    hdr_row = BF_ROW + 1
+
+    headers = [
+        "Plant",
+        "Target Production (TPD)",
+        "Actual Production (TPD)"
+    ]
+
+    for i, hdr in enumerate(headers):
+
+        c = safe_cell(
+            ws,
+            hdr_row,
+            BF_COL + i,
+            hdr
+        )
+
+        c.font = _font(bold=True)
+        c.fill = _fill("D9EAF7")
+        c.border = _bdr
+
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
+
+    # Header height
+    ws.row_dimensions[hdr_row].height = 25
+
+    # -----------------------------
+    # BF1
+    # -----------------------------
+    row1 = hdr_row + 1
+
+    c = safe_cell(ws, row1, BF_COL, "BF1")
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+    c.border = _bdr
+
+    safe_cell(ws, row1, BF_COL + 1, "").border = _bdr
+    safe_cell(ws, row1, BF_COL + 2, "").border = _bdr
+
+    ws.row_dimensions[row1].height = 22
+
+    # -----------------------------
+    # BF2
+    # -----------------------------
+    row2 = row1 + 1
+
+    c = safe_cell(ws, row2, BF_COL, "BF2")
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+    c.border = _bdr
+
+    safe_cell(ws, row2, BF_COL + 1, "").border = _bdr
+    safe_cell(ws, row2, BF_COL + 2, "").border = _bdr
+
+    ws.row_dimensions[row2].height = 22
+
+    # -----------------------------
+    # Column Widths
+    # -----------------------------
+    ws.column_dimensions[get_column_letter(BF_COL)].width = 12
+    ws.column_dimensions[get_column_letter(BF_COL + 1)].width = 32
+    ws.column_dimensions[get_column_letter(BF_COL + 2)].width = 32
+
+    # -----------------------------
+    # Borders
+    # -----------------------------
+    for rr in range(BF_ROW, row2 + 1):
+        for cc in range(BF_COL, BF_COL + 3):
+            ws.cell(rr, cc).border = _bdr
+    # =====================================================
+    # RM STOCK DETAILS
+    # =====================================================
+
+    RM_COL = BF_COL + 5
+    RM_ROW = BF_ROW
+
+    # -----------------------------
+    # Title
+    # -----------------------------
+    # RM Stock Details title
+    ws.merge_cells(
+        start_row=RM_ROW, start_column=RM_COL,
+        end_row=RM_ROW, end_column=RM_COL + 1
+    )
+    for cc in range(RM_COL, RM_COL + 2):
+        ws.cell(RM_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(RM_ROW, cc).border = _bdr
+        ws.cell(RM_ROW, cc).font   = _font(bold=True)
+    ws.cell(RM_ROW, RM_COL).value     = "RM Stock Details"
+    ws.cell(RM_ROW, RM_COL).alignment = Alignment(horizontal="center", vertical="center")
+
+    # -----------------------------
+    # Header
+    # -----------------------------
+    hdr_row = RM_ROW + 1
+
+    headers = ["Material", "Qty (LMT)"]
+
+    for i, hdr in enumerate(headers):
+
+        c = safe_cell(
+            ws,
+            hdr_row,
+            RM_COL + i,
+            hdr
+        )
+        c.font = _font(bold=True)
+        c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = _bdr
+
+    # -----------------------------
+    # Data Rows
+    # -----------------------------
+    materials = ["IBRM", "CBRM", "FLUXES"]
+
+    r = hdr_row + 1
+
+    for material in materials:
+
+        c = safe_cell(ws, r, RM_COL, material)
+        c.border = _bdr
+
+        c = safe_cell(ws, r, RM_COL + 1, "")
+        c.border = _bdr
+        c.alignment = Alignment(horizontal="right", vertical="center")
+
+        r += 1
+
+    # -----------------------------
+    # Total Row
+    # -----------------------------
+    c = safe_cell(ws, r, RM_COL, "TOTAL")
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, RM_COL + 1, "")
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
+    c.alignment = Alignment(horizontal="right", vertical="center")
+
+    # -----------------------------
+    # Widths
+    # -----------------------------
+    ws.column_dimensions[get_column_letter(RM_COL)].width = 15
+    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 12
+
+    # -----------------------------
+    # Full Border
+    # -----------------------------
+    for rr in range(RM_ROW, r + 1):
+        for cc in range(RM_COL, RM_COL + 2):
+            ws.cell(rr, cc).border = _bdr
+    
     # =====================================================
     # UPCOMING MOTHER VESSELS (MBCs)
     # =====================================================
-
+    current_row = dashboard_row
     upcoming_mbcs = upcoming_mbcs or []
 
     # Column widths for MBC section
@@ -2773,7 +4283,7 @@ def daily_ops_preview():
     ("Disch Completed", "discharge_completed"),
     ("No Of Barges", "num_barges"),
     ("At Jetty", "at_jetty"),
-    ("Waiting Discharge", "waiting_discharge"),
+    ("At Jetty Waiting Discharge", "waiting_discharge"),
     ("Waiting Empty At Jetty", "waiting_empty_jetty"),
     ("At Gull-waiting(Loaded)", "at_gull_loaded"),
     ("Under Loading", "under_loading"),
@@ -3339,7 +4849,7 @@ def daily_ops_preview():
 
     html += "</table>"
 
-    mbc_day_rows, mbc_month_rows = _fetch_mbc_cargo_handling(report_date)
+    mbc_day_rows, mbc_month_rows, mbc_year_rows = _fetch_mbc_cargo_handling(report_date)
 
     day_dict = {
         (r['owner'], r['cargo_type']): float(r['qty'])
@@ -3351,14 +4861,21 @@ def daily_ops_preview():
         for r in mbc_month_rows
     }
 
+    year_dict = {
+        (r['owner'], r['cargo_type']): float(r['qty'])
+        for r in mbc_year_rows
+    }
+
     owners = sorted(
         set(owner for owner, cargo in day_dict.keys()) |
-        set(owner for owner, cargo in month_dict.keys())
+        set(owner for owner, cargo in month_dict.keys()) |
+        set(owner for owner, cargo in year_dict.keys())
     )
 
     cargo_types = sorted(
         set(cargo for owner, cargo in day_dict.keys()) |
-        set(cargo for owner, cargo in month_dict.keys())
+        set(cargo for owner, cargo in month_dict.keys())|
+        set(cargo for owner, cargo in year_dict.keys())
     )
 
     html += """
@@ -3381,6 +4898,10 @@ def daily_ops_preview():
         <th colspan='{len(cargo_types) + 1}'
             style='border:1px solid #ccc;padding:8px'>
             MTD
+        </th>
+        <th colspan='{len(cargo_types) + 1}'
+            style='border:1px solid #ccc;padding:8px'>
+            YTD
         </th>
     </tr>
     """
@@ -3407,6 +4928,7 @@ def daily_ops_preview():
         """
 
     html += """
+    <th style='border:1px solid #ccc;padding:8px'>Total</th>
     <th style='border:1px solid #ccc;padding:8px'>Total</th>
     </tr>
     """
@@ -3458,9 +4980,18 @@ def daily_ops_preview():
             </td>
             """
 
+        year_total = sum(
+        year_dict.get((owner, cargo), 0)
+        for cargo in cargo_types
+        )
+
         html += f"""
         <td style='border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold'>
             {format(month_total, ",.0f")}
+        </td>
+
+        <td style='border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold'>
+            {format(year_total, ",.0f")}
         </td>
         </tr>
         """
@@ -3509,6 +5040,10 @@ def daily_ops_preview():
     html += f"""
     <td style='border:1px solid #ccc;padding:8px;text-align:right'>
         {format(sum(month_dict.values()), ",.0f")}
+    </td>
+
+    <td style='border:1px solid #ccc;padding:8px;text-align:right'>
+        {format(sum(year_dict.values()), ",.0f")}
     </td>
     </tr>
     """
@@ -3833,6 +5368,94 @@ def daily_ops_preview():
 
     </div>
     """
+    port_throughput = _fetch_port_throughput(report_date)
+
+    html += f"""
+            </div>
+
+            <!-- PORT THROUGHPUT -->
+            <div>
+
+                <h3 style="margin-top:0;">Port Throughput</h3>
+
+                <table style="
+                    border-collapse:collapse;
+                    font-family:Arial;
+                    font-size:12px;
+                    width:260px;
+                ">
+
+                    <tr style="background:#4a90d9;color:white;">
+                        <th colspan="2"
+                            style="border:1px solid #ccc;padding:8px;text-align:center;">
+                            Port Throughput
+                        </th>
+                    </tr>
+
+                    <tr>
+                        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                            Jetty Throughput (Day)
+                        </td>
+                        <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                            {port_throughput['day_qty']:,}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                            Month
+                        </td>
+                        <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                            {port_throughput['mtd_qty']:,}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                            Year
+                        </td>
+                        <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                            {port_throughput['ytd_qty']:,}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                            Cumulative Since Oct 2012
+                        </td>
+                        <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                            {port_throughput['cumulative_qty']:,}
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                            Month TPD
+                        </td>
+                        <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                            {port_throughput['month_tpd']:,.2f}
+                        </td>
+                    </tr>
+
+                    <tr>
+                    <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                        Year TPD
+                    </td>
+                    <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                        {port_throughput['year_tpd']:,.2f}
+                    </td>
+                </tr>
+                </tr>
+
+                </table>
+
+            </div>
+
+        </div>
+    """
+
+    
+
 
         
     return html
@@ -3849,18 +5472,21 @@ def daily_ops_download():
     except ValueError:
         return Response('Invalid date', status=400)
 
-    vessels          = _fetch_data(report_date)
+    vessels              = _fetch_data(report_date)
     if not vessels:
         return Response('No active vessels found', status=404)
 
-    day_rows, month_rows       = _fetch_cargo_handled(report_date)
-    tide_rows                  = _fetch_tide_data(report_date)
-    mbc_day_rows, mbc_month_rows = _fetch_mbc_cargo_handling(report_date)
-    upcoming_vessels           = _fetch_upcoming_vessels(report_date)   # ? NEW
-    discharging_mbcs           = _fetch_discharging_mbcs(report_date)
-    upcoming_mbcs              = _fetch_upcoming_mbcs(report_date)      # ? NEW
-    mbc_status_rows            = _fetch_mbc_status(report_date)
-    cargo_availability         = _fetch_cargo_availability(report_date)
+    day_rows, month_rows           = _fetch_cargo_handled(report_date)
+    tide_rows                      = _fetch_tide_data(report_date)
+    mbc_day_rows, mbc_month_rows, mbc_year_rows = _fetch_mbc_cargo_handling(report_date)
+    upcoming_vessels               = _fetch_upcoming_vessels(report_date)
+    discharging_mbcs               = _fetch_discharging_mbcs(report_date)
+    upcoming_mbcs                  = _fetch_upcoming_mbcs(report_date)
+    mbc_status_rows                = _fetch_mbc_status(report_date)
+    cargo_availability             = _fetch_cargo_availability(report_date)
+    cargo_type_throughput        = _fetch_cargo_type_throughput(report_date)
+    cargo_stats_day, cargo_stats_month = _fetch_cargo_statistics(report_date)
+    port_throughput         = _fetch_port_throughput(report_date)
 
     def _mbc_rows_to_dict(rows):
         data = {o: {ct: 0.0 for ct in _MBC_CARGO_TYPES} for o in _MBC_OWNERS}
@@ -3871,8 +5497,9 @@ def daily_ops_download():
                 data[owner][cargo_type] += float(row['qty'] or 0)
         return data
 
-    mbc_day   = _mbc_rows_to_dict(mbc_day_rows)
+    mbc_day = _mbc_rows_to_dict(mbc_day_rows)
     mbc_month = _mbc_rows_to_dict(mbc_month_rows)
+    mbc_year = _mbc_rows_to_dict(mbc_year_rows)
 
     buf = _build_excel_a4(
         vessels,
@@ -3882,11 +5509,19 @@ def daily_ops_download():
         tide_rows=tide_rows,
         mbc_day=mbc_day,
         mbc_month=mbc_month,
-        upcoming_vessels=upcoming_vessels,   # ? NEW
+        mbc_year =mbc_year,  # Using month data for year as well since we don't have separate year data
+        upcoming_vessels=upcoming_vessels,
         discharging_mbcs=discharging_mbcs,
-        upcoming_mbcs=upcoming_mbcs,         # ? NEW
+        upcoming_mbcs=upcoming_mbcs,
         mbc_status_rows=mbc_status_rows,
-        cargo_availability=cargo_availability
+        cargo_availability=cargo_availability,
+        mbc_day_rows=mbc_day_rows,
+        mbc_month_rows=mbc_month_rows,
+        mbc_year_rows=mbc_year_rows,
+        cargo_type_throughput=cargo_type_throughput,
+        cargo_stats_day=cargo_stats_day,
+        cargo_stats_month=cargo_stats_month,
+        port_throughput=port_throughput,
     )
 
     fname = f'DailyOps_{date_str}.xlsx'
@@ -3895,4 +5530,3 @@ def daily_ops_download():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{fname}"'},
     )
-    
