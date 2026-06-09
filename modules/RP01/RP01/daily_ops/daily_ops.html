@@ -222,7 +222,9 @@
     👁 Preview
     </button>
     <button type="button" class="filter-btn primary" id="dl-btn" onclick="downloadReport()">&#8595; Download Excel</button>
+    {% if is_admin %}
     <button type="button" class="filter-btn secondary" onclick="openCutoffModal()">Cutoff Settings</button>
+    {% endif %}
 </div>
 
 <div id="cutoff-status-bar"></div>
@@ -250,36 +252,15 @@
                 <input type="date" id="cutoff-date">
             </div>
             <div class="cutoff-hint">
-                Values below represent accumulated MTD totals up to this date's 07:00 AM.
-                From this date onwards, the system will use live database queries.
+                Saving recomputes the FY &times; cargo-type throughput snapshot from
+                all data up to the cutoff date. The cutoff financial year is partial
+                (1 April &rarr; cutoff date).
             </div>
 
-            <!-- MBC Cargo Handling -->
-            <div class="modal-section-title">MBC Cargo Handling (MTD values up to cutoff)</div>
-            <table class="cutoff-grid" id="mbc-cutoff-grid">
-                <thead>
-                    <tr>
-                        <th>Owner</th>
-                        <th>Break Bulk</th>
-                        <th>Container</th>
-                        <th>Liquid</th>
-                        <th>Bulk</th>
-                    </tr>
-                </thead>
-                <tbody id="mbc-cutoff-body"></tbody>
-            </table>
-
-            <!-- Cargo Handled by Routes -->
-            <div class="modal-section-title">Cargo Handled by Routes (MTD values up to cutoff)</div>
-            <table class="cutoff-grid" id="route-cutoff-grid">
-                <thead>
-                    <tr>
-                        <th>Route Name</th>
-                        <th>MTD Qty</th>
-                    </tr>
-                </thead>
-                <tbody id="route-cutoff-body"></tbody>
-            </table>
+            <div class="modal-section-title">FY &times; Cargo Type Throughput (up to cutoff)</div>
+            <div id="fy-cutoff-preview" style="overflow-x:auto;">
+                <p class="cutoff-hint">Pick a cutoff date and click Save to compute the snapshot.</p>
+            </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="filter-btn secondary" onclick="closeCutoffModal()">Cancel</button>
@@ -289,9 +270,7 @@
 </div>
 
 <script>
-const MBC_OWNERS = ['JSW INFRA', 'JSW SHIPPING', 'OTHERS'];
-const MBC_CARGO_TYPES = ['Break Bulk', 'Container', 'Liquid', 'Bulk'];
-let _allRoutes = [];  // populated from conveyor_routes
+/* FY cutoff snapshot is computed server-side; no client-side grids. */
 
 document.addEventListener('DOMContentLoaded', function () {
     const today = new Date();
@@ -372,9 +351,9 @@ function loadCutoffStatus() {
         .then(data => {
             const bar = document.getElementById('cutoff-status-bar');
             if (data.cutoff_date) {
-                bar.innerHTML = `<div class="cutoff-status saved">Cutoff active: data before <b>${data.cutoff_date}</b> uses stored values.</div>`;
+                bar.innerHTML = `<div class="cutoff-status saved">Cutoff active: FY snapshot stored up to <b>${data.cutoff_date}</b>.</div>`;
             } else {
-                bar.innerHTML = `<div class="cutoff-status none">No cutoff configured — all MTD values come from live database queries.</div>`;
+                bar.innerHTML = `<div class="cutoff-status none">No cutoff configured — FY values come from live database queries.</div>`;
             }
         })
         .catch(() => {});
@@ -382,21 +361,13 @@ function loadCutoffStatus() {
 
 function openCutoffModal() {
     document.getElementById('cutoff-modal').classList.add('open');
-    // Fetch routes + cutoff in parallel
-    Promise.all([
-        fetch('/api/module/RP01/daily-ops/routes').then(r => r.json()),
-        fetch('/api/module/RP01/daily-ops/cutoff').then(r => r.json())
-    ])
-    .then(([routes, data]) => {
-        _allRoutes = routes;
-        document.getElementById('cutoff-date').value = data.cutoff_date || '';
-        populateMBCGrid(data.cutoff_values.mbc_cargo || {});
-        populateRouteGrid(data.cutoff_values.cargo_handled || {});
-    })
-    .catch(() => {
-        populateMBCGrid({});
-        populateRouteGrid({});
-    });
+    fetch('/api/module/RP01/daily-ops/cutoff')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('cutoff-date').value = data.cutoff_date || '';
+            renderFYPreview((data.cutoff_values || {}).fy_throughput || {});
+        })
+        .catch(() => renderFYPreview({}));
 }
 
 function closeCutoffModal() {
@@ -408,52 +379,123 @@ document.addEventListener('click', function(e) {
     if (e.target.id === 'cutoff-modal') closeCutoffModal();
 });
 
-/* ── MBC Grid ──────────────────────────────────────────────────────────── */
+/* ── FY Matrix Preview ─────────────────────────────────────────────────── */
 
-function populateMBCGrid(mbcData) {
-    const tbody = document.getElementById('mbc-cutoff-body');
-    tbody.innerHTML = '';
-    MBC_OWNERS.forEach(owner => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${owner}</td>`;
-        MBC_CARGO_TYPES.forEach(ct => {
-            const key = `${owner}|${ct}`;
-            const val = mbcData[key] || 0;
-            tr.innerHTML += `<td><input type="number" step="1" min="0" value="${val}" data-mbc-key="${key}"></td>`;
+function getCurrentFyStart() {
+    const now = new Date();
+    return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function getCurrentFyLabel() {
+    const start = getCurrentFyStart();
+    return `${start}-${start + 1}`;
+}
+
+function parseVal(v) {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+}
+
+function renderFYPreview(fyData) {
+    const host = document.getElementById('fy-cutoff-preview');
+    const currentFyLabel = getCurrentFyLabel();
+    const firstFyStart = 2012;
+    const lastFyStart = getCurrentFyStart();
+
+    const typeSet = new Set();
+    Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
+    let types = Array.from(typeSet).sort();
+    if (types.length === 0) {
+        types = ['CBRM', 'CLINKER', 'FLUXES', 'IBRM', 'OTHERS'];
+    }
+
+    const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+    const colTotals = {};
+    types.forEach(t => { colTotals[t] = 0; });
+    let grand = 0;
+
+    let html = '<table class="cutoff-grid"><thead><tr><th>FY</th>';
+    types.forEach(t => { html += `<th>${t}</th>`; });
+    html += '<th>Total</th></tr></thead><tbody>';
+
+    for (let fyStart = firstFyStart; fyStart <= lastFyStart; fyStart++) {
+        const fy = `${fyStart}-${fyStart + 1}`;
+        let rowTotal = 0;
+        html += `<tr data-fy="${fy}"><td>${fy}</td>`;
+
+        types.forEach(t => {
+            const value = parseVal((fyData[fy] || {})[t]);
+            rowTotal += value;
+            colTotals[t] += value;
+            html += `\
+                <td>\
+                    <input\
+                        type="number"\
+                        min="0"\
+                        step="1"\
+                        data-fy="${fy}"\
+                        data-cargo="${t}"\
+                        value="${value ? value : ''}"\
+                    />\
+                </td>`;
         });
-        tbody.appendChild(tr);
+
+        html += `<td style="text-align:right"><b class="fy-row-total">${fmt(rowTotal)}</b></td></tr>`;
+        grand += rowTotal;
+    }
+
+    html += '<tr style="font-weight:bold;background:#f2f2f2"><td>Total</td>';
+    types.forEach(t => {
+        html += `<td data-total-cargo="${t}" style="text-align:right">${fmt(colTotals[t])}</td>`;
+    });
+    html += `<td data-grand-total style="text-align:right">${fmt(grand)}</td></tr>`;
+    html += '</tbody></table>';
+    host.innerHTML = html;
+
+    host.querySelectorAll('input[data-fy][data-cargo]').forEach(input => {
+        input.addEventListener('input', updateFYTotals);
     });
 }
 
-function collectMBCData() {
-    const data = {};
-    document.querySelectorAll('#mbc-cutoff-body input[data-mbc-key]').forEach(inp => {
-        const v = parseFloat(inp.value) || 0;
-        if (v > 0) data[inp.dataset.mbcKey] = v;
-    });
-    return data;
-}
+function updateFYTotals() {
+    const host = document.getElementById('fy-cutoff-preview');
+    const headerCells = host.querySelectorAll('thead th');
+    const types = Array.from(headerCells).slice(1, -1).map(th => th.textContent);
+    const rows = host.querySelectorAll('tbody tr[data-fy]');
 
-/* ── Route Grid ────────────────────────────────────────────────────────── */
+    const colTotals = {};
+    types.forEach(t => { colTotals[t] = 0; });
+    let grand = 0;
 
-function populateRouteGrid(routeData) {
-    const tbody = document.getElementById('route-cutoff-body');
-    tbody.innerHTML = '';
-    _allRoutes.forEach(route => {
-        const val = routeData[route] || 0;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${route}</td><td><input type="number" step="1" min="0" value="${val}" data-route="${route}"></td>`;
-        tbody.appendChild(tr);
-    });
-}
+    rows.forEach(row => {
+        let rowTotal = 0;
+        const fy = row.dataset.fy;
+        types.forEach(t => {
+            const input = row.querySelector(`input[data-fy="${fy}"][data-cargo="${t}"]`);
+            const cell = row.querySelector(`td[data-cargo="${t}"]`);
+            const value = input ? parseVal(input.value) : parseVal(cell.dataset.value);
+            rowTotal += value;
+            colTotals[t] += value;
+        });
 
-function collectRouteData() {
-    const data = {};
-    document.querySelectorAll('#route-cutoff-body input[data-route]').forEach(inp => {
-        const v = parseFloat(inp.value) || 0;
-        if (v > 0) data[inp.dataset.route] = v;
+        const totalEl = row.querySelector('.fy-row-total');
+        if (totalEl) {
+            totalEl.textContent = rowTotal.toLocaleString('en-IN');
+        }
+        grand += rowTotal;
     });
-    return data;
+
+    types.forEach(t => {
+        const totalCell = host.querySelector(`td[data-total-cargo="${t}"]`);
+        if (totalCell) {
+            totalCell.textContent = colTotals[t].toLocaleString('en-IN');
+        }
+    });
+    const grandCell = host.querySelector('td[data-grand-total]');
+    if (grandCell) {
+        grandCell.textContent = grand.toLocaleString('en-IN');
+    }
 }
 
 /* ── Save ──────────────────────────────────────────────────────────────── */
@@ -465,29 +507,33 @@ function saveCutoff() {
         return;
     }
 
+    const editableFyValues = {};
+    document.querySelectorAll('#fy-cutoff-preview input[data-fy][data-cargo]').forEach(input => {
+        const fy = input.dataset.fy;
+        const cargo = input.dataset.cargo;
+        const value = input.value.trim();
+        if (!editableFyValues[fy]) {
+            editableFyValues[fy] = {};
+        }
+        editableFyValues[fy][cargo] = value === '' ? 0 : Number(value);
+    });
+
     const btn = document.getElementById('save-cutoff-btn');
     btn.disabled = true;
-    btn.textContent = 'Saving\u2026';
-
-    const payload = {
-        cutoff_date: cutoffDate,
-        cutoff_values: {
-            mbc_cargo: collectMBCData(),
-            cargo_handled: collectRouteData()
-        }
-    };
+    btn.textContent = 'Computing…';
 
     fetch('/api/module/RP01/daily-ops/cutoff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ cutoff_date: cutoffDate, editable_fy_values: editableFyValues })
     })
     .then(r => {
+        if (r.status === 403) throw new Error('Admin access required.');
         if (!r.ok) throw new Error('Save failed');
         return r.json();
     })
-    .then(() => {
-        closeCutoffModal();
+    .then(data => {
+        renderFYPreview(data.fy_throughput || {});
         loadCutoffStatus();
     })
     .catch(err => {
