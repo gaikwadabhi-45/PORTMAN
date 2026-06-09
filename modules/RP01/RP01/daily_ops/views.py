@@ -1674,7 +1674,11 @@ def _fetch_port_throughput(report_date):
 
     target_date = report_date - timedelta(days=1)
 
-    month_start = date(target_date.year, target_date.month, 1)
+    month_start = date(
+        target_date.year,
+        target_date.month,
+        1
+    )
 
     if target_date.month >= 4:
         fy_start = date(target_date.year, 4, 1)
@@ -1730,29 +1734,38 @@ def _fetch_port_throughput(report_date):
 
         SELECT
 
-            COALESCE(SUM(
-                CASE
-                    WHEN entry_date = %s
-                    THEN qty
-                    ELSE 0
-                END
-            ),0) AS day_qty,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN entry_date = %s
+                        THEN qty
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS day_qty,
 
-            COALESCE(SUM(
-                CASE
-                    WHEN entry_date BETWEEN %s AND %s
-                    THEN qty
-                    ELSE 0
-                END
-            ),0) AS month_qty,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN entry_date BETWEEN %s AND %s
+                        THEN qty
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS month_qty,
 
-            COALESCE(SUM(
-                CASE
-                    WHEN entry_date BETWEEN %s AND %s
-                    THEN qty
-                    ELSE 0
-                END
-            ),0) AS year_qty
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN entry_date BETWEEN %s AND %s
+                        THEN qty
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS year_qty
 
         FROM throughput
     """, (
@@ -1765,18 +1778,36 @@ def _fetch_port_throughput(report_date):
 
     row = cur.fetchone()
 
-    # Cumulative Since Oct 2012 from daily_ops_cutoff
+    # Month TPD
+    days_elapsed = (target_date - month_start).days + 1
+
+    month_tpd = round(
+        float(row["month_qty"] or 0) / days_elapsed,
+        2
+    ) if days_elapsed else 0
+
+    # Cumulative Since Oct 2012
     cur.execute("""
         SELECT
-            COALESCE(SUM(cargo.value::numeric), 0) AS cumulative_qty
+            COALESCE(
+                SUM(cargo.value::numeric),
+                0
+            ) AS cumulative_qty
+
         FROM (
             SELECT cutoff_values::jsonb AS j
             FROM daily_ops_cutoff
             ORDER BY cutoff_date DESC
             LIMIT 1
         ) d,
-        LATERAL jsonb_each(d.j->'fy_throughput') fy,
-        LATERAL jsonb_each_text(fy.value) cargo
+
+        LATERAL jsonb_each(
+            d.j->'fy_throughput'
+        ) fy,
+
+        LATERAL jsonb_each_text(
+            fy.value
+        ) cargo
     """)
 
     cumulative_row = cur.fetchone()
@@ -1788,7 +1819,8 @@ def _fetch_port_throughput(report_date):
         "day_qty": int(row["day_qty"] or 0),
         "mtd_qty": int(row["month_qty"] or 0),
         "ytd_qty": int(row["year_qty"] or 0),
-        "cumulative_qty": int(cumulative_row["cumulative_qty"] or 0)
+        "cumulative_qty": int(cumulative_row["cumulative_qty"] or 0),
+        "month_tpd": float(month_tpd)
     }
 
 def _build_excel_a4(
@@ -2556,17 +2588,21 @@ def _build_excel_a4(
 
     PT_COL = TIDE_COL + 3
 
+    # Move Port Throughput section 1 row up
+    pt_start_row = tide_start_row - 1
+
     ws.column_dimensions[get_column_letter(PT_COL)].width = 24
     ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 12
 
-    safe_merge(ws, tide_start_row, PT_COL, tide_start_row, PT_COL + 1)
-    for cc in range(PT_COL, PT_COL + 2):
-        ws.cell(tide_start_row, cc).fill   = _fill("D9EAF7")
-        ws.cell(tide_start_row, cc).border = _bdr
-        ws.cell(tide_start_row, cc).font   = _font(bold=True)
+    safe_merge(ws, pt_start_row, PT_COL, pt_start_row, PT_COL + 1)
 
-    ws.cell(tide_start_row, PT_COL).value = "Port Throughput"
-    ws.cell(tide_start_row, PT_COL).alignment = Alignment(
+    for cc in range(PT_COL, PT_COL + 2):
+        ws.cell(pt_start_row, cc).fill = _fill("D9EAF7")
+        ws.cell(pt_start_row, cc).border = _bdr
+        ws.cell(pt_start_row, cc).font = _font(bold=True)
+
+    ws.cell(pt_start_row, PT_COL).value = "Port Throughput"
+    ws.cell(pt_start_row, PT_COL).alignment = Alignment(
         horizontal="center",
         vertical="center"
     )
@@ -2577,10 +2613,11 @@ def _build_excel_a4(
         ("Jetty Throughput (Day)", port_throughput.get("day_qty", "")),
         ("Month", port_throughput.get("mtd_qty", "")),
         ("Year", port_throughput.get("ytd_qty", "")),
-        ("Cumulative Since Oct 2012", port_throughput.get("cumulative_qty", ""))
+        ("Cumulative Since Oct 2012", port_throughput.get("cumulative_qty", "")),
+        ("Month TPD", f"{port_throughput.get('month_tpd', 0):,.2f}")
     ]
 
-    pt_row = tide_start_row + 1
+    pt_row = pt_start_row + 1
 
     for label, value in pt_rows:
 
@@ -5365,6 +5402,16 @@ def daily_ops_preview():
                             {port_throughput['cumulative_qty']:,}
                         </td>
                     </tr>
+
+                    <tr>
+                        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">
+                            Month TPD
+                        </td>
+                        <td style="border:1px solid #ccc;padding:8px;text-align:right;">
+                            {port_throughput['month_tpd']:,.2f}
+                        </td>
+                    </tr>
+                </tr>
 
                 </table>
 
