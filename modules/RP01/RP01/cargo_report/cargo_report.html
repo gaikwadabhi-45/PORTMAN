@@ -356,7 +356,7 @@
 
     #cargo-report-table td[rowspan] {
         vertical-align: middle !important;
-        padding-left: 20px;
+        padding-left: 9px;
     }
 
     /* Download Loader */
@@ -668,16 +668,20 @@
 
 <script>
 
-    $(document).ready(function () {
+$(document).ready(function () {
 
-        $('#cargo-report-table').DataTable({
-            pageLength: 25,
-            searching: true,
-            ordering: true,
-            responsive: true
-        });
+    $('#cargo-report-table').DataTable({
+        pageLength: 25,
+        searching: true,
+        ordering: true,
+        responsive: false,
 
+        drawCallback: function () {
+            mergeActualDischargeCells();
+        }
     });
+
+});
 
 
     const BASE_URL = '/module/RP01';
@@ -749,50 +753,49 @@
 
         table.draw();
 
-        setTimeout(() => {
-            mergeActualDischargeCells();
-        }, 100);
+
     }
     function mergeActualDischargeCells() {
 
-        const rows = $('#cargo-report-table tbody tr');
+    const rows = $('#cargo-report-table tbody tr');
 
-        let prevVessel = '';
-        let prevActual = '';
-        let firstCell = null;
-        let rowspan = 1;
+    let prevKey = '';
+    let firstCell = null;
+    let rowspan = 1;
 
-        rows.each(function () {
+    rows.each(function () {
 
-            const vessel = $(this).find('td:eq(1)').text().trim();
-            const actualCell = $(this).find('td:eq(7)');
-            const actual = actualCell.text().trim();
+        const cells = $(this).find('td');
 
-            if (
-                vessel === prevVessel &&
-                actual === prevActual
-            ) {
+        if (cells.length < 13) return;
 
-                rowspan++;
-                firstCell.attr('rowspan', rowspan);
+        const vesselName = cells.eq(1).text().trim();
+        const vesselType = cells.eq(2).text().trim();
 
-                actualCell.hide();
+        const key = vesselName + '|' + vesselType;
 
-                firstCell.css({
-                    'vertical-align': 'middle',
-                    'padding': '0 0 0 10px'
-                });
+        const actualCell = cells.eq(7);
 
-            } else {
+        if (key === prevKey) {
 
-                prevVessel = vessel;
-                prevActual = actual;
-                firstCell = actualCell;
-                rowspan = 1;
-            }
-        });
-    }
+            rowspan++;
 
+            firstCell.attr('rowspan', rowspan);
+
+            actualCell.remove();
+
+        } else {
+
+            prevKey = key;
+            firstCell = actualCell;
+            rowspan = 1;
+        }
+    });
+
+    $('#cargo-report-table td[rowspan]').css({
+        'vertical-align': 'middle',
+    });
+}
     $(document).on('change', '.material-po-input', async function () {
 
         const materialPo = $(this).val();
