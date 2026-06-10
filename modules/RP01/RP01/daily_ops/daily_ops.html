@@ -454,239 +454,24 @@
 </div>
 
 <script>
-/* FY cutoff snapshot is computed server-side; no client-side grids. */
+    /* FY cutoff snapshot is computed server-side; no client-side grids. */
 
-document.addEventListener('DOMContentLoaded', function () {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    document.getElementById('report-date').value = `${y}-${m}-${d}`;
-    loadCutoffStatus();
-});
-
-function downloadReport() {
-
-    const reportDate =
-        document.getElementById('report-date').value;
-
-    if (!reportDate) {
-        alert('Please select a report date.');
-        return;
-    }
-
-    // =====================================
-    // CARGO AVAILABILITY TABLE
-    // =====================================
-
-    const editableTable = [];
-
-    const cargoTable =
-        document.getElementById(
-            'cargo-availability-table'
-        );
-
-    if (cargoTable) {
-
-        cargoTable.querySelectorAll('tr')
-            .forEach(tr => {
-
-                const row = [];
-
-                tr.querySelectorAll('th,td')
-                    .forEach(cell => {
-
-                        row.push(
-                            (cell.innerText || '')
-                                .replace(/\n/g, ' ')
-                                .trim()
-                        );
-
-                    });
-
-                editableTable.push(row);
-
-            });
-    }
-
-    // =====================================
-    // RAINFALL TABLE
-    // =====================================
-
-    const rainfallTable = [];
-
-    const rt =
-        document.getElementById(
-            'rainfall-table'
-        );
-
-    if (rt) {
-
-        rt.querySelectorAll('tr')
-            .forEach(tr => {
-
-                const row = [];
-
-                tr.querySelectorAll('th,td')
-                    .forEach(cell => {
-
-                        row.push(
-                            (cell.innerText || '')
-                                .replace(/\n/g, ' ')
-                                .trim()
-                        );
-
-                    });
-
-                rainfallTable.push(row);
-
-            });
-    }
-
-    // =====================================
-    // BF TABLE
-    // =====================================
-
-    const bfTable = [];
-
-    const bf =
-        document.getElementById(
-            'bf-production-table'
-        );
-
-    if (bf) {
-
-        bf.querySelectorAll('tr')
-            .forEach(tr => {
-
-                const row = [];
-
-                tr.querySelectorAll('th,td')
-                    .forEach(cell => {
-
-                        row.push(
-                            (cell.innerText || '')
-                                .replace(/\n/g, ' ')
-                                .trim()
-                        );
-
-                    });
-
-                bfTable.push(row);
-
-            });
-    }
-
-    // =====================================
-    // RM STOCK TABLE
-    // =====================================
-
-    const rmTable = [];
-
-    const rm =
-        document.getElementById(
-            'rm-stock-table'
-        );
-
-    if (rm) {
-
-        rm.querySelectorAll('tr')
-            .forEach(tr => {
-
-                const row = [];
-
-                tr.querySelectorAll('th,td')
-                    .forEach(cell => {
-
-                        row.push(
-                            (cell.innerText || '')
-                                .replace(/\n/g, ' ')
-                                .trim()
-                        );
-
-                    });
-
-                rmTable.push(row);
-
-            });
-    }
-
-    console.log(
-        'EDITABLE TABLE =',
-        editableTable
-    );
-
-    console.log(
-        'RAINFALL TABLE =',
-        rainfallTable
-    );
-
-    console.log(
-        'BF TABLE =',
-        bfTable
-    );
-
-    console.log(
-        'RM TABLE =',
-        rmTable
-    );
-
-    window.location =
-        '/api/module/RP01/daily-ops/download?' +
-        'report_date=' +
-        encodeURIComponent(reportDate) +
-
-        '&editable_table=' +
-        encodeURIComponent(
-            JSON.stringify(editableTable)
-        ) +
-
-        '&rainfall_table=' +
-        encodeURIComponent(
-            JSON.stringify(rainfallTable)
-        ) +
-
-        '&bf_table=' +
-        encodeURIComponent(
-            JSON.stringify(bfTable)
-        ) +
-
-        '&rm_table=' +
-        encodeURIComponent(
-            JSON.stringify(rmTable)
-        );
-}
+    document.addEventListener('DOMContentLoaded', function () {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        document.getElementById('report-date').value = `${y}-${m}-${d}`;
+        loadCutoffStatus();
+    });
 
     function downloadReport() {
 
 
-    if (!reportDate) {
+        
 
-        Swal.fire({
-            icon: 'warning',
-            title: 'Select Report Date',
-            text: 'Please select a report date.',
-            confirmButtonColor: '#4a90d9'
-        });
-
-        return;
-    }
-
-    if (new Date(reportDate) < new Date('2026-05-01')) {
-
-        Swal.fire({
-            icon: 'info',
-            title: 'Report Not Available',
-            html: `
-                <b>Cutoff Date:</b> 01-May-2026<br><br>
-                Reports before this date are not available.
-            `,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#4a90d9'
-        });
-
-        return;
-    }
+        const reportDate =
+            document.getElementById('report-date').value;
 
         if (!reportDate) {
             alert('Please select a report date.');
@@ -757,93 +542,58 @@ function downloadReport() {
 
         const rt =
             document.getElementById(
-                'preview-container'
-            ).style.display = 'block';
-        })
-        .catch(err => {
-            alert(err);
-        });
-}
-const grandIBRM =
-    getNum("total_BRBF") +
-    getNum("total_Orissa Fines") +
-    getNum("total_Goa Fines") +
-    getNum("total_HBI") +
-    getNum("total_KDL CLO");
+                'rainfall-table'
+            );
 
-const grandCBRM =
-    getNum("total_Jimblebar Fines") +
-    getNum("total_Bacheli Fines") +
-    getNum("total_Goa Clo") +
-    getNum("total_Mabu") +
-    getNum("total_Illavara") +
-    getNum("total_Uval + Kestrel") +
-    getNum("total_MLV") +
-    getNum("total_PCI") +
-    getNum("total_Antracite") +
-    getNum("total_Limestone");
+        if (rt) {
 
-const grandFluxes =
-    getNum("total_Bentonite") +
-    getNum("total_Oliflux") +
-    getNum("total_Dolomite");
+            rt.querySelectorAll('tr')
+                .forEach(tr => {
 
-const grandSlag =
-    getNum("total_Slag Loading/Unloading");
+                    const row = [];
 
-const grandClinker =
-    getNum("total_Clinker");
+                    tr.querySelectorAll('th,td')
+                        .forEach(cell => {
 
-document.getElementById("grand_ibrm").innerText =
-    grandIBRM.toLocaleString();
+                            row.push(
+                                (cell.innerText || '')
+                                    .replace(/\n/g, ' ')
+                                    .trim()
+                            );
 
-document.getElementById("grand_cbrm").innerText =
-    grandCBRM.toLocaleString();
+                        });
 
-document.getElementById("grand_fluxes").innerText =
-    grandFluxes.toLocaleString();
+                    rainfallTable.push(row);
 
-document.getElementById("grand_slag").innerText =
-    grandSlag.toLocaleString();
+                });
+        }
 
-document.getElementById("grand_clinker").innerText =
-    grandClinker.toLocaleString();
+        // =====================================
+        // BF TABLE
+        // =====================================
 
-document.getElementById("grand_total").innerText =
-    (
-        grandIBRM +
-        grandCBRM +
-        grandFluxes +
-        grandSlag +
-        grandClinker
-    ).toLocaleString();
+        const bfTable = [];
 
-/* ── Cutoff Modal ──────────────────────────────────────────────────────── */
+        const bf =
+            document.getElementById(
+                'bf-production-table'
+            );
 
-function loadCutoffStatus() {
-    fetch('/api/module/RP01/daily-ops/cutoff')
-        .then(r => r.json())
-        .then(data => {
-            const bar = document.getElementById('cutoff-status-bar');
-            if (data.cutoff_date) {
-                bar.innerHTML = `<div class="cutoff-status saved">Cutoff active: FY snapshot stored up to <b>${data.cutoff_date}</b>.</div>`;
-            } else {
-                bar.innerHTML = `<div class="cutoff-status none">No cutoff configured — FY values come from live database queries.</div>`;
-            }
-        })
-        .catch(() => {});
-}
+        if (bf) {
 
-function openCutoffModal() {
-    document.getElementById('cutoff-modal').classList.add('open');
-    fetch('/api/module/RP01/daily-ops/cutoff')
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('cutoff-date').value = data.cutoff_date || '';
-            renderFYPreview((data.cutoff_values || {}).fy_throughput || {});
-        })
-        .catch(() => renderFYPreview({}));
-}
+            bf.querySelectorAll('tr')
+                .forEach(tr => {
+
+                    const row = [];
+
+                    tr.querySelectorAll('th,td')
+                        .forEach(cell => {
+
+                            row.push(
+                                (cell.innerText || '')
+                                    .replace(/\n/g, ' ')
+                                    .trim()
+                            );
 
                         });
 
