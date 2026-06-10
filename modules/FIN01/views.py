@@ -702,7 +702,7 @@ def get_customer_billables(customer_type, customer_id):
                cd.quantity, cd.material_po,
                COALESCE(cd.is_billed, 0) AS is_billed,
                COALESCE(cd.billed_quantity, 0) AS billed_quantity,
-               mh.doc_num, mh.mbc_name, mh.doc_status AS mbc_status
+               mh.doc_num, mh.doc_date, mh.mbc_name, mh.doc_status AS mbc_status
         FROM mbc_customer_details cd
         JOIN mbc_header mh ON cd.mbc_id = mh.id
         WHERE cd.customer_name = %s
@@ -780,7 +780,7 @@ def get_customer_billables(customer_type, customer_id):
             'uom':                decl.get('quantity_uom') or st.get('uom') or 'MT',
             'cargo_name':         decl.get('cargo_name') or '',
             'bl_no':              decl.get('bl_no') or decl.get('bill_of_coastal_goods_no') or '',
-            'bl_date':            str(decl.get('bl_date') or ''),
+            'bl_date':            str(decl.get('bl_date') or decl.get('doc_date') or ''),
             'material_po':        material_po,
             'material_po_options': []
         }
