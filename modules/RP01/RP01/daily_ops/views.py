@@ -31,7 +31,7 @@ def _fill(hex_color):
 def _font(bold=False):
     return Font(
         name="Calibri",
-        size=14,
+        size=24,
         bold=bold
     )
 
@@ -4437,7 +4437,7 @@ def _build_excel_a4(
 
     # ── Enforce uniform row height across all rows ──────────────────────────
     for row_num in range(1, ws.max_row + 1):
-        ws.row_dimensions[row_num].height = 30
+        ws.row_dimensions[row_num].height = 45
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -5116,7 +5116,7 @@ def daily_ops_preview():
     <h3>Cargo Availability for the Day</h3>
     <div style="overflow-x:auto;width:100%;">
     <table id="cargo-availability-table"
-       style="border-collapse:collapse;font-family:Arial;font-size:12px;white-space:nowrap;">
+       style="border-collapse:collapse;font-family:Arial;font-size:24px;white-space:nowrap;">
     <tr style="background:#4a90d9;color:white;">
         <th style="border:1px solid #ccc;padding:8px;height:38px;"></th>
 
@@ -5790,7 +5790,7 @@ def daily_ops_preview():
            style="
            border-collapse:collapse;
            font-family:Arial;
-           font-size:12px;
+           font-size:24px;
            width:250px;
     ">
 
@@ -5910,7 +5910,7 @@ def daily_ops_preview():
                 style="
                 border-collapse:collapse;
                 font-family:Arial;
-                font-size:12px;
+                font-size:24px;
                 width:500px;
             ">
 
@@ -6000,7 +6000,7 @@ def daily_ops_preview():
        style="
            border-collapse:collapse;
            font-family:Arial;
-           font-size:12px;
+           font-size:24px;
            width:330px;
        ">
 
@@ -6123,7 +6123,7 @@ def daily_ops_preview():
                 <table style="
                     border-collapse:collapse;
                     font-family:Arial;
-                    font-size:12px;
+                    font-size:24px;
                     width:260px;
                 ">
 
