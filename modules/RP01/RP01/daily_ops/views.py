@@ -2761,6 +2761,7 @@ def _build_excel_a4(
     # Data Rows
     row_no = header_row + 1
     for tide in (tide_rows or []):
+
         tide_dt = ""
         if tide.get("tide_datetime"):
             try:
@@ -2772,16 +2773,28 @@ def _build_excel_a4(
                 tide_dt = str(tide["tide_datetime"])
 
         c = safe_cell(ws, row_no, TIDE_COL, tide_dt)
+        c.font = _font(bold=True)          # SAME AS PORT THROUGHPUT
         c.border = _bdr
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         ws.row_dimensions[row_no].height = 18
 
-        c = safe_cell(ws, row_no, TIDE_COL + 1, tide.get("tide_meters", ""))
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c = safe_cell(
+            ws,
+            row_no,
+            TIDE_COL + 1,
+            tide.get("tide_meters", "")
+        )
+        c.font = _font(bold=True)          # SAME AS PORT THROUGHPUT
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         c.border = _bdr
 
         row_no += 1
-
     # current_row = max(current_row, row_no + 2)
 
     # =====================================================
@@ -3021,6 +3034,7 @@ def _build_excel_a4(
 
         c = safe_cell(ws, data_start, MBC_COL, owner)
         c.border = _bdr
+        c.font = _font(bold=True)
 
         day_total = 0
         month_total = 0
@@ -3030,50 +3044,60 @@ def _build_excel_a4(
             qty = day_lookup.get((owner, ct), 0)
             day_total += qty
 
-            safe_cell(
+            c = safe_cell(
                 ws,
                 data_start,
                 day_start + i,
                 qty if qty else ""
-            ).border = _bdr
+            )
+            c.border = _bdr
+            c.font = _font(bold=True)
 
-        safe_cell(
+        c = safe_cell(
             ws,
             data_start,
             day_start + n_cargo,
             day_total if day_total else ""
-        ).border = _bdr
+        )
+        c.border = _bdr
+        c.font = _font(bold=True)
 
         for i, ct in enumerate(cargo_types):
 
             qty = month_lookup.get((owner, ct), 0)
             month_total += qty
 
-            safe_cell(
+            c = safe_cell(
                 ws,
                 data_start,
                 mtd_start + i,
                 qty if qty else ""
-            ).border = _bdr
+            )
+            c.border = _bdr
+            c.font = _font(bold=True)
 
-        safe_cell(
+        c = safe_cell(
             ws,
             data_start,
             mtd_start + n_cargo,
             month_total if month_total else ""
-        ).border = _bdr
+        )
+        c.border = _bdr
+        c.font = _font(bold=True)
 
         year_total = sum(
             year_lookup.get((owner, ct), 0)
             for ct in cargo_types
         )
 
-        safe_cell(
+        c = safe_cell(
             ws,
             data_start,
             ytd_start,
             year_total if year_total else ""
-        ).border = _bdr
+        )
+        c.border = _bdr
+        c.font = _font(bold=True)
 
         data_start += 1
 
@@ -3171,12 +3195,17 @@ def _build_excel_a4(
     # Title
     # -----------------------------
     safe_merge(ws, cargo_start_row, CARGO_COL, cargo_start_row, CARGO_COL + 2)
+
     for cc in range(CARGO_COL, CARGO_COL + 3):
-        ws.cell(cargo_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(cargo_start_row, cc).fill = _fill("D9EAF7")
         ws.cell(cargo_start_row, cc).border = _bdr
-        ws.cell(cargo_start_row, cc).font   = _font(bold=True)
-    ws.cell(cargo_start_row, CARGO_COL).value     = "Cargo Handled"
-    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(cargo_start_row, cc).font = _font(bold=True)
+
+    ws.cell(cargo_start_row, CARGO_COL).value = "Cargo Handled"
+    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     r = cargo_start_row + 1
 
@@ -3205,10 +3234,12 @@ def _build_excel_a4(
         qty = int(round(day_dict.get(route, 0)))
 
         c = safe_cell(ws, r, CARGO_COL + 1, route)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="left", vertical="center")
         c.border = _bdr
 
         c = safe_cell(ws, r, CARGO_COL + 2, qty)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right", vertical="center")
         c.border = _bdr
 
@@ -3216,6 +3247,7 @@ def _build_excel_a4(
 
     # Day Total
     c = safe_cell(ws, r, CARGO_COL + 1, "Total")
+    c.font = _font(bold=True)
     c.border = _bdr
 
     c = safe_cell(
@@ -3224,6 +3256,7 @@ def _build_excel_a4(
         CARGO_COL + 2,
         int(round(sum(day_dict.values())))
     )
+    c.font = _font(bold=True)
     c.alignment = Alignment(horizontal="right", vertical="center")
     c.border = _bdr
 
@@ -3254,10 +3287,12 @@ def _build_excel_a4(
         qty = int(round(month_dict.get(route, 0)))
 
         c = safe_cell(ws, r, CARGO_COL + 1, route)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="left", vertical="center")
         c.border = _bdr
 
         c = safe_cell(ws, r, CARGO_COL + 2, qty)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right", vertical="center")
         c.border = _bdr
 
@@ -3265,6 +3300,7 @@ def _build_excel_a4(
 
     # Month Total
     c = safe_cell(ws, r, CARGO_COL + 1, "Total")
+    c.font = _font(bold=True)
     c.border = _bdr
 
     c = safe_cell(
@@ -3273,6 +3309,7 @@ def _build_excel_a4(
         CARGO_COL + 2,
         int(round(sum(month_dict.values())))
     )
+    c.font = _font(bold=True)
     c.alignment = Alignment(horizontal="right", vertical="center")
     c.border = _bdr
 
@@ -3296,8 +3333,6 @@ def _build_excel_a4(
     ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 30
     ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 30
 
-    # IMPORTANT:
-    # Do NOT update current_row here
     cargo_end_row = r
 
     # =====================================================
@@ -3342,7 +3377,7 @@ def _build_excel_a4(
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = _bdr
 
-    # -----------------------------
+   # -----------------------------
     # Data
     # -----------------------------
     r = hdr_row + 1
@@ -3368,7 +3403,9 @@ def _build_excel_a4(
         total_month += month_qty
         total_year += year_qty
 
-        safe_cell(ws, r, THR_COL, cargo_type).border = _bdr
+        c = safe_cell(ws, r, THR_COL, cargo_type)
+        c.font = _font(bold=True)
+        c.border = _bdr
 
         c = safe_cell(
             ws,
@@ -3376,6 +3413,7 @@ def _build_excel_a4(
             THR_COL + 1,
             int(round(day_qty or 0)) if day_qty else "-"
         )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3385,6 +3423,7 @@ def _build_excel_a4(
             THR_COL + 2,
             int(round(month_qty or 0)) if month_qty else "-"
         )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3394,11 +3433,33 @@ def _build_excel_a4(
             THR_COL + 3,
             int(round(year_qty or 0)) if year_qty else "-"
         )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
         r += 1
 
+    # -----------------------------
+    # Total Row
+    # -----------------------------
+    c = safe_cell(ws, r, THR_COL, "Total")
+    c.font = _font(bold=True)
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 1, int(round(total_day)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 2, int(round(total_month)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 3, int(round(total_year)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
     # -----------------------------
     # Total Row
     # -----------------------------
@@ -3737,6 +3798,23 @@ def _build_excel_a4(
     c.border = _bdr
 
     # -----------------------------------
+    # Make Entire Rainfall Table Bold
+    # -----------------------------------
+    for rr in range(
+        RAINFALL_ROW,
+        r + 3
+    ):
+        for cc in range(
+            RAINFALL_COL,
+            RAINFALL_COL + 4
+        ):
+            ws.cell(
+                rr,
+                cc
+            ).font = _font(bold=True)
+
+
+    # -----------------------------------
     # Full Borders
     # -----------------------------------
     for rr in range(
@@ -3751,6 +3829,22 @@ def _build_excel_a4(
                 rr,
                 cc
             ).border = _bdr
+
+    # -----------------------------------
+    # Make Entire Rainfall Table Bold
+    # -----------------------------------
+    for rr in range(
+        RAINFALL_ROW,
+        r + 3
+    ):
+        for cc in range(
+            RAINFALL_COL,
+            RAINFALL_COL + 4
+        ):
+            ws.cell(
+                rr,
+                cc
+            ).font = _font(bold=True)
 
     # -----------------------------------
     # Column Widths
@@ -3786,12 +3880,17 @@ def _build_excel_a4(
     # Title
     # -----------------------------------
     safe_merge(ws, STAT_ROW, STAT_COL, STAT_ROW, STAT_COL + 2)
+
     for cc in range(STAT_COL, STAT_COL + 3):
-        ws.cell(STAT_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(STAT_ROW, cc).fill = _fill("D9EAF7")
         ws.cell(STAT_ROW, cc).border = _bdr
-        ws.cell(STAT_ROW, cc).font   = _font(bold=True)
-    ws.cell(STAT_ROW, STAT_COL).value     = "Cargo Statistics"
-    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(STAT_ROW, cc).font = _font(bold=True)
+
+    ws.cell(STAT_ROW, STAT_COL).value = "Cargo Statistics"
+    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     # -----------------------------------
     # Header
@@ -3799,10 +3898,20 @@ def _build_excel_a4(
     hdr_row = STAT_ROW + 1
 
     for idx, hdr in enumerate(["Source", "Day", "MTD"]):
-        c = safe_cell(ws, hdr_row, STAT_COL + idx, hdr)
+
+        c = safe_cell(
+            ws,
+            hdr_row,
+            STAT_COL + idx,
+            hdr
+        )
+
         c.font = _font(bold=True)
         c.fill = _fill("D9EAF7")
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         c.border = _bdr
 
     # -----------------------------------
@@ -3822,13 +3931,26 @@ def _build_excel_a4(
         total_month += month_qty
 
         c = safe_cell(ws, r, STAT_COL, src)
+        c.font = _font(bold=True)
         c.border = _bdr
 
-        c = safe_cell(ws, r, STAT_COL + 1, int(round(day_qty)) if day_qty else "")
+        c = safe_cell(
+            ws,
+            r,
+            STAT_COL + 1,
+            int(round(day_qty)) if day_qty else ""
+        )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
-        c = safe_cell(ws, r, STAT_COL + 2, int(round(month_qty)) if month_qty else "")
+        c = safe_cell(
+            ws,
+            r,
+            STAT_COL + 2,
+            int(round(month_qty)) if month_qty else ""
+        )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3842,14 +3964,26 @@ def _build_excel_a4(
     c.fill = _fill("F2F2F2")
     c.border = _bdr
 
-    c = safe_cell(ws, r, STAT_COL + 1, int(round(total_day)))
+    c = safe_cell(
+        ws,
+        r,
+        STAT_COL + 1,
+        int(round(total_day))
+    )
     c.font = _font(bold=True)
     c.fill = _fill("F2F2F2")
+    c.alignment = Alignment(horizontal="right")
     c.border = _bdr
 
-    c = safe_cell(ws, r, STAT_COL + 2, int(round(total_month)))
+    c = safe_cell(
+        ws,
+        r,
+        STAT_COL + 2,
+        int(round(total_month))
+    )
     c.font = _font(bold=True)
     c.fill = _fill("F2F2F2")
+    c.alignment = Alignment(horizontal="right")
     c.border = _bdr
 
     # -----------------------------------
@@ -3865,6 +3999,7 @@ def _build_excel_a4(
     for rr in range(STAT_ROW, r + 1):
         for cc in range(STAT_COL, STAT_COL + 3):
             ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).font = _font(bold=True)
 
     # =====================================================
     # BF PRODUCTION DETAILS
@@ -3946,12 +4081,11 @@ def _build_excel_a4(
         BF_COL,
         "BF1"
     )
-
+    c.font = _font(bold=True)
     c.alignment = Alignment(
         horizontal="center",
         vertical="center"
     )
-
     c.border = _bdr
 
     bf1_target = ""
@@ -3970,6 +4104,7 @@ def _build_excel_a4(
         BF_COL + 1,
         bf1_target
     )
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="center",
@@ -3982,6 +4117,7 @@ def _build_excel_a4(
         BF_COL + 2,
         bf1_actual
     )
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="center",
@@ -4001,12 +4137,11 @@ def _build_excel_a4(
         BF_COL,
         "BF2"
     )
-
+    c.font = _font(bold=True)
     c.alignment = Alignment(
         horizontal="center",
         vertical="center"
     )
-
     c.border = _bdr
 
     bf2_target = ""
@@ -4025,6 +4160,7 @@ def _build_excel_a4(
         BF_COL + 1,
         bf2_target
     )
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="center",
@@ -4037,6 +4173,7 @@ def _build_excel_a4(
         BF_COL + 2,
         bf2_actual
     )
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="center",
@@ -4061,12 +4198,12 @@ def _build_excel_a4(
     ].width = 30
 
     # -----------------------------
-    # Borders
+    # Borders + Font
     # -----------------------------
     for rr in range(BF_ROW, row2 + 1):
         for cc in range(BF_COL, BF_COL + 3):
             ws.cell(rr, cc).border = _bdr
-
+            ws.cell(rr, cc).font = _font(bold=True)
     # =====================================================
     # RM STOCK DETAILS
     # =====================================================
@@ -4135,12 +4272,14 @@ def _build_excel_a4(
     # -----------------------------
     row1 = hdr_row + 1
 
-    safe_cell(
+    c = safe_cell(
         ws,
         row1,
         RM_COL,
         "IBRM"
-    ).border = _bdr
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
 
     ibrm_qty = ""
 
@@ -4157,6 +4296,7 @@ def _build_excel_a4(
         ibrm_qty
     )
 
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="right",
@@ -4168,12 +4308,14 @@ def _build_excel_a4(
     # -----------------------------
     row2 = row1 + 1
 
-    safe_cell(
+    c = safe_cell(
         ws,
         row2,
         RM_COL,
         "CBRM"
-    ).border = _bdr
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
 
     cbrm_qty = ""
 
@@ -4190,6 +4332,7 @@ def _build_excel_a4(
         cbrm_qty
     )
 
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="right",
@@ -4201,12 +4344,14 @@ def _build_excel_a4(
     # -----------------------------
     row3 = row2 + 1
 
-    safe_cell(
+    c = safe_cell(
         ws,
         row3,
         RM_COL,
         "FLUXES"
-    ).border = _bdr
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
 
     fluxes_qty = ""
 
@@ -4223,6 +4368,7 @@ def _build_excel_a4(
         fluxes_qty
     )
 
+    c.font = _font(bold=True)
     c.border = _bdr
     c.alignment = Alignment(
         horizontal="right",
@@ -4280,7 +4426,7 @@ def _build_excel_a4(
     ].width = 12
 
     # -----------------------------
-    # Full Border
+    # Full Border + Font
     # -----------------------------
     for rr in range(
         RM_ROW,
@@ -4291,6 +4437,7 @@ def _build_excel_a4(
             RM_COL + 2
         ):
             ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).font = _font(bold=True)
     
     # =====================================================
     # UPCOMING MOTHER VESSELS (MBCs)
@@ -5116,7 +5263,7 @@ def daily_ops_preview():
     <h3>Cargo Availability for the Day</h3>
     <div style="overflow-x:auto;width:100%;">
     <table id="cargo-availability-table"
-       style="border-collapse:collapse;font-family:Arial;font-size:24px;white-space:nowrap;">
+       style="border-collapse:collapse;font-family:Arial;font-size:12px;white-space:nowrap;">
     <tr style="background:#4a90d9;color:white;">
         <th style="border:1px solid #ccc;padding:8px;height:38px;"></th>
 
@@ -5790,7 +5937,7 @@ def daily_ops_preview():
            style="
            border-collapse:collapse;
            font-family:Arial;
-           font-size:24px;
+           font-size:12px;
            width:250px;
     ">
 
@@ -5910,7 +6057,7 @@ def daily_ops_preview():
                 style="
                 border-collapse:collapse;
                 font-family:Arial;
-                font-size:24px;
+                font-size:12px;
                 width:500px;
             ">
 
@@ -6000,7 +6147,7 @@ def daily_ops_preview():
        style="
            border-collapse:collapse;
            font-family:Arial;
-           font-size:24px;
+           font-size:12px;
            width:330px;
        ">
 
@@ -6123,7 +6270,7 @@ def daily_ops_preview():
                 <table style="
                     border-collapse:collapse;
                     font-family:Arial;
-                    font-size:24px;
+                    font-size:12px;
                     width:260px;
                 ">
 
