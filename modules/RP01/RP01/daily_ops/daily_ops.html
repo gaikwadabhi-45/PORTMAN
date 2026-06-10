@@ -3,6 +3,7 @@
 {% block title %}Daily Port Operations Report — RP01{% endblock %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
     .page-header {
         display: flex;
@@ -282,38 +283,195 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function downloadReport() {
-    const reportDate = document.getElementById('report-date').value;
-    const btn        = document.getElementById('dl-btn');
-    if (!reportDate) { alert('Please select a report date.'); return; }
 
-    btn.disabled    = true;
-    btn.textContent = 'Preparing\u2026';
+    const reportDate =
+        document.getElementById('report-date').value;
 
-    fetch(`/api/module/RP01/daily-ops/download?report_date=${reportDate}`)
-        .then(res => {
-            if (res.status === 404) throw new Error('No active (non-closed) vessels found.');
-            if (!res.ok) throw new Error('Server error ' + res.status);
-            const disposition = res.headers.get('Content-Disposition') || '';
-            const match = disposition.match(/filename="(.+?)"/);
-            const filename = match ? match[1] : `DailyOps_${reportDate}.xlsx`;
-            return res.blob().then(blob => ({ blob, filename }));
-        })
-        .then(({ blob, filename }) => {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
-        })
-        .catch(err => {
-            alert(err.message || 'Download failed. Please try again.');
-        })
-        .finally(() => {
-            btn.disabled    = false;
-            btn.textContent = '\u2193 Download Excel';
-        });
+    if (!reportDate) {
+        alert('Please select a report date.');
+        return;
+    }
+
+    // =====================================
+    // CARGO AVAILABILITY TABLE
+    // =====================================
+
+    const editableTable = [];
+
+    const cargoTable =
+        document.getElementById(
+            'cargo-availability-table'
+        );
+
+    if (cargoTable) {
+
+        cargoTable.querySelectorAll('tr')
+            .forEach(tr => {
+
+                const row = [];
+
+                tr.querySelectorAll('th,td')
+                    .forEach(cell => {
+
+                        row.push(
+                            (cell.innerText || '')
+                                .replace(/\n/g, ' ')
+                                .trim()
+                        );
+
+                    });
+
+                editableTable.push(row);
+
+            });
+    }
+
+    // =====================================
+    // RAINFALL TABLE
+    // =====================================
+
+    const rainfallTable = [];
+
+    const rt =
+        document.getElementById(
+            'rainfall-table'
+        );
+
+    if (rt) {
+
+        rt.querySelectorAll('tr')
+            .forEach(tr => {
+
+                const row = [];
+
+                tr.querySelectorAll('th,td')
+                    .forEach(cell => {
+
+                        row.push(
+                            (cell.innerText || '')
+                                .replace(/\n/g, ' ')
+                                .trim()
+                        );
+
+                    });
+
+                rainfallTable.push(row);
+
+            });
+    }
+
+    // =====================================
+    // BF TABLE
+    // =====================================
+
+    const bfTable = [];
+
+    const bf =
+        document.getElementById(
+            'bf-production-table'
+        );
+
+    if (bf) {
+
+        bf.querySelectorAll('tr')
+            .forEach(tr => {
+
+                const row = [];
+
+                tr.querySelectorAll('th,td')
+                    .forEach(cell => {
+
+                        row.push(
+                            (cell.innerText || '')
+                                .replace(/\n/g, ' ')
+                                .trim()
+                        );
+
+                    });
+
+                bfTable.push(row);
+
+            });
+    }
+
+    // =====================================
+    // RM STOCK TABLE
+    // =====================================
+
+    const rmTable = [];
+
+    const rm =
+        document.getElementById(
+            'rm-stock-table'
+        );
+
+    if (rm) {
+
+        rm.querySelectorAll('tr')
+            .forEach(tr => {
+
+                const row = [];
+
+                tr.querySelectorAll('th,td')
+                    .forEach(cell => {
+
+                        row.push(
+                            (cell.innerText || '')
+                                .replace(/\n/g, ' ')
+                                .trim()
+                        );
+
+                    });
+
+                rmTable.push(row);
+
+            });
+    }
+
+    console.log(
+        'EDITABLE TABLE =',
+        editableTable
+    );
+
+    console.log(
+        'RAINFALL TABLE =',
+        rainfallTable
+    );
+
+    console.log(
+        'BF TABLE =',
+        bfTable
+    );
+
+    console.log(
+        'RM TABLE =',
+        rmTable
+    );
+
+    window.location =
+        '/api/module/RP01/daily-ops/download?' +
+        'report_date=' +
+        encodeURIComponent(reportDate) +
+
+        '&editable_table=' +
+        encodeURIComponent(
+            JSON.stringify(editableTable)
+        ) +
+
+        '&rainfall_table=' +
+        encodeURIComponent(
+            JSON.stringify(rainfallTable)
+        ) +
+
+        '&bf_table=' +
+        encodeURIComponent(
+            JSON.stringify(bfTable)
+        ) +
+
+        '&rm_table=' +
+        encodeURIComponent(
+            JSON.stringify(rmTable)
+        );
 }
 
 function previewReport() {
@@ -322,7 +480,30 @@ function previewReport() {
         document.getElementById('report-date').value;
 
     if (!reportDate) {
-        alert('Please select report date');
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Select Report Date',
+            text: 'Please select a report date.',
+            confirmButtonColor: '#4a90d9'
+        });
+
+        return;
+    }
+
+    if (new Date(reportDate) < new Date('2026-05-01')) {
+
+        Swal.fire({
+            icon: 'info',
+            title: 'Report Not Available',
+            html: `
+                <b>Cutoff Date:</b> 01-May-2026<br><br>
+                Reports before this date are not available.
+            `,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#4a90d9'
+        });
+
         return;
     }
 
@@ -342,6 +523,59 @@ function previewReport() {
             alert(err);
         });
 }
+const grandIBRM =
+    getNum("total_BRBF") +
+    getNum("total_Orissa Fines") +
+    getNum("total_Goa Fines") +
+    getNum("total_HBI") +
+    getNum("total_KDL CLO");
+
+const grandCBRM =
+    getNum("total_Jimblebar Fines") +
+    getNum("total_Bacheli Fines") +
+    getNum("total_Goa Clo") +
+    getNum("total_Mabu") +
+    getNum("total_Illavara") +
+    getNum("total_Uval + Kestrel") +
+    getNum("total_MLV") +
+    getNum("total_PCI") +
+    getNum("total_Antracite") +
+    getNum("total_Limestone");
+
+const grandFluxes =
+    getNum("total_Bentonite") +
+    getNum("total_Oliflux") +
+    getNum("total_Dolomite");
+
+const grandSlag =
+    getNum("total_Slag Loading/Unloading");
+
+const grandClinker =
+    getNum("total_Clinker");
+
+document.getElementById("grand_ibrm").innerText =
+    grandIBRM.toLocaleString();
+
+document.getElementById("grand_cbrm").innerText =
+    grandCBRM.toLocaleString();
+
+document.getElementById("grand_fluxes").innerText =
+    grandFluxes.toLocaleString();
+
+document.getElementById("grand_slag").innerText =
+    grandSlag.toLocaleString();
+
+document.getElementById("grand_clinker").innerText =
+    grandClinker.toLocaleString();
+
+document.getElementById("grand_total").innerText =
+    (
+        grandIBRM +
+        grandCBRM +
+        grandFluxes +
+        grandSlag +
+        grandClinker
+    ).toLocaleString();
 
 /* ── Cutoff Modal ──────────────────────────────────────────────────────── */
 
