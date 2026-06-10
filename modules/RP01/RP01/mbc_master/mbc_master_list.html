@@ -16,7 +16,13 @@
         padding-bottom: 12px;
         border-bottom: 2px solid var(--border-color);
     }
-    .page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+
+    .page-header h2 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--text-primary);
+    }
+
     .module-badge {
         background: #4a90d9;
         color: #fff;
@@ -26,11 +32,21 @@
         font-weight: 700;
         letter-spacing: 0.5px;
     }
+
     .breadcrumb {
-        font-size: 11px; color: var(--text-secondary); margin-bottom: 14px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 14px;
     }
-    .breadcrumb a { color: #4a90d9; text-decoration: none; }
-    .breadcrumb a:hover { text-decoration: underline; }
+
+    .breadcrumb a {
+        color: #4a90d9;
+        text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
 
     /* ── Filter bar ────────────────────────────────────────────── */
     .filter-bar {
@@ -44,11 +60,13 @@
         border-radius: 6px;
         padding: 12px 14px;
     }
+
     .filter-group {
         display: flex;
         flex-direction: column;
         gap: 4px;
     }
+
     .filter-group label {
         font-size: 10px;
         font-weight: 600;
@@ -56,6 +74,7 @@
         text-transform: uppercase;
         letter-spacing: 0.4px;
     }
+
     .filter-group input,
     .filter-group select {
         padding: 5px 9px;
@@ -66,11 +85,13 @@
         color: var(--text-primary);
         height: 30px;
     }
+
     .filter-group input:focus,
     .filter-group select:focus {
         outline: none;
         border-color: #4a90d9;
     }
+
     .filter-btn {
         padding: 0 18px;
         height: 30px;
@@ -81,13 +102,39 @@
         cursor: pointer;
         align-self: flex-end;
     }
-    .filter-btn.primary { background: #4a90d9; color: #fff; }
-    .filter-btn.primary:hover { background: #357abd; }
-    .filter-btn.reset { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-color); }
-    .filter-btn.reset:hover { background: var(--border-color); }
-    .filter-btn.download { background: #27ae60; color: #fff; }
-    .filter-btn.download:hover { background: #1e8449; }
-    .filter-btn.download:disabled { background: #7dcea0; cursor: not-allowed; }
+
+    .filter-btn.primary {
+        background: #4a90d9;
+        color: #fff;
+    }
+
+    .filter-btn.primary:hover {
+        background: #357abd;
+    }
+
+    .filter-btn.reset {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-color);
+    }
+
+    .filter-btn.reset:hover {
+        background: var(--border-color);
+    }
+
+    .filter-btn.download {
+        background: #27ae60;
+        color: #fff;
+    }
+
+    .filter-btn.download:hover {
+        background: #1e8449;
+    }
+
+    .filter-btn.download:disabled {
+        background: #7dcea0;
+        cursor: not-allowed;
+    }
 
     /* ── Row count ─────────────────────────────────────────────── */
     .row-count {
@@ -103,12 +150,14 @@
         overflow: hidden;
         font-size: 11.5px;
     }
+
     .tabulator-header .tabulator-col-title {
         white-space: normal !important;
         line-height: 1.3;
         text-align: center;
         color: #000000 !important;
     }
+
     /* Calculated columns — bold header text */
     .tabulator-col.calc-col .tabulator-col-title {
         font-weight: 800;
@@ -116,32 +165,84 @@
     }
 
     /* ── Header colour scheme (matches Excel sheet) ─────── */
-    .tabulator-col.hcol-grey    { background: #A5A5A5 !important; }
-    .tabulator-col.hcol-lyellow { background: #FFFFCC !important; }
-    .tabulator-col.hcol-green   { background: #70AD47 !important; }
-    .tabulator-col.hcol-blue    { background: #4472C4 !important; }
-    .tabulator-col.hcol-lblue   { background: #5B9BD5 !important; }
+    .tabulator-col.hcol-grey {
+        background: #A5A5A5 !important;
+    }
+
+    .tabulator-col.hcol-lyellow {
+        background: #FFFFCC !important;
+    }
+
+    .tabulator-col.hcol-green {
+        background: #70AD47 !important;
+    }
+
+    .tabulator-col.hcol-blue {
+        background: #4472C4 !important;
+    }
+
+    .tabulator-col.hcol-lblue {
+        background: #5B9BD5 !important;
+    }
+
     /* Dark-theme muted versions */
-    .dark-theme .tabulator-col.hcol-grey    { background: #4a4a4a !important; }
-    .dark-theme .tabulator-col.hcol-lyellow { background: #3a3800 !important; }
-    .dark-theme .tabulator-col.hcol-green   { background: #1e4010 !important; }
-    .dark-theme .tabulator-col.hcol-blue    { background: #0e254d !important; }
-    .dark-theme .tabulator-col.hcol-lblue   { background: #0a2840 !important; }
+    .dark-theme .tabulator-col.hcol-grey {
+        background: #4a4a4a !important;
+    }
+
+    .dark-theme .tabulator-col.hcol-lyellow {
+        background: #3a3800 !important;
+    }
+
+    .dark-theme .tabulator-col.hcol-green {
+        background: #1e4010 !important;
+    }
+
+    .dark-theme .tabulator-col.hcol-blue {
+        background: #0e254d !important;
+    }
+
+    .dark-theme .tabulator-col.hcol-lblue {
+        background: #0a2840 !important;
+    }
+
     /* Cell alignment for durations */
     .tabulator-cell.dur-cell {
         text-align: center;
         font-weight: 700;
         color: #1a5fa8;
     }
-    .dark-theme .tabulator-cell.dur-cell { color: #7ab3e0; }
+
+    .dark-theme .tabulator-cell.dur-cell {
+        color: #7ab3e0;
+    }
+
     /* Dark theme table */
-    .dark-theme #mbc-master-table .tabulator-header { background: #1e1e2e; }
-    .dark-theme #mbc-master-table .tabulator-row { background: #16161e; color: #cdd6f4; }
-    .dark-theme #mbc-master-table .tabulator-row:nth-child(even) { background: #1c1c2a; }
-    .dark-theme #mbc-master-table .tabulator-row:hover { background: #2a2a3e !important; }
+    .dark-theme #mbc-master-table .tabulator-header {
+        background: #1e1e2e;
+    }
+
+    .dark-theme #mbc-master-table .tabulator-row {
+        background: #16161e;
+        color: #cdd6f4;
+    }
+
+    .dark-theme #mbc-master-table .tabulator-row:nth-child(even) {
+        background: #1c1c2a;
+    }
+
+    .dark-theme #mbc-master-table .tabulator-row:hover {
+        background: #2a2a3e !important;
+    }
+
     /* Frozen column shadow */
-    .tabulator-frozen-right { box-shadow: -3px 0 6px rgba(0,0,0,0.1); }
-    .tabulator-frozen-left  { box-shadow:  3px 0 6px rgba(0,0,0,0.1); }
+    .tabulator-frozen-right {
+        box-shadow: -3px 0 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .tabulator-frozen-left {
+        box-shadow: 3px 0 6px rgba(0, 0, 0, 0.1);
+    }
 
     /* ── Sheet tab bar (Excel-style) ───────────────────────── */
     .sheet-tabbar {
@@ -154,6 +255,7 @@
         border-top: 1px solid var(--border-color);
         border-bottom: 2px solid var(--border-color);
     }
+
     .sheet-tab {
         padding: 5px 22px;
         border: 1px solid var(--border-color);
@@ -169,6 +271,7 @@
         transition: background 0.12s, color 0.12s;
         white-space: nowrap;
     }
+
     .sheet-tab.active {
         background: var(--bg-primary);
         color: var(--text-primary);
@@ -176,20 +279,40 @@
         border-bottom-color: var(--bg-primary);
         z-index: 1;
     }
-    .sheet-tab:not(.active):hover { background: #b8b8b8; }
-    .dark-theme .sheet-tab        { background: #2a2a3e; color: #888; border-color: #444; }
-    .dark-theme .sheet-tab.active { background: var(--bg-primary); color: var(--text-primary); border-color: #555; border-bottom-color: var(--bg-primary); }
-    .dark-theme .sheet-tab:not(.active):hover { background: #333350; }
+
+    .sheet-tab:not(.active):hover {
+        background: #b8b8b8;
+    }
+
+    .dark-theme .sheet-tab {
+        background: #2a2a3e;
+        color: #888;
+        border-color: #444;
+    }
+
+    .dark-theme .sheet-tab.active {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: #555;
+        border-bottom-color: var(--bg-primary);
+    }
+
+    .dark-theme .sheet-tab:not(.active):hover {
+        background: #333350;
+    }
 
     /* ── Content panels ─────────────────────────────────────── */
-    .tab-panel { padding-top: 10px; }
+    .tab-panel {
+        padding-top: 10px;
+    }
 
     /* ── TAT wrapper ────────────────────────────────────────── */
     .tat-wrapper {
         overflow-x: auto;
         border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
+
     .tat-table {
         border-collapse: collapse;
         width: 100%;
@@ -197,174 +320,542 @@
         font-size: 13px;
         min-width: 640px;
     }
-    .tat-table td, .tat-table th {
+
+    .tat-table td,
+    .tat-table th {
         border: 1px solid #888;
         padding: 5px 9px;
         white-space: nowrap;
     }
-    .tat-table .hdr-period td { background: #ccff99; font-weight: 700; text-align: center; }
-    .tat-table .hdr-period .col-date { color: #cc0000; }
-    .tat-table .hdr-period .col-mtd  { color: #cc0000; }
-    .tat-table .hdr-period .col-ytd  { color: #cc6600; }
-    .tat-table .hdr-cols td { background: #ccff99; font-weight: 700; text-align: center; font-size: 12px; }
-    .tat-table .row-trips td { background: #ffff00; font-weight: 800; text-align: center; font-size: 14px; }
-    .tat-table .row-data td { background: #ffffff; }
-    .tat-table .row-data td:first-child { text-align: left; padding-left: 14px; }
-    .tat-table .row-data td:not(:first-child) { text-align: center; font-weight: 600; }
-    .tat-table .row-section-total td { background: #ffff00; font-weight: 800; }
-    .tat-table .row-section-total td:first-child { text-align: left; padding-left: 14px; font-style: italic; }
-    .tat-table .row-section-total td:not(:first-child) { text-align: center; font-style: italic; }
-    .tat-table .row-main-total td { background: #ffcc00; font-weight: 800; }
-    .tat-table .row-main-total td:first-child { text-align: left; font-style: italic; }
-    .tat-table .row-main-total td:not(:first-child) { text-align: center; font-style: italic; }
-    .tat-table .row-tat td { background: #00ffff; font-weight: 900; text-align: center; font-size: 14px; }
-    .tat-table .row-footnote td { background: #ffffff; font-size: 10px; color: #444; font-style: italic; text-align: left; padding: 6px 10px; white-space: normal; line-height: 1.5; }
-    .tat-placeholder { padding: 30px; text-align: center; color: var(--text-secondary); font-size: 13px; }
-    .dark-theme .tat-table td { border-color: #555; }
+
+    .tat-table .hdr-period td {
+        background: #ccff99;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .tat-table .hdr-period .col-date {
+        color: #cc0000;
+    }
+
+    .tat-table .hdr-period .col-mtd {
+        color: #cc0000;
+    }
+
+    .tat-table .hdr-period .col-ytd {
+        color: #cc6600;
+    }
+
+    .tat-table .hdr-cols td {
+        background: #ccff99;
+        font-weight: 700;
+        text-align: center;
+        font-size: 12px;
+    }
+
+    .tat-table .row-trips td {
+        background: #ffff00;
+        font-weight: 800;
+        text-align: center;
+        font-size: 14px;
+    }
+
+    .tat-table .row-data td {
+        background: #ffffff;
+    }
+
+    .tat-table .row-data td:first-child {
+        text-align: left;
+        padding-left: 14px;
+    }
+
+    .tat-table .row-data td:not(:first-child) {
+        text-align: center;
+        font-weight: 600;
+    }
+
+    .tat-table .row-section-total td {
+        background: #ffff00;
+        font-weight: 800;
+    }
+
+    .tat-table .row-section-total td:first-child {
+        text-align: left;
+        padding-left: 14px;
+        font-style: italic;
+    }
+
+    .tat-table .row-section-total td:not(:first-child) {
+        text-align: center;
+        font-style: italic;
+    }
+
+    .tat-table .row-main-total td {
+        background: #ffcc00;
+        font-weight: 800;
+    }
+
+    .tat-table .row-main-total td:first-child {
+        text-align: left;
+        font-style: italic;
+    }
+
+    .tat-table .row-main-total td:not(:first-child) {
+        text-align: center;
+        font-style: italic;
+    }
+
+    .tat-table .row-tat td {
+        background: #00ffff;
+        font-weight: 900;
+        text-align: center;
+        font-size: 14px;
+    }
+
+    .tat-table .row-footnote td {
+        background: #ffffff;
+        font-size: 10px;
+        color: #444;
+        font-style: italic;
+        text-align: left;
+        padding: 6px 10px;
+        white-space: normal;
+        line-height: 1.5;
+    }
+
+    .tat-placeholder {
+        padding: 30px;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .dark-theme .tat-table td {
+        border-color: #555;
+    }
+
     .dark-theme .tat-table .hdr-period td,
-    .dark-theme .tat-table .hdr-cols td   { background: #2a4a1a; color: #ccff99; }
+    .dark-theme .tat-table .hdr-cols td {
+        background: #2a4a1a;
+        color: #ccff99;
+    }
+
     .dark-theme .tat-table .hdr-period .col-date,
-    .dark-theme .tat-table .hdr-period .col-mtd { color: #ff7777; }
-    .dark-theme .tat-table .hdr-period .col-ytd  { color: #ffaa44; }
-    .dark-theme .tat-table .row-trips td         { background: #5a5a00; color: #ffff88; }
-    .dark-theme .tat-table .row-data td          { background: #1e1e2e; color: #cdd6f4; }
-    .dark-theme .tat-table .row-section-total td { background: #5a5a00; color: #ffff88; }
-    .dark-theme .tat-table .row-main-total td    { background: #5a3a00; color: #ffcc66; }
-    .dark-theme .tat-table .row-tat td           { background: #004a4a; color: #00ffff; }
-    .dark-theme .tat-table .row-footnote td      { background: #1a1a2e; color: #888; }
+    .dark-theme .tat-table .hdr-period .col-mtd {
+        color: #ff7777;
+    }
+
+    .dark-theme .tat-table .hdr-period .col-ytd {
+        color: #ffaa44;
+    }
+
+    .dark-theme .tat-table .row-trips td {
+        background: #5a5a00;
+        color: #ffff88;
+    }
+
+    .dark-theme .tat-table .row-data td {
+        background: #1e1e2e;
+        color: #cdd6f4;
+    }
+
+    .dark-theme .tat-table .row-section-total td {
+        background: #5a5a00;
+        color: #ffff88;
+    }
+
+    .dark-theme .tat-table .row-main-total td {
+        background: #5a3a00;
+        color: #ffcc66;
+    }
+
+    .dark-theme .tat-table .row-tat td {
+        background: #004a4a;
+        color: #00ffff;
+    }
+
+    .dark-theme .tat-table .row-footnote td {
+        background: #1a1a2e;
+        color: #888;
+    }
 
     /* ── DPPL TAT table ─────────────────────────────────────── */
-    #dppltat-wrapper { overflow-x: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .dppltat-table { border-collapse: collapse; width: 100%; font-size: 12px; min-width: 900px; }
-    .dppltat-table td, .dppltat-table th {
-        border: 1px solid #888; padding: 5px 9px; white-space: nowrap;
+    #dppltat-wrapper {
+        overflow-x: auto;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
-    .dt-hdr-blue   { background: #4472C4; color: #fff; font-weight: 700; text-align: center; }
-    .dt-hdr-lgreen { background: #E2EEDA; color: #3F3F76; font-weight: 700; text-align: center; }
-    .dt-bold  { font-weight: 700; }
-    .dt-left  { text-align: left; }
-    .dt-ctr   { text-align: center; }
-    .dt-num   { text-align: right; padding-right: 10px; }
-    .dt-dur   { text-align: center; font-weight: 600; color: #1f497d; }
-    .dt-lgreen { background: #E2EEDA; }
-    .dt-owner-merge { vertical-align: middle; border-right: 2px solid #4472C4; }
-    .dt-grand-total td { background: #D9E1F2; font-weight: 800; }
-    .dark-theme .dppltat-table td { border-color: #555; background: #1e1e2e; color: #cdd6f4; }
-    .dark-theme .dt-hdr-blue   { background: #2a4a8a; color: #cdd6f4; }
-    .dark-theme .dt-hdr-lgreen { background: #2a3a2a; color: #a8d5a2; }
-    .dark-theme .dt-lgreen     { background: #2a3a2a; }
-    .dark-theme .dt-grand-total td { background: #2a2a4a; }
+
+    .dppltat-table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+        min-width: 900px;
+    }
+
+    .dppltat-table td,
+    .dppltat-table th {
+        border: 1px solid #888;
+        padding: 5px 9px;
+        white-space: nowrap;
+    }
+
+    .dt-hdr-blue {
+        background: #4472C4;
+        color: #fff;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .dt-hdr-lgreen {
+        background: #E2EEDA;
+        color: #3F3F76;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .dt-bold {
+        font-weight: 700;
+    }
+
+    .dt-left {
+        text-align: left;
+    }
+
+    .dt-ctr {
+        text-align: center;
+    }
+
+    .dt-num {
+        text-align: right;
+        padding-right: 10px;
+    }
+
+    .dt-dur {
+        text-align: center;
+        font-weight: 600;
+        color: #1f497d;
+    }
+
+    .dt-lgreen {
+        background: #E2EEDA;
+    }
+
+    .dt-owner-merge {
+        vertical-align: middle;
+        border-right: 2px solid #4472C4;
+    }
+
+    .dt-grand-total td {
+        background: #D9E1F2;
+        font-weight: 800;
+    }
+
+    .dark-theme .dppltat-table td {
+        border-color: #555;
+        background: #1e1e2e;
+        color: #cdd6f4;
+    }
+
+    .dark-theme .dt-hdr-blue {
+        background: #2a4a8a;
+        color: #cdd6f4;
+    }
+
+    .dark-theme .dt-hdr-lgreen {
+        background: #2a3a2a;
+        color: #a8d5a2;
+    }
+
+    .dark-theme .dt-lgreen {
+        background: #2a3a2a;
+    }
+
+    .dark-theme .dt-grand-total td {
+        background: #2a2a4a;
+    }
 
     /* ── MBC Wise table ─────────────────────────────────── */
-    #mbcwise-wrapper { overflow-x: auto; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .mw-table { border-collapse: collapse; width: 100%; font-family: Calibri, 'Segoe UI', sans-serif; font-size: 12px; min-width: 1600px; }
-    .mw-table td, .mw-table th { border: 1px solid #888; padding: 5px 8px; white-space: nowrap; }
+    #mbcwise-wrapper {
+        overflow-x: auto;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .mw-table {
+        border-collapse: collapse;
+        width: 100%;
+        font-family: Calibri, 'Segoe UI', sans-serif;
+        font-size: 12px;
+        min-width: 1600px;
+    }
+
+    .mw-table td,
+    .mw-table th {
+        border: 1px solid #888;
+        padding: 5px 8px;
+        white-space: nowrap;
+    }
 
     /* Header row */
     .mw-table .mw-hdr th {
-        background: #FFFFFF; color: #1F3864; font-weight: 700;
-        text-align: center; vertical-align: middle; font-size: 11px; line-height: 1.35;
+        background: #FFFFFF;
+        color: #1F3864;
+        font-weight: 700;
+        text-align: center;
+        vertical-align: middle;
+        font-size: 11px;
+        line-height: 1.35;
     }
-    .mw-table .mw-hdr th.col-name { text-align: left; font-style: italic; }
+
+    .mw-table .mw-hdr th.col-name {
+        text-align: left;
+        font-style: italic;
+    }
 
     /* Special column header backgrounds */
-    .mw-table .mw-hdr .col-total-jaigad { background: #FFFFCC !important; color: #7F6000 !important; }
-    .mw-table .mw-hdr .col-jaigad-dppl  { background: #FFCC99 !important; color: #C55A11 !important; }
-    .mw-table .mw-hdr .col-total-dppl   { background: #E2EEDA !important; color: #375623 !important; }
-    .mw-table .mw-hdr .col-dhar-jaigad  { background: #D9E2F3 !important; color: #1F3864 !important; }
+    .mw-table .mw-hdr .col-total-jaigad {
+        background: #FFFFCC !important;
+        color: #7F6000 !important;
+    }
+
+    .mw-table .mw-hdr .col-jaigad-dppl {
+        background: #FFCC99 !important;
+        color: #C55A11 !important;
+    }
+
+    .mw-table .mw-hdr .col-total-dppl {
+        background: #E2EEDA !important;
+        color: #375623 !important;
+    }
+
+    .mw-table .mw-hdr .col-dhar-jaigad {
+        background: #D9E2F3 !important;
+        color: #1F3864 !important;
+    }
 
     /* Data rows */
-    .mw-table .mw-row td { color: #1F3864; background: #FFFFFF; }
-    .mw-table .mw-row .col-name { font-weight: 700; text-align: left; padding-left: 12px; }
-    .mw-table .mw-row .col-qty  { text-align: right; padding-right: 10px; font-weight: 600; }
-    .mw-table .mw-row .col-dur  { text-align: center; font-weight: 600; }
+    .mw-table .mw-row td {
+        color: #1F3864;
+        background: #FFFFFF;
+    }
+
+    .mw-table .mw-row .col-name {
+        font-weight: 700;
+        text-align: left;
+        padding-left: 12px;
+    }
+
+    .mw-table .mw-row .col-qty {
+        text-align: right;
+        padding-right: 10px;
+        font-weight: 600;
+    }
+
+    .mw-table .mw-row .col-dur {
+        text-align: center;
+        font-weight: 600;
+    }
 
     /* Highlighted data cells */
-    .mw-table .mw-row .col-total-jaigad { background: #FFFFCC; color: #7F6000; font-weight: 700; }
-    .mw-table .mw-row .col-jaigad-dppl  { background: #FFCC99; color: #C55A11; font-weight: 700; }
-    .mw-table .mw-row .col-total-dppl   { background: #E2EEDA; color: #375623; font-weight: 700; }
-    .mw-table .mw-row .col-dhar-jaigad  { background: #D9E2F3; color: #1F3864; font-weight: 700; }
+    .mw-table .mw-row .col-total-jaigad {
+        background: #FFFFCC;
+        color: #7F6000;
+        font-weight: 700;
+    }
+
+    .mw-table .mw-row .col-jaigad-dppl {
+        background: #FFCC99;
+        color: #C55A11;
+        font-weight: 700;
+    }
+
+    .mw-table .mw-row .col-total-dppl {
+        background: #E2EEDA;
+        color: #375623;
+        font-weight: 700;
+    }
+
+    .mw-table .mw-row .col-dhar-jaigad {
+        background: #D9E2F3;
+        color: #1F3864;
+        font-weight: 700;
+    }
 
     /* Grand total row */
-    .mw-table .mw-grand-total td             { background: #D9E1F2 !important; font-weight: 800; color: #1F3864; text-align: center; }
-    .mw-table .mw-grand-total .col-name      { text-align: left; padding-left: 12px; }
-    .mw-table .mw-grand-total .col-qty       { text-align: right; padding-right: 10px; }
-    .mw-table .mw-grand-total .col-total-jaigad { background: #FFFFCC !important; color: #7F6000; }
-    .mw-table .mw-grand-total .col-jaigad-dppl  { background: #FFCC99 !important; color: #C55A11; }
-    .mw-table .mw-grand-total .col-total-dppl   { background: #E2EEDA !important; color: #375623; }
-    .mw-table .mw-grand-total .col-dhar-jaigad  { background: #D9E2F3 !important; color: #1F3864; }
+    .mw-table .mw-grand-total td {
+        background: #D9E1F2 !important;
+        font-weight: 800;
+        color: #1F3864;
+        text-align: center;
+    }
+
+    .mw-table .mw-grand-total .col-name {
+        text-align: left;
+        padding-left: 12px;
+    }
+
+    .mw-table .mw-grand-total .col-qty {
+        text-align: right;
+        padding-right: 10px;
+    }
+
+    .mw-table .mw-grand-total .col-total-jaigad {
+        background: #FFFFCC !important;
+        color: #7F6000;
+    }
+
+    .mw-table .mw-grand-total .col-jaigad-dppl {
+        background: #FFCC99 !important;
+        color: #C55A11;
+    }
+
+    .mw-table .mw-grand-total .col-total-dppl {
+        background: #E2EEDA !important;
+        color: #375623;
+    }
+
+    .mw-table .mw-grand-total .col-dhar-jaigad {
+        background: #D9E2F3 !important;
+        color: #1F3864;
+    }
 
     /* Dark theme */
-    .dark-theme .mw-table td, .dark-theme .mw-table th { border-color: #555; }
-    .dark-theme .mw-table .mw-hdr th                   { background: #1e2844; color: #9bb8e8; }
-    .dark-theme .mw-table .mw-hdr .col-total-jaigad    { background: #3a3800 !important; color: #ffff77 !important; }
-    .dark-theme .mw-table .mw-hdr .col-jaigad-dppl     { background: #3a2000 !important; color: #ffaa55 !important; }
-    .dark-theme .mw-table .mw-hdr .col-total-dppl      { background: #1a3010 !important; color: #88cc88 !important; }
-    .dark-theme .mw-table .mw-hdr .col-dhar-jaigad     { background: #1a2844 !important; color: #8899cc !important; }
-    .dark-theme .mw-table .mw-row td                   { background: #1e1e2e; color: #cdd6f4; }
-    .dark-theme .mw-table .mw-row .col-total-jaigad    { background: #3a3800 !important; color: #ffff77; }
-    .dark-theme .mw-table .mw-row .col-jaigad-dppl     { background: #3a2000 !important; color: #ffaa55; }
-    .dark-theme .mw-table .mw-row .col-total-dppl      { background: #1a3010 !important; color: #88cc88; }
-    .dark-theme .mw-table .mw-row .col-dhar-jaigad     { background: #1a2844 !important; color: #8899cc; }
-    .dark-theme .mw-table .mw-grand-total td            { background: #2a2a4a !important; color: #cdd6f4; }
-    .dark-theme .mw-table .mw-grand-total .col-total-jaigad { background: #3a3800 !important; }
-    .dark-theme .mw-table .mw-grand-total .col-jaigad-dppl  { background: #3a2000 !important; }
-    .dark-theme .mw-table .mw-grand-total .col-total-dppl   { background: #1a3010 !important; }
-    .dark-theme .mw-table .mw-grand-total .col-dhar-jaigad  { background: #1a2844 !important; }
+    .dark-theme .mw-table td,
+    .dark-theme .mw-table th {
+        border-color: #555;
+    }
+
+    .dark-theme .mw-table .mw-hdr th {
+        background: #1e2844;
+        color: #9bb8e8;
+    }
+
+    .dark-theme .mw-table .mw-hdr .col-total-jaigad {
+        background: #3a3800 !important;
+        color: #ffff77 !important;
+    }
+
+    .dark-theme .mw-table .mw-hdr .col-jaigad-dppl {
+        background: #3a2000 !important;
+        color: #ffaa55 !important;
+    }
+
+    .dark-theme .mw-table .mw-hdr .col-total-dppl {
+        background: #1a3010 !important;
+        color: #88cc88 !important;
+    }
+
+    .dark-theme .mw-table .mw-hdr .col-dhar-jaigad {
+        background: #1a2844 !important;
+        color: #8899cc !important;
+    }
+
+    .dark-theme .mw-table .mw-row td {
+        background: #1e1e2e;
+        color: #cdd6f4;
+    }
+
+    .dark-theme .mw-table .mw-row .col-total-jaigad {
+        background: #3a3800 !important;
+        color: #ffff77;
+    }
+
+    .dark-theme .mw-table .mw-row .col-jaigad-dppl {
+        background: #3a2000 !important;
+        color: #ffaa55;
+    }
+
+    .dark-theme .mw-table .mw-row .col-total-dppl {
+        background: #1a3010 !important;
+        color: #88cc88;
+    }
+
+    .dark-theme .mw-table .mw-row .col-dhar-jaigad {
+        background: #1a2844 !important;
+        color: #8899cc;
+    }
+
+    .dark-theme .mw-table .mw-grand-total td {
+        background: #2a2a4a !important;
+        color: #cdd6f4;
+    }
+
+    .dark-theme .mw-table .mw-grand-total .col-total-jaigad {
+        background: #3a3800 !important;
+    }
+
+    .dark-theme .mw-table .mw-grand-total .col-jaigad-dppl {
+        background: #3a2000 !important;
+    }
+
+    .dark-theme .mw-table .mw-grand-total .col-total-dppl {
+        background: #1a3010 !important;
+    }
+
+    .dark-theme .mw-table .mw-grand-total .col-dhar-jaigad {
+        background: #1a2844 !important;
+    }
+
     .download-loader {
-    position: fixed;
-    inset: 0;
-    background: rgba(220,220,220,.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 999999;
+        position: fixed;
+        inset: 0;
+        background: rgba(220, 220, 220, .55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
 
-    opacity: 0;
-    visibility: hidden;
-    transition: .3s;
-}
+        opacity: 0;
+        visibility: hidden;
+        transition: .3s;
+    }
 
-.download-loader.show {
-    opacity: 1;
-    visibility: visible;
-}
+    .download-loader.show {
+        opacity: 1;
+        visibility: visible;
+    }
 
-.loader-box {
-    background: #fff;
-    border-radius: 12px;
-    width: 220px;
-    padding: 28px 20px;
-    text-align: center;
-    box-shadow: 0 8px 25px rgba(0,0,0,.12);
-}
+    .loader-box {
+        background: #fff;
+        border-radius: 12px;
+        width: 220px;
+        padding: 28px 20px;
+        text-align: center;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, .12);
+    }
 
-.simple-spinner {
-    width: 40px;
-    height: 40px;
-    margin: 0 auto 18px;
-    border: 4px solid #dfe5ec;
-    border-top: 4px solid #4a90d9;
-    border-radius: 50%;
-    animation: spin .8s linear infinite;
-}
+    .simple-spinner {
+        width: 40px;
+        height: 40px;
+        margin: 0 auto 18px;
+        border: 4px solid #dfe5ec;
+        border-top: 4px solid #4a90d9;
+        border-radius: 50%;
+        animation: spin .8s linear infinite;
+    }
 
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
 
-.loader-title {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-}
+        to {
+            transform: rotate(360deg);
+        }
+    }
 
-.loader-subtitle {
-    margin-top: 8px;
-    font-size: 11px;
-    color: #6b7280;
-}
+    .loader-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .loader-subtitle {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #6b7280;
+    }
 </style>
 {% endblock %}
 
@@ -399,35 +890,36 @@
             <option value="">All FY</option>
         </select>
     </div>
-    <button type="button" class="filter-btn primary"  onclick="applyFilters()">Apply</button>
-    <button type="button" class="filter-btn reset"    onclick="resetFilters()">Reset</button>
-    <button type="button" class="filter-btn download" onclick="downloadExcel()" id="dl-btn">&#8595; Download TAT Report</button>
+    <button type="button" class="filter-btn primary" onclick="applyFilters()">Apply</button>
+    <button type="button" class="filter-btn reset" onclick="resetFilters()">Reset</button>
+    <button type="button" class="filter-btn download" onclick="downloadExcel()" id="dl-btn">&#8595; Download TAT
+        Report</button>
 </div>
 
 <!-- Excel-style sheet tab bar -->
 <div class="sheet-tabbar">
-    <button type="button" class="sheet-tab active" id="tab-master"   onclick="switchTab('master')">Master Data</button>
-    <button type="button" class="sheet-tab"        id="tab-tat"      onclick="switchTab('tat')">TAT</button>
-    <button type="button" class="sheet-tab"        id="tab-dppltat"  onclick="switchTab('dppltat')">DPPL TAT</button>
-    <button type="button" class="sheet-tab"        id="tab-mbcwise"  onclick="switchTab('mbcwise')">MBC Wise</button>
+    <button type="button" class="sheet-tab active" id="tab-master" onclick="switchTab('master')">Master Data</button>
+    <button type="button" class="sheet-tab" id="tab-tat" onclick="switchTab('tat')">TAT</button>
+    <button type="button" class="sheet-tab" id="tab-dppltat" onclick="switchTab('dppltat')">DPPL TAT</button>
+    <button type="button" class="sheet-tab" id="tab-mbcwise" onclick="switchTab('mbcwise')">MBC Wise</button>
 </div>
 
 <!-- Panel: Master Data -->
 <div class="tab-panel" id="panel-master">
     <div class="row-count" id="row-count">Loading…</div>
     <div id="download-loader" class="download-loader">
-    <div class="loader-box">
-        <div class="simple-spinner"></div>
+        <div class="loader-box">
+            <div class="simple-spinner"></div>
 
-        <p class="loader-title">
-            Preparing Download...
-        </p>
+            <p class="loader-title">
+                Preparing Download...
+            </p>
 
-        <p class="loader-subtitle" id="loader-msg">
-            Fetching data...
-        </p>
+            <p class="loader-subtitle" id="loader-msg">
+                Fetching data...
+            </p>
+        </div>
     </div>
-</div>
     <div id="mbc-master-table"></div>
 </div>
 
@@ -453,299 +945,299 @@
 </div>
 
 <script>
-/* ── helpers ─────────────────────────────────────────── */
-function durFormatter(cell) {
-    const v = cell.getValue();
-    if (!v) return '<span style="color:var(--text-secondary)">—</span>';
-    cell.getElement().classList.add('dur-cell');
-    return v;
-}
-function dtFormatter(cell) {
-    const v = cell.getValue();
-    if (!v) return '<span style="color:var(--text-secondary)">—</span>';
-    return v;
-}
-function numFormatter(cell) {
-    const v = cell.getValue();
-    if (v === '' || v === null || v === undefined) return '—';
-    return parseFloat(v).toLocaleString('en-IN');
-}
+    /* ── helpers ─────────────────────────────────────────── */
+    function durFormatter(cell) {
+        const v = cell.getValue();
+        if (!v) return '<span style="color:var(--text-secondary)">—</span>';
+        cell.getElement().classList.add('dur-cell');
+        return v;
+    }
+    function dtFormatter(cell) {
+        const v = cell.getValue();
+        if (!v) return '<span style="color:var(--text-secondary)">—</span>';
+        return v;
+    }
+    function numFormatter(cell) {
+        const v = cell.getValue();
+        if (v === '' || v === null || v === undefined) return '—';
+        return parseFloat(v).toLocaleString('en-IN');
+    }
 
-/* ── column definitions ───────────────────────────────── */
-const COL_W_SM  = 55;   // short duration
-const COL_W_MD  = 90;   // medium (date only)
-const COL_W_DT  = 135;  // datetime
-const COL_W_NM  = 120;  // name
+    /* ── column definitions ───────────────────────────────── */
+    const COL_W_SM = 55;   // short duration
+    const COL_W_MD = 90;   // medium (date only)
+    const COL_W_DT = 135;  // datetime
+    const COL_W_NM = 120;  // name
 
-const FROZEN_LEFT = 3;
+    const FROZEN_LEFT = 3;
 
-function buildColumns() {
-    // hcol = header colour class (hcol-grey | hcol-lyellow | hcol-green | hcol-blue | hcol-lblue)
-    const calc = (title, field, w, hcol) => ({
-        title, field, width: w || COL_W_SM,
-        formatter: durFormatter,
-        headerHozAlign: 'center',
-        cssClass: hcol ? `calc-col ${hcol}` : 'calc-col',
-        headerTooltip: title,
-    });
-    const dt = (title, field, w, hcol) => ({
-        title, field, width: w || COL_W_DT,
-        formatter: dtFormatter,
-        headerHozAlign: 'center',
-        cssClass: hcol || '',
-        headerTooltip: title,
-    });
-    const txt = (title, field, w, hcol) => ({
-        title, field, width: w || COL_W_NM,
-        headerHozAlign: 'center',
-        cssClass: hcol || '',
-        headerTooltip: title,
-    });
+    function buildColumns() {
+        // hcol = header colour class (hcol-grey | hcol-lyellow | hcol-green | hcol-blue | hcol-lblue)
+        const calc = (title, field, w, hcol) => ({
+            title, field, width: w || COL_W_SM,
+            formatter: durFormatter,
+            headerHozAlign: 'center',
+            cssClass: hcol ? `calc-col ${hcol}` : 'calc-col',
+            headerTooltip: title,
+        });
+        const dt = (title, field, w, hcol) => ({
+            title, field, width: w || COL_W_DT,
+            formatter: dtFormatter,
+            headerHozAlign: 'center',
+            cssClass: hcol || '',
+            headerTooltip: title,
+        });
+        const txt = (title, field, w, hcol) => ({
+            title, field, width: w || COL_W_NM,
+            headerHozAlign: 'center',
+            cssClass: hcol || '',
+            headerTooltip: title,
+        });
 
-    return [
-        // A – Grey
-        { title: 'Sr. No',      field: 'sr_no',    width: 50,       frozen: true, headerHozAlign: 'center', hozAlign: 'center', cssClass: 'hcol-grey' },
-        // B – Light Yellow
-        { title: 'MBC Date',    field: 'mbc_date', width: COL_W_MD, frozen: true, headerHozAlign: 'center', cssClass: 'hcol-lyellow' },
-        // C – Grey
-        { title: 'Name of MBC', field: 'mbc_name', width: 130,      frozen: true, headerHozAlign: 'center', cssClass: 'hcol-grey' },
-        // D – No fill
-        txt('Month',   'month',   70),
-        // E–F – Light Yellow
-        txt('FY Year', 'fy_year', 80,       'hcol-lyellow'),
-        dt ('Date',    'date',    COL_W_MD,  'hcol-lyellow'),
+        return [
+            // A – Grey
+            { title: 'Sr. No', field: 'sr_no', width: 50, frozen: true, headerHozAlign: 'center', hozAlign: 'center', cssClass: 'hcol-grey' },
+            // B – Light Yellow
+            { title: 'MBC Date', field: 'mbc_date', width: COL_W_MD, frozen: true, headerHozAlign: 'center', cssClass: 'hcol-lyellow' },
+            // C – Grey
+            { title: 'Name of MBC', field: 'mbc_name', width: 130, frozen: true, headerHozAlign: 'center', cssClass: 'hcol-grey' },
+            // D – No fill
+            txt('Month', 'month', 70),
+            // E–F – Light Yellow
+            txt('FY Year', 'fy_year', 80, 'hcol-lyellow'),
+            dt('Date', 'date', COL_W_MD, 'hcol-lyellow'),
 
-        /* ── Load Port  (G–M) ────────────────────────── */
-        dt ('Arrived &amp; Anchored',    'arrived_anchored',   COL_W_DT, 'hcol-lyellow'),
-        calc('Waiting (Perb-thing)',      'waiting_perb',       COL_W_SM, 'hcol-lyellow'),
-        dt ('Loading Commenced',          'loading_commenced',  COL_W_DT, 'hcol-lyellow'),
-        dt ('Loading Completed',          'loading_completed',  COL_W_DT, 'hcol-lyellow'),
-        calc('Loading',                   'loading_dur',        COL_W_SM, 'hcol-lyellow'),
-        dt ('Castoff',                    'castoff',            COL_W_DT, 'hcol-lyellow'),
-        calc('Waiting for Castoff',       'waiting_castoff',    COL_W_SM, 'hcol-lyellow'),
+            /* ── Load Port  (G–M) ────────────────────────── */
+            dt('Arrived &amp; Anchored', 'arrived_anchored', COL_W_DT, 'hcol-lyellow'),
+            calc('Waiting (Perb-thing)', 'waiting_perb', COL_W_SM, 'hcol-lyellow'),
+            dt('Loading Commenced', 'loading_commenced', COL_W_DT, 'hcol-lyellow'),
+            dt('Loading Completed', 'loading_completed', COL_W_DT, 'hcol-lyellow'),
+            calc('Loading', 'loading_dur', COL_W_SM, 'hcol-lyellow'),
+            dt('Castoff', 'castoff', COL_W_DT, 'hcol-lyellow'),
+            calc('Waiting for Castoff', 'waiting_castoff', COL_W_SM, 'hcol-lyellow'),
 
-        /* ── Cargo  (N–P) ────────────────────────────── */
-        txt('Cargo',   'cargo',  110,      'hcol-lyellow'),
-        { title: 'Qty In', field: 'qty_in', width: 75, formatter: numFormatter, hozAlign: 'right', headerHozAlign: 'center', cssClass: 'hcol-lyellow' },
-        calc('At Jaigad',  'at_jaigad',  COL_W_SM,  'hcol-lyellow'),
+            /* ── Cargo  (N–P) ────────────────────────────── */
+            txt('Cargo', 'cargo', 110, 'hcol-lyellow'),
+            { title: 'Qty In', field: 'qty_in', width: 75, formatter: numFormatter, hozAlign: 'right', headerHozAlign: 'center', cssClass: 'hcol-lyellow' },
+            calc('At Jaigad', 'at_jaigad', COL_W_SM, 'hcol-lyellow'),
 
-        /* ── Transit Jaigad→Dharamtar  (Q–W) ─────────── */
-        calc('Transit — Jaigad to Dharamtar', 'transit_jaigad_dharamtar', 75,       'hcol-green'),
-        calc('Jaigad to Gull',                'jaigad_to_gull',           COL_W_SM, 'hcol-green'),
-        dt ('Arrived at Gull',                'arrived_gull',             COL_W_DT, 'hcol-green'),
-        dt ('Dept. from Gull',                'dept_gull',                COL_W_DT, 'hcol-green'),
-        calc('Gull Waiting',                  'gull_waiting',             COL_W_SM, 'hcol-green'),
-        dt ('Arrived at Dharamtar',           'arrived_dharamtar',        COL_W_DT, 'hcol-green'),
-        calc('Transit — Gull to DPPL',        'transit_gull_dppl',        COL_W_SM, 'hcol-green'),
+            /* ── Transit Jaigad→Dharamtar  (Q–W) ─────────── */
+            calc('Transit — Jaigad to Dharamtar', 'transit_jaigad_dharamtar', 75, 'hcol-green'),
+            calc('Jaigad to Gull', 'jaigad_to_gull', COL_W_SM, 'hcol-green'),
+            dt('Arrived at Gull', 'arrived_gull', COL_W_DT, 'hcol-green'),
+            dt('Dept. from Gull', 'dept_gull', COL_W_DT, 'hcol-green'),
+            calc('Gull Waiting', 'gull_waiting', COL_W_SM, 'hcol-green'),
+            dt('Arrived at Dharamtar', 'arrived_dharamtar', COL_W_DT, 'hcol-green'),
+            calc('Transit — Gull to DPPL', 'transit_gull_dppl', COL_W_SM, 'hcol-green'),
 
-        /* ── Discharge Port  (X–AB) ──────────────────── */
-        calc('Waiting at DPPL',               'waiting_dppl',             COL_W_SM, 'hcol-green'),
-        dt ('Discharge Commenced',            'discharge_commenced',      COL_W_DT, 'hcol-green'),
-        dt ('Discharge Completed',            'discharge_completed',      COL_W_DT, 'hcol-green'),
-        calc('Unloading',                     'unloading_dur',            COL_W_SM, 'hcol-green'),
-        dt ('Partly Disch Stop',              'partly_disch_stop',        COL_W_DT, 'hcol-green'),
-        // AC – Blue
-        dt ('Partly Disch Start',             'partly_disch_start',       COL_W_DT, 'hcol-blue'),
-        calc('Disch Stop Time Taken',         'disch_stop_time',          COL_W_SM, 'hcol-blue'),
-        dt ('Sailed from Dharamtar',          'sailed_dharamtar',         COL_W_DT, 'hcol-blue'),
+            /* ── Discharge Port  (X–AB) ──────────────────── */
+            calc('Waiting at DPPL', 'waiting_dppl', COL_W_SM, 'hcol-green'),
+            dt('Discharge Commenced', 'discharge_commenced', COL_W_DT, 'hcol-green'),
+            dt('Discharge Completed', 'discharge_completed', COL_W_DT, 'hcol-green'),
+            calc('Unloading', 'unloading_dur', COL_W_SM, 'hcol-green'),
+            dt('Partly Disch Stop', 'partly_disch_stop', COL_W_DT, 'hcol-green'),
+            // AC – Blue
+            dt('Partly Disch Start', 'partly_disch_start', COL_W_DT, 'hcol-blue'),
+            calc('Disch Stop Time Taken', 'disch_stop_time', COL_W_SM, 'hcol-blue'),
+            dt('Sailed from Dharamtar', 'sailed_dharamtar', COL_W_DT, 'hcol-blue'),
 
-        /* ── Breakdown  (AF–AI) ──────────────────────── */
-        // AF – Green
-        dt ('Breakdown Start',                'breakdown_start',          COL_W_DT, 'hcol-green'),
-        // AG–AI – Blue
-        dt ('Breakdown End',                  'breakdown_end',            COL_W_DT, 'hcol-blue'),
-        calc('Breakdown Time Taken',          'breakdown_time',           COL_W_SM, 'hcol-blue'),
-        dt ('Arrived &amp; Anchored @ Jaigad','arrived_jaigad',           COL_W_DT, 'hcol-blue'),
+            /* ── Breakdown  (AF–AI) ──────────────────────── */
+            // AF – Green
+            dt('Breakdown Start', 'breakdown_start', COL_W_DT, 'hcol-green'),
+            // AG–AI – Blue
+            dt('Breakdown End', 'breakdown_end', COL_W_DT, 'hcol-blue'),
+            calc('Breakdown Time Taken', 'breakdown_time', COL_W_SM, 'hcol-blue'),
+            dt('Arrived &amp; Anchored @ Jaigad', 'arrived_jaigad', COL_W_DT, 'hcol-blue'),
 
-        /* ── Return  (AJ–AK) ─────────────────────────── */
-        // AJ – Green
-        calc('Waiting to Sail from Dharamtar','waiting_sail',             COL_W_SM, 'hcol-green'),
-        // AK – Light Blue
-        calc('TAT',                           'tat',                      65,       'hcol-lblue'),
-    ];
-}
+            /* ── Return  (AJ–AK) ─────────────────────────── */
+            // AJ – Green
+            calc('Waiting to Sail from Dharamtar', 'waiting_sail', COL_W_SM, 'hcol-green'),
+            // AK – Light Blue
+            calc('TAT', 'tat', 65, 'hcol-lblue'),
+        ];
+    }
 
-/* ── table init ───────────────────────────────────────── */
-let table;
-let allData = [];
+    /* ── table init ───────────────────────────────────────── */
+    let table;
+    let allData = [];
 
-function initTable(data) {
-    allData = data;
-    table = new Tabulator('#mbc-master-table', {
-        data: data,
-        columns: buildColumns(),
-        layout: 'fitDataFill',
-        height: 'calc(100vh - 260px)',
-        rowHeight: 30,
-        columnHeaderHeight: 48,
-        movableColumns: false,
-        frozenRows: 0,
-        placeholder: 'No records found for the selected filters.',
-        rowFormatter: function(row) {
-            if (row.getData().sr_no % 2 === 0) {
-                row.getElement().style.background = 'var(--bg-secondary)';
-            }
-        },
-    });
-    updateCount(data.length);
-    populateFilterDropdowns(data);
-}
+    function initTable(data) {
+        allData = data;
+        table = new Tabulator('#mbc-master-table', {
+            data: data,
+            columns: buildColumns(),
+            layout: 'fitDataFill',
+            height: 'calc(100vh - 260px)',
+            rowHeight: 30,
+            columnHeaderHeight: 48,
+            movableColumns: false,
+            frozenRows: 0,
+            placeholder: 'No records found for the selected filters.',
+            rowFormatter: function (row) {
+                if (row.getData().sr_no % 2 === 0) {
+                    row.getElement().style.background = 'var(--bg-secondary)';
+                }
+            },
+        });
+        updateCount(data.length);
+        populateFilterDropdowns(data);
+    }
 
-function updateCount(n) {
-    document.getElementById('row-count').textContent =
-        n === 1 ? '1 record' : `${n.toLocaleString('en-IN')} records`;
-}
+    function updateCount(n) {
+        document.getElementById('row-count').textContent =
+            n === 1 ? '1 record' : `${n.toLocaleString('en-IN')} records`;
+    }
 
-function populateFilterDropdowns(data) {
-    const months = [...new Set(data.map(r => r.month).filter(Boolean))].sort();
-    const fys    = [...new Set(data.map(r => r.fy_year).filter(Boolean))].sort();
+    function populateFilterDropdowns(data) {
+        const months = [...new Set(data.map(r => r.month).filter(Boolean))].sort();
+        const fys = [...new Set(data.map(r => r.fy_year).filter(Boolean))].sort();
 
-    const mSel = document.getElementById('filter-month');
-    const fSel = document.getElementById('filter-fy');
-    const curM = mSel.value;
-    const curF = fSel.value;
+        const mSel = document.getElementById('filter-month');
+        const fSel = document.getElementById('filter-fy');
+        const curM = mSel.value;
+        const curF = fSel.value;
 
-    // keep existing "All" option, rebuild rest
-    while (mSel.options.length > 1) mSel.remove(1);
-    while (fSel.options.length > 1) fSel.remove(1);
+        // keep existing "All" option, rebuild rest
+        while (mSel.options.length > 1) mSel.remove(1);
+        while (fSel.options.length > 1) fSel.remove(1);
 
-    months.forEach(m => {
-        const o = new Option(m, m);
-        if (m === curM) o.selected = true;
-        mSel.add(o);
-    });
-    fys.forEach(f => {
-        const o = new Option(f, f);
-        if (f === curF) o.selected = true;
-        fSel.add(o);
-    });
-}
+        months.forEach(m => {
+            const o = new Option(m, m);
+            if (m === curM) o.selected = true;
+            mSel.add(o);
+        });
+        fys.forEach(f => {
+            const o = new Option(f, f);
+            if (f === curF) o.selected = true;
+            fSel.add(o);
+        });
+    }
 
-/* ── filters ─────────────────────────────────────────── */
-function applyFilters(isPageLoad = false) {
+    /* ── filters ─────────────────────────────────────────── */
+    function applyFilters(isPageLoad = false) {
 
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
-    const month    = document.getElementById('filter-month').value;
-    const fy       = document.getElementById('filter-fy').value;
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const month = document.getElementById('filter-month').value;
+        const fy = document.getElementById('filter-fy').value;
 
-    const cutoffDate = '2026-05-01';
+        const cutoffDate = '2026-05-01';
 
-    if (
-        !isPageLoad &&
-        (
-            (fromDate && fromDate < cutoffDate) ||
-            (toDate && toDate < cutoffDate)
-        )
-    ) {
-        Swal.fire({
-            icon: 'warning',
-            iconColor: '#44B5E6',   // Blue icon
-            title: 'Report Not Available',
-            html: `
+        if (
+            !isPageLoad &&
+            (
+                (fromDate && fromDate < cutoffDate) ||
+                (toDate && toDate < cutoffDate)
+            )
+        ) {
+            Swal.fire({
+                icon: 'warning',
+                iconColor: '#44B5E6',   // Blue icon
+                title: 'Report Not Available',
+                html: `
                 <b>Cutoff Date:</b> 01-May-2026<br><br>
                 Reports before this date are not available.
             `,
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#3085d6'
-        });
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#3085d6'
+            });
 
-        return;
+            return;
+        }
+
+        const params = new URLSearchParams();
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+        if (month) params.set('month', month);
+        if (fy) params.set('fy', fy);
+
+        document.getElementById('row-count').textContent = 'Loading…';
+
+        fetch('/api/module/RP01/mbc-master/data?' + params.toString())
+            .then(r => r.json())
+            .then(data => {
+                allData = data;
+                if (table) {
+                    table.setData(data);
+                    updateCount(data.length);
+                    populateFilterDropdowns(data);
+                } else {
+                    initTable(data);
+                }
+            })
+            .then(() => {
+                if (currentTab === 'tat') loadTatSummary();
+                if (currentTab === 'dppltat') loadDpplTat();
+                if (currentTab === 'mbcwise') loadMbcWise();
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('row-count').textContent = 'Error loading data.';
+            });
     }
 
-    const params = new URLSearchParams();
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date', toDate);
-    if (month)    params.set('month', month);
-    if (fy)       params.set('fy', fy);
-
-    document.getElementById('row-count').textContent = 'Loading…';
-
-    fetch('/api/module/RP01/mbc-master/data?' + params.toString())
-        .then(r => r.json())
-        .then(data => {
-            allData = data;
-            if (table) {
-                table.setData(data);
-                updateCount(data.length);
-                populateFilterDropdowns(data);
-            } else {
-                initTable(data);
-            }
-        })
-        .then(() => {
-            if (currentTab === 'tat') loadTatSummary();
-            if (currentTab === 'dppltat') loadDpplTat();
-            if (currentTab === 'mbcwise') loadMbcWise();
-        })
-        .catch(err => {
-            console.error(err);
-            document.getElementById('row-count').textContent = 'Error loading data.';
-        });
-}
-
-function resetFilters() {
-    document.getElementById('filter-from').value  = '';
-    document.getElementById('filter-to').value    = '';
-    document.getElementById('filter-month').value = '';
-    document.getElementById('filter-fy').value    = '';
-    applyFilters();
-}
-
-/* ── Tab switching ────────────────────────────────────── */
-let currentTab = 'master';
-
-function switchTab(tab) {
-    currentTab = tab;
-    document.getElementById('panel-master').hidden  = (tab !== 'master');
-    document.getElementById('panel-tat').hidden     = (tab !== 'tat');
-    document.getElementById('panel-dppltat').hidden = (tab !== 'dppltat');
-    document.getElementById('panel-mbcwise').hidden = (tab !== 'mbcwise');
-    document.getElementById('tab-master').classList.toggle('active',  tab === 'master');
-    document.getElementById('tab-tat').classList.toggle('active',     tab === 'tat');
-    document.getElementById('tab-dppltat').classList.toggle('active', tab === 'dppltat');
-    document.getElementById('tab-mbcwise').classList.toggle('active', tab === 'mbcwise');
-    if (tab === 'tat')     loadTatSummary();
-    if (tab === 'dppltat') loadDpplTat();
-    if (tab === 'mbcwise') loadMbcWise();
-}
-
-function loadTatSummary() {
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
-    const month    = document.getElementById('filter-month').value;
-    const fy       = document.getElementById('filter-fy').value;
-
-    const params = new URLSearchParams();
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date',   toDate);
-    if (month)    params.set('month',     month);
-    if (fy)       params.set('fy',        fy);
-
-    const wrapper = document.getElementById('tat-wrapper');
-    wrapper.innerHTML = '<div class="tat-placeholder">Loading TAT data…</div>';
-
-    fetch('/api/module/RP01/mbc-master/tat-data?' + params.toString())
-        .then(r => r.json())
-        .then(data => { wrapper.innerHTML = buildTatTable(data); })
-        .catch(err => {
-            console.error(err);
-            wrapper.innerHTML = '<div class="tat-placeholder" style="color:#c0392b;">Error loading TAT data.</div>';
-        });
-}
-
-function buildTatTable(d) {
-    const styleClass = {
-        data:          'row-data',
-        section_total: 'row-section-total',
-        main_total:    'row-main-total',
-        tat:           'row-tat',
-    };
-    function fmtVal(v) {
-        if (!v || v === '—') return '<span style="color:#bbb">—</span>';
-        return v;
+    function resetFilters() {
+        document.getElementById('filter-from').value = '';
+        document.getElementById('filter-to').value = '';
+        document.getElementById('filter-month').value = '';
+        document.getElementById('filter-fy').value = '';
+        applyFilters();
     }
-    let html = `
+
+    /* ── Tab switching ────────────────────────────────────── */
+    let currentTab = 'master';
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.getElementById('panel-master').hidden = (tab !== 'master');
+        document.getElementById('panel-tat').hidden = (tab !== 'tat');
+        document.getElementById('panel-dppltat').hidden = (tab !== 'dppltat');
+        document.getElementById('panel-mbcwise').hidden = (tab !== 'mbcwise');
+        document.getElementById('tab-master').classList.toggle('active', tab === 'master');
+        document.getElementById('tab-tat').classList.toggle('active', tab === 'tat');
+        document.getElementById('tab-dppltat').classList.toggle('active', tab === 'dppltat');
+        document.getElementById('tab-mbcwise').classList.toggle('active', tab === 'mbcwise');
+        if (tab === 'tat') loadTatSummary();
+        if (tab === 'dppltat') loadDpplTat();
+        if (tab === 'mbcwise') loadMbcWise();
+    }
+
+    function loadTatSummary() {
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const month = document.getElementById('filter-month').value;
+        const fy = document.getElementById('filter-fy').value;
+
+        const params = new URLSearchParams();
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+        if (month) params.set('month', month);
+        if (fy) params.set('fy', fy);
+
+        const wrapper = document.getElementById('tat-wrapper');
+        wrapper.innerHTML = '<div class="tat-placeholder">Loading TAT data…</div>';
+
+        fetch('/api/module/RP01/mbc-master/tat-data?' + params.toString())
+            .then(r => r.json())
+            .then(data => { wrapper.innerHTML = buildTatTable(data); })
+            .catch(err => {
+                console.error(err);
+                wrapper.innerHTML = '<div class="tat-placeholder" style="color:#c0392b;">Error loading TAT data.</div>';
+            });
+    }
+
+    function buildTatTable(d) {
+        const styleClass = {
+            data: 'row-data',
+            section_total: 'row-section-total',
+            main_total: 'row-main-total',
+            tat: 'row-tat',
+        };
+        function fmtVal(v) {
+            if (!v || v === '—') return '<span style="color:#bbb">—</span>';
+            return v;
+        }
+        let html = `
     <table class="tat-table"><tbody>
       <tr class="hdr-period">
         <td></td>
@@ -762,51 +1254,51 @@ function buildTatTable(d) {
         <td>${d.date_trips}</td>
 
       </tr>`;
-    for (const row of d.rows) {
-        const cls = styleClass[row.style] || 'row-data';
-        html += `<tr class="${cls}">
+        for (const row of d.rows) {
+            const cls = styleClass[row.style] || 'row-data';
+            html += `<tr class="${cls}">
           <td>${row.label}</td>
           <td>${fmtVal(row.date_val)}</td>
 
         </tr>`;
-    }
-    html += `<tr class="row-footnote"><td colspan="4">
+        }
+        html += `<tr class="row-footnote"><td colspan="4">
         *Unloading time includes the shifting time after partial discharge of MBC &amp; discharge kept on hold to give priority for other MBC.<br>
         *Preberthing time includes the MBC waiting at Berth 10 for the unloading turn.
     </td></tr></tbody></table>`;
-    return html;
-}
-
-/* ── DPPL TAT tab ────────────────────────────────────── */
-function loadDpplTat() {
-    const params = new URLSearchParams();
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
-    const month    = document.getElementById('filter-month').value;
-    const fy       = document.getElementById('filter-fy').value;
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date',   toDate);
-    if (month)    params.set('month',     month);
-    if (fy)       params.set('fy',        fy);
-
-    const wrapper = document.getElementById('dppltat-wrapper');
-    wrapper.innerHTML = '<div class="tat-placeholder">Loading DPPL TAT data…</div>';
-
-    fetch('/api/module/RP01/mbc-master/dppl-tat-data?' + params.toString())
-        .then(r => r.json())
-        .then(data => { wrapper.innerHTML = buildDpplTatTable(data); })
-        .catch(err => {
-            console.error(err);
-            wrapper.innerHTML = '<div class="tat-placeholder" style="color:#c0392b;">Error loading DPPL TAT data.</div>';
-        });
-}
-
-function buildDpplTatTable(d) {
-    function v(val) {
-        if (!val || val === '—') return '<span style="color:#bbb">—</span>';
-        return val;
+        return html;
     }
-    let html = `<table class="dppltat-table">
+
+    /* ── DPPL TAT tab ────────────────────────────────────── */
+    function loadDpplTat() {
+        const params = new URLSearchParams();
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const month = document.getElementById('filter-month').value;
+        const fy = document.getElementById('filter-fy').value;
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+        if (month) params.set('month', month);
+        if (fy) params.set('fy', fy);
+
+        const wrapper = document.getElementById('dppltat-wrapper');
+        wrapper.innerHTML = '<div class="tat-placeholder">Loading DPPL TAT data…</div>';
+
+        fetch('/api/module/RP01/mbc-master/dppl-tat-data?' + params.toString())
+            .then(r => r.json())
+            .then(data => { wrapper.innerHTML = buildDpplTatTable(data); })
+            .catch(err => {
+                console.error(err);
+                wrapper.innerHTML = '<div class="tat-placeholder" style="color:#c0392b;">Error loading DPPL TAT data.</div>';
+            });
+    }
+
+    function buildDpplTatTable(d) {
+        function v(val) {
+            if (!val || val === '—') return '<span style="color:#bbb">—</span>';
+            return val;
+        }
+        let html = `<table class="dppltat-table">
       <thead>
         <tr>
           <th class="dt-hdr-blue">Owner</th>
@@ -822,21 +1314,21 @@ function buildDpplTatTable(d) {
         </tr>
       </thead>
       <tbody>`;
-    // Pre-compute rowspan for each row's owner cell
-    const ownerSpan = new Array(d.rows.length).fill(0);
-    for (let i = 0; i < d.rows.length; i++) {
-        if (i === 0 || d.rows[i].owner !== d.rows[i - 1].owner) {
-            let span = 1;
-            while (i + span < d.rows.length && d.rows[i + span].owner === d.rows[i].owner) span++;
-            ownerSpan[i] = span;
+        // Pre-compute rowspan for each row's owner cell
+        const ownerSpan = new Array(d.rows.length).fill(0);
+        for (let i = 0; i < d.rows.length; i++) {
+            if (i === 0 || d.rows[i].owner !== d.rows[i - 1].owner) {
+                let span = 1;
+                while (i + span < d.rows.length && d.rows[i + span].owner === d.rows[i].owner) span++;
+                ownerSpan[i] = span;
+            }
         }
-    }
-    for (let i = 0; i < d.rows.length; i++) {
-        const r = d.rows[i];
-        const ownerCell = ownerSpan[i] > 0
-            ? `<td class="dt-bold dt-left dt-owner-merge" rowspan="${ownerSpan[i]}">${r.owner || '—'}</td>`
-            : '';
-        html += `<tr>
+        for (let i = 0; i < d.rows.length; i++) {
+            const r = d.rows[i];
+            const ownerCell = ownerSpan[i] > 0
+                ? `<td class="dt-bold dt-left dt-owner-merge" rowspan="${ownerSpan[i]}">${r.owner || '—'}</td>`
+                : '';
+            html += `<tr>
           ${ownerCell}
           <td class="dt-bold dt-left">${r.mbc_name || '—'}</td>
           <td class="dt-bold dt-ctr">${r.mbc_date || '—'}</td>
@@ -848,9 +1340,9 @@ function buildDpplTatTable(d) {
           <td class="dt-dur dt-lgreen">${v(r.total_dppl)}</td>
           <td class="dt-dur">${v(r.tat)}</td>
         </tr>`;
-    }
-    const t = d.totals;
-    html += `<tr class="dt-grand-total">
+        }
+        const t = d.totals;
+        html += `<tr class="dt-grand-total">
           <td class="dt-left" colspan="4">Grand Total</td>
           <td class="dt-num">${v(t.qty)}</td>
           <td class="dt-dur">${v(t.wait_dppl)}</td>
@@ -861,40 +1353,40 @@ function buildDpplTatTable(d) {
         </tr>
       </tbody>
     </table>`;
-    return html;
-}
-
-/* ── MBC Wise tab ────────────────────────────────────── */
-function loadMbcWise() {
-    const params = new URLSearchParams();
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
-    const month    = document.getElementById('filter-month').value;
-    const fy       = document.getElementById('filter-fy').value;
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date',   toDate);
-    if (month)    params.set('month',     month);
-    if (fy)       params.set('fy',        fy);
-
-    const wrapper = document.getElementById('mbcwise-wrapper');
-    wrapper.innerHTML = '<div class="tat-placeholder">Loading MBC Wise data…</div>';
-
-    fetch('/api/module/RP01/mbc-master/mbc-wise-data?' + params.toString())
-        .then(r => r.json())
-        .then(data => { wrapper.innerHTML = buildMbcWiseTable(data); })
-        .catch(err => {
-            console.error(err);
-            wrapper.innerHTML = '<div class="tat-placeholder" style="color:#c0392b;">Error loading MBC Wise data.</div>';
-        });
-}
-
-function buildMbcWiseTable(rows) {
-    function v(val) {
-        if (val === null || val === undefined || val === '') return '<span style="color:#bbb">—</span>';
-        return val;
+        return html;
     }
 
-    let html = `
+    /* ── MBC Wise tab ────────────────────────────────────── */
+    function loadMbcWise() {
+        const params = new URLSearchParams();
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const month = document.getElementById('filter-month').value;
+        const fy = document.getElementById('filter-fy').value;
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+        if (month) params.set('month', month);
+        if (fy) params.set('fy', fy);
+
+        const wrapper = document.getElementById('mbcwise-wrapper');
+        wrapper.innerHTML = '<div class="tat-placeholder">Loading MBC Wise data…</div>';
+
+        fetch('/api/module/RP01/mbc-master/mbc-wise-data?' + params.toString())
+            .then(r => r.json())
+            .then(data => { wrapper.innerHTML = buildMbcWiseTable(data); })
+            .catch(err => {
+                console.error(err);
+                wrapper.innerHTML = '<div class="tat-placeholder" style="color:#c0392b;">Error loading MBC Wise data.</div>';
+            });
+    }
+
+    function buildMbcWiseTable(rows) {
+        function v(val) {
+            if (val === null || val === undefined || val === '') return '<span style="color:#bbb">—</span>';
+            return val;
+        }
+
+        let html = `
     <div style="font-size:11px;color:var(--text-secondary);padding:4px 2px 8px;font-style:italic;">
         Unit of Measure &mdash; HH:MM
     </div>
@@ -922,9 +1414,9 @@ function buildMbcWiseTable(rows) {
       </thead>
       <tbody>`;
 
-    for (const r of rows) {
-        const qty = r.qty ? Number(r.qty).toLocaleString('en-IN') : '—';
-        html += `
+        for (const r of rows) {
+            const qty = r.qty ? Number(r.qty).toLocaleString('en-IN') : '—';
+            html += `
         <tr class="mw-row">
           <td class="col-name">${r.mbc_name || '—'}</td>
           <td class="col-qty">${qty}</td>
@@ -944,129 +1436,130 @@ function buildMbcWiseTable(rows) {
           <td class="col-dur">${v(r.tat)}</td>
           <td></td>
         </tr>`;
-    }
+        }
 
-    html += `
+        html += `
       </tbody>
     </table>`;
 
-    return html;
-}
+        return html;
+    }
 
-/* ── download ────────────────────────────────────────── */
-function downloadExcel() {
+    /* ── download ────────────────────────────────────────── */
+    function downloadExcel() {
 
-    const fromDate = document.getElementById('filter-from').value;
-    const toDate   = document.getElementById('filter-to').value;
-    const month    = document.getElementById('filter-month').value;
-    const fy       = document.getElementById('filter-fy').value;
+        const fromDate = document.getElementById('filter-from').value;
+        const toDate = document.getElementById('filter-to').value;
+        const month = document.getElementById('filter-month').value;
+        const fy = document.getElementById('filter-fy').value;
 
-    const params = new URLSearchParams();
+        const params = new URLSearchParams();
 
-    if (fromDate) params.set('from_date', fromDate);
-    if (toDate)   params.set('to_date', toDate);
-    if (month)    params.set('month', month);
-    if (fy)       params.set('fy', fy);
+        if (fromDate) params.set('from_date', fromDate);
+        if (toDate) params.set('to_date', toDate);
+        if (month) params.set('month', month);
+        if (fy) params.set('fy', fy);
 
-    const btn = document.getElementById('dl-btn');
+        const btn = document.getElementById('dl-btn');
 
-    const loader = document.getElementById('download-loader');
-    const msg = document.getElementById('loader-msg');
+        const loader = document.getElementById('download-loader');
+        const msg = document.getElementById('loader-msg');
 
-    btn.disabled = true;
-    btn.innerHTML = 'Preparing...';
+        btn.disabled = true;
+        btn.innerHTML = 'Preparing...';
 
-    msg.textContent = 'Fetching data...';
-    loader.classList.add('show');
+        msg.textContent = 'Fetching data...';
+        loader.classList.add('show');
 
-    const url =
-        '/api/module/RP01/mbc-master/download?' +
-        params.toString();
+        const url =
+            '/api/module/RP01/mbc-master/download?' +
+            params.toString();
 
-    fetch(url)
+        fetch(url)
 
-        .then(res => {
+            .then(res => {
 
-            if (!res.ok) {
-                throw new Error('Server error ' + res.status);
-            }
+                if (!res.ok) {
+                    throw new Error('Server error ' + res.status);
+                }
 
-            const disposition =
-                res.headers.get('Content-Disposition') || '';
+                const disposition =
+                    res.headers.get('Content-Disposition') || '';
 
-            const match =
-                disposition.match(/filename="(.+?)"/);
+                const match =
+                    disposition.match(/filename="(.+?)"/);
 
-            const filename =
-                match
-                    ? match[1]
-                    : 'MBC_TAT_Report.xlsx';
+                const filename =
+                    match
+                        ? match[1]
+                        : 'MBC_TAT_Report.xlsx';
 
-            return res.blob().then(blob => ({
-                blob,
-                filename
-            }));
-        })
+                return res.blob().then(blob => ({
+                    blob,
+                    filename
+                }));
+            })
 
-        .then(({ blob, filename }) => {
+            .then(({ blob, filename }) => {
 
-            msg.textContent = 'Download Ready';
+                msg.textContent = 'Download Ready';
 
-            setTimeout(() => {
+                setTimeout(() => {
 
-                const a = document.createElement('a');
+                    const a = document.createElement('a');
 
-                a.href = URL.createObjectURL(blob);
-                a.download = filename;
+                    a.href = URL.createObjectURL(blob);
+                    a.download = filename;
 
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
 
-                URL.revokeObjectURL(a.href);
+                    URL.revokeObjectURL(a.href);
 
-            }, 400);
-        })
+                }, 400);
+            })
 
-        .catch(err => {
+            .catch(err => {
 
-            console.error(err);
+                console.error(err);
 
-            msg.textContent = 'Download Failed';
+                msg.textContent = 'Download Failed';
 
-            setTimeout(() => {
+                setTimeout(() => {
 
-                alert('Download failed. Please try again.');
+                    alert('Download failed. Please try again.');
 
-            }, 300);
-        })
+                }, 300);
+            })
 
-        .finally(() => {
+            .finally(() => {
                 loader.classList.remove('show');
 
                 btn.disabled = false;
                 btn.innerHTML = '&#8595; Download TAT Report';
 
-        });
-}
+            });
+    }
 
-/* ── on load ─────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', function () {
-    // default: current FY
-    const now   = new Date();
-    const year  = now.getFullYear();
-    const month = now.getMonth() + 1; // 1-based
-    const fyStart = month >= 4
-        ? `${year}-04-01`
-        : `${year - 1}-04-01`;
-    const fyEnd = month >= 4
-        ? `${year + 1}-03-31`
-        : `${year}-03-31`;
+    /* ── on load ─────────────────────────────────────────── */
+    document.addEventListener('DOMContentLoaded', function () {
 
-    document.getElementById('filter-from').value = fyStart;
-    document.getElementById('filter-to').value   = fyEnd;
+        const now = new Date();
 
-    applyFilters(true);
-});
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+
+        // First day of current month
+        document.getElementById('filter-from').value =
+            `${year}-${month}-01`;
+
+        // Today's date
+        document.getElementById('filter-to').value =
+            `${year}-${month}-${day}`;
+
+        applyFilters(true);
+    });
 </script>
 {% endblock %}

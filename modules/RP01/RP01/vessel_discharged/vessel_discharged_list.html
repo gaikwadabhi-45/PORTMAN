@@ -415,7 +415,7 @@
             style="height:30px;padding:5px 9px;border:1px solid var(--border-color);border-radius:4px;font-size:12px;background:var(--bg-primary);color:var(--text-primary);min-width:180px;">
             <option value="discharge_commenced">Discharge Commenced</option>
             <option value="discharge_completed">Discharge Completed</option>
-            <option value="nor_tendered">NOR Tendered</option>
+            <option value="nor_tendered" selected>NOR Tendered</option>
         </select>
     </div>
     <div class="filter-group">
@@ -720,6 +720,7 @@
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
         const day = String(now.getDate()).padStart(2, '0');
+        document.getElementById('filter-date-field').value = 'nor_tendered';
         document.getElementById('filter-from').value = `${year}-${month}-01`;
         document.getElementById('filter-to').value = `${year}-${month}-${day}`;
         applyFilters();
