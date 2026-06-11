@@ -432,6 +432,8 @@
             </div>
         </div>
         <div class="modal-footer">
+            <button type="button" class="filter-btn secondary" id="clear-cutoff-btn" onclick="clearCutoff()"
+                style="margin-right:auto;">Clear Cutoff Settings</button>
             <button type="button" class="filter-btn secondary" onclick="closeCutoffModal()">Cancel</button>
             <button type="button" class="filter-btn primary" id="save-cutoff-btn" onclick="saveCutoff()">Save</button>
         </div>
@@ -1030,6 +1032,55 @@
                 btn.disabled = false;
                 btn.textContent = 'Save';
             });
+    }
+
+    function clearCutoff() {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Clear Cutoff Settings?',
+            html: 'This removes the stored cutoff snapshot. FY values will revert to '
+                + 'live database queries until a new cutoff is saved.',
+            showCancelButton: true,
+            confirmButtonText: 'Clear',
+            confirmButtonColor: '#d33',
+            cancelButtonText: 'Cancel'
+        }).then(result => {
+            if (!result.isConfirmed) return;
+
+            const btn = document.getElementById('clear-cutoff-btn');
+            btn.disabled = true;
+            btn.textContent = 'Clearing…';
+
+            const ensureTypes = masterCargoTypes.length
+                ? Promise.resolve(masterCargoTypes)
+                : fetch('/api/module/VCG01/types').then(r => r.json()).catch(() => []);
+
+            fetch('/api/module/RP01/daily-ops/cutoff', { method: 'DELETE' })
+                .then(r => {
+                    if (r.status === 403) throw new Error('Admin access required.');
+                    if (!r.ok) throw new Error('Clear failed');
+                    return ensureTypes;
+                })
+                .then(types => {
+                    masterCargoTypes = Array.isArray(types) ? types : [];
+                    // Reset to a blank form with every master cargo type as a column.
+                    document.getElementById('cutoff-date').value = '';
+                    renderFYPreview({});
+                    loadCutoffStatus();
+                })
+                .catch(err => {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Failed to clear',
+                        text: err.message || 'Failed to clear cutoff settings.',
+                        confirmButtonColor: '#4a90d9'
+                    });
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Clear Cutoff Settings';
+                });
+        });
     }
 </script>
 {% endblock %}

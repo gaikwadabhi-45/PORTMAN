@@ -162,6 +162,21 @@ def daily_ops_cutoff_save():
     return jsonify({'ok': True, 'fy_throughput': fy_throughput})
 
 
+@bp.route('/api/module/RP01/daily-ops/cutoff', methods=['DELETE'])
+@login_required
+def daily_ops_cutoff_clear():
+    """Admin-only: remove any stored cutoff so FY values revert to live queries."""
+    if not session.get('is_admin'):
+        return Response('Admin access required', status=403)
+
+    conn = get_db()
+    cur  = get_cursor(conn)
+    cur.execute("DELETE FROM daily_ops_cutoff")
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
 # ── FY throughput snapshot ───────────────────────────────────────────────────
 
 def _compute_fy_throughput(cutoff_date, editable_fy_values=None):
