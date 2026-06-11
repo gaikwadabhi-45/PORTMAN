@@ -3060,8 +3060,35 @@ def _build_excel_a4(
     current_row += 2
     # ── uniform row height ────────────────────────────────────────────
     for row_num in range(1, ws.max_row + 1):
-        ws.row_dimensions[row_num].height = 30
+        ws.row_dimensions[row_num].height = 40
 
+    # ── page setup ────────────────────────────────────────────────────
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+
+    # Allow Excel to use 2 pages horizontally instead of shrinking everything
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 2
+    ws.page_setup.fitToHeight = 1
+
+    # Small margins
+    ws.page_margins = PageMargins(
+        left=0.05,
+        right=0.05,
+        top=0.05,
+        bottom=0.05,
+        header=0,
+        footer=0
+    )
+
+    # Center horizontally only
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = False
+
+    # Excel view zoom
+    ws.sheet_view.zoomScale = 100
+    # Print only used area
+    ws.print_area = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
