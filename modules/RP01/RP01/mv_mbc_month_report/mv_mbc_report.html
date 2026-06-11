@@ -568,8 +568,8 @@
         font-weight: 700;
     }
 
-   
-   /* CLEAN STICKY SYSTEM */
+
+    /* CLEAN STICKY SYSTEM */
 
 
     .matrix-container {
@@ -1145,7 +1145,13 @@
                 - total;
             const td = document.createElement('td');
             td.textContent = diff.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            td.style.color = diff < 0 ? 'red' : 'inherit';
+            if (diff < 0) {
+                td.style.color = 'red';
+                td.style.fontWeight = 'bold';
+            } else if (diff > 0) {
+                td.style.color = 'green';
+                td.style.fontWeight = 'bold';
+            }
             trDiff.appendChild(td);
         });
 
@@ -1348,16 +1354,16 @@
         const loader =
             document.getElementById('download-loader');
 
-        loader.classList.add('show');     
+        loader.classList.add('show');
 
         const msg =
             document.getElementById('loader-msg');
-      
+
         msg.textContent = 'Initializing download...';
 
-       
 
-        
+
+
 
         fetch(
             '/api/module/RP01/mv-monthly-report/download?' +

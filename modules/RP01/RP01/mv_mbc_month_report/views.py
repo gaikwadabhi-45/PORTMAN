@@ -839,7 +839,11 @@ def _write_mv_monthly_sheet(ws, report_data):
         cell.alignment     = _ctr
         cell.border        = _bdr
         if diff < 0:
-            cell.font = _font(color='FF0000')
+            cell.font = _font(bold=True, color='FF0000')   # Red
+        elif diff > 0:
+            cell.font = _font(bold=True, color='008000')   # Green
+        else:
+            cell.font = _font(bold=True)
 
     # ----------------------------------------------------
     # FREEZE PANES
