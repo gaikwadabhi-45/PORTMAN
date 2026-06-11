@@ -224,7 +224,7 @@ LEFT JOIN (
         LOWER(
             REGEXP_REPLACE(
                 TRIM(source_display),
-                '\s+',
+                '\\s+',
                 ' ',
                 'g'
             )
@@ -249,7 +249,7 @@ LEFT JOIN (
         LOWER(
             REGEXP_REPLACE(
                 TRIM(source_display),
-                '\s+',
+                '\\s+',
                 ' ',
                 'g'
             )
@@ -264,7 +264,7 @@ ON mv.match_display =
                COALESCE(vh.vcn_doc_num, '') || ' / ' ||
                COALESCE(lh.vessel_name, '')
            ),
-           '\s+',
+           '\\s+',
            ' ',
            'g'
        )
@@ -580,7 +580,7 @@ LEFT JOIN (
         LOWER(
             REGEXP_REPLACE(
                 TRIM(source_display),
-                '\s+',
+                '\\s+',
                 ' ',
                 'g'
             )
@@ -605,7 +605,7 @@ LEFT JOIN (
         LOWER(
             REGEXP_REPLACE(
                 TRIM(source_display),
-                '\s+',
+                '\\s+',
                 ' ',
                 'g'
             )
@@ -620,7 +620,7 @@ ON mv.match_display =
                COALESCE(vh.vcn_doc_num, '') || ' / ' ||
                COALESCE(lh.vessel_name, '')
            ),
-           '\s+',
+           '\\s+',
            ' ',
            'g'
        )
