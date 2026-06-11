@@ -272,6 +272,9 @@
 <script>
 /* FY cutoff snapshot is computed server-side; no client-side grids. */
 
+/* Distinct cargo types from the VCG01 cargo master (vessel_cargo). */
+let masterCargoTypes = [];
+
 document.addEventListener('DOMContentLoaded', function () {
     const today = new Date();
     const y = today.getFullYear();
@@ -361,13 +364,16 @@ function loadCutoffStatus() {
 
 function openCutoffModal() {
     document.getElementById('cutoff-modal').classList.add('open');
-    fetch('/api/module/RP01/daily-ops/cutoff')
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('cutoff-date').value = data.cutoff_date || '';
-            renderFYPreview((data.cutoff_values || {}).fy_throughput || {});
-        })
-        .catch(() => renderFYPreview({}));
+    // Load the distinct cargo types from the VCG01 master and the stored
+    // cutoff snapshot together, so every master cargo type gets a column.
+    Promise.all([
+        fetch('/api/module/VCG01/types').then(r => r.json()).catch(() => []),
+        fetch('/api/module/RP01/daily-ops/cutoff').then(r => r.json()).catch(() => ({})),
+    ]).then(([types, data]) => {
+        masterCargoTypes = Array.isArray(types) ? types : [];
+        document.getElementById('cutoff-date').value = (data && data.cutoff_date) || '';
+        renderFYPreview(((data && data.cutoff_values) || {}).fy_throughput || {});
+    });
 }
 
 function closeCutoffModal() {
@@ -403,6 +409,9 @@ function renderFYPreview(fyData) {
     const lastFyStart = getCurrentFyStart();
 
     const typeSet = new Set();
+    // Always include every distinct cargo type from the VCG01 master.
+    masterCargoTypes.forEach(t => { if (t) typeSet.add(t); });
+    // Plus any cargo types already present in the stored snapshot.
     Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
     let types = Array.from(typeSet).sort();
     if (types.length === 0) {
