@@ -888,15 +888,10 @@
         const firstFyStart = 2012;
         const lastFyStart = getCurrentFyStart();
 
-        const typeSet = new Set();
-        // Always include every distinct cargo type from the VCG01 master.
-        masterCargoTypes.forEach(t => { if (t) typeSet.add(t); });
-        // Plus any cargo types already present in the stored snapshot.
-        Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
-        let types = Array.from(typeSet).sort();
-        if (types.length === 0) {
-            types = ['CBRM', 'CLINKER', 'FLUXES', 'IBRM', 'OTHERS'];
-        }
+        // Columns are strictly the distinct cargo types from the VCG01 master
+        // (in the master's own order). Nothing from the snapshot or any
+        // hardcoded fallback is added, so no synthetic "OTHERS" bucket appears.
+        const types = masterCargoTypes.filter(Boolean);
 
         const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
