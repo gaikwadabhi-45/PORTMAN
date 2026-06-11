@@ -31,7 +31,7 @@ def _fill(hex_color):
 def _font(bold=False):
     return Font(
         name="Calibri",
-        size=19,
+        size=21,
         bold=bold
     )
 
@@ -1860,6 +1860,23 @@ def _fetch_port_throughput(report_date):
         "month_tpd": float(month_tpd),
         "year_tpd": float(year_tpd)
     }
+# =====================================================================
+# MODIFIED _build_excel_a4
+# Changes:
+#   1. ALL borders are BOLD (thick/medium) — no thin borders anywhere
+#   2. NO bold text anywhere (bold=False throughout)
+#   3. Title rows use a larger font size (14pt instead of default)
+#   4. Vessel detail column widths are kept CONSTANT (not overridden)
+# =====================================================================
+
+# ── shared style helpers (assumed to exist in the calling module) ────
+# _font(bold, size)  – returns Font(...)
+# _fill(hex)         – returns PatternFill(...)
+# _bdr               – replaced below with thick_bdr
+# _ctr / _left       – Alignment objects
+# _fmt_dt            – date formatter
+# ─────────────────────────────────────────────────────────────────────
+
 def _build_excel_a4(
     vessels,
     report_date,
@@ -1868,7 +1885,7 @@ def _build_excel_a4(
     tide_rows=None,
     mbc_day=None,
     mbc_month=None,
-    mbc_year =None,
+    mbc_year=None,
     upcoming_vessels=None,
     upcoming_mbcs=None,
     discharging_mbcs=None,
@@ -1877,7 +1894,6 @@ def _build_excel_a4(
     mbc_day_rows=None,
     mbc_month_rows=None,
     mbc_year_rows=None,
-    # mbc_cargo_month=None,
     cargo_type_throughput=None,
     cargo_stats_day=None,
     cargo_stats_month=None,
@@ -1885,412 +1901,297 @@ def _build_excel_a4(
     editable_table=None,
     rainfall_table=None,
     bf_table=None,
-    rm_table=None
-
-    
+    rm_table=None,
 ):
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.page import PageMargins
+    from datetime import datetime
     import io
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Daily Ops"
 
-    # =====================================================
-    # A4 SETTINGS
-    # =====================================================
-
+    # ── page setup ────────────────────────────────────────────────────
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
-
     ws.sheet_view.zoomScale = 80
+    ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.50, bottom=0.50)
 
-    ws.page_margins = PageMargins(
-        left=0.25,
-        right=0.25,
-        top=0.50,
-        bottom=0.50
+    # ── style constants ───────────────────────────────────────────────
+    TITLE_SIZE   = 30   # font size for section titles
+    NORMAL_SIZE  = 28   # font size for everything else
+
+    _thick = Side(style="medium")          # BOLD border side
+    _thin  = Side(style="medium")          # use medium everywhere → all bold
+    thick_bdr = Border(
+        left=_thick, right=_thick, top=_thick, bottom=_thick
     )
 
-    
+    _ctr  = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    _left = Alignment(horizontal="left",   vertical="center", wrap_text=True)
 
-    # =====================================================
-    # DPPL COLUMN STRUCTURE
-    # =====================================================
+    def _font(bold=False, size=NORMAL_SIZE):
+        # CHANGE 2: ignore bold parameter — never bold
+        return Font(name="Calibri", size=size, bold=False)
 
-    LABEL_START = 2      # B
-    LABEL_END   = 4      # D
+    def _title_font():
+        return Font(name="Calibri", size=TITLE_SIZE, bold=False)
 
-    V_START     = 5      # E
-    COLS_PER_V  = 4
+    def _fill(hex_color="FFFFFF"):
+        return PatternFill("solid", fgColor=hex_color)
 
-    vessel_count = len(vessels)
-
-    def v_start(idx):
-        return V_START + (idx * COLS_PER_V)
-
-    def v_end(idx):
-        return v_start(idx) + COLS_PER_V - 1
-
-    last_vessel_col = (
-        v_end(vessel_count - 1)
-        if vessel_count
-        else LABEL_END
-    )
-
-    # =====================================================
-    # COLUMN WIDTHS
-    # =====================================================
-
-    ws.column_dimensions["A"].width = 4
-
-    ws.column_dimensions["B"].width = 6
-    ws.column_dimensions["C"].width = 20
-    ws.column_dimensions["D"].width = 20
-
-    COLS_PER_V = 4
-    for i in range(vessel_count):
-
-        for dc in range(COLS_PER_V):
-
-            col = get_column_letter(
-                v_start(i) + dc
-            )
-
-            ws.column_dimensions[col].width = 5
-
-    # =====================================================
-    # HELPERS
-    # =====================================================
-
-    def _cell(
-        r,
-        c,
-        val="",
-        bold=False,
-        fill="FFFFFF",
-        align=_ctr
-    ):
-
-        cell = ws.cell(r, c)
-
-        cell.value = val
-        cell.font = _font(bold=bold)
-
-        cell.fill = _fill(fill)
-
-        cell.alignment = align
-
-        cell.border = _bdr
-
-        return cell
-
-
-    def _merge_write(
-        r1,
-        c1,
-        r2,
-        c2,
-        val="",
-        bold=False,
-        fill="FFFFFF",
-        align=_ctr
-    ):
-
-        ws.merge_cells(
-            start_row=r1,
-            start_column=c1,
-            end_row=r2,
-            end_column=c2
-        )
-
-        anchor = ws.cell(r1, c1)
-
-        anchor.value = val
-        anchor.font = _font(bold=bold)
-        anchor.fill = _fill(fill)
-        anchor.alignment = align
-        anchor.border = _bdr
-
-        for rr in range(r1, r2 + 1):
-            for cc in range(c1, c2 + 1):
-
-                ws.cell(rr, cc).border = _bdr
-
-
-    # =====================================================
-    # REPORT HEADER
-    # =====================================================
-
-    report_title = (
-        f"Daily Report of JSW Dharamtar Port Operation : "
-        f"{report_date.day}.{report_date.month}.{report_date.year}"
-    )
-
-    date_str = report_date.strftime(
-        "%d-%m-%Y"
-    )
-
-    ws.row_dimensions[2].height = 30
-
-    _merge_write(
-        2,
-        LABEL_START,
-        2,
-        LABEL_END,
-        date_str,
-        bold=True,
-        align=_left
-    )
-
-    _merge_write(
-        2,
-        V_START,
-        2,
-        last_vessel_col,
-        report_title,
-        bold=True,
-        align=_ctr
-    )
-
-    # =====================================================
-    # DOC DETAILS
-    # =====================================================
-
-    doc_col = last_vessel_col + 2
-
-    _merge_write(
-        2,
-        doc_col,
-        2,
-        doc_col + 2,
-        "Doc No. | REV.02 | Issue no. 02",
-        bold=True,
-        align=_left
-    )
-
-    issue_col = doc_col + 3
-
-    _merge_write(
-        2,
-        issue_col,
-        2,
-        issue_col + 2,
-        f"Issue Date : {date_str}",
-        bold=True,
-        align=_left
-    )
-
-    # =====================================================
-    # VESSEL HEADER ROW
-    # =====================================================
-
-    ws.row_dimensions[3].height = 45
-
-    _merge_write(
-        3,
-        LABEL_START,
-        3,
-        LABEL_END,
-        "",
-        bold=True
-    )
-
-    for idx, vessel in enumerate(vessels):
-
-        _merge_write(
-            3,
-            v_start(idx),
-            3,
-            v_end(idx),
-            f"Vessel {idx + 1}: "
-            f"{vessel['vessel_name']}",
-            bold=True,
-            align=_ctr
-        )
-
-    # Repeat headers on every printed page
-    ws.print_title_rows = "2:3"
-
-    # Center page horizontally
-    ws.print_options.horizontalCentered = True
-
-    ws.print_title_rows = "2:3"
-    ws.print_options.horizontalCentered = True
-
-    
-
-    current_row = 4
-
-    # =====================================================
-    # VESSEL STATUS SECTION
-    # =====================================================
+    def _fmt_dt(val):
+        if not val:
+            return ""
+        try:
+            if isinstance(val, str):
+                val = datetime.fromisoformat(val)
+            return val.strftime("%d-%m-%Y %H:%M")
+        except Exception:
+            return str(val)
 
     def _fmt_num(v):
-
         if v is None:
             return ""
-
         try:
             return int(round(float(v)))
         except Exception:
             return v
 
+    # ── column layout ─────────────────────────────────────────────────
+    LABEL_START  = 2
+    LABEL_END    = 4
+    V_START      = 5
+    COLS_PER_V   = 4
+    # CHANGE 4: constant vessel column width — never reassigned later
+    VESSEL_COL_WIDTH = 14
+
+    vessel_count = len(vessels)
+
+    def v_start(idx):  return V_START + idx * COLS_PER_V
+    def v_end(idx):    return v_start(idx) + COLS_PER_V - 1
+
+    last_vessel_col = (
+        v_end(vessel_count - 1) if vessel_count else LABEL_END
+    )
+
+    # ── column widths ─────────────────────────────────────────────────
+    ws.column_dimensions["A"].width = 4
+    ws.column_dimensions["B"].width = 6
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 20
+
+    # CHANGE 4: set vessel column widths ONCE here; never changed later
+    for i in range(vessel_count):
+        for dc in range(COLS_PER_V):
+            col_letter = get_column_letter(v_start(i) + dc)
+            ws.column_dimensions[col_letter].width = VESSEL_COL_WIDTH
+
+    # ── cell helpers ──────────────────────────────────────────────────
+    def _cell(r, c, val="", bold=False, fill="FFFFFF", align=_ctr, title=False):
+        cell = ws.cell(r, c)
+        cell.value     = val
+        cell.font      = _title_font() if title else _font()
+        cell.fill      = _fill(fill)
+        cell.alignment = align
+        cell.border    = thick_bdr
+        return cell
+
+    def _merge_write(r1, c1, r2, c2, val="", bold=False,
+                     fill="FFFFFF", align=_ctr, title=False):
+        ws.merge_cells(start_row=r1, start_column=c1,
+                       end_row=r2,   end_column=c2)
+        anchor            = ws.cell(r1, c1)
+        anchor.value      = val
+        anchor.font       = _title_font() if title else _font()
+        anchor.fill       = _fill(fill)
+        anchor.alignment  = align
+        anchor.border     = thick_bdr
+        for rr in range(r1, r2 + 1):
+            for cc in range(c1, c2 + 1):
+                ws.cell(rr, cc).border = thick_bdr
+
+    def safe_cell(ws, row, col, value=None):
+        cell_coord = f"{get_column_letter(col)}{row}"
+        for merge in list(ws.merged_cells.ranges):
+            if cell_coord in merge:
+                ws.unmerge_cells(str(merge))
+                break
+        c = ws.cell(row, col)
+        if value is not None:
+            c.value = value
+        return c
+
+    def safe_merge(ws, start_row, start_col, end_row, end_col):
+        for r in range(start_row, end_row + 1):
+            for c in range(start_col, end_col + 1):
+                coord = f"{get_column_letter(c)}{r}"
+                for merge in list(ws.merged_cells.ranges):
+                    if coord in merge:
+                        ws.unmerge_cells(str(merge))
+                        break
+        ws.merge_cells(start_row=start_row, start_column=start_col,
+                       end_row=end_row,     end_column=end_col)
+
+    # ── report header ─────────────────────────────────────────────────
+    report_title = (
+        f"Daily Report of JSW Dharamtar Port Operation : "
+        f"{report_date.day}.{report_date.month}.{report_date.year}"
+    )
+    date_str = report_date.strftime("%d-%m-%Y")
+    ws.row_dimensions[2].height = 30
+
+    _merge_write(2, LABEL_START, 2, LABEL_START + 2,
+                 date_str, align=_left, title=True)
+    _merge_write(2, LABEL_START + 3, 2, last_vessel_col - 10,
+                 report_title, align=_ctr, title=True)
+    _merge_write(2, last_vessel_col - 9, 2, last_vessel_col - 5,
+                 "Doc No.OPE/0100/F/11| REV.02 | Issue no. 02",
+                 align=_left, title=True)
+    _merge_write(2, last_vessel_col - 4, 2, last_vessel_col,
+                 "Issue Date : 01/04/2024", align=_left, title=True)
+
+    # ── vessel header ─────────────────────────────────────────────────
+    ws.row_dimensions[3].height = 55
+    _merge_write(3, LABEL_START, 3, LABEL_END, "")
+
+    for idx, vessel in enumerate(vessels):
+        _merge_write(
+            3, v_start(idx), 3, v_end(idx),
+            f"Vessel {idx + 1}: {vessel['vessel_name']}",
+            align=_ctr, title=True
+        )
+
+    ws.print_title_rows = "2:3"
+    ws.print_options.horizontalCentered = True
+
+    current_row = 4
+
+    # ── vessel status section ─────────────────────────────────────────
     STATUS_ROWS = [
-        ("Stevedore / Barge Group",     "stevedore_group",          lambda x: x or "",  _ctr),
-        ("BL Qty",                      "bl_qty",                   _fmt_num,            _ctr),
-        ("24 Hrs Discharge",            "ops_24h",                  _fmt_num,            _ctr),
-        ("Unloaded Till Date",          "ops_till",                 _fmt_num,            _ctr),
-        ("Balance",                     "balance",                  _fmt_num,            _ctr),
-        ("Vsl Arrived / NOR",           "nor_tendered",             _fmt_dt,             _ctr),
-        ("Discharge Commenced",         "discharge_commenced",      _fmt_dt,             _ctr),
-        ("Discharge Completed",         "discharge_completed",      _fmt_dt,             _ctr),
+        ("Stevedore / Barge Group",       "stevedore_group",        lambda x: x or "",  _ctr),
+        ("BL Qty",                         "bl_qty",                 _fmt_num,            _ctr),
+        ("24 Hrs Discharge",               "ops_24h",                _fmt_num,            _ctr),
+        ("Unloaded Till Date",             "ops_till",               _fmt_num,            _ctr),
+        ("Balance",                        "balance",                _fmt_num,            _ctr),
+        ("Vsl Arrived / NOR",              "nor_tendered",           _fmt_dt,             _ctr),
+        ("Discharge Commenced",            "discharge_commenced",    _fmt_dt,             _ctr),
+        ("Discharge Completed",            "discharge_completed",    _fmt_dt,             _ctr),
         (None, None, None, None),
-        ("No Of Barges",                "num_barges",               lambda x: x or "",   _ctr),
-        ("At Jetty",                    "at_jetty",                 lambda x: x or "",   _left),
-        ("At Jetty Waiting For Discharge",       "waiting_discharge",        lambda x: x or "",   _left),
-        ("Waiting Empty At Jetty",      "waiting_empty_jetty",      lambda x: x or "",   _left),
-        ("At Gull - Waiting (Loaded)",  "at_gull_loaded",           lambda x: x or "",   _left),
-        ("Under Loading",               "under_loading",            lambda x: x or "",   _left),
-        ("Waiting For Loading",         "waiting_loading",          lambda x: x or "",   _left),
-        ("In Transit Jetty To MV",      "in_transit_jetty_to_mv",   lambda x: x or "",   _left),
+        ("No Of Barges",                   "num_barges",             lambda x: x or "",   _ctr),
+        ("Discharge At Jetty",             "at_jetty",               lambda x: x or "",   _left),
+        ("Waiting For Discharge At Jetty", "waiting_discharge",      lambda x: x or "",   _left),
+        ("Waiting Empty At Jetty",         "waiting_empty_jetty",    lambda x: x or "",   _left),
+        ("At Gull - Waiting (Loaded)",     "at_gull_loaded",         lambda x: x or "",   _left),
+        ("Under Loading",                  "under_loading",          lambda x: x or "",   _left),
+        ("Waiting For Loading",            "waiting_loading",        lambda x: x or "",   _left),
+        ("In Transit Jetty To MV",         "in_transit_jetty_to_mv", lambda x: x or "",   _left),
     ]
 
     for label, field, formatter, align in STATUS_ROWS:
-
         if label is None:
             current_row += 1
             continue
 
         ws.row_dimensions[current_row].height = 30
-
-        _merge_write(
-            current_row, LABEL_START, current_row, LABEL_END,
-            label, bold=True, align=_left
-        )
+        _merge_write(current_row, LABEL_START, current_row, LABEL_END,
+                     label, align=_left)
 
         for idx, vessel in enumerate(vessels):
-            raw = vessel.get(field)
-            if formatter:
-                value = formatter(raw)
-                if field in (
-                    "at_jetty", "waiting_discharge", "waiting_empty_jetty",
-                    "at_gull_loaded", "under_loading", "waiting_loading",
-                    "in_transit_jetty_to_mv"
-                ):
-                    ws.row_dimensions[current_row].height = 55
-            else:
-                value = raw
+            raw   = vessel.get(field)
+            value = formatter(raw) if formatter else raw
+            if field in ("at_jetty","waiting_discharge","waiting_empty_jetty",
+                         "at_gull_loaded","under_loading","waiting_loading",
+                         "in_transit_jetty_to_mv"):
+                ws.row_dimensions[current_row].height = 55
+            _merge_write(current_row, v_start(idx), current_row, v_end(idx),
+                         value, align=align)
 
-            _merge_write(
-                current_row, v_start(idx), current_row, v_end(idx),
-                value, align=align
-            )
-
-        if label == "At Jetty":
+        if label == "Discharge At Jetty":
             mbc_col = last_vessel_col + 2
-
-            
-
             discharging_at_jetty = [
                 m for m in (discharging_mbcs or [])
                 if (m.get("status") or "") == "DISCHARGING"
             ]
-
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
                 f"Bal:{int(round(float(m.get('discharge_quantity') or 0)))} MT"
                 for m in discharging_at_jetty
             ])
-
             c = ws.cell(current_row, mbc_col, val)
-            c.font = _font()
-            c.fill = _fill("FFF3CD")
+            c.font      = _font()
+            c.fill      = _fill("FFF3CD")
             c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-            c.border = _bdr
-            ws.merge_cells(
-                start_row=current_row, start_column=mbc_col,
-                end_row=current_row, end_column=mbc_col + 3
-            )
+            c.border    = thick_bdr
+            ws.merge_cells(start_row=current_row, start_column=mbc_col,
+                           end_row=current_row,   end_column=mbc_col + 3)
 
-        # -- After "Waiting For Discharge" row: add MBC Waiting column --
-        if label == "Waiting For Discharge":
+        if label == "Waiting For Discharge At Jetty":
             mbc_col = last_vessel_col + 2
-
             discharging_waiting = [
                 m for m in (discharging_mbcs or [])
                 if (m.get("status") or "") == "ARRIVED"
             ]
-
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
                 f"{int(round(float(m.get('bl_quantity') or 0)))} MT"
                 for m in discharging_waiting
             ])
-
             c = ws.cell(current_row, mbc_col, val)
-            c.font = _font()
-            c.fill = _fill("F8D7DA")
+            c.font      = _font()
+            c.fill      = _fill("F8D7DA")
             c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-            c.border = _bdr
-            ws.merge_cells(
-                start_row=current_row, start_column=mbc_col,
-                end_row=current_row, end_column=mbc_col + 3
-            )
+            c.border    = thick_bdr
+            ws.merge_cells(start_row=current_row, start_column=mbc_col,
+                           end_row=current_row,   end_column=mbc_col + 3)
 
         current_row += 1
 
-    # =====================================================
-    # SECTION SPACING
-    # =====================================================
-
     current_row += 2
 
-
-    # =====================================================
-    # UPCOMING VESSELS
-    # =====================================================
-
+    # ── upcoming vessels ──────────────────────────────────────────────
     upcoming_vessels = upcoming_vessels or []
+    uv_section_start_row = current_row  # ← save for Cargo Availability anchor
 
-    # Count columns needed: LABEL_START to LABEL_START + 8 (same as MV table)
-    ws.merge_cells(
-        start_row=current_row, start_column=LABEL_START,
-        end_row=current_row, end_column=LABEL_START + 8
-    )
-    c = ws.cell(current_row, LABEL_START, "Upcoming Vessels")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = _ctr
-    c.border = _bdr
-    for cc in range(LABEL_START, LABEL_START + 9):
-        ws.cell(current_row, cc).border = _bdr
-    current_row += 1
+    # Explicit column widths for the UV/MBC table area (cols B..J)
+    UV_COL_WIDTHS = [30, 35, 20, 20, 22, 22, 30, 30, 35, 35, 35]
+    for i, w in enumerate(UV_COL_WIDTHS):
+        ws.column_dimensions[get_column_letter(LABEL_START + i)].width = w
 
+    # spans: Vessel Name=3, Cargo=2, Qty=1, Agent=2, ETA/Status=2 → total=10
     uv_headers = ["Vessel Name", "Cargo", "Qty (MT)", "Agent", "ETA / Status"]
-    uv_spans   = [2, 2, 1, 2, 2]   # total = 9 cols, same end as MV table
+    uv_spans   = [3, 2, 2, 2, 2]          # total = 10 cols
+    UV_TOTAL   = sum(uv_spans)             # 10
+
+    ws.merge_cells(start_row=current_row, start_column=LABEL_START,
+                   end_row=current_row,   end_column=LABEL_START + UV_TOTAL - 1)
+    c = ws.cell(current_row, LABEL_START, "Upcoming Vessels")
+    c.font = _title_font(); c.fill = _fill("D9EAF7")
+    c.alignment = _ctr; c.border = thick_bdr
+    for cc in range(LABEL_START, LABEL_START + UV_TOTAL):
+        ws.cell(current_row, cc).border = thick_bdr
+    ws.row_dimensions[current_row].height = 30
+    current_row += 1
 
     col = LABEL_START
     for h, span in zip(uv_headers, uv_spans):
-        ws.merge_cells(
-            start_row=current_row, start_column=col,
-            end_row=current_row, end_column=col + span - 1
-        )
+        if span > 1:
+            ws.merge_cells(start_row=current_row, start_column=col,
+                           end_row=current_row,   end_column=col + span - 1)
         c = ws.cell(current_row, col, h)
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.alignment = _ctr
-        c.border = _bdr
+        c.font = _font(); c.fill = _fill("D9EAF7")
+        c.alignment = _ctr; c.border = thick_bdr
         for cc in range(col, col + span):
-            ws.cell(current_row, cc).border = _bdr
+            ws.cell(current_row, cc).border = thick_bdr
         col += span
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
     for v in upcoming_vessels:
@@ -2303,465 +2204,210 @@ def _build_excel_a4(
                 v.get("vessel_agent_name", "") or "-",
                 v.get("eta", "") or "-",
             ],
-            uv_spans
+            uv_spans,
         ):
             if span > 1:
-                ws.merge_cells(
-                    start_row=current_row, start_column=col,
-                    end_row=current_row, end_column=col + span - 1
-                )
+                ws.merge_cells(start_row=current_row, start_column=col,
+                               end_row=current_row,   end_column=col + span - 1)
             c = ws.cell(current_row, col, val)
-            c.font = _font()
-            c.fill = _fill("FFFFFF")
-            c.alignment = _left
-            c.border = _bdr
+            c.font = _font(); c.fill = _fill("FFFFFF")
+            c.alignment = _left; c.border = thick_bdr
             for cc in range(col, col + span):
-                ws.cell(current_row, cc).border = _bdr
+                ws.cell(current_row, cc).border = thick_bdr
             col += span
+        ws.row_dimensions[current_row].height = 30
         current_row += 1
 
     current_row += 2
 
-    # =====================================================
-    # CARGO AVAILABILITY (RIGHT OF UPCOMING VESSELS)
-    # =====================================================
+    # ── cargo availability ────────────────────────────────────────────
     cargo_availability = cargo_availability or []
-
-    # Always define data_row so Tide section never crashes
     data_row = current_row
 
     if cargo_availability:
+        # Start Cargo Availability after UV table + 1 blank column
+        CA_START_COL = LABEL_START + UV_TOTAL + 1
+        CARGO_WIDTH  = 12
 
-        CA_START_COL = 12
-        CARGO_WIDTH = 12
-
-        if editable_table and len(editable_table) > 0:
-
-            cargo_names = editable_table[0][1:-1]
-
-        else:
-
-            cargo_names = [
-                row["cargo_name"]
-                for row in cargo_availability
-            ]
-
-        grand_total = sum(
-            float(row["at_jetty_qty"] or 0)
-            for row in cargo_availability
+        cargo_names = (
+            editable_table[0][1:-1]
+            if editable_table and len(editable_table) > 0
+            else [row["cargo_name"] for row in cargo_availability]
         )
 
-        uv_start_row = current_row - len(upcoming_vessels) - 4
+        grand_total  = sum(float(row["at_jetty_qty"] or 0) for row in cargo_availability)
+        uv_start_row = uv_section_start_row  # anchored to where UV section started
 
-        # -------------------------
-        # Title
-        # -------------------------
+        # title
+        last_ca_col = CA_START_COL + len(cargo_names) + 1
         ws.merge_cells(
             start_row=uv_start_row,
             start_column=CA_START_COL,
             end_row=uv_start_row,
-            end_column=CA_START_COL + len(cargo_names) + 1
+            end_column=last_ca_col
         )
-
-        c = ws.cell(
-            uv_start_row,
-            CA_START_COL,
-            "Cargo Availability For The Day"
-        )
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
+        c = ws.cell(uv_start_row, CA_START_COL, "Cargo Availability For The Day")
+        c.font      = _title_font()
+        c.fill      = _fill("D9EAF7")
         c.alignment = _ctr
-        c.border = _bdr
+        c.border    = thick_bdr
+        for cc in range(CA_START_COL, CA_START_COL + len(cargo_names) + 2):
+            ws.cell(uv_start_row, cc).border = thick_bdr
 
-        # Border for merged title
-        for cc in range(
-            CA_START_COL,
-            CA_START_COL + len(cargo_names) + 2
-        ):
-            ws.cell(uv_start_row, cc).border = _bdr
-
-        # -------------------------
-        # Header
-        # -------------------------
+        # header
         hdr_row = uv_start_row + 1
-        col = CA_START_COL
-
+        col     = CA_START_COL
         c = ws.cell(hdr_row, col, "")
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
+        c.font      = _font()
+        c.fill      = _fill("D9EAF7")
         c.alignment = _ctr
-        c.border = _bdr
-
-        # Row-label column
-        ws.column_dimensions[
-            get_column_letter(col)
-        ].width = 15
-
+        c.border    = thick_bdr
+        ws.column_dimensions[get_column_letter(col)].width = 15
         col += 1
 
-        # Cargo columns (ALL SAME WIDTH)
         for cargo in cargo_names:
-
             c = ws.cell(hdr_row, col, cargo)
-            c.font = _font(bold=True)
-            c.fill = _fill("D9EAF7")
-
-            c.alignment = Alignment(
-                horizontal="center",
-                vertical="center",
-                wrap_text=True
-            )
-
-            c.border = _bdr
-
-            ws.column_dimensions[
-                get_column_letter(col)
-            ].width = CARGO_WIDTH
-
+            c.font      = _font()
+            c.fill      = _fill("D9EAF7")
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c.border    = thick_bdr
+            ws.column_dimensions[get_column_letter(col)].width = CARGO_WIDTH
             col += 1
 
-        # Total column
         c = ws.cell(hdr_row, col, "Total")
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.alignment = Alignment(
-            horizontal="center",
-            vertical="center",
-            wrap_text=True
-        )
-        c.border = _bdr
-
-        ws.column_dimensions[
-            get_column_letter(col)
-        ].width = CARGO_WIDTH
-
+        c.font      = _font()
+        c.fill      = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border    = thick_bdr
+        ws.column_dimensions[get_column_letter(col)].width = CARGO_WIDTH
         total_col = col
-
-        # Header height
         ws.row_dimensions[hdr_row].height = 45
 
-        # -------------------------
-        # Data Rows
-        # -------------------------
-        data_row = hdr_row + 1
-
-        row_labels = [
-            "At Jetty",
-            "",
-            "",
-            "",
-            "Total"
-        ]
-
-        for r, label in enumerate(row_labels):
-
-            c = ws.cell(
-                data_row + r,
-                CA_START_COL,
-                label
-            )
-
-            c.font = _font(
-                bold=(label in ["At Jetty", "Total"])
-            )
-
-            c.border = _bdr
+        # data rows
+        data_row  = hdr_row + 1
+        row_labels = ["At Jetty", "", "", "", "Total"]
+        for r, lbl in enumerate(row_labels):
+            c = ws.cell(data_row + r, CA_START_COL, lbl)
+            c.font      = _font()
+            c.border    = thick_bdr
             c.alignment = _left
 
-        # Cargo quantities
-        # =====================================
-        # FILL FROM EDITABLE HTML TABLE
-        # =====================================
-
         if editable_table:
-
             print("EXCEL TABLE =", editable_table)
-
-            # Skip first row because it contains cargo headers
             for r_idx, row_data in enumerate(editable_table[1:]):
-
                 excel_row = data_row + r_idx
-
                 for c_idx, value in enumerate(row_data):
-
                     excel_col = CA_START_COL + c_idx
-
-                    c = ws.cell(
-                        excel_row,
-                        excel_col,
-                        value
-                    )
-
-                    c.border = _bdr
+                    c = ws.cell(excel_row, excel_col, value)
+                    c.border    = thick_bdr
                     c.alignment = _ctr
-
         else:
-
             col = CA_START_COL + 1
-
-            for idx, row in enumerate(cargo_availability):
-
-                c = ws.cell(
-                    data_row,
-                    col,
-                    row.get("at_jetty_qty", "")
-                )
-
+            for row in cargo_availability:
+                c = ws.cell(data_row, col, row.get("at_jetty_qty", ""))
                 c.alignment = _ctr
-                c.border = _bdr
-
+                c.border    = thick_bdr
                 col += 1
-        # -------------------------
-        # Total Column
-        # -------------------------
-        c = ws.cell(
-            data_row + 4,
-            total_col,
-            int(round(grand_total))
-        )
 
-        c.font = _font(bold=True)
+        # total column
+        c = ws.cell(data_row + 4, total_col, int(round(grand_total)))
+        c.font      = _font()
         c.alignment = _ctr
-        c.border = _bdr
+        c.border    = thick_bdr
+        for cc in range(CA_START_COL, total_col + 1):
+            ws.cell(data_row + 4, cc).border = thick_bdr
+        for rr in range(hdr_row, data_row + 5):
+            ws.cell(rr, total_col).border = thick_bdr
+        for rr in range(uv_start_row, data_row + 5):
+            for cc in range(CA_START_COL, total_col + 1):
+                ws.cell(rr, cc).border = thick_bdr
 
-        for cc in range(
-            CA_START_COL,
-            total_col + 1
-        ):
-            ws.cell(
-                data_row + 4,
-                cc
-            ).border = _bdr
-
-        for rr in range(
-            hdr_row,
-            data_row + 5
-        ):
-            ws.cell(
-                rr,
-                total_col
-            ).border = _bdr
-
-        # Full table border
-        for rr in range(
-            uv_start_row,
-            data_row + 5
-        ):
-            for cc in range(
-                CA_START_COL,
-                total_col + 1
-            ):
-                ws.cell(rr, cc).border = _bdr
-            
-        # -------------------------
-        # Grand Total Row
-        # -------------------------
+        # grand total row
         grand_total_row = data_row + 5
-
-        # Label cell
         c = ws.cell(grand_total_row, CA_START_COL, "")
-        c.border = _bdr
+        c.border = thick_bdr
 
-        # IBRM
-        ws.merge_cells(
-            start_row=grand_total_row,
-            start_column=CA_START_COL + 1,
-            end_row=grand_total_row,
-            end_column=CA_START_COL + 5
-        )
+        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 1,
+                       end_row=grand_total_row,   end_column=CA_START_COL + 5)
+        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 6,
+                       end_row=grand_total_row,   end_column=CA_START_COL + 15)
+        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 16,
+                       end_row=grand_total_row,   end_column=CA_START_COL + 18)
 
-        # CBRM
-        ws.merge_cells(
-            start_row=grand_total_row,
-            start_column=CA_START_COL + 6,
-            end_row=grand_total_row,
-            end_column=CA_START_COL + 15
-        )
-
-        # FLUXES
-        ws.merge_cells(
-            start_row=grand_total_row,
-            start_column=CA_START_COL + 16,
-            end_row=grand_total_row,
-            end_column=CA_START_COL + 18
-        )
-
-        # ----------------------------------
-        # Read edited Grand Total values
-        # ----------------------------------
-        grand_ibrm = ""
-        grand_cbrm = ""
-        grand_fluxes = ""
-        grand_slag = ""
-        grand_clinker = ""
-        grand_total = ""
-
+        grand_ibrm = grand_cbrm = grand_fluxes = ""
+        grand_slag = grand_clinker = grand_total_val = ""
         try:
-
-            print("EDITABLE TABLE =", editable_table)
-
             if editable_table and len(editable_table) > 6:
-
-                grand_row = editable_table[6]
-
-                print("GRAND ROW =", grand_row)
-
-                grand_ibrm = grand_row[1] if len(grand_row) > 1 else ""
-                grand_cbrm = grand_row[2] if len(grand_row) > 2 else ""
-                grand_fluxes = grand_row[3] if len(grand_row) > 3 else ""
-                grand_slag = grand_row[4] if len(grand_row) > 4 else ""
-                grand_clinker = grand_row[5] if len(grand_row) > 5 else ""
-                grand_total = grand_row[6] if len(grand_row) > 6 else ""
-
+                grand_row   = editable_table[6]
+                grand_ibrm  = grand_row[1] if len(grand_row) > 1 else ""
+                grand_cbrm  = grand_row[2] if len(grand_row) > 2 else ""
+                grand_fluxes= grand_row[3] if len(grand_row) > 3 else ""
+                grand_slag  = grand_row[4] if len(grand_row) > 4 else ""
+                grand_clinker=grand_row[5] if len(grand_row) > 5 else ""
+                grand_total_val=grand_row[6] if len(grand_row) > 6 else ""
         except Exception as e:
-
             print("GRAND TOTAL ERROR =", str(e))
 
-        # ----------------------------------
-        # Write Grand Total values
-        # ----------------------------------
+        for (col_offset, val) in [
+            (1,  grand_ibrm),
+            (6,  grand_cbrm),
+            (16, grand_fluxes),
+            (19, grand_slag),
+            (20, grand_clinker),
+        ]:
+            c = ws.cell(grand_total_row, CA_START_COL + col_offset, val)
+            c.font      = _font()
+            c.alignment = _ctr
+            c.border    = thick_bdr
 
-        c = ws.cell(
-            grand_total_row,
-            CA_START_COL + 1,
-            grand_ibrm
-        )
-        c.font = _font(bold=True)
+        c = ws.cell(grand_total_row, total_col, grand_total_val)
+        c.font      = _font()
         c.alignment = _ctr
-        c.border = _bdr
+        c.border    = thick_bdr
 
-        c = ws.cell(
-            grand_total_row,
-            CA_START_COL + 6,
-            grand_cbrm
-        )
-        c.font = _font(bold=True)
-        c.alignment = _ctr
-        c.border = _bdr
-
-        c = ws.cell(
-            grand_total_row,
-            CA_START_COL + 16,
-            grand_fluxes
-        )
-        c.font = _font(bold=True)
-        c.alignment = _ctr
-        c.border = _bdr
-
-        c = ws.cell(
-            grand_total_row,
-            CA_START_COL + 19,
-            grand_slag
-        )
-        c.font = _font(bold=True)
-        c.alignment = _ctr
-        c.border = _bdr
-
-        c = ws.cell(
-            grand_total_row,
-            CA_START_COL + 20,
-            grand_clinker
-        )
-        c.font = _font(bold=True)
-        c.alignment = _ctr
-        c.border = _bdr
-
-        c = ws.cell(
-            grand_total_row,
-            total_col,
-            grand_total
-        )
-        c.font = _font(bold=True)
-        c.alignment = _ctr
-        c.border = _bdr
-
-        # Borders for merged row
         for col in range(CA_START_COL, total_col + 1):
+            cell = ws.cell(grand_total_row, col)
+            cell.border    = thick_bdr
+            cell.alignment = _ctr
+            cell.font      = _font()
 
-            ws.cell(
-                grand_total_row,
-                col
-            ).border = _bdr
-
-            ws.cell(
-                grand_total_row,
-                col
-            ).alignment = _ctr
-
-            ws.cell(
-                grand_total_row,
-                col
-            ).font = _font(bold=True)
-
-        # Start next section below Grand Total row
         data_row = grand_total_row + 1
 
-    # =====================================================
-    # TIDE - DHARAMTAR PORT
-    # =====================================================
-    dashboard_row = current_row
-    tide_start_row = data_row + 3
-    TIDE_COL = 12   # Same column as cargo availability
+    # ── tide ──────────────────────────────────────────────────────────
+    dashboard_row  = current_row
+    # Tide/PT/MBC sections start below the UV/cargo section
+    # Use the larger of: end of cargo-avail OR end of UV rows, plus spacing
+    # Move section up by 11 rows
+    tide_section_anchor = max(data_row, current_row) - 8
 
-    # ✅ Override the width=5 set by cargo availability
-    ws.column_dimensions[get_column_letter(TIDE_COL)].width = 30
+    tide_start_row = tide_section_anchor
+
+    # Move table 2 columns right
+    TIDE_COL = 14
+
+    ws.column_dimensions[get_column_letter(TIDE_COL)].width     = 30
     ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 30
 
-    def safe_cell(ws, row, col, value=None):
-        from openpyxl.utils import get_column_letter
-        cell_coord = f"{get_column_letter(col)}{row}"
-        for merge in list(ws.merged_cells.ranges):
-            if cell_coord in merge:
-                ws.unmerge_cells(str(merge))
-                break
-        c = ws.cell(row, col)
-        if value is not None:
-            c.value = value
-        return c
-
-    def safe_merge(ws, start_row, start_col, end_row, end_col):
-        from openpyxl.utils import get_column_letter
-        for r in range(start_row, end_row + 1):
-            for c in range(start_col, end_col + 1):
-                coord = f"{get_column_letter(c)}{r}"
-                for merge in list(ws.merged_cells.ranges):
-                    if coord in merge:
-                        ws.unmerge_cells(str(merge))
-                        break
-        ws.merge_cells(
-            start_row=start_row, start_column=start_col,
-            end_row=end_row, end_column=end_col
-        )
-
-    # Title — merged across TIME + TIDE columns
     safe_merge(ws, tide_start_row, TIDE_COL, tide_start_row, TIDE_COL + 1)
     for cc in range(TIDE_COL, TIDE_COL + 2):
         ws.cell(tide_start_row, cc).fill   = _fill("D9EAF7")
-        ws.cell(tide_start_row, cc).border = _bdr
-        ws.cell(tide_start_row, cc).font   = _font(bold=True)
+        ws.cell(tide_start_row, cc).border = thick_bdr
+        ws.cell(tide_start_row, cc).font   = _title_font()
     ws.cell(tide_start_row, TIDE_COL).value     = "Tide - Dharamtar Port"
     ws.cell(tide_start_row, TIDE_COL).alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[tide_start_row].height    = 18
 
-    # Header Row
     header_row = tide_start_row + 1
     ws.row_dimensions[header_row].height = 18
-    c = safe_cell(ws, header_row, TIDE_COL, "Time")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    for col_off, lbl in [(0, "Time"), (1, "Tide")]:
+        c = safe_cell(ws, header_row, TIDE_COL + col_off, lbl)
+        c.font      = _font()
+        c.fill      = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border    = thick_bdr
 
-    c = safe_cell(ws, header_row, TIDE_COL + 1, "Tide")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
-
-    # Data Rows
     row_no = header_row + 1
     for tide in (tide_rows or []):
-
         tide_dt = ""
         if tide.get("tide_datetime"):
             try:
@@ -2773,1645 +2419,648 @@ def _build_excel_a4(
                 tide_dt = str(tide["tide_datetime"])
 
         c = safe_cell(ws, row_no, TIDE_COL, tide_dt)
-        c.font = _font(bold=True)          # SAME AS PORT THROUGHPUT
-        c.border = _bdr
-        c.alignment = Alignment(
-            horizontal="center",
-            vertical="center"
-        )
+        c.font      = _font()
+        c.border    = thick_bdr
+        c.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[row_no].height = 18
 
-        c = safe_cell(
-            ws,
-            row_no,
-            TIDE_COL + 1,
-            tide.get("tide_meters", "")
-        )
-        c.font = _font(bold=True)          # SAME AS PORT THROUGHPUT
-        c.alignment = Alignment(
-            horizontal="center",
-            vertical="center"
-        )
-        c.border = _bdr
-
+        c = safe_cell(ws, row_no, TIDE_COL + 1, tide.get("tide_meters", ""))
+        c.font      = _font()
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border    = thick_bdr
         row_no += 1
-    # current_row = max(current_row, row_no + 2)
 
-    # =====================================================
-    # PORT THROUGHPUT
-    # =====================================================
-
-    PT_COL = TIDE_COL + 3
-
-    # Move Port Throughput section 1 row up
+    # ── port throughput ───────────────────────────────────────────────
+    PT_COL       = TIDE_COL + 3
     pt_start_row = tide_start_row - 1
 
-    ws.column_dimensions[get_column_letter(PT_COL)].width = 30
+    ws.column_dimensions[get_column_letter(PT_COL)].width     = 30
     ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 30
 
     safe_merge(ws, pt_start_row, PT_COL, pt_start_row, PT_COL + 1)
-
     for cc in range(PT_COL, PT_COL + 2):
-        ws.cell(pt_start_row, cc).fill = _fill("D9EAF7")
-        ws.cell(pt_start_row, cc).border = _bdr
-        ws.cell(pt_start_row, cc).font = _font(bold=True)
-
-    ws.cell(pt_start_row, PT_COL).value = "Port Throughput"
-    ws.cell(pt_start_row, PT_COL).alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
+        ws.cell(pt_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(pt_start_row, cc).border = thick_bdr
+        ws.cell(pt_start_row, cc).font   = _title_font()
+    ws.cell(pt_start_row, PT_COL).value     = "Port Throughput"
+    ws.cell(pt_start_row, PT_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     port_throughput = port_throughput or {}
-
-    pt_rows = [
+    pt_rows_data = [
         ("Jetty Throughput (Day)", port_throughput.get("day_qty", "")),
-        ("Month", port_throughput.get("mtd_qty", "")),
-        ("Year", port_throughput.get("ytd_qty", "")),
+        ("Month",                  port_throughput.get("mtd_qty", "")),
+        ("Year",                   port_throughput.get("ytd_qty", "")),
         ("Cumulative Since Oct 2012", port_throughput.get("cumulative_qty", "")),
-        ("Month TPD", f"{port_throughput.get('month_tpd', 0):,.2f}"),
-        ("Year TPD", f"{port_throughput.get('year_tpd', 0):,.2f}")
+        ("Month TPD",              f"{port_throughput.get('month_tpd', 0):,.2f}"),
+        ("Year TPD",               f"{port_throughput.get('year_tpd', 0):,.2f}"),
     ]
 
     pt_row = pt_start_row + 1
-
-    for label, value in pt_rows:
-
+    for label, value in pt_rows_data:
         c = safe_cell(ws, pt_row, PT_COL, label)
-        c.font = _font(bold=True)
-        c.border = _bdr
-        c.alignment = Alignment(
-            horizontal="left",
-            vertical="center"
-        )
+        c.font      = _font()
+        c.border    = thick_bdr
+        c.alignment = Alignment(horizontal="left", vertical="center")
 
         c = safe_cell(ws, pt_row, PT_COL + 1, value)
-        c.font = _font(bold=True)
-        c.border = _bdr
-        c.alignment = Alignment(
-            horizontal="right",
-            vertical="center"
-        )
-
+        c.font      = _font()
+        c.border    = thick_bdr
+        c.alignment = Alignment(horizontal="right", vertical="center")
         pt_row += 1
 
-# =====================================================
-    # MBC CARGO HANDLING TABLE
-    # =====================================================
-    MBC_COL = PT_COL + 3
+    # ── MBC cargo handling ────────────────────────────────────────────
+    MBC_COL       = PT_COL + 3
     mbc_start_row = tide_start_row - 1
 
-    # -- 1. Organise fetched data --------------------------------------------------
     day_lookup = {
-        (r['owner'], r['cargo_type']): float(r['qty'] or 0)
+        (r["owner"], r["cargo_type"]): float(r["qty"] or 0)
         for r in (mbc_day_rows or [])
     }
-
     month_lookup = {
-        (r['owner'], r['cargo_type']): float(r['qty'] or 0)
+        (r["owner"], r["cargo_type"]): float(r["qty"] or 0)
         for r in (mbc_month_rows or [])
     }
-
     year_lookup = {
-        (r['owner'], r['cargo_type']): float(r['qty'] or 0)
+        (r["owner"], r["cargo_type"]): float(r["qty"] or 0)
         for r in (mbc_year_rows or [])
     }
 
-    all_rows = (
+    all_rows_mbc = (
         list(mbc_day_rows or []) +
         list(mbc_month_rows or []) +
         list(mbc_year_rows or [])
     )
+    cargo_types = list(dict.fromkeys(r["cargo_type"] for r in all_rows_mbc))
+    owners      = list(dict.fromkeys(r["owner"]      for r in all_rows_mbc))
+    n_cargo     = len(cargo_types)
 
-    cargo_types = list(
-        dict.fromkeys(r['cargo_type'] for r in all_rows)
-    )
-
-    owners = list(
-        dict.fromkeys(r['owner'] for r in all_rows)
-    )
-
-    n_cargo = len(cargo_types)
-
-    # Day + MTD + YTD
-    DAY_COLS = n_cargo + 1
-    MTD_COLS = n_cargo + 1
-    YTD_COLS = 1
-
+    DAY_COLS   = n_cargo + 1
+    MTD_COLS   = n_cargo + 1
+    YTD_COLS   = 1
     total_cols = 1 + DAY_COLS + MTD_COLS + YTD_COLS
 
-    # -- 2. Column widths ----------------------------------------------------------
     ws.column_dimensions[get_column_letter(MBC_COL)].width = 16
     for i in range(n_cargo):
         ws.column_dimensions[get_column_letter(MBC_COL + 1 + i)].width = 16
-    # Day totals col
-    ws.column_dimensions[get_column_letter(MBC_COL + 1 + n_cargo)].width = 16
 
-    day_start = MBC_COL + 1
-    mtd_start = day_start + n_cargo + 1
-    ytd_start = mtd_start + n_cargo + 1
+    day_start_col = MBC_COL + 1
+    mtd_start_col = day_start_col + n_cargo + 1
+    ytd_start_col = mtd_start_col + n_cargo + 1
 
-    # MTD cargo cols
     for i in range(n_cargo):
-        ws.column_dimensions[get_column_letter(mtd_start + i)].width = 16
-    # MTD totals col
-    ws.column_dimensions[get_column_letter(mtd_start + n_cargo)].width = 16
-    # YTD col
-    ws.column_dimensions[get_column_letter(ytd_start)].width = 16
+        ws.column_dimensions[get_column_letter(day_start_col + n_cargo)].width = 16
+        ws.column_dimensions[get_column_letter(mtd_start_col + i)].width       = 16
+    ws.column_dimensions[get_column_letter(mtd_start_col + n_cargo)].width     = 16
+    ws.column_dimensions[get_column_letter(ytd_start_col)].width               = 25
 
-    # -- 3. Title row --------------------------------------------------------------
+    # title
     safe_merge(ws, mbc_start_row, MBC_COL, mbc_start_row, MBC_COL + total_cols - 1)
     for cc in range(MBC_COL, MBC_COL + total_cols):
         ws.cell(mbc_start_row, cc).fill   = _fill("D9EAF7")
-        ws.cell(mbc_start_row, cc).border = _bdr
-        ws.cell(mbc_start_row, cc).font   = _font(bold=True)
+        ws.cell(mbc_start_row, cc).border = thick_bdr
+        ws.cell(mbc_start_row, cc).font   = _title_font()
     ws.cell(mbc_start_row, MBC_COL).value     = "MBC Cargo Handling"
     ws.cell(mbc_start_row, MBC_COL).alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[mbc_start_row].height   = 18
 
-    # =====================================================
-    # HEADER ROWS
-    # =====================================================
-
     cargo_hdr_row = mbc_start_row + 1
     col_hdr_row   = cargo_hdr_row + 1
 
-    # Owner (merged across both header rows)
+    # owner merged header
     safe_merge(ws, cargo_hdr_row, MBC_COL, col_hdr_row, MBC_COL)
     c = safe_cell(ws, cargo_hdr_row, MBC_COL, "Owner")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
+    c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
     c.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Day Header
-    safe_merge(ws, cargo_hdr_row, day_start, cargo_hdr_row, day_start + n_cargo)
-    c = safe_cell(ws, cargo_hdr_row, day_start, "Day")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="center")
-
-    # MTD Header
-    safe_merge(ws, cargo_hdr_row, mtd_start, cargo_hdr_row, mtd_start + n_cargo)
-    c = safe_cell(ws, cargo_hdr_row, mtd_start, "MTD")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="center")
-
-    # YTD Header
-    safe_merge(ws, cargo_hdr_row, ytd_start, cargo_hdr_row, ytd_start)
-    c = safe_cell(ws, cargo_hdr_row, ytd_start, "YTD")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="center")
-
-    # -- Second Header Row (cargo type names + Total) --
-    for i, ct in enumerate(cargo_types):
-        c = safe_cell(ws, col_hdr_row, day_start + i, ct)
-        c.font      = _font(bold=True)
-        c.fill      = _fill("D9EAF7")
-        c.border    = _bdr
+    for label, start, end in [
+        ("Day", day_start_col, day_start_col + n_cargo),
+        ("MTD", mtd_start_col, mtd_start_col + n_cargo),
+        ("YTD", ytd_start_col, ytd_start_col),
+    ]:
+        safe_merge(ws, cargo_hdr_row, start, cargo_hdr_row, end)
+        c = safe_cell(ws, cargo_hdr_row, start, label)
+        c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
         c.alignment = Alignment(horizontal="center")
 
-    c = safe_cell(ws, col_hdr_row, day_start + n_cargo, "Total")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="center")
-
     for i, ct in enumerate(cargo_types):
-        c = safe_cell(ws, col_hdr_row, mtd_start + i, ct)
-        c.font      = _font(bold=True)
-        c.fill      = _fill("D9EAF7")
-        c.border    = _bdr
+        for base in [day_start_col, mtd_start_col]:
+            c = safe_cell(ws, col_hdr_row, base + i, ct)
+            c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
+            c.alignment = Alignment(horizontal="center")
+
+    for base in [day_start_col + n_cargo, mtd_start_col + n_cargo, ytd_start_col]:
+        c = safe_cell(ws, col_hdr_row, base, "Total")
+        c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
         c.alignment = Alignment(horizontal="center")
 
-    c = safe_cell(ws, col_hdr_row, mtd_start + n_cargo, "Total")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="center")
-
-    c = safe_cell(ws, col_hdr_row, ytd_start, "Total")
-    c.font      = _font(bold=True)
-    c.fill      = _fill("D9EAF7")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="center")
-
-    # Apply border to all cells in both header rows
     for cc in range(MBC_COL, MBC_COL + total_cols):
-        ws.cell(cargo_hdr_row, cc).border = _bdr
-        ws.cell(col_hdr_row,   cc).border = _bdr
-
-    # =====================================================
-    # DATA ROWS
-    # =====================================================
+        ws.cell(cargo_hdr_row, cc).border = thick_bdr
+        ws.cell(col_hdr_row,   cc).border = thick_bdr
 
     data_start = col_hdr_row + 1
-
     for owner in owners:
-
         c = safe_cell(ws, data_start, MBC_COL, owner)
-        c.border = _bdr
-        c.font   = _font(bold=True)
+        c.border = thick_bdr; c.font = _font()
 
-        day_total   = 0
-        month_total = 0
-
+        day_total = month_total = 0
         for i, ct in enumerate(cargo_types):
             qty = day_lookup.get((owner, ct), 0)
             day_total += qty
-            c = safe_cell(ws, data_start, day_start + i, qty if qty else "")
-            c.border = _bdr
-            c.font   = _font(bold=True)
+            c = safe_cell(ws, data_start, day_start_col + i, qty if qty else "")
+            c.border = thick_bdr; c.font = _font()
 
-        c = safe_cell(ws, data_start, day_start + n_cargo, day_total if day_total else "")
-        c.border = _bdr
-        c.font   = _font(bold=True)
+        c = safe_cell(ws, data_start, day_start_col + n_cargo, day_total if day_total else "")
+        c.border = thick_bdr; c.font = _font()
 
         for i, ct in enumerate(cargo_types):
             qty = month_lookup.get((owner, ct), 0)
             month_total += qty
-            c = safe_cell(ws, data_start, mtd_start + i, qty if qty else "")
-            c.border = _bdr
-            c.font   = _font(bold=True)
+            c = safe_cell(ws, data_start, mtd_start_col + i, qty if qty else "")
+            c.border = thick_bdr; c.font = _font()
 
-        c = safe_cell(ws, data_start, mtd_start + n_cargo, month_total if month_total else "")
-        c.border = _bdr
-        c.font   = _font(bold=True)
+        c = safe_cell(ws, data_start, mtd_start_col + n_cargo, month_total if month_total else "")
+        c.border = thick_bdr; c.font = _font()
 
         year_total = sum(year_lookup.get((owner, ct), 0) for ct in cargo_types)
-        c = safe_cell(ws, data_start, ytd_start, year_total if year_total else "")
-        c.border = _bdr
-        c.font   = _font(bold=True)
-
+        c = safe_cell(ws, data_start, ytd_start_col, year_total if year_total else "")
+        c.border = thick_bdr; c.font = _font()
         data_start += 1
 
-    # =====================================================
-    # TOTAL ROW
-    # =====================================================
-
+    # total row
     for i, ct in enumerate(cargo_types):
         total_day = sum(day_lookup.get((o, ct), 0) for o in owners)
-        c = safe_cell(ws, data_start, day_start + i, total_day if total_day else "")
-        c.font = _font(bold=True)
-        c.fill = _fill("F2F2F2")
-        c.border = _bdr
+        c = safe_cell(ws, data_start, day_start_col + i, total_day if total_day else "")
+        c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
 
-    c = safe_cell(ws, data_start, day_start + n_cargo, sum(day_lookup.values()))
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.border = _bdr
-
-    for i, ct in enumerate(cargo_types):
         total_mtd = sum(month_lookup.get((o, ct), 0) for o in owners)
-        c = safe_cell(ws, data_start, mtd_start + i, total_mtd if total_mtd else "")
-        c.font = _font(bold=True)
-        c.fill = _fill("F2F2F2")
-        c.border = _bdr
+        c = safe_cell(ws, data_start, mtd_start_col + i, total_mtd if total_mtd else "")
+        c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
 
-    c = safe_cell(ws, data_start, mtd_start + n_cargo, sum(month_lookup.values()))
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.border = _bdr
+    c = safe_cell(ws, data_start, day_start_col + n_cargo, sum(day_lookup.values()))
+    c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
+    c = safe_cell(ws, data_start, mtd_start_col + n_cargo, sum(month_lookup.values()))
+    c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
+    c = safe_cell(ws, data_start, ytd_start_col, sum(year_lookup.values()))
+    c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
 
-    c = safe_cell(ws, data_start, ytd_start, sum(year_lookup.values()))
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.border = _bdr
-
-    # Force ALL cells in Total row bold last (overrides everything)
     for cc in range(MBC_COL, MBC_COL + total_cols):
-        ws.cell(data_start, cc).font   = _font(bold=True)
+        ws.cell(data_start, cc).font   = _font()
         ws.cell(data_start, cc).fill   = _fill("F2F2F2")
-        ws.cell(data_start, cc).border = _bdr
-
+        ws.cell(data_start, cc).border = thick_bdr
     ws.cell(data_start, MBC_COL).value = "Total"
-
     data_start += 1
 
-   
-
-    # -- 8. Advance current_row ----------------------------------------------------
-    # current_row = max(current_row, data_start + 2)
-        
-
-    # =====================================================
-    # CARGO HANDLED
-    # =====================================================
-
+    # ── cargo handled ─────────────────────────────────────────────────
     cargo_start_row = row_no + 5
     CARGO_COL = TIDE_COL
 
-    day_dict = dict(day_rows or [])
-    month_dict = dict(month_rows or [])
+    day_dict_ch   = dict(day_rows   or [])
+    month_dict_ch = dict(month_rows or [])
 
     all_routes = []
-
     for route, _ in (day_rows or []):
-        if route not in all_routes:
-            all_routes.append(route)
-
+        if route not in all_routes: all_routes.append(route)
     for route, _ in (month_rows or []):
-        if route not in all_routes:
-            all_routes.append(route)
+        if route not in all_routes: all_routes.append(route)
 
-    # -----------------------------
-    # Title
-    # -----------------------------
     safe_merge(ws, cargo_start_row, CARGO_COL, cargo_start_row, CARGO_COL + 2)
-
     for cc in range(CARGO_COL, CARGO_COL + 3):
-        ws.cell(cargo_start_row, cc).fill = _fill("D9EAF7")
-        ws.cell(cargo_start_row, cc).border = _bdr
-        ws.cell(cargo_start_row, cc).font = _font(bold=True)
-
-    ws.cell(cargo_start_row, CARGO_COL).value = "Cargo Handled"
-    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
+        ws.cell(cargo_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(cargo_start_row, cc).border = thick_bdr
+        ws.cell(cargo_start_row, cc).font   = _title_font()
+    ws.cell(cargo_start_row, CARGO_COL).value     = "Cargo Handled"
+    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(horizontal="center", vertical="center")
 
     r = cargo_start_row + 1
-
-    # =====================================================
-    # FOR THE DAY
-    # =====================================================
-
-    day_start = r
-    day_end = day_start + len(all_routes)
-
-    safe_merge(
-        ws,
-        day_start,
-        CARGO_COL,
-        day_end,
-        CARGO_COL
-    )
-
-    c = safe_cell(ws, day_start, CARGO_COL, "For The Day")
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    day_s = r
+    day_e = day_s + len(all_routes)
+    safe_merge(ws, day_s, CARGO_COL, day_e, CARGO_COL)
+    c = safe_cell(ws, day_s, CARGO_COL, "For The Day")
+    c.font = _font(); c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
     for route in all_routes:
-
-        qty = int(round(day_dict.get(route, 0)))
-
+        qty = int(round(day_dict_ch.get(route, 0)))
         c = safe_cell(ws, r, CARGO_COL + 1, route)
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="left", vertical="center")
-        c.border = _bdr
-
+        c.font = _font(); c.alignment = Alignment(horizontal="left", vertical="center"); c.border = thick_bdr
         c = safe_cell(ws, r, CARGO_COL + 2, qty)
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right", vertical="center")
-        c.border = _bdr
-
+        c.font = _font(); c.alignment = Alignment(horizontal="right", vertical="center"); c.border = thick_bdr
         r += 1
 
-    # Day Total
     c = safe_cell(ws, r, CARGO_COL + 1, "Total")
-    c.font = _font(bold=True)
-    c.border = _bdr
-
-    c = safe_cell(
-        ws,
-        r,
-        CARGO_COL + 2,
-        int(round(sum(day_dict.values())))
-    )
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right", vertical="center")
-    c.border = _bdr
-
+    c.font = _font(); c.border = thick_bdr
+    c = safe_cell(ws, r, CARGO_COL + 2, int(round(sum(day_dict_ch.values()))))
+    c.font = _font(); c.alignment = Alignment(horizontal="right", vertical="center"); c.border = thick_bdr
     r += 1
 
-    # =====================================================
-    # FOR THE MONTH
-    # =====================================================
-
-    month_start = r
-    month_end = month_start + len(all_routes)
-
-    safe_merge(
-        ws,
-        month_start,
-        CARGO_COL,
-        month_end,
-        CARGO_COL
-    )
-
-    c = safe_cell(ws, month_start, CARGO_COL, "For The Month")
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="center", vertical="center")
-    c.border = _bdr
+    month_s = r
+    month_e = month_s + len(all_routes)
+    safe_merge(ws, month_s, CARGO_COL, month_e, CARGO_COL)
+    c = safe_cell(ws, month_s, CARGO_COL, "For The Month")
+    c.font = _font(); c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
     for route in all_routes:
-
-        qty = int(round(month_dict.get(route, 0)))
-
+        qty = int(round(month_dict_ch.get(route, 0)))
         c = safe_cell(ws, r, CARGO_COL + 1, route)
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="left", vertical="center")
-        c.border = _bdr
-
+        c.font = _font(); c.alignment = Alignment(horizontal="left", vertical="center"); c.border = thick_bdr
         c = safe_cell(ws, r, CARGO_COL + 2, qty)
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right", vertical="center")
-        c.border = _bdr
-
+        c.font = _font(); c.alignment = Alignment(horizontal="right", vertical="center"); c.border = thick_bdr
         r += 1
 
-    # Month Total
     c = safe_cell(ws, r, CARGO_COL + 1, "Total")
-    c.font = _font(bold=True)
-    c.border = _bdr
-
-    c = safe_cell(
-        ws,
-        r,
-        CARGO_COL + 2,
-        int(round(sum(month_dict.values())))
-    )
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right", vertical="center")
-    c.border = _bdr
-
-    # =====================================================
-    # APPLY BORDER TO COMPLETE TABLE
-    # =====================================================
+    c.font = _font(); c.border = thick_bdr
+    c = safe_cell(ws, r, CARGO_COL + 2, int(round(sum(month_dict_ch.values()))))
+    c.font = _font(); c.alignment = Alignment(horizontal="right", vertical="center"); c.border = thick_bdr
 
     for rr in range(cargo_start_row, r + 1):
         for cc in range(CARGO_COL, CARGO_COL + 3):
-            ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).border = thick_bdr
+    for rr in range(day_s, day_e + 1):
+        ws.cell(rr, CARGO_COL).border = thick_bdr
+    for rr in range(month_s, month_e + 1):
+        ws.cell(rr, CARGO_COL).border = thick_bdr
 
-    # Re-apply borders to merged cells
-    for rr in range(day_start, day_end + 1):
-        ws.cell(rr, CARGO_COL).border = _bdr
-
-    for rr in range(month_start, month_end + 1):
-        ws.cell(rr, CARGO_COL).border = _bdr
-
-    # Column Widths
-    ws.column_dimensions[get_column_letter(CARGO_COL)].width = 30
+    ws.column_dimensions[get_column_letter(CARGO_COL)].width     = 30
     ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 30
     ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 30
 
     cargo_end_row = r
 
-    # =====================================================
-    # CARGO WISE THROUGHPUT
-    # =====================================================
-
+    # ── cargo wise throughput ─────────────────────────────────────────
     throughput_rows = cargo_type_throughput or []
-    print("throughput_rows =", throughput_rows)
-
     THR_COL = CARGO_COL + 4
     THR_ROW = cargo_start_row
 
-    # -----------------------------
-    # Title
-    # -----------------------------
     safe_merge(ws, THR_ROW, THR_COL, THR_ROW, THR_COL + 3)
     for cc in range(THR_COL, THR_COL + 4):
         ws.cell(THR_ROW, cc).fill   = _fill("D9EAF7")
-        ws.cell(THR_ROW, cc).border = _bdr
-        ws.cell(THR_ROW, cc).font   = _font(bold=True)
+        ws.cell(THR_ROW, cc).border = thick_bdr
+        ws.cell(THR_ROW, cc).font   = _title_font()
     ws.cell(THR_ROW, THR_COL).value     = "Cargo Wise Throughput"
     ws.cell(THR_ROW, THR_COL).alignment = Alignment(horizontal="center", vertical="center")
     for cc in range(THR_COL, THR_COL + 4):
-        ws.cell(THR_ROW, cc).border = _bdr
+        ws.cell(THR_ROW, cc).border = thick_bdr
 
-    # -----------------------------
-    # Header
-    # -----------------------------
     hdr_row = THR_ROW + 1
+    for i, hdr in enumerate(["Cargo", "Day", "Month", "YTD"]):
+        c = safe_cell(ws, hdr_row, THR_COL + i, hdr)
+        c.font = _font(); c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
-    headers = ["Cargo", "Day", "Month", "YTD"]
-
-    for i, hdr in enumerate(headers):
-
-        c = safe_cell(
-            ws,
-            hdr_row,
-            THR_COL + i,
-            hdr
-        )
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = _bdr
-
-   # -----------------------------
-    # Data
-    # -----------------------------
     r = hdr_row + 1
-
-    total_day = 0
-    total_month = 0
-    total_year = 0
+    total_day_t = total_month_t = total_year_t = 0
 
     for row in throughput_rows:
+        day_qty   = int(float(row["day_qty"]   or 0))
+        month_qty = int(float(row["month_qty"] or 0))
+        year_qty  = int(float(row["year_qty"]  or 0))
+        total_day_t += day_qty; total_month_t += month_qty; total_year_t += year_qty
 
-        print("ROW =", row)
+        c = safe_cell(ws, r, THR_COL, row["cargo_type"])
+        c.font = _font(); c.border = thick_bdr
 
-        cargo_type = row["cargo_type"]
-        day_qty = row["day_qty"]
-        month_qty = row["month_qty"]
-        year_qty = row["year_qty"]
-
-        day_qty = int(float(day_qty or 0))
-        month_qty = int(float(month_qty or 0))
-        year_qty = int(float(year_qty or 0))
-
-        total_day += day_qty
-        total_month += month_qty
-        total_year += year_qty
-
-        c = safe_cell(ws, r, THR_COL, cargo_type)
-        c.font = _font(bold=True)
-        c.border = _bdr
-
-        c = safe_cell(
-            ws,
-            r,
-            THR_COL + 1,
-            int(round(day_qty or 0)) if day_qty else "-"
-        )
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right")
-        c.border = _bdr
-
-        c = safe_cell(
-            ws,
-            r,
-            THR_COL + 2,
-            int(round(month_qty or 0)) if month_qty else "-"
-        )
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right")
-        c.border = _bdr
-
-        c = safe_cell(
-            ws,
-            r,
-            THR_COL + 3,
-            int(round(year_qty or 0)) if year_qty else "-"
-        )
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right")
-        c.border = _bdr
-
+        for off, val in [(1, day_qty), (2, month_qty), (3, year_qty)]:
+            c = safe_cell(ws, r, THR_COL + off, int(round(val)) if val else "-")
+            c.font = _font(); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
         r += 1
 
-    # -----------------------------
-    # Total Row
-    # -----------------------------
     c = safe_cell(ws, r, THR_COL, "Total")
-    c.font = _font(bold=True)
-    c.border = _bdr
+    c.font = _font(); c.border = thick_bdr
+    for off, val in [(1, total_day_t), (2, total_month_t), (3, total_year_t)]:
+        c = safe_cell(ws, r, THR_COL + off, int(round(val)))
+        c.font = _font(); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
 
-    c = safe_cell(ws, r, THR_COL + 1, int(round(total_day)))
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    c = safe_cell(ws, r, THR_COL + 2, int(round(total_month)))
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    c = safe_cell(ws, r, THR_COL + 3, int(round(total_year)))
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-    # -----------------------------
-    # Total Row
-    # -----------------------------
-    c = safe_cell(ws, r, THR_COL, "Total")
-    c.font = _font(bold=True)
-    c.border = _bdr
-
-    c = safe_cell(ws, r, THR_COL + 1, int(round(total_day)))
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    c = safe_cell(ws, r, THR_COL + 2, int(round(total_month)))
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    c = safe_cell(ws, r, THR_COL + 3, int(round(total_year)))
-    c.font = _font(bold=True)
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    # -----------------------------
-    # Column Widths
-    # -----------------------------
-    ws.column_dimensions[get_column_letter(THR_COL)].width = 30
-    ws.column_dimensions[get_column_letter(THR_COL + 1)].width = 30
-    ws.column_dimensions[get_column_letter(THR_COL + 2)].width = 30
-    ws.column_dimensions[get_column_letter(THR_COL + 3)].width = 30
-
-    # -----------------------------
-    # Full Border
-    # -----------------------------
+    for i in range(4):
+        ws.column_dimensions[get_column_letter(THR_COL + i)].width = 30
     for rr in range(THR_ROW, r + 1):
         for cc in range(THR_COL, THR_COL + 4):
-            ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).border = thick_bdr
 
-    # =====================================================
-    # RAINFALL DETAILS
-    # =====================================================
-
+    # ── rainfall ──────────────────────────────────────────────────────
     RAINFALL_COL = THR_COL + 6
     RAINFALL_ROW = THR_ROW
-
     current_year = report_date.year - 1
-    prev_year = current_year - 1
+    prev_year    = current_year - 1
 
-    # -----------------------------------
-    # Title
-    # -----------------------------------
-    safe_merge(
-        ws,
-        RAINFALL_ROW,
-        RAINFALL_COL,
-        RAINFALL_ROW,
-        RAINFALL_COL + 3
-    )
-
+    safe_merge(ws, RAINFALL_ROW, RAINFALL_COL, RAINFALL_ROW, RAINFALL_COL + 3)
     for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
-        ws.cell(RAINFALL_ROW, cc).fill = _fill("D9EAF7")
-        ws.cell(RAINFALL_ROW, cc).border = _bdr
-        ws.cell(RAINFALL_ROW, cc).font = _font(bold=True)
+        ws.cell(RAINFALL_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(RAINFALL_ROW, cc).border = thick_bdr
+        ws.cell(RAINFALL_ROW, cc).font   = _title_font()
+    ws.cell(RAINFALL_ROW, RAINFALL_COL).value     = "Rainfall Details"
+    ws.cell(RAINFALL_ROW, RAINFALL_COL).alignment = Alignment(horizontal="center", vertical="center")
 
-    ws.cell(
-        RAINFALL_ROW,
-        RAINFALL_COL
-    ).value = "Rainfall Details"
-
-    ws.cell(
-        RAINFALL_ROW,
-        RAINFALL_COL
-    ).alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    # -----------------------------------
-    # Header
-    # -----------------------------------
     hdr_row = RAINFALL_ROW + 1
-
-    headers = [
-        "Year",
-        "Period",
-        "Rainfall",
-        "Max."
-    ]
-
-    for i, hdr in enumerate(headers):
-
-        c = safe_cell(
-            ws,
-            hdr_row,
-            RAINFALL_COL + i,
-            hdr
-        )
-
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.alignment = Alignment(
-            horizontal="center",
-            vertical="center"
-        )
-        c.border = _bdr
+    for i, hdr in enumerate(["Year", "Period", "Rainfall", "Max."]):
+        c = safe_cell(ws, hdr_row, RAINFALL_COL + i, hdr)
+        c.font = _font(); c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
     r = hdr_row + 1
-
-    # =====================================================
-    # CURRENT YEAR
-    # =====================================================
-
-    safe_merge(
-        ws,
-        r,
-        RAINFALL_COL,
-        r + 2,
-        RAINFALL_COL
-    )
-
-    year1 = current_year
-
-    if rainfall_table:
-        try:
-            year1 = rainfall_table[2][0]
-        except:
-            pass
-
-    c = safe_cell(
-        ws,
-        r,
-        RAINFALL_COL,
-        year1
-    )
-
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-    c.border = _bdr
-
-    periods = [
-        "For The Day",
-        "MTD",
-        "YTD"
-    ]
-
-    for i, period in enumerate(periods):
-
-        c = safe_cell(
-            ws,
-            r + i,
-            RAINFALL_COL + 1,
-            period
-        )
-        c.border = _bdr
-
-        rainfall_value = ""
-
+    for yr_idx, (yr_key, periods_list, base_idx) in enumerate([
+        (current_year, ["For The Day", "MTD",   "YTD"],   2),
+        (prev_year,    ["For The Day", "Month", "Year"],  5),
+    ]):
+        safe_merge(ws, r, RAINFALL_COL, r + 2, RAINFALL_COL)
+        yr_val = yr_key
         if rainfall_table:
+            try: yr_val = rainfall_table[base_idx][0]
+            except: pass
+        c = safe_cell(ws, r, RAINFALL_COL, yr_val)
+        c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
-            try:
-
-                row_data = rainfall_table[2 + i]
-
-                if len(row_data) >= 3:
-                    rainfall_value = row_data[2]
-
-                elif len(row_data) >= 2:
-                    rainfall_value = row_data[1]
-
-            except Exception:
-                pass
-
-        c = safe_cell(
-            ws,
-            r + i,
-            RAINFALL_COL + 2,
-            rainfall_value
-        )
-        c.border = _bdr
-
-    safe_merge(
-        ws,
-        r,
-        RAINFALL_COL + 3,
-        r + 2,
-        RAINFALL_COL + 3
-    )
-
-    max_value = ""
-
-    if rainfall_table:
-        try:
-            max_value = rainfall_table[2][3]
-        except:
-            pass
-
-    c = safe_cell(
-        ws,
-        r,
-        RAINFALL_COL + 3,
-        max_value
-    )
-
-    c.border = _bdr
-
-    r += 3
-
-    # =====================================================
-    # PREVIOUS YEAR
-    # =====================================================
-
-    safe_merge(
-        ws,
-        r,
-        RAINFALL_COL,
-        r + 2,
-        RAINFALL_COL
-    )
-
-    year2 = prev_year
-
-    if rainfall_table:
-        try:
-            year2 = rainfall_table[5][0]
-        except:
-            pass
-
-    c = safe_cell(
-        ws,
-        r,
-        RAINFALL_COL,
-        year2
-    )
-
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-    c.border = _bdr
-
-    periods = [
-        "For The Day",
-        "Month",
-        "Year"
-    ]
-
-    for i, period in enumerate(periods):
-
-        c = safe_cell(
-            ws,
-            r + i,
-            RAINFALL_COL + 1,
-            period
-        )
-        c.border = _bdr
-
-        rainfall_value = ""
-
+        safe_merge(ws, r, RAINFALL_COL + 3, r + 2, RAINFALL_COL + 3)
+        max_val = ""
         if rainfall_table:
+            try: max_val = rainfall_table[base_idx][3]
+            except: pass
+        c = safe_cell(ws, r, RAINFALL_COL + 3, max_val)
+        c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True); c.border = thick_bdr
 
-            try:
+        for i, period in enumerate(periods_list):
+            c = safe_cell(ws, r + i, RAINFALL_COL + 1, period)
+            c.border = thick_bdr
+            rf_val = ""
+            if rainfall_table:
+                try:
+                    rd = rainfall_table[base_idx + i]
+                    rf_val = rd[2] if len(rd) >= 3 else (rd[1] if len(rd) >= 2 else "")
+                except: pass
+            c = safe_cell(ws, r + i, RAINFALL_COL + 2, rf_val)
+            c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            c.border = thick_bdr
+        r += 3
 
-                row_data = rainfall_table[5 + i]
+        last_row = r - 1
 
-                if len(row_data) >= 3:
-                    rainfall_value = row_data[2]
+        for rr in range(RAINFALL_ROW, last_row + 1):
+            for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
+                ws.cell(rr, cc).font   = _font()
+                ws.cell(rr, cc).border = thick_bdr
 
-                elif len(row_data) >= 2:
-                    rainfall_value = row_data[1]
+    for i in range(4):
+        ws.column_dimensions[get_column_letter(RAINFALL_COL + i)].width = 30
 
-                print(
-                    "PREVIOUS YEAR ROW =",
-                    row_data,
-                    "VALUE =",
-                    rainfall_value
-                )
-
-            except Exception as e:
-
-                print(
-                    "PREVIOUS YEAR ERROR =",
-                    e
-                )
-
-        c = safe_cell(
-            ws,
-            r + i,
-            RAINFALL_COL + 2,
-            rainfall_value
-        )
-
-        c.alignment = Alignment(
-            horizontal="left",
-            vertical="center",
-            wrap_text=True
-        )
-
-        c.border = _bdr
-
-    safe_merge(
-        ws,
-        r,
-        RAINFALL_COL + 3,
-        r + 2,
-        RAINFALL_COL + 3
-    )
-
-    max_value = ""
-
-    if rainfall_table:
-
-        try:
-
-            row_data = rainfall_table[5]
-
-            if len(row_data) >= 4:
-                max_value = row_data[3]
-
-        except Exception:
-            pass
-
-    c = safe_cell(
-        ws,
-        r,
-        RAINFALL_COL + 3,
-        max_value
-    )
-
-    c.alignment = Alignment(
-        horizontal="left",
-        vertical="center",
-        wrap_text=True
-    )
-
-    c.border = _bdr
-
-    # -----------------------------------
-    # Make Entire Rainfall Table Bold
-    # -----------------------------------
-    for rr in range(
-        RAINFALL_ROW,
-        r + 3
-    ):
-        for cc in range(
-            RAINFALL_COL,
-            RAINFALL_COL + 4
-        ):
-            ws.cell(
-                rr,
-                cc
-            ).font = _font(bold=True)
-
-
-    # -----------------------------------
-    # Full Borders
-    # -----------------------------------
-    for rr in range(
-        RAINFALL_ROW,
-        r + 3
-    ):
-        for cc in range(
-            RAINFALL_COL,
-            RAINFALL_COL + 4
-        ):
-            ws.cell(
-                rr,
-                cc
-            ).border = _bdr
-
-    # -----------------------------------
-    # Make Entire Rainfall Table Bold
-    # -----------------------------------
-    for rr in range(
-        RAINFALL_ROW,
-        r + 3
-    ):
-        for cc in range(
-            RAINFALL_COL,
-            RAINFALL_COL + 4
-        ):
-            ws.cell(
-                rr,
-                cc
-            ).font = _font(bold=True)
-
-    # -----------------------------------
-    # Column Widths
-    # -----------------------------------
-    ws.column_dimensions[get_column_letter(RAINFALL_COL)].width = 30
-    ws.column_dimensions[get_column_letter(RAINFALL_COL + 1)].width = 30
-    ws.column_dimensions[get_column_letter(RAINFALL_COL + 2)].width = 30
-    ws.column_dimensions[get_column_letter(RAINFALL_COL + 3)].width = 30
-    # =====================================================
-    # CARGO STATISTICS
-    # =====================================================
-
+    # ── cargo statistics ──────────────────────────────────────────────
     STAT_COL = RAINFALL_COL + 6
     STAT_ROW = THR_ROW
 
-    cargo_stats_day = cargo_stats_day or []
+    cargo_stats_day   = cargo_stats_day   or []
     cargo_stats_month = cargo_stats_month or []
-
-    day_dict = dict(cargo_stats_day)
-    month_dict = dict(cargo_stats_month)
+    day_dict_s   = dict(cargo_stats_day)
+    month_dict_s = dict(cargo_stats_month)
 
     sources = []
-
     for src, _ in cargo_stats_day:
-        if src not in sources:
-            sources.append(src)
-
+        if src not in sources: sources.append(src)
     for src, _ in cargo_stats_month:
-        if src not in sources:
-            sources.append(src)
+        if src not in sources: sources.append(src)
 
-    # -----------------------------------
-    # Title
-    # -----------------------------------
     safe_merge(ws, STAT_ROW, STAT_COL, STAT_ROW, STAT_COL + 2)
-
     for cc in range(STAT_COL, STAT_COL + 3):
-        ws.cell(STAT_ROW, cc).fill = _fill("D9EAF7")
-        ws.cell(STAT_ROW, cc).border = _bdr
-        ws.cell(STAT_ROW, cc).font = _font(bold=True)
+        ws.cell(STAT_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(STAT_ROW, cc).border = thick_bdr
+        ws.cell(STAT_ROW, cc).font   = _title_font()
+    ws.cell(STAT_ROW, STAT_COL).value     = "Cargo Statistics"
+    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(horizontal="center", vertical="center")
 
-    ws.cell(STAT_ROW, STAT_COL).value = "Cargo Statistics"
-    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    # -----------------------------------
-    # Header
-    # -----------------------------------
     hdr_row = STAT_ROW + 1
-
     for idx, hdr in enumerate(["Source", "Day", "MTD"]):
+        c = safe_cell(ws, hdr_row, STAT_COL + idx, hdr)
+        c.font = _font(); c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
-        c = safe_cell(
-            ws,
-            hdr_row,
-            STAT_COL + idx,
-            hdr
-        )
-
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.alignment = Alignment(
-            horizontal="center",
-            vertical="center"
-        )
-        c.border = _bdr
-
-    # -----------------------------------
-    # Data
-    # -----------------------------------
     r = hdr_row + 1
-
-    total_day = 0
-    total_month = 0
-
+    total_day_s = total_month_s = 0
     for src in sources:
-
-        day_qty = float(day_dict.get(src, 0) or 0)
-        month_qty = float(month_dict.get(src, 0) or 0)
-
-        total_day += day_qty
-        total_month += month_qty
+        day_qty   = float(day_dict_s.get(src, 0)   or 0)
+        month_qty = float(month_dict_s.get(src, 0) or 0)
+        total_day_s += day_qty; total_month_s += month_qty
 
         c = safe_cell(ws, r, STAT_COL, src)
-        c.font = _font(bold=True)
-        c.border = _bdr
-
-        c = safe_cell(
-            ws,
-            r,
-            STAT_COL + 1,
-            int(round(day_qty)) if day_qty else ""
-        )
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right")
-        c.border = _bdr
-
-        c = safe_cell(
-            ws,
-            r,
-            STAT_COL + 2,
-            int(round(month_qty)) if month_qty else ""
-        )
-        c.font = _font(bold=True)
-        c.alignment = Alignment(horizontal="right")
-        c.border = _bdr
-
+        c.font = _font(); c.border = thick_bdr
+        for off, qty in [(1, day_qty), (2, month_qty)]:
+            c = safe_cell(ws, r, STAT_COL + off, int(round(qty)) if qty else "")
+            c.font = _font(); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
         r += 1
 
-    # -----------------------------------
-    # Total
-    # -----------------------------------
     c = safe_cell(ws, r, STAT_COL, "Total")
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.border = _bdr
+    c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
+    for off, tot in [(1, total_day_s), (2, total_month_s)]:
+        c = safe_cell(ws, r, STAT_COL + off, int(round(tot)))
+        c.font = _font(); c.fill = _fill("F2F2F2"); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
 
-    c = safe_cell(
-        ws,
-        r,
-        STAT_COL + 1,
-        int(round(total_day))
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    c = safe_cell(
-        ws,
-        r,
-        STAT_COL + 2,
-        int(round(total_month))
-    )
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.alignment = Alignment(horizontal="right")
-    c.border = _bdr
-
-    # -----------------------------------
-    # Widths
-    # -----------------------------------
-    ws.column_dimensions[get_column_letter(STAT_COL)].width = 30
-    ws.column_dimensions[get_column_letter(STAT_COL + 1)].width = 30
-    ws.column_dimensions[get_column_letter(STAT_COL + 2)].width = 30
-
-    # -----------------------------------
-    # Borders
-    # -----------------------------------
+    for i in range(3):
+        ws.column_dimensions[get_column_letter(STAT_COL + i)].width = 30
     for rr in range(STAT_ROW, r + 1):
         for cc in range(STAT_COL, STAT_COL + 3):
-            ws.cell(rr, cc).border = _bdr
-            ws.cell(rr, cc).font = _font(bold=True)
+            ws.cell(rr, cc).border = thick_bdr
+            ws.cell(rr, cc).font   = _font()
 
-    # =====================================================
-    # BF PRODUCTION DETAILS
-    # =====================================================
-
+    # ── BF production details ─────────────────────────────────────────
     BF_COL = STAT_COL
     BF_ROW = r + 3
 
-    # -----------------------------
-    # Title
-    # -----------------------------
-    safe_merge(
-        ws,
-        BF_ROW,
-        BF_COL,
-        BF_ROW,
-        BF_COL + 2
-    )
+    ws.column_dimensions[get_column_letter(BF_COL)].width     = 18
+    ws.column_dimensions[get_column_letter(BF_COL + 1)].width = 32
+    ws.column_dimensions[get_column_letter(BF_COL + 2)].width = 32
 
+    safe_merge(ws, BF_ROW, BF_COL, BF_ROW, BF_COL + 2)
     for cc in range(BF_COL, BF_COL + 3):
-        ws.cell(BF_ROW, cc).fill = _fill("D9EAF7")
-        ws.cell(BF_ROW, cc).border = _bdr
-        ws.cell(BF_ROW, cc).font = _font(bold=True)
+        ws.cell(BF_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(BF_ROW, cc).border = thick_bdr
+        ws.cell(BF_ROW, cc).font   = _title_font()
+    ws.cell(BF_ROW, BF_COL).value     = "BF Production Details"
+    ws.cell(BF_ROW, BF_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[BF_ROW].height  = 24
 
-    ws.cell(
-        BF_ROW,
-        BF_COL
-    ).value = "BF Production Details"
-
-    ws.cell(
-        BF_ROW,
-        BF_COL
-    ).alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    ws.row_dimensions[BF_ROW].height = 24
-
-    # -----------------------------
-    # Header Row
-    # -----------------------------
     hdr_row = BF_ROW + 1
+    for i, hdr in enumerate(["Plant", "Target Production (TPD)", "Actual Production (TPD)"]):
+        c = safe_cell(ws, hdr_row, BF_COL + i, hdr)
+        c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[hdr_row].height = 35
 
-    headers = [
-        "Plant",
-        "Target Production (TPD)",
-        "Actual Production (TPD)"
-    ]
+    for row_off, plant_name, tbl_idx in [(1, "BF1", 1), (2, "BF2", 2)]:
+        rr = hdr_row + row_off
+        c = safe_cell(ws, rr, BF_COL, plant_name)
+        c.font = _font(); c.alignment = Alignment(horizontal="center", vertical="center"); c.border = thick_bdr
 
-    for i, hdr in enumerate(headers):
+        target = actual = ""
+        if bf_table:
+            try: target = bf_table[tbl_idx][1]
+            except: pass
+            try: actual = bf_table[tbl_idx][2]
+            except: pass
 
-        c = safe_cell(
-            ws,
-            hdr_row,
-            BF_COL + i,
-            hdr
-        )
+        for off, val in [(1, target), (2, actual)]:
+            c = safe_cell(ws, rr, BF_COL + off, val)
+            c.font = _font(); c.border = thick_bdr
+            c.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[rr].height = 22
 
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.border = _bdr
-
-        c.alignment = Alignment(
-            horizontal="center",
-            vertical="center"
-        )
-
-    ws.row_dimensions[hdr_row].height = 25
-
-    # -----------------------------
-    # BF1
-    # -----------------------------
-    row1 = hdr_row + 1
-
-    c = safe_cell(
-        ws,
-        row1,
-        BF_COL,
-        "BF1"
-    )
-    c.font = _font(bold=True)
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-    c.border = _bdr
-
-    bf1_target = ""
-    bf1_actual = ""
-
-    if bf_table:
-        try:
-            bf1_target = bf_table[1][1]
-            bf1_actual = bf_table[1][2]
-        except:
-            pass
-
-    c = safe_cell(
-        ws,
-        row1,
-        BF_COL + 1,
-        bf1_target
-    )
-    c.font = _font(bold=True)
-    c.border = _bdr
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    c = safe_cell(
-        ws,
-        row1,
-        BF_COL + 2,
-        bf1_actual
-    )
-    c.font = _font(bold=True)
-    c.border = _bdr
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    ws.row_dimensions[row1].height = 22
-
-    # -----------------------------
-    # BF2
-    # -----------------------------
-    row2 = row1 + 1
-
-    c = safe_cell(
-        ws,
-        row2,
-        BF_COL,
-        "BF2"
-    )
-    c.font = _font(bold=True)
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-    c.border = _bdr
-
-    bf2_target = ""
-    bf2_actual = ""
-
-    if bf_table:
-        try:
-            bf2_target = bf_table[2][1]
-            bf2_actual = bf_table[2][2]
-        except:
-            pass
-
-    c = safe_cell(
-        ws,
-        row2,
-        BF_COL + 1,
-        bf2_target
-    )
-    c.font = _font(bold=True)
-    c.border = _bdr
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    c = safe_cell(
-        ws,
-        row2,
-        BF_COL + 2,
-        bf2_actual
-    )
-    c.font = _font(bold=True)
-    c.border = _bdr
-    c.alignment = Alignment(
-        horizontal="center",
-        vertical="center"
-    )
-
-    ws.row_dimensions[row2].height = 22
-
-    # -----------------------------
-    # Column Widths
-    # -----------------------------
-    ws.column_dimensions[
-        get_column_letter(BF_COL)
-    ].width = 20
-
-    ws.column_dimensions[
-        get_column_letter(BF_COL + 1)
-    ].width = 30
-
-    ws.column_dimensions[
-        get_column_letter(BF_COL + 2)
-    ].width = 30
-
-    # -----------------------------
-    # Borders + Font
-    # -----------------------------
-    for rr in range(BF_ROW, row2 + 1):
+    for rr in range(BF_ROW, hdr_row + 3):
         for cc in range(BF_COL, BF_COL + 3):
-            ws.cell(rr, cc).border = _bdr
-            ws.cell(rr, cc).font = _font(bold=True)
-    # =====================================================
-    # RM STOCK DETAILS
-    # =====================================================
+            ws.cell(rr, cc).border = thick_bdr
+            ws.cell(rr, cc).font   = _font()
 
-    RM_COL = BF_COL + 5
+    # ── RM stock details ──────────────────────────────────────────────
+    RM_COL = BF_COL + 6
     RM_ROW = BF_ROW
 
-    # -----------------------------
-    # Column Widths (set FIRST)
-    # -----------------------------
-    ws.column_dimensions[get_column_letter(RM_COL)].width     = 18
-    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 14
+    ws.column_dimensions[get_column_letter(RM_COL)].width     = 22
+    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 18
 
-    # -----------------------------
-    # Title
-    # -----------------------------
     safe_merge(ws, RM_ROW, RM_COL, RM_ROW, RM_COL + 1)
-
     for cc in range(RM_COL, RM_COL + 2):
         ws.cell(RM_ROW, cc).fill   = _fill("D9EAF7")
-        ws.cell(RM_ROW, cc).border = _bdr
-        ws.cell(RM_ROW, cc).font   = _font(bold=True)
-
+        ws.cell(RM_ROW, cc).border = thick_bdr
+        ws.cell(RM_ROW, cc).font   = _title_font()
     ws.cell(RM_ROW, RM_COL).value     = "RM Stock Details"
     ws.cell(RM_ROW, RM_COL).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[RM_ROW].height  = 24
 
-    # -----------------------------
-    # Header
-    # -----------------------------
     hdr_row = RM_ROW + 1
-
-    headers = ["Material", "Qty (LMT)"]
-
-    for i, hdr in enumerate(headers):
+    for i, hdr in enumerate(["Material", "Qty (LMT)"]):
         c = safe_cell(ws, hdr_row, RM_COL + i, hdr)
-        c.font      = _font(bold=True)
-        c.fill      = _fill("D9EAF7")
-        c.border    = _bdr
+        c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[hdr_row].height = 30
+
+    rm_items = [
+        ("IBRM",  1), ("CBRM", 2), ("FLUXES", 3), ("TOTAL", 4)
+    ]
+    for off, (material, tbl_idx) in enumerate(rm_items):
+        rr  = hdr_row + 1 + off
+        qty = ""
+        if rm_table:
+            try: qty = rm_table[tbl_idx][1]
+            except: pass
+
+        c = safe_cell(ws, rr, RM_COL, material)
+        c.font = _font(); c.border = thick_bdr
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        if material == "TOTAL":
+            c.fill = _fill("F2F2F2")
+
+        c = safe_cell(ws, rr, RM_COL + 1, qty)
+        c.font = _font(); c.border = thick_bdr
         c.alignment = Alignment(horizontal="center", vertical="center")
+        if material == "TOTAL":
+            c.fill = _fill("F2F2F2")
+        ws.row_dimensions[rr].height = 22
 
-    # -----------------------------
-    # IBRM
-    # -----------------------------
-    row1 = hdr_row + 1
-
-    c = safe_cell(ws, row1, RM_COL, "IBRM")
-    c.font   = _font(bold=True)
-    c.border = _bdr
-
-    ibrm_qty = ""
-    if rm_table:
-        try:
-            ibrm_qty = rm_table[1][1]
-        except:
-            pass
-
-    c = safe_cell(ws, row1, RM_COL + 1, ibrm_qty)
-    c.font      = _font(bold=True)
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="right", vertical="center")
-
-    # -----------------------------
-    # CBRM
-    # -----------------------------
-    row2 = row1 + 1
-
-    c = safe_cell(ws, row2, RM_COL, "CBRM")
-    c.font   = _font(bold=True)
-    c.border = _bdr
-
-    cbrm_qty = ""
-    if rm_table:
-        try:
-            cbrm_qty = rm_table[2][1]
-        except:
-            pass
-
-    c = safe_cell(ws, row2, RM_COL + 1, cbrm_qty)
-    c.font      = _font(bold=True)
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="right", vertical="center")
-
-    # -----------------------------
-    # FLUXES
-    # -----------------------------
-    row3 = row2 + 1
-
-    c = safe_cell(ws, row3, RM_COL, "FLUXES")
-    c.font   = _font(bold=True)
-    c.border = _bdr
-
-    fluxes_qty = ""
-    if rm_table:
-        try:
-            fluxes_qty = rm_table[3][1]
-        except:
-            pass
-
-    c = safe_cell(ws, row3, RM_COL + 1, fluxes_qty)
-    c.font      = _font(bold=True)
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="right", vertical="center")
-
-    # -----------------------------
-    # TOTAL
-    # -----------------------------
-    row4 = row3 + 1
-
-    c = safe_cell(ws, row4, RM_COL, "TOTAL")
-    c.font   = _font(bold=True)
-    c.fill   = _fill("F2F2F2")
-    c.border = _bdr
-
-    total_qty = ""
-    if rm_table:
-        try:
-            total_qty = rm_table[4][1]
-        except:
-            pass
-
-    c = safe_cell(ws, row4, RM_COL + 1, total_qty)
-    c.font      = _font(bold=True)
-    c.fill      = _fill("F2F2F2")
-    c.border    = _bdr
-    c.alignment = Alignment(horizontal="right", vertical="center")
-
-    # -----------------------------
-    # Force Full Border + Bold on all cells
-    # -----------------------------
-    for rr in range(RM_ROW, row4 + 1):
+    for rr in range(RM_ROW, hdr_row + 5):
         for cc in range(RM_COL, RM_COL + 2):
-            ws.cell(rr, cc).border = _bdr
-            ws.cell(rr, cc).font   = _font(bold=True)
-    
-    # =====================================================
-    # UPCOMING MOTHER VESSELS (MBCs)
-    # =====================================================
+            ws.cell(rr, cc).border = thick_bdr
+            ws.cell(rr, cc).font   = _font()
+
+    # ── upcoming MBCs ─────────────────────────────────────────────────
     current_row = dashboard_row
     upcoming_mbcs = upcoming_mbcs or []
 
-    # Column widths for MBC section
-    ws.column_dimensions["B"].width = 30   # MBC Name
-    ws.column_dimensions["C"].width = 30   # Owner
-    ws.column_dimensions["D"].width = 30   # Cargo
-    ws.column_dimensions["E"].width = 30   # Qty (MT)
-    ws.column_dimensions["F"].width = 30   # FWD
-    ws.column_dimensions["G"].width = 30   # MID
-    ws.column_dimensions["H"].width = 30   # AFT
-    ws.column_dimensions["I"].width = 30   # Date
-    ws.column_dimensions["J"].width = 30   # Status
+    # MBC table column widths — 1 col each, wider for name/owner/cargo/date/status
+    MBC_COL_WIDTHS = [35, 25, 25, 14, 12, 12, 12, 30, 25]
+    # MBC Name, Owner, Cargo, Qty, FWD, MID, AFT, Date, Status  → 9 cols
+    MBC_HEADERS = ["MBC Name", "Owner", "Cargo", "Qty (MT)", "FWD", "MID", "AFT", "Date", "Status"]
+    MBC_TOTAL   = len(MBC_HEADERS)  # 9
 
-    ws.merge_cells(
-        start_row=current_row, start_column=LABEL_START,
-        end_row=current_row, end_column=LABEL_START + 8
-    )
+    for i, w in enumerate(MBC_COL_WIDTHS):
+        ws.column_dimensions[get_column_letter(LABEL_START + i)].width = w
+
+    # Title row
+    ws.merge_cells(start_row=current_row, start_column=LABEL_START,
+                   end_row=current_row,   end_column=LABEL_START + MBC_TOTAL - 1)
     c = ws.cell(current_row, LABEL_START, "Upcoming MBC's")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = _ctr
-    c.border = _bdr
-    for cc in range(LABEL_START, LABEL_START + 9):
-        ws.cell(current_row, cc).border = _bdr
-    ws.row_dimensions[current_row].height = 18
+    c.font = _title_font(); c.fill = _fill("D9EAF7")
+    c.alignment = _ctr; c.border = thick_bdr
+    for cc in range(LABEL_START, LABEL_START + MBC_TOTAL):
+        ws.cell(current_row, cc).border = thick_bdr
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
-    mv_headers = ["MBC Name", "Owner", "Cargo", "Qty (MT)", "FWD", "MID", "AFT", "Date", "Status"]
-
-    col = LABEL_START
-    for h in mv_headers:
-        c = ws.cell(current_row, col, h)
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.alignment = _ctr
-        c.border = _bdr
-        col += 1
-    ws.row_dimensions[current_row].height = 18
+    # Header row — one col per header, no merging
+    for col_i, h in enumerate(MBC_HEADERS):
+        c = ws.cell(current_row, LABEL_START + col_i, h)
+        c.font = _font(); c.fill = _fill("D9EAF7")
+        c.alignment = _ctr; c.border = thick_bdr
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
+    # Data rows
     for m in upcoming_mbcs:
         event_date_fmt = ""
         if m.get("event_date"):
             try:
-                event_date_fmt = datetime.fromisoformat(
-                    str(m["event_date"])
-                ).strftime("%d-%m-%Y %H:%M")
-            except Exception:
+                event_date_fmt = datetime.fromisoformat(str(m["event_date"])).strftime("%d-%m-%Y %H:%M")
+            except:
                 event_date_fmt = str(m["event_date"])
 
-        col = LABEL_START
-        for val in [
-            (m.get("mbc_name", "") or "").replace("JSW ", "").strip(),
-            m.get("owner", "") or "-",
-            m.get("cargo_name", "") or "-",
+        row_vals = [
+            (m.get("mbc_name","") or "").replace("JSW ","").strip(),
+            m.get("owner","") or "-",
+            m.get("cargo_name","") or "-",
             int(round(float(m.get("bl_quantity") or 0))) or "-",
-            m.get("fwd_draft", "") or "-",
-            m.get("mid_draft", "") or "-",
-            m.get("aft_draft", "") or "-",
+            m.get("fwd_draft","") or "-",
+            m.get("mid_draft","") or "-",
+            m.get("aft_draft","") or "-",
             event_date_fmt or "-",
-            m.get("status", "") or "-",
-        ]:
-            c = ws.cell(current_row, col, val)
-            c.font = _font()
-            c.fill = _fill("FFFFFF")
-            c.alignment = _left
-            c.border = _bdr
-            col += 1
-        ws.row_dimensions[current_row].height = 18
+            m.get("status","") or "-",
+        ]
+        for col_i, val in enumerate(row_vals):
+            c = ws.cell(current_row, LABEL_START + col_i, val)
+            c.font = _font(); c.fill = _fill("FFFFFF")
+            c.alignment = _left; c.border = thick_bdr
+        ws.row_dimensions[current_row].height = 30
         current_row += 1
 
     current_row += 2
 
-    # =====================================================
-    # MBC STATUS
-    # =====================================================
-
+    # ── MBC status ────────────────────────────────────────────────────
     mbc_status_rows = mbc_status_rows or []
 
-    ws.merge_cells(
-        start_row=current_row, start_column=LABEL_START,
-        end_row=current_row, end_column=LABEL_START + 8
-    )
+    ws.merge_cells(start_row=current_row, start_column=LABEL_START,
+                   end_row=current_row,   end_column=LABEL_START + MBC_TOTAL - 1)
     c = ws.cell(current_row, LABEL_START, "MBC Status")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.alignment = _ctr
-    c.border = _bdr
-    for cc in range(LABEL_START, LABEL_START + 9):
-        ws.cell(current_row, cc).border = _bdr
-    ws.row_dimensions[current_row].height = 18
+    c.font = _title_font(); c.fill = _fill("D9EAF7"); c.alignment = _ctr; c.border = thick_bdr
+    for cc in range(LABEL_START, LABEL_START + MBC_TOTAL):
+        ws.cell(current_row, cc).border = thick_bdr
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
+    # MBC Name = 3 cols, Status = remaining cols (MBC_TOTAL - 3)
+    ms_spans = [3, MBC_TOTAL - 3]
     ms_headers = ["MBC Name", "Status"]
-    ms_spans   = [2, 7]   # B:C = MBC Name, D:J = Status  (total = 9, same end col)
-
     col = LABEL_START
     for h, span in zip(ms_headers, ms_spans):
-        ws.merge_cells(
-            start_row=current_row, start_column=col,
-            end_row=current_row, end_column=col + span - 1
-        )
+        ws.merge_cells(start_row=current_row, start_column=col,
+                       end_row=current_row,   end_column=col + span - 1)
         c = ws.cell(current_row, col, h)
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.alignment = _ctr
-        c.border = _bdr
+        c.font = _font(); c.fill = _fill("D9EAF7"); c.alignment = _ctr; c.border = thick_bdr
         for cc in range(col, col + span):
-            ws.cell(current_row, cc).border = _bdr
+            ws.cell(current_row, cc).border = thick_bdr
         col += span
-    ws.row_dimensions[current_row].height = 18
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
     for row in mbc_status_rows:
         col = LABEL_START
         for val, span in zip(
-            [
-                (row.get("mbc_name", "") or "").replace("JSW ", "").strip(),
-                row.get("mbc_status", ""),
-            ],
+            [(row.get("mbc_name","") or "").replace("JSW ","").strip(), row.get("mbc_status","")],
             ms_spans
         ):
-            ws.merge_cells(
-                start_row=current_row, start_column=col,
-                end_row=current_row, end_column=col + span - 1
-            )
+            ws.merge_cells(start_row=current_row, start_column=col,
+                           end_row=current_row,   end_column=col + span - 1)
             c = ws.cell(current_row, col, val)
-            c.font = _font()
-            c.fill = _fill("FFFFFF")
-            c.alignment = _left
-            c.border = _bdr
+            c.font = _font(); c.fill = _fill("FFFFFF"); c.alignment = _left; c.border = thick_bdr
             for cc in range(col, col + span):
-                ws.cell(current_row, cc).border = _bdr
+                ws.cell(current_row, cc).border = thick_bdr
             col += span
-        ws.row_dimensions[current_row].height = 18
+        ws.row_dimensions[current_row].height = 30
         current_row += 1
 
     current_row += 2
-
-    # ── Enforce uniform row height across all rows ──────────────────────────
+    # ── uniform row height ────────────────────────────────────────────
     for row_num in range(1, ws.max_row + 1):
-        ws.row_dimensions[row_num].height = 45
+        ws.row_dimensions[row_num].height = 30
 
     buf = io.BytesIO()
     wb.save(buf)
