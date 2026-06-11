@@ -31,7 +31,7 @@ def _fill(hex_color):
 def _font(bold=False):
     return Font(
         name="Calibri",
-        size=14,
+        size=19,
         bold=bold
     )
 
@@ -88,6 +88,19 @@ def daily_ops_routes():
     routes = [r['route_name'] for r in cur.fetchall()]
     conn.close()
     return jsonify(routes)
+
+@bp.route("/daily-ops/save-cargo-table", methods=["POST"])
+def save_cargo_table():
+
+    data = request.get_json()
+
+    report_date = data["report_date"]
+    table_data = data["table_data"]
+
+    # save to database
+    save_to_db(report_date, json.dumps(table_data))
+
+    return jsonify({"success": True})
 
 
 # ── Cutoff API ──────────────────────────────────────────────────────────────
@@ -1011,130 +1024,130 @@ def _fetch_upcoming_mbcs(report_date):
 
     return rows
 
-def _fetch_cargo_availability(report_date):
+# def _fetch_cargo_availability(report_date):
 
-    conn = get_db()
-    cur = get_cursor(conn)
+#     conn = get_db()
+#     cur = get_cursor(conn)
 
-    balance_date = report_date - timedelta(days=1)
+#     balance_date = report_date - timedelta(days=1)
 
-    cur.execute("""
-        SELECT
-            c.cargo_name,
-            ROUND(COALESCE(SUM(x.balance_qty),0)::numeric,0) AS at_jetty_qty
+#     cur.execute("""
+#         SELECT
+#             c.cargo_name,
+#             ROUND(COALESCE(SUM(x.balance_qty),0)::numeric,0) AS at_jetty_qty
 
-        FROM
-        (
-            SELECT DISTINCT cargo_name
-            FROM mbc_header
-            WHERE cargo_name IS NOT NULL
+#         FROM
+#         (
+#             SELECT DISTINCT cargo_name
+#             FROM mbc_header
+#             WHERE cargo_name IS NOT NULL
 
-            UNION
+#             UNION
 
-            SELECT DISTINCT cargo_name
-            FROM ldud_barge_lines
-            WHERE cargo_name IS NOT NULL
-        ) c
+#             SELECT DISTINCT cargo_name
+#             FROM ldud_barge_lines
+#             WHERE cargo_name IS NOT NULL
+#         ) c
 
-        LEFT JOIN
-        (
+#         LEFT JOIN
+#         (
 
-            /* MBC Balance */
+#             /* MBC Balance */
 
-            SELECT
-                h.cargo_name,
+#             SELECT
+#                 h.cargo_name,
 
-                GREATEST(
-                    h.bl_quantity - COALESCE(l.qty,0),
-                    0
-                ) AS balance_qty
+#                 GREATEST(
+#                     h.bl_quantity - COALESCE(l.qty,0),
+#                     0
+#                 ) AS balance_qty
 
-            FROM mbc_header h
+#             FROM mbc_header h
 
-            JOIN mbc_discharge_port_lines p
-                ON p.mbc_id = h.id
+#             JOIN mbc_discharge_port_lines p
+#                 ON p.mbc_id = h.id
 
-            LEFT JOIN
-            (
-                SELECT
-                    source_id,
-                    SUM(COALESCE(quantity,0)) AS qty
+#             LEFT JOIN
+#             (
+#                 SELECT
+#                     source_id,
+#                     SUM(COALESCE(quantity,0)) AS qty
 
-                FROM lueu_lines
+#                 FROM lueu_lines
 
-                WHERE source_type = 'MBC'
-                  AND is_deleted = false
-                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+#                 WHERE source_type = 'MBC'
+#                   AND is_deleted = false
+#                   AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
-                GROUP BY source_id
+#                 GROUP BY source_id
 
-            ) l
-                ON l.source_id = h.id
+#             ) l
+#                 ON l.source_id = h.id
 
-            WHERE
-                p.unloading_commenced IS NOT NULL
-                AND TRIM(COALESCE(p.unloading_commenced,'')) <> ''
-                AND (
-                    p.unloading_completed IS NULL
-                    OR TRIM(COALESCE(p.unloading_completed,'')) = ''
-                )
+#             WHERE
+#                 p.unloading_commenced IS NOT NULL
+#                 AND TRIM(COALESCE(p.unloading_commenced,'')) <> ''
+#                 AND (
+#                     p.unloading_completed IS NULL
+#                     OR TRIM(COALESCE(p.unloading_completed,'')) = ''
+#                 )
 
-            UNION ALL
+#             UNION ALL
 
-            /* Barge Balance */
+#             /* Barge Balance */
 
-            SELECT
-                b.cargo_name,
+#             SELECT
+#                 b.cargo_name,
 
-                GREATEST(
-                    COALESCE(b.discharge_quantity,0)
-                    - COALESCE(lb.actual_qty,0),
-                    0
-                ) AS balance_qty
+#                 GREATEST(
+#                     COALESCE(b.discharge_quantity,0)
+#                     - COALESCE(lb.actual_qty,0),
+#                     0
+#                 ) AS balance_qty
 
-            FROM ldud_barge_lines b
+#             FROM ldud_barge_lines b
 
-            LEFT JOIN
-            (
-                SELECT
-                    UPPER(TRIM(barge_name)) AS barge_name,
-                    SUM(COALESCE(quantity,0)) AS actual_qty
+#             LEFT JOIN
+#             (
+#                 SELECT
+#                     UPPER(TRIM(barge_name)) AS barge_name,
+#                     SUM(COALESCE(quantity,0)) AS actual_qty
 
-                FROM lueu_lines
+#                 FROM lueu_lines
 
-                WHERE is_deleted = false
-                  AND barge_name IS NOT NULL
-                  AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
+#                 WHERE is_deleted = false
+#                   AND barge_name IS NOT NULL
+#                   AND TO_DATE(entry_date,'YYYY-MM-DD') <= %s
 
-                GROUP BY UPPER(TRIM(barge_name))
+#                 GROUP BY UPPER(TRIM(barge_name))
 
-            ) lb
-                ON lb.barge_name = UPPER(TRIM(b.barge_name))
+#             ) lb
+#                 ON lb.barge_name = UPPER(TRIM(b.barge_name))
 
-            WHERE
-                b.commence_discharge_berth IS NOT NULL
-                AND (
-                    b.cast_off_berth IS NULL
-                    OR TRIM(COALESCE(b.cast_off_berth,'')) = ''
-                )
+#             WHERE
+#                 b.commence_discharge_berth IS NOT NULL
+#                 AND (
+#                     b.cast_off_berth IS NULL
+#                     OR TRIM(COALESCE(b.cast_off_berth,'')) = ''
+#                 )
 
-        ) x
-            ON x.cargo_name = c.cargo_name
+#         ) x
+#             ON x.cargo_name = c.cargo_name
 
-        GROUP BY c.cargo_name
-        ORDER BY c.cargo_name
+#         GROUP BY c.cargo_name
+#         ORDER BY c.cargo_name
 
-    """, (
-        balance_date,
-        balance_date
-    ))
+#     """, (
+#         balance_date,
+#         balance_date
+#     ))
 
-    rows = cur.fetchall()
+#     rows = cur.fetchall()
 
-    cur.close()
-    conn.close()
+#     cur.close()
+#     conn.close()
 
-    return rows
+#     return rows
 
 def _fetch_tide_data(report_date):
 
@@ -1868,7 +1881,12 @@ def _build_excel_a4(
     cargo_type_throughput=None,
     cargo_stats_day=None,
     cargo_stats_month=None,
-    port_throughput=None
+    port_throughput=None,
+    editable_table=None,
+    rainfall_table=None,
+    bf_table=None,
+    rm_table=None
+
     
 ):
     from openpyxl import Workbook
@@ -2317,10 +2335,16 @@ def _build_excel_a4(
         CA_START_COL = 12
         CARGO_WIDTH = 12
 
-        cargo_names = [
-            row["cargo_name"]
-            for row in cargo_availability
-        ]
+        if editable_table and len(editable_table) > 0:
+
+            cargo_names = editable_table[0][1:-1]
+
+        else:
+
+            cargo_names = [
+                row["cargo_name"]
+                for row in cargo_availability
+            ]
 
         grand_total = sum(
             float(row["at_jetty_qty"] or 0)
@@ -2423,9 +2447,9 @@ def _build_excel_a4(
 
         row_labels = [
             "At Jetty",
-            "08/16:15",
-            "4.19 mtr",
-            "09/03:56",
+            "",
+            "",
+            "",
             "Total"
         ]
 
@@ -2445,34 +2469,48 @@ def _build_excel_a4(
             c.alignment = _left
 
         # Cargo quantities
-        col = CA_START_COL + 1
+        # =====================================
+        # FILL FROM EDITABLE HTML TABLE
+        # =====================================
 
-        for row in cargo_availability:
+        if editable_table:
 
-            qty = int(
-                round(
-                    float(row["at_jetty_qty"] or 0)
-                )
-            )
+            print("EXCEL TABLE =", editable_table)
 
-            c = ws.cell(
-                data_row,
-                col,
-                qty if qty else ""
-            )
+            # Skip first row because it contains cargo headers
+            for r_idx, row_data in enumerate(editable_table[1:]):
 
-            c.alignment = _ctr
-            c.border = _bdr
+                excel_row = data_row + r_idx
 
-            for rr in range(1, 4):
-                ws.cell(
-                    data_row + rr,
+                for c_idx, value in enumerate(row_data):
+
+                    excel_col = CA_START_COL + c_idx
+
+                    c = ws.cell(
+                        excel_row,
+                        excel_col,
+                        value
+                    )
+
+                    c.border = _bdr
+                    c.alignment = _ctr
+
+        else:
+
+            col = CA_START_COL + 1
+
+            for idx, row in enumerate(cargo_availability):
+
+                c = ws.cell(
+                    data_row,
                     col,
-                    ""
-                ).border = _bdr
+                    row.get("at_jetty_qty", "")
+                )
 
-            col += 1
+                c.alignment = _ctr
+                c.border = _bdr
 
+                col += 1
         # -------------------------
         # Total Column
         # -------------------------
@@ -2514,9 +2552,149 @@ def _build_excel_a4(
                 total_col + 1
             ):
                 ws.cell(rr, cc).border = _bdr
+            
+        # -------------------------
+        # Grand Total Row
+        # -------------------------
+        grand_total_row = data_row + 5
 
-        # Tide starts below cargo table
-        data_row = data_row + 4
+        # Label cell
+        c = ws.cell(grand_total_row, CA_START_COL, "")
+        c.border = _bdr
+
+        # IBRM
+        ws.merge_cells(
+            start_row=grand_total_row,
+            start_column=CA_START_COL + 1,
+            end_row=grand_total_row,
+            end_column=CA_START_COL + 5
+        )
+
+        # CBRM
+        ws.merge_cells(
+            start_row=grand_total_row,
+            start_column=CA_START_COL + 6,
+            end_row=grand_total_row,
+            end_column=CA_START_COL + 15
+        )
+
+        # FLUXES
+        ws.merge_cells(
+            start_row=grand_total_row,
+            start_column=CA_START_COL + 16,
+            end_row=grand_total_row,
+            end_column=CA_START_COL + 18
+        )
+
+        # ----------------------------------
+        # Read edited Grand Total values
+        # ----------------------------------
+        grand_ibrm = ""
+        grand_cbrm = ""
+        grand_fluxes = ""
+        grand_slag = ""
+        grand_clinker = ""
+        grand_total = ""
+
+        try:
+
+            print("EDITABLE TABLE =", editable_table)
+
+            if editable_table and len(editable_table) > 6:
+
+                grand_row = editable_table[6]
+
+                print("GRAND ROW =", grand_row)
+
+                grand_ibrm = grand_row[1] if len(grand_row) > 1 else ""
+                grand_cbrm = grand_row[2] if len(grand_row) > 2 else ""
+                grand_fluxes = grand_row[3] if len(grand_row) > 3 else ""
+                grand_slag = grand_row[4] if len(grand_row) > 4 else ""
+                grand_clinker = grand_row[5] if len(grand_row) > 5 else ""
+                grand_total = grand_row[6] if len(grand_row) > 6 else ""
+
+        except Exception as e:
+
+            print("GRAND TOTAL ERROR =", str(e))
+
+        # ----------------------------------
+        # Write Grand Total values
+        # ----------------------------------
+
+        c = ws.cell(
+            grand_total_row,
+            CA_START_COL + 1,
+            grand_ibrm
+        )
+        c.font = _font(bold=True)
+        c.alignment = _ctr
+        c.border = _bdr
+
+        c = ws.cell(
+            grand_total_row,
+            CA_START_COL + 6,
+            grand_cbrm
+        )
+        c.font = _font(bold=True)
+        c.alignment = _ctr
+        c.border = _bdr
+
+        c = ws.cell(
+            grand_total_row,
+            CA_START_COL + 16,
+            grand_fluxes
+        )
+        c.font = _font(bold=True)
+        c.alignment = _ctr
+        c.border = _bdr
+
+        c = ws.cell(
+            grand_total_row,
+            CA_START_COL + 19,
+            grand_slag
+        )
+        c.font = _font(bold=True)
+        c.alignment = _ctr
+        c.border = _bdr
+
+        c = ws.cell(
+            grand_total_row,
+            CA_START_COL + 20,
+            grand_clinker
+        )
+        c.font = _font(bold=True)
+        c.alignment = _ctr
+        c.border = _bdr
+
+        c = ws.cell(
+            grand_total_row,
+            total_col,
+            grand_total
+        )
+        c.font = _font(bold=True)
+        c.alignment = _ctr
+        c.border = _bdr
+
+        # Borders for merged row
+        for col in range(CA_START_COL, total_col + 1):
+
+            ws.cell(
+                grand_total_row,
+                col
+            ).border = _bdr
+
+            ws.cell(
+                grand_total_row,
+                col
+            ).alignment = _ctr
+
+            ws.cell(
+                grand_total_row,
+                col
+            ).font = _font(bold=True)
+
+        # Start next section below Grand Total row
+        data_row = grand_total_row + 1
 
     # =====================================================
     # TIDE - DHARAMTAR PORT
@@ -2526,8 +2704,8 @@ def _build_excel_a4(
     TIDE_COL = 12   # Same column as cargo availability
 
     # ✅ Override the width=5 set by cargo availability
-    ws.column_dimensions[get_column_letter(TIDE_COL)].width = 18
-    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 10
+    ws.column_dimensions[get_column_letter(TIDE_COL)].width = 30
+    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 30
 
     def safe_cell(ws, row, col, value=None):
         from openpyxl.utils import get_column_letter
@@ -2583,6 +2761,7 @@ def _build_excel_a4(
     # Data Rows
     row_no = header_row + 1
     for tide in (tide_rows or []):
+
         tide_dt = ""
         if tide.get("tide_datetime"):
             try:
@@ -2594,16 +2773,28 @@ def _build_excel_a4(
                 tide_dt = str(tide["tide_datetime"])
 
         c = safe_cell(ws, row_no, TIDE_COL, tide_dt)
+        c.font = _font(bold=True)          # SAME AS PORT THROUGHPUT
         c.border = _bdr
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         ws.row_dimensions[row_no].height = 18
 
-        c = safe_cell(ws, row_no, TIDE_COL + 1, tide.get("tide_meters", ""))
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c = safe_cell(
+            ws,
+            row_no,
+            TIDE_COL + 1,
+            tide.get("tide_meters", "")
+        )
+        c.font = _font(bold=True)          # SAME AS PORT THROUGHPUT
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         c.border = _bdr
 
         row_no += 1
-
     # current_row = max(current_row, row_no + 2)
 
     # =====================================================
@@ -2615,8 +2806,8 @@ def _build_excel_a4(
     # Move Port Throughput section 1 row up
     pt_start_row = tide_start_row - 1
 
-    ws.column_dimensions[get_column_letter(PT_COL)].width = 24
-    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 12
+    ws.column_dimensions[get_column_letter(PT_COL)].width = 30
+    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 30
 
     safe_merge(ws, pt_start_row, PT_COL, pt_start_row, PT_COL + 1)
 
@@ -2664,15 +2855,13 @@ def _build_excel_a4(
 
         pt_row += 1
 
-    # =====================================================
+# =====================================================
     # MBC CARGO HANDLING TABLE
     # =====================================================
     MBC_COL = PT_COL + 3
     mbc_start_row = tide_start_row - 1
 
     # -- 1. Organise fetched data --------------------------------------------------
-    # -- 1. Organise fetched data --------------------------------------------------
-
     day_lookup = {
         (r['owner'], r['cargo_type']): float(r['qty'] or 0)
         for r in (mbc_day_rows or [])
@@ -2710,12 +2899,25 @@ def _build_excel_a4(
     YTD_COLS = 1
 
     total_cols = 1 + DAY_COLS + MTD_COLS + YTD_COLS
-    
+
     # -- 2. Column widths ----------------------------------------------------------
     ws.column_dimensions[get_column_letter(MBC_COL)].width = 16
     for i in range(n_cargo):
-        ws.column_dimensions[get_column_letter(MBC_COL + 1 + i * 2)].width = 10
-        ws.column_dimensions[get_column_letter(MBC_COL + 2 + i * 2)].width = 10
+        ws.column_dimensions[get_column_letter(MBC_COL + 1 + i)].width = 16
+    # Day totals col
+    ws.column_dimensions[get_column_letter(MBC_COL + 1 + n_cargo)].width = 16
+
+    day_start = MBC_COL + 1
+    mtd_start = day_start + n_cargo + 1
+    ytd_start = mtd_start + n_cargo + 1
+
+    # MTD cargo cols
+    for i in range(n_cargo):
+        ws.column_dimensions[get_column_letter(mtd_start + i)].width = 16
+    # MTD totals col
+    ws.column_dimensions[get_column_letter(mtd_start + n_cargo)].width = 16
+    # YTD col
+    ws.column_dimensions[get_column_letter(ytd_start)].width = 16
 
     # -- 3. Title row --------------------------------------------------------------
     safe_merge(ws, mbc_start_row, MBC_COL, mbc_start_row, MBC_COL + total_cols - 1)
@@ -2726,112 +2928,83 @@ def _build_excel_a4(
     ws.cell(mbc_start_row, MBC_COL).value     = "MBC Cargo Handling"
     ws.cell(mbc_start_row, MBC_COL).alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[mbc_start_row].height   = 18
-    ws.row_dimensions[mbc_start_row].height = 18
-    for cc in range(MBC_COL, MBC_COL + total_cols):
-        ws.cell(mbc_start_row, cc).border = _bdr
 
     # =====================================================
     # HEADER ROWS
     # =====================================================
 
     cargo_hdr_row = mbc_start_row + 1
-    col_hdr_row = cargo_hdr_row + 1
+    col_hdr_row   = cargo_hdr_row + 1
 
-    day_start = MBC_COL + 1
-    mtd_start = day_start + n_cargo + 1
-    ytd_start = mtd_start + n_cargo + 1
-
-    # Owner
+    # Owner (merged across both header rows)
     safe_merge(ws, cargo_hdr_row, MBC_COL, col_hdr_row, MBC_COL)
-
     c = safe_cell(ws, cargo_hdr_row, MBC_COL, "Owner")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.border = _bdr
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
     c.alignment = Alignment(horizontal="center", vertical="center")
 
     # Day Header
-    safe_merge(
-        ws,
-        cargo_hdr_row,
-        day_start,
-        cargo_hdr_row,
-        day_start + n_cargo
-    )
-
+    safe_merge(ws, cargo_hdr_row, day_start, cargo_hdr_row, day_start + n_cargo)
     c = safe_cell(ws, cargo_hdr_row, day_start, "Day")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.border = _bdr
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
     c.alignment = Alignment(horizontal="center")
 
     # MTD Header
-    safe_merge(
-        ws,
-        cargo_hdr_row,
-        mtd_start,
-        cargo_hdr_row,
-        mtd_start + n_cargo
-    )
-
+    safe_merge(ws, cargo_hdr_row, mtd_start, cargo_hdr_row, mtd_start + n_cargo)
     c = safe_cell(ws, cargo_hdr_row, mtd_start, "MTD")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.border = _bdr
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
     c.alignment = Alignment(horizontal="center")
 
     # YTD Header
-    safe_merge(
-        ws,
-        cargo_hdr_row,
-        ytd_start,
-        cargo_hdr_row,
-        ytd_start
-    )
-
+    safe_merge(ws, cargo_hdr_row, ytd_start, cargo_hdr_row, ytd_start)
     c = safe_cell(ws, cargo_hdr_row, ytd_start, "YTD")
-    c.font = _font(bold=True)
-    c.fill = _fill("D9EAF7")
-    c.border = _bdr
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
     c.alignment = Alignment(horizontal="center")
 
-    # Second Header Row
+    # -- Second Header Row (cargo type names + Total) --
     for i, ct in enumerate(cargo_types):
-
         c = safe_cell(ws, col_hdr_row, day_start + i, ct)
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.border = _bdr
+        c.font      = _font(bold=True)
+        c.fill      = _fill("D9EAF7")
+        c.border    = _bdr
         c.alignment = Alignment(horizontal="center")
 
-    safe_cell(
-        ws,
-        col_hdr_row,
-        day_start + n_cargo,
-        "Total"
-    ).border = _bdr
+    c = safe_cell(ws, col_hdr_row, day_start + n_cargo, "Total")
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
+    c.alignment = Alignment(horizontal="center")
 
     for i, ct in enumerate(cargo_types):
-
         c = safe_cell(ws, col_hdr_row, mtd_start + i, ct)
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
-        c.border = _bdr
+        c.font      = _font(bold=True)
+        c.fill      = _fill("D9EAF7")
+        c.border    = _bdr
         c.alignment = Alignment(horizontal="center")
 
-    safe_cell(
-        ws,
-        col_hdr_row,
-        mtd_start + n_cargo,
-        "Total"
-    ).border = _bdr
+    c = safe_cell(ws, col_hdr_row, mtd_start + n_cargo, "Total")
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
+    c.alignment = Alignment(horizontal="center")
 
-    safe_cell(
-        ws,
-        col_hdr_row,
-        ytd_start,
-        "Total"
-    ).border = _bdr
+    c = safe_cell(ws, col_hdr_row, ytd_start, "Total")
+    c.font      = _font(bold=True)
+    c.fill      = _fill("D9EAF7")
+    c.border    = _bdr
+    c.alignment = Alignment(horizontal="center")
+
+    # Apply border to all cells in both header rows
+    for cc in range(MBC_COL, MBC_COL + total_cols):
+        ws.cell(cargo_hdr_row, cc).border = _bdr
+        ws.cell(col_hdr_row,   cc).border = _bdr
 
     # =====================================================
     # DATA ROWS
@@ -2843,59 +3016,37 @@ def _build_excel_a4(
 
         c = safe_cell(ws, data_start, MBC_COL, owner)
         c.border = _bdr
+        c.font   = _font(bold=True)
 
-        day_total = 0
+        day_total   = 0
         month_total = 0
 
         for i, ct in enumerate(cargo_types):
-
             qty = day_lookup.get((owner, ct), 0)
             day_total += qty
+            c = safe_cell(ws, data_start, day_start + i, qty if qty else "")
+            c.border = _bdr
+            c.font   = _font(bold=True)
 
-            safe_cell(
-                ws,
-                data_start,
-                day_start + i,
-                qty if qty else ""
-            ).border = _bdr
-
-        safe_cell(
-            ws,
-            data_start,
-            day_start + n_cargo,
-            day_total if day_total else ""
-        ).border = _bdr
+        c = safe_cell(ws, data_start, day_start + n_cargo, day_total if day_total else "")
+        c.border = _bdr
+        c.font   = _font(bold=True)
 
         for i, ct in enumerate(cargo_types):
-
             qty = month_lookup.get((owner, ct), 0)
             month_total += qty
+            c = safe_cell(ws, data_start, mtd_start + i, qty if qty else "")
+            c.border = _bdr
+            c.font   = _font(bold=True)
 
-            safe_cell(
-                ws,
-                data_start,
-                mtd_start + i,
-                qty if qty else ""
-            ).border = _bdr
+        c = safe_cell(ws, data_start, mtd_start + n_cargo, month_total if month_total else "")
+        c.border = _bdr
+        c.font   = _font(bold=True)
 
-        safe_cell(
-            ws,
-            data_start,
-            mtd_start + n_cargo,
-            month_total if month_total else ""
-        ).border = _bdr
-
-        year_total = sum(
-            year_lookup.get((owner, ct), 0)
-            for ct in cargo_types
-        )
-
-        safe_cell(
-            ws,
-            data_start,
-            ytd_start,
-            year_total if year_total else ""
-        ).border = _bdr
+        year_total = sum(year_lookup.get((owner, ct), 0) for ct in cargo_types)
+        c = safe_cell(ws, data_start, ytd_start, year_total if year_total else "")
+        c.border = _bdr
+        c.font   = _font(bold=True)
 
         data_start += 1
 
@@ -2903,67 +3054,46 @@ def _build_excel_a4(
     # TOTAL ROW
     # =====================================================
 
-    c = safe_cell(ws, data_start, MBC_COL, "Total")
+    for i, ct in enumerate(cargo_types):
+        total_day = sum(day_lookup.get((o, ct), 0) for o in owners)
+        c = safe_cell(ws, data_start, day_start + i, total_day if total_day else "")
+        c.font = _font(bold=True)
+        c.fill = _fill("F2F2F2")
+        c.border = _bdr
+
+    c = safe_cell(ws, data_start, day_start + n_cargo, sum(day_lookup.values()))
     c.font = _font(bold=True)
     c.fill = _fill("F2F2F2")
     c.border = _bdr
 
     for i, ct in enumerate(cargo_types):
-
-        total_day = sum(
-            day_lookup.get((o, ct), 0)
-            for o in owners
-        )
-
-        c = safe_cell(
-            ws,
-            data_start,
-            day_start + i,
-            total_day if total_day else ""
-        )
+        total_mtd = sum(month_lookup.get((o, ct), 0) for o in owners)
+        c = safe_cell(ws, data_start, mtd_start + i, total_mtd if total_mtd else "")
         c.font = _font(bold=True)
         c.fill = _fill("F2F2F2")
         c.border = _bdr
 
-    safe_cell(
-        ws,
-        data_start,
-        day_start + n_cargo,
-        sum(day_lookup.values())
-    ).border = _bdr
+    c = safe_cell(ws, data_start, mtd_start + n_cargo, sum(month_lookup.values()))
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
 
-    for i, ct in enumerate(cargo_types):
+    c = safe_cell(ws, data_start, ytd_start, sum(year_lookup.values()))
+    c.font = _font(bold=True)
+    c.fill = _fill("F2F2F2")
+    c.border = _bdr
 
-        total_mtd = sum(
-            month_lookup.get((o, ct), 0)
-            for o in owners
-        )
+    # Force ALL cells in Total row bold last (overrides everything)
+    for cc in range(MBC_COL, MBC_COL + total_cols):
+        ws.cell(data_start, cc).font   = _font(bold=True)
+        ws.cell(data_start, cc).fill   = _fill("F2F2F2")
+        ws.cell(data_start, cc).border = _bdr
 
-        c = safe_cell(
-            ws,
-            data_start,
-            mtd_start + i,
-            total_mtd if total_mtd else ""
-        )
-        c.font = _font(bold=True)
-        c.fill = _fill("F2F2F2")
-        c.border = _bdr
-
-    safe_cell(
-        ws,
-        data_start,
-        mtd_start + n_cargo,
-        sum(month_lookup.values())
-    ).border = _bdr
-
-    safe_cell(
-        ws,
-        data_start,
-        ytd_start,
-        sum(year_lookup.values())
-    ).border = _bdr
+    ws.cell(data_start, MBC_COL).value = "Total"
 
     data_start += 1
+
+   
 
     # -- 8. Advance current_row ----------------------------------------------------
     # current_row = max(current_row, data_start + 2)
@@ -2993,12 +3123,17 @@ def _build_excel_a4(
     # Title
     # -----------------------------
     safe_merge(ws, cargo_start_row, CARGO_COL, cargo_start_row, CARGO_COL + 2)
+
     for cc in range(CARGO_COL, CARGO_COL + 3):
-        ws.cell(cargo_start_row, cc).fill   = _fill("D9EAF7")
+        ws.cell(cargo_start_row, cc).fill = _fill("D9EAF7")
         ws.cell(cargo_start_row, cc).border = _bdr
-        ws.cell(cargo_start_row, cc).font   = _font(bold=True)
-    ws.cell(cargo_start_row, CARGO_COL).value     = "Cargo Handled"
-    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(cargo_start_row, cc).font = _font(bold=True)
+
+    ws.cell(cargo_start_row, CARGO_COL).value = "Cargo Handled"
+    ws.cell(cargo_start_row, CARGO_COL).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     r = cargo_start_row + 1
 
@@ -3027,10 +3162,12 @@ def _build_excel_a4(
         qty = int(round(day_dict.get(route, 0)))
 
         c = safe_cell(ws, r, CARGO_COL + 1, route)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="left", vertical="center")
         c.border = _bdr
 
         c = safe_cell(ws, r, CARGO_COL + 2, qty)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right", vertical="center")
         c.border = _bdr
 
@@ -3038,6 +3175,7 @@ def _build_excel_a4(
 
     # Day Total
     c = safe_cell(ws, r, CARGO_COL + 1, "Total")
+    c.font = _font(bold=True)
     c.border = _bdr
 
     c = safe_cell(
@@ -3046,6 +3184,7 @@ def _build_excel_a4(
         CARGO_COL + 2,
         int(round(sum(day_dict.values())))
     )
+    c.font = _font(bold=True)
     c.alignment = Alignment(horizontal="right", vertical="center")
     c.border = _bdr
 
@@ -3076,10 +3215,12 @@ def _build_excel_a4(
         qty = int(round(month_dict.get(route, 0)))
 
         c = safe_cell(ws, r, CARGO_COL + 1, route)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="left", vertical="center")
         c.border = _bdr
 
         c = safe_cell(ws, r, CARGO_COL + 2, qty)
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right", vertical="center")
         c.border = _bdr
 
@@ -3087,6 +3228,7 @@ def _build_excel_a4(
 
     # Month Total
     c = safe_cell(ws, r, CARGO_COL + 1, "Total")
+    c.font = _font(bold=True)
     c.border = _bdr
 
     c = safe_cell(
@@ -3095,6 +3237,7 @@ def _build_excel_a4(
         CARGO_COL + 2,
         int(round(sum(month_dict.values())))
     )
+    c.font = _font(bold=True)
     c.alignment = Alignment(horizontal="right", vertical="center")
     c.border = _bdr
 
@@ -3114,12 +3257,10 @@ def _build_excel_a4(
         ws.cell(rr, CARGO_COL).border = _bdr
 
     # Column Widths
-    ws.column_dimensions[get_column_letter(CARGO_COL)].width = 18
-    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 20
-    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 12
+    ws.column_dimensions[get_column_letter(CARGO_COL)].width = 30
+    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 30
 
-    # IMPORTANT:
-    # Do NOT update current_row here
     cargo_end_row = r
 
     # =====================================================
@@ -3164,7 +3305,7 @@ def _build_excel_a4(
         c.alignment = Alignment(horizontal="center", vertical="center")
         c.border = _bdr
 
-    # -----------------------------
+   # -----------------------------
     # Data
     # -----------------------------
     r = hdr_row + 1
@@ -3190,7 +3331,9 @@ def _build_excel_a4(
         total_month += month_qty
         total_year += year_qty
 
-        safe_cell(ws, r, THR_COL, cargo_type).border = _bdr
+        c = safe_cell(ws, r, THR_COL, cargo_type)
+        c.font = _font(bold=True)
+        c.border = _bdr
 
         c = safe_cell(
             ws,
@@ -3198,6 +3341,7 @@ def _build_excel_a4(
             THR_COL + 1,
             int(round(day_qty or 0)) if day_qty else "-"
         )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3207,6 +3351,7 @@ def _build_excel_a4(
             THR_COL + 2,
             int(round(month_qty or 0)) if month_qty else "-"
         )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3216,6 +3361,7 @@ def _build_excel_a4(
             THR_COL + 3,
             int(round(year_qty or 0)) if year_qty else "-"
         )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3242,14 +3388,35 @@ def _build_excel_a4(
     c.font = _font(bold=True)
     c.alignment = Alignment(horizontal="right")
     c.border = _bdr
+    # -----------------------------
+    # Total Row
+    # -----------------------------
+    c = safe_cell(ws, r, THR_COL, "Total")
+    c.font = _font(bold=True)
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 1, int(round(total_day)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 2, int(round(total_month)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
+
+    c = safe_cell(ws, r, THR_COL + 3, int(round(total_year)))
+    c.font = _font(bold=True)
+    c.alignment = Alignment(horizontal="right")
+    c.border = _bdr
 
     # -----------------------------
     # Column Widths
     # -----------------------------
-    ws.column_dimensions[get_column_letter(THR_COL)].width = 18
-    ws.column_dimensions[get_column_letter(THR_COL + 1)].width = 12
-    ws.column_dimensions[get_column_letter(THR_COL + 2)].width = 12
-    ws.column_dimensions[get_column_letter(THR_COL + 3)].width = 14
+    ws.column_dimensions[get_column_letter(THR_COL)].width = 30
+    ws.column_dimensions[get_column_letter(THR_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(THR_COL + 2)].width = 30
+    ws.column_dimensions[get_column_letter(THR_COL + 3)].width = 30
 
     # -----------------------------
     # Full Border
@@ -3271,26 +3438,59 @@ def _build_excel_a4(
     # -----------------------------------
     # Title
     # -----------------------------------
-    safe_merge(ws, RAINFALL_ROW, RAINFALL_COL, RAINFALL_ROW, RAINFALL_COL + 3)
+    safe_merge(
+        ws,
+        RAINFALL_ROW,
+        RAINFALL_COL,
+        RAINFALL_ROW,
+        RAINFALL_COL + 3
+    )
+
     for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
-        ws.cell(RAINFALL_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(RAINFALL_ROW, cc).fill = _fill("D9EAF7")
         ws.cell(RAINFALL_ROW, cc).border = _bdr
-        ws.cell(RAINFALL_ROW, cc).font   = _font(bold=True)
-    ws.cell(RAINFALL_ROW, RAINFALL_COL).value     = "Rainfall Details"
-    ws.cell(RAINFALL_ROW, RAINFALL_COL).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(RAINFALL_ROW, cc).font = _font(bold=True)
+
+    ws.cell(
+        RAINFALL_ROW,
+        RAINFALL_COL
+    ).value = "Rainfall Details"
+
+    ws.cell(
+        RAINFALL_ROW,
+        RAINFALL_COL
+    ).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     # -----------------------------------
     # Header
     # -----------------------------------
     hdr_row = RAINFALL_ROW + 1
 
-    headers = ["Year", "Period", "Rainfall", "Max."]
+    headers = [
+        "Year",
+        "Period",
+        "Rainfall",
+        "Max."
+    ]
 
     for i, hdr in enumerate(headers):
-        c = safe_cell(ws, hdr_row, RAINFALL_COL + i, hdr)
+
+        c = safe_cell(
+            ws,
+            hdr_row,
+            RAINFALL_COL + i,
+            hdr
+        )
+
         c.font = _font(bold=True)
         c.fill = _fill("D9EAF7")
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         c.border = _bdr
 
     r = hdr_row + 1
@@ -3307,18 +3507,66 @@ def _build_excel_a4(
         RAINFALL_COL
     )
 
-    c = safe_cell(ws, r, RAINFALL_COL, current_year)
-    c.alignment = Alignment(horizontal="center", vertical="center")
+    year1 = current_year
+
+    if rainfall_table:
+        try:
+            year1 = rainfall_table[2][0]
+        except:
+            pass
+
+    c = safe_cell(
+        ws,
+        r,
+        RAINFALL_COL,
+        year1
+    )
+
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
     c.border = _bdr
 
-    periods = ["For The Day", "MTD", "YTD"]
+    periods = [
+        "For The Day",
+        "MTD",
+        "YTD"
+    ]
 
     for i, period in enumerate(periods):
 
-        c = safe_cell(ws, r + i, RAINFALL_COL + 1, period)
+        c = safe_cell(
+            ws,
+            r + i,
+            RAINFALL_COL + 1,
+            period
+        )
         c.border = _bdr
 
-        c = safe_cell(ws, r + i, RAINFALL_COL + 2, "")
+        rainfall_value = ""
+
+        if rainfall_table:
+
+            try:
+
+                row_data = rainfall_table[2 + i]
+
+                if len(row_data) >= 3:
+                    rainfall_value = row_data[2]
+
+                elif len(row_data) >= 2:
+                    rainfall_value = row_data[1]
+
+            except Exception:
+                pass
+
+        c = safe_cell(
+            ws,
+            r + i,
+            RAINFALL_COL + 2,
+            rainfall_value
+        )
         c.border = _bdr
 
     safe_merge(
@@ -3329,7 +3577,21 @@ def _build_excel_a4(
         RAINFALL_COL + 3
     )
 
-    c = safe_cell(ws, r, RAINFALL_COL + 3, "")
+    max_value = ""
+
+    if rainfall_table:
+        try:
+            max_value = rainfall_table[2][3]
+        except:
+            pass
+
+    c = safe_cell(
+        ws,
+        r,
+        RAINFALL_COL + 3,
+        max_value
+    )
+
     c.border = _bdr
 
     r += 3
@@ -3346,18 +3608,84 @@ def _build_excel_a4(
         RAINFALL_COL
     )
 
-    c = safe_cell(ws, r, RAINFALL_COL, prev_year)
-    c.alignment = Alignment(horizontal="center", vertical="center")
+    year2 = prev_year
+
+    if rainfall_table:
+        try:
+            year2 = rainfall_table[5][0]
+        except:
+            pass
+
+    c = safe_cell(
+        ws,
+        r,
+        RAINFALL_COL,
+        year2
+    )
+
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
     c.border = _bdr
 
-    periods = ["For The Day", "Month", "Year"]
+    periods = [
+        "For The Day",
+        "Month",
+        "Year"
+    ]
 
     for i, period in enumerate(periods):
 
-        c = safe_cell(ws, r + i, RAINFALL_COL + 1, period)
+        c = safe_cell(
+            ws,
+            r + i,
+            RAINFALL_COL + 1,
+            period
+        )
         c.border = _bdr
 
-        c = safe_cell(ws, r + i, RAINFALL_COL + 2, "")
+        rainfall_value = ""
+
+        if rainfall_table:
+
+            try:
+
+                row_data = rainfall_table[5 + i]
+
+                if len(row_data) >= 3:
+                    rainfall_value = row_data[2]
+
+                elif len(row_data) >= 2:
+                    rainfall_value = row_data[1]
+
+                print(
+                    "PREVIOUS YEAR ROW =",
+                    row_data,
+                    "VALUE =",
+                    rainfall_value
+                )
+
+            except Exception as e:
+
+                print(
+                    "PREVIOUS YEAR ERROR =",
+                    e
+                )
+
+        c = safe_cell(
+            ws,
+            r + i,
+            RAINFALL_COL + 2,
+            rainfall_value
+        )
+
+        c.alignment = Alignment(
+            horizontal="left",
+            vertical="center",
+            wrap_text=True
+        )
+
         c.border = _bdr
 
     safe_merge(
@@ -3368,24 +3696,91 @@ def _build_excel_a4(
         RAINFALL_COL + 3
     )
 
-    c = safe_cell(ws, r, RAINFALL_COL + 3, "")
+    max_value = ""
+
+    if rainfall_table:
+
+        try:
+
+            row_data = rainfall_table[5]
+
+            if len(row_data) >= 4:
+                max_value = row_data[3]
+
+        except Exception:
+            pass
+
+    c = safe_cell(
+        ws,
+        r,
+        RAINFALL_COL + 3,
+        max_value
+    )
+
+    c.alignment = Alignment(
+        horizontal="left",
+        vertical="center",
+        wrap_text=True
+    )
+
     c.border = _bdr
+
+    # -----------------------------------
+    # Make Entire Rainfall Table Bold
+    # -----------------------------------
+    for rr in range(
+        RAINFALL_ROW,
+        r + 3
+    ):
+        for cc in range(
+            RAINFALL_COL,
+            RAINFALL_COL + 4
+        ):
+            ws.cell(
+                rr,
+                cc
+            ).font = _font(bold=True)
+
 
     # -----------------------------------
     # Full Borders
     # -----------------------------------
-    for rr in range(RAINFALL_ROW, r + 3):
-        for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
-            ws.cell(rr, cc).border = _bdr
+    for rr in range(
+        RAINFALL_ROW,
+        r + 3
+    ):
+        for cc in range(
+            RAINFALL_COL,
+            RAINFALL_COL + 4
+        ):
+            ws.cell(
+                rr,
+                cc
+            ).border = _bdr
+
+    # -----------------------------------
+    # Make Entire Rainfall Table Bold
+    # -----------------------------------
+    for rr in range(
+        RAINFALL_ROW,
+        r + 3
+    ):
+        for cc in range(
+            RAINFALL_COL,
+            RAINFALL_COL + 4
+        ):
+            ws.cell(
+                rr,
+                cc
+            ).font = _font(bold=True)
 
     # -----------------------------------
     # Column Widths
     # -----------------------------------
-    ws.column_dimensions[get_column_letter(RAINFALL_COL)].width = 10
-    ws.column_dimensions[get_column_letter(RAINFALL_COL + 1)].width = 16
-    ws.column_dimensions[get_column_letter(RAINFALL_COL + 2)].width = 12
-    ws.column_dimensions[get_column_letter(RAINFALL_COL + 3)].width = 10
-
+    ws.column_dimensions[get_column_letter(RAINFALL_COL)].width = 30
+    ws.column_dimensions[get_column_letter(RAINFALL_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(RAINFALL_COL + 2)].width = 30
+    ws.column_dimensions[get_column_letter(RAINFALL_COL + 3)].width = 30
     # =====================================================
     # CARGO STATISTICS
     # =====================================================
@@ -3413,12 +3808,17 @@ def _build_excel_a4(
     # Title
     # -----------------------------------
     safe_merge(ws, STAT_ROW, STAT_COL, STAT_ROW, STAT_COL + 2)
+
     for cc in range(STAT_COL, STAT_COL + 3):
-        ws.cell(STAT_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(STAT_ROW, cc).fill = _fill("D9EAF7")
         ws.cell(STAT_ROW, cc).border = _bdr
-        ws.cell(STAT_ROW, cc).font   = _font(bold=True)
-    ws.cell(STAT_ROW, STAT_COL).value     = "Cargo Statistics"
-    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(STAT_ROW, cc).font = _font(bold=True)
+
+    ws.cell(STAT_ROW, STAT_COL).value = "Cargo Statistics"
+    ws.cell(STAT_ROW, STAT_COL).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     # -----------------------------------
     # Header
@@ -3426,10 +3826,20 @@ def _build_excel_a4(
     hdr_row = STAT_ROW + 1
 
     for idx, hdr in enumerate(["Source", "Day", "MTD"]):
-        c = safe_cell(ws, hdr_row, STAT_COL + idx, hdr)
+
+        c = safe_cell(
+            ws,
+            hdr_row,
+            STAT_COL + idx,
+            hdr
+        )
+
         c.font = _font(bold=True)
         c.fill = _fill("D9EAF7")
-        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center"
+        )
         c.border = _bdr
 
     # -----------------------------------
@@ -3449,13 +3859,26 @@ def _build_excel_a4(
         total_month += month_qty
 
         c = safe_cell(ws, r, STAT_COL, src)
+        c.font = _font(bold=True)
         c.border = _bdr
 
-        c = safe_cell(ws, r, STAT_COL + 1, int(round(day_qty)) if day_qty else "")
+        c = safe_cell(
+            ws,
+            r,
+            STAT_COL + 1,
+            int(round(day_qty)) if day_qty else ""
+        )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
-        c = safe_cell(ws, r, STAT_COL + 2, int(round(month_qty)) if month_qty else "")
+        c = safe_cell(
+            ws,
+            r,
+            STAT_COL + 2,
+            int(round(month_qty)) if month_qty else ""
+        )
+        c.font = _font(bold=True)
         c.alignment = Alignment(horizontal="right")
         c.border = _bdr
 
@@ -3469,22 +3892,34 @@ def _build_excel_a4(
     c.fill = _fill("F2F2F2")
     c.border = _bdr
 
-    c = safe_cell(ws, r, STAT_COL + 1, int(round(total_day)))
+    c = safe_cell(
+        ws,
+        r,
+        STAT_COL + 1,
+        int(round(total_day))
+    )
     c.font = _font(bold=True)
     c.fill = _fill("F2F2F2")
+    c.alignment = Alignment(horizontal="right")
     c.border = _bdr
 
-    c = safe_cell(ws, r, STAT_COL + 2, int(round(total_month)))
+    c = safe_cell(
+        ws,
+        r,
+        STAT_COL + 2,
+        int(round(total_month))
+    )
     c.font = _font(bold=True)
     c.fill = _fill("F2F2F2")
+    c.alignment = Alignment(horizontal="right")
     c.border = _bdr
 
     # -----------------------------------
     # Widths
     # -----------------------------------
-    ws.column_dimensions[get_column_letter(STAT_COL)].width = 24
-    ws.column_dimensions[get_column_letter(STAT_COL + 1)].width = 12
-    ws.column_dimensions[get_column_letter(STAT_COL + 2)].width = 12
+    ws.column_dimensions[get_column_letter(STAT_COL)].width = 30
+    ws.column_dimensions[get_column_letter(STAT_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(STAT_COL + 2)].width = 30
 
     # -----------------------------------
     # Borders
@@ -3492,6 +3927,7 @@ def _build_excel_a4(
     for rr in range(STAT_ROW, r + 1):
         for cc in range(STAT_COL, STAT_COL + 3):
             ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).font = _font(bold=True)
 
     # =====================================================
     # BF PRODUCTION DETAILS
@@ -3503,14 +3939,33 @@ def _build_excel_a4(
     # -----------------------------
     # Title
     # -----------------------------
-    safe_merge(ws, BF_ROW, BF_COL, BF_ROW, BF_COL + 2)
+    safe_merge(
+        ws,
+        BF_ROW,
+        BF_COL,
+        BF_ROW,
+        BF_COL + 2
+    )
+
     for cc in range(BF_COL, BF_COL + 3):
-        ws.cell(BF_ROW, cc).fill   = _fill("D9EAF7")
+        ws.cell(BF_ROW, cc).fill = _fill("D9EAF7")
         ws.cell(BF_ROW, cc).border = _bdr
-        ws.cell(BF_ROW, cc).font   = _font(bold=True)
-    ws.cell(BF_ROW, BF_COL).value     = "BF Production Details"
-    ws.cell(BF_ROW, BF_COL).alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[BF_ROW].height  = 24
+        ws.cell(BF_ROW, cc).font = _font(bold=True)
+
+    ws.cell(
+        BF_ROW,
+        BF_COL
+    ).value = "BF Production Details"
+
+    ws.cell(
+        BF_ROW,
+        BF_COL
+    ).alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+
+    ws.row_dimensions[BF_ROW].height = 24
 
     # -----------------------------
     # Header Row
@@ -3541,7 +3996,6 @@ def _build_excel_a4(
             vertical="center"
         )
 
-    # Header height
     ws.row_dimensions[hdr_row].height = 25
 
     # -----------------------------
@@ -3549,15 +4003,54 @@ def _build_excel_a4(
     # -----------------------------
     row1 = hdr_row + 1
 
-    c = safe_cell(ws, row1, BF_COL, "BF1")
+    c = safe_cell(
+        ws,
+        row1,
+        BF_COL,
+        "BF1"
+    )
+    c.font = _font(bold=True)
     c.alignment = Alignment(
         horizontal="center",
         vertical="center"
     )
     c.border = _bdr
 
-    safe_cell(ws, row1, BF_COL + 1, "").border = _bdr
-    safe_cell(ws, row1, BF_COL + 2, "").border = _bdr
+    bf1_target = ""
+    bf1_actual = ""
+
+    if bf_table:
+        try:
+            bf1_target = bf_table[1][1]
+            bf1_actual = bf_table[1][2]
+        except:
+            pass
+
+    c = safe_cell(
+        ws,
+        row1,
+        BF_COL + 1,
+        bf1_target
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+
+    c = safe_cell(
+        ws,
+        row1,
+        BF_COL + 2,
+        bf1_actual
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     ws.row_dimensions[row1].height = 22
 
@@ -3566,31 +4059,79 @@ def _build_excel_a4(
     # -----------------------------
     row2 = row1 + 1
 
-    c = safe_cell(ws, row2, BF_COL, "BF2")
+    c = safe_cell(
+        ws,
+        row2,
+        BF_COL,
+        "BF2"
+    )
+    c.font = _font(bold=True)
     c.alignment = Alignment(
         horizontal="center",
         vertical="center"
     )
     c.border = _bdr
 
-    safe_cell(ws, row2, BF_COL + 1, "").border = _bdr
-    safe_cell(ws, row2, BF_COL + 2, "").border = _bdr
+    bf2_target = ""
+    bf2_actual = ""
+
+    if bf_table:
+        try:
+            bf2_target = bf_table[2][1]
+            bf2_actual = bf_table[2][2]
+        except:
+            pass
+
+    c = safe_cell(
+        ws,
+        row2,
+        BF_COL + 1,
+        bf2_target
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
+
+    c = safe_cell(
+        ws,
+        row2,
+        BF_COL + 2,
+        bf2_actual
+    )
+    c.font = _font(bold=True)
+    c.border = _bdr
+    c.alignment = Alignment(
+        horizontal="center",
+        vertical="center"
+    )
 
     ws.row_dimensions[row2].height = 22
 
     # -----------------------------
     # Column Widths
     # -----------------------------
-    ws.column_dimensions[get_column_letter(BF_COL)].width = 12
-    ws.column_dimensions[get_column_letter(BF_COL + 1)].width = 32
-    ws.column_dimensions[get_column_letter(BF_COL + 2)].width = 32
+    ws.column_dimensions[
+        get_column_letter(BF_COL)
+    ].width = 20
+
+    ws.column_dimensions[
+        get_column_letter(BF_COL + 1)
+    ].width = 30
+
+    ws.column_dimensions[
+        get_column_letter(BF_COL + 2)
+    ].width = 30
 
     # -----------------------------
-    # Borders
+    # Borders + Font
     # -----------------------------
     for rr in range(BF_ROW, row2 + 1):
         for cc in range(BF_COL, BF_COL + 3):
             ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).font = _font(bold=True)
     # =====================================================
     # RM STOCK DETAILS
     # =====================================================
@@ -3599,17 +4140,21 @@ def _build_excel_a4(
     RM_ROW = BF_ROW
 
     # -----------------------------
+    # Column Widths (set FIRST)
+    # -----------------------------
+    ws.column_dimensions[get_column_letter(RM_COL)].width     = 18
+    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 14
+
+    # -----------------------------
     # Title
     # -----------------------------
-    # RM Stock Details title
-    ws.merge_cells(
-        start_row=RM_ROW, start_column=RM_COL,
-        end_row=RM_ROW, end_column=RM_COL + 1
-    )
+    safe_merge(ws, RM_ROW, RM_COL, RM_ROW, RM_COL + 1)
+
     for cc in range(RM_COL, RM_COL + 2):
         ws.cell(RM_ROW, cc).fill   = _fill("D9EAF7")
         ws.cell(RM_ROW, cc).border = _bdr
         ws.cell(RM_ROW, cc).font   = _font(bold=True)
+
     ws.cell(RM_ROW, RM_COL).value     = "RM Stock Details"
     ws.cell(RM_ROW, RM_COL).alignment = Alignment(horizontal="center", vertical="center")
 
@@ -3621,62 +4166,105 @@ def _build_excel_a4(
     headers = ["Material", "Qty (LMT)"]
 
     for i, hdr in enumerate(headers):
-
-        c = safe_cell(
-            ws,
-            hdr_row,
-            RM_COL + i,
-            hdr
-        )
-        c.font = _font(bold=True)
-        c.fill = _fill("D9EAF7")
+        c = safe_cell(ws, hdr_row, RM_COL + i, hdr)
+        c.font      = _font(bold=True)
+        c.fill      = _fill("D9EAF7")
+        c.border    = _bdr
         c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border = _bdr
 
     # -----------------------------
-    # Data Rows
+    # IBRM
     # -----------------------------
-    materials = ["IBRM", "CBRM", "FLUXES"]
+    row1 = hdr_row + 1
 
-    r = hdr_row + 1
-
-    for material in materials:
-
-        c = safe_cell(ws, r, RM_COL, material)
-        c.border = _bdr
-
-        c = safe_cell(ws, r, RM_COL + 1, "")
-        c.border = _bdr
-        c.alignment = Alignment(horizontal="right", vertical="center")
-
-        r += 1
-
-    # -----------------------------
-    # Total Row
-    # -----------------------------
-    c = safe_cell(ws, r, RM_COL, "TOTAL")
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
+    c = safe_cell(ws, row1, RM_COL, "IBRM")
+    c.font   = _font(bold=True)
     c.border = _bdr
 
-    c = safe_cell(ws, r, RM_COL + 1, "")
-    c.font = _font(bold=True)
-    c.fill = _fill("F2F2F2")
-    c.border = _bdr
+    ibrm_qty = ""
+    if rm_table:
+        try:
+            ibrm_qty = rm_table[1][1]
+        except:
+            pass
+
+    c = safe_cell(ws, row1, RM_COL + 1, ibrm_qty)
+    c.font      = _font(bold=True)
+    c.border    = _bdr
     c.alignment = Alignment(horizontal="right", vertical="center")
 
     # -----------------------------
-    # Widths
+    # CBRM
     # -----------------------------
-    ws.column_dimensions[get_column_letter(RM_COL)].width = 15
-    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 12
+    row2 = row1 + 1
+
+    c = safe_cell(ws, row2, RM_COL, "CBRM")
+    c.font   = _font(bold=True)
+    c.border = _bdr
+
+    cbrm_qty = ""
+    if rm_table:
+        try:
+            cbrm_qty = rm_table[2][1]
+        except:
+            pass
+
+    c = safe_cell(ws, row2, RM_COL + 1, cbrm_qty)
+    c.font      = _font(bold=True)
+    c.border    = _bdr
+    c.alignment = Alignment(horizontal="right", vertical="center")
 
     # -----------------------------
-    # Full Border
+    # FLUXES
     # -----------------------------
-    for rr in range(RM_ROW, r + 1):
+    row3 = row2 + 1
+
+    c = safe_cell(ws, row3, RM_COL, "FLUXES")
+    c.font   = _font(bold=True)
+    c.border = _bdr
+
+    fluxes_qty = ""
+    if rm_table:
+        try:
+            fluxes_qty = rm_table[3][1]
+        except:
+            pass
+
+    c = safe_cell(ws, row3, RM_COL + 1, fluxes_qty)
+    c.font      = _font(bold=True)
+    c.border    = _bdr
+    c.alignment = Alignment(horizontal="right", vertical="center")
+
+    # -----------------------------
+    # TOTAL
+    # -----------------------------
+    row4 = row3 + 1
+
+    c = safe_cell(ws, row4, RM_COL, "TOTAL")
+    c.font   = _font(bold=True)
+    c.fill   = _fill("F2F2F2")
+    c.border = _bdr
+
+    total_qty = ""
+    if rm_table:
+        try:
+            total_qty = rm_table[4][1]
+        except:
+            pass
+
+    c = safe_cell(ws, row4, RM_COL + 1, total_qty)
+    c.font      = _font(bold=True)
+    c.fill      = _fill("F2F2F2")
+    c.border    = _bdr
+    c.alignment = Alignment(horizontal="right", vertical="center")
+
+    # -----------------------------
+    # Force Full Border + Bold on all cells
+    # -----------------------------
+    for rr in range(RM_ROW, row4 + 1):
         for cc in range(RM_COL, RM_COL + 2):
             ws.cell(rr, cc).border = _bdr
+            ws.cell(rr, cc).font   = _font(bold=True)
     
     # =====================================================
     # UPCOMING MOTHER VESSELS (MBCs)
@@ -3685,15 +4273,15 @@ def _build_excel_a4(
     upcoming_mbcs = upcoming_mbcs or []
 
     # Column widths for MBC section
-    ws.column_dimensions["B"].width = 18   # MBC Name
-    ws.column_dimensions["C"].width = 16   # Owner
-    ws.column_dimensions["D"].width = 16   # Cargo
-    ws.column_dimensions["E"].width = 12   # Qty (MT)
-    ws.column_dimensions["F"].width = 10   # FWD
-    ws.column_dimensions["G"].width = 10   # MID
-    ws.column_dimensions["H"].width = 10   # AFT
-    ws.column_dimensions["I"].width = 18   # Date
-    ws.column_dimensions["J"].width = 20   # Status
+    ws.column_dimensions["B"].width = 30   # MBC Name
+    ws.column_dimensions["C"].width = 30   # Owner
+    ws.column_dimensions["D"].width = 30   # Cargo
+    ws.column_dimensions["E"].width = 30   # Qty (MT)
+    ws.column_dimensions["F"].width = 30   # FWD
+    ws.column_dimensions["G"].width = 30   # MID
+    ws.column_dimensions["H"].width = 30   # AFT
+    ws.column_dimensions["I"].width = 30   # Date
+    ws.column_dimensions["J"].width = 30   # Status
 
     ws.merge_cells(
         start_row=current_row, start_column=LABEL_START,
@@ -3821,7 +4409,9 @@ def _build_excel_a4(
 
     current_row += 2
 
-
+    # ── Enforce uniform row height across all rows ──────────────────────────
+    for row_num in range(1, ws.max_row + 1):
+        ws.row_dimensions[row_num].height = 45
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -4495,183 +5085,188 @@ def daily_ops_preview():
     </table>
     """
 
-    cargo_availability = _fetch_cargo_availability(report_date)
-
     html += """
-    <br><br>
+<br><br>
     <h3>Cargo Availability for the Day</h3>
-
     <div style="overflow-x:auto;width:100%;">
-    <table style="
-        border-collapse:collapse;
-        font-family:Arial;
-        font-size:12px;
-        white-space:nowrap;
-    ">
-    """
-
-    # Header
-    html += """
+    <table id="cargo-availability-table"
+       style="border-collapse:collapse;font-family:Arial;font-size:12px;white-space:nowrap;">
     <tr style="background:#4a90d9;color:white;">
-        <th contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;min-width:120px;">
-        </th>
-    """
+        <th style="border:1px solid #ccc;padding:8px;height:38px;"></th>
 
-    for c in cargo_availability:
-        html += f"""
-        <th contenteditable="true"
-            style="
-            border:1px solid #ccc;
-            padding:8px;
-            min-width:120px;
-            text-align:center;
-        ">
-            {c['cargo_name']}
-        </th>
-        """
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">BRBF</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Orissa Fines</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Goa Fines</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">HBI</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">KDL CLO</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Jimblebar Fines</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Bacheli Fines</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Goa Clo</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Mabu</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Illavara</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Uval + Kestrel</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">MLV</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">PCI</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Antracite</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Limestone</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Bentonite</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Oliflux</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Dolomite</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Slag Loading/Unloading</th>
+<th contenteditable="true" style="border:1px solid #ccc;padding:8px;height:38px;">Clinker</th>
 
-    html += """
-    <th contenteditable="true"
-        style="border:1px solid #ccc;padding:8px;min-width:120px;">
-        Total
-    </th>
+<th style="border:1px solid #ccc;padding:8px;height:38px;">Total</th>
     </tr>
-    """
-
-    # At Jetty Row
-    html += """
     <tr>
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;font-weight:bold;">
-            At Jetty
-        </td>
-    """
-
-    grand_total = 0
-
-    for c in cargo_availability:
-
-        qty = c["at_jetty_qty"] or 0
-        grand_total += float(qty)
-
-        display = ""
-
-        if float(qty) > 0:
-            display = f"{float(qty):,.0f}"
-
-        html += f"""
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;text-align:right;">
-            {display}
-        </td>
-        """
-
-    html += f"""
-    <td contenteditable="true"
-        style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;">
-        {grand_total:,.0f}
-    </td>
+        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;">At Jetty</td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_BRBF" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Orissa Fines" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Goa Fines" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_HBI" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_KDL CLO" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Jimblebar Fines" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Bacheli Fines" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Goa Clo" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Mabu" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Illavara" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Uval + Kestrel" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_MLV" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_PCI" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Antracite" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Limestone" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Bentonite" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Oliflux" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Dolomite" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Clinker" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
+        <td id="cargo-avail-total" style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;min-width:80px;"></td>
     </tr>
-    """
-
-    # Hardcoded Row 1
-    html += """
     <tr>
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;">
-            08/16:15
-        </td>
-    """
-
-    for _ in cargo_availability:
-        html += """
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;"></td>
-        """
-
-    html += """
-    <td contenteditable="true"
-        style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_label" style="border:1px solid #ccc;padding:8px;min-width:100px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_BRBF" style="border:1px solid #ccc;padding:8px;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Orissa Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Goa Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_HBI" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_KDL CLO" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Jimblebar Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Bacheli Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Goa Clo" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Mabu" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Illavara" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Uval + Kestrel" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_MLV" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_PCI" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Antracite" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Limestone" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Bentonite" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Oliflux" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Dolomite" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row2_Clinker" style="border:1px solid #ccc;padding:8px;"></td>
+        <td style="border:1px solid #ccc;padding:8px;"></td>
     </tr>
-    """
-
-    # Hardcoded Row 2
-    html += """
     <tr>
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;">
-            4.19 mtr
-        </td>
-    """
-
-    for _ in cargo_availability:
-        html += """
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;"></td>
-        """
-
-    html += """
-    <td contenteditable="true"
-        style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_label" style="border:1px solid #ccc;padding:8px;min-width:100px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_BRBF" style="border:1px solid #ccc;padding:8px;min-width:80px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Orissa Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Goa Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_HBI" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_KDL CLO" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Jimblebar Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Bacheli Fines" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Goa Clo" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Mabu" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Illavara" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Uval + Kestrel" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_MLV" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_PCI" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Antracite" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Limestone" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Bentonite" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Oliflux" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Dolomite" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="row3_Clinker" style="border:1px solid #ccc;padding:8px;"></td>
+        <td style="border:1px solid #ccc;padding:8px;"></td>
     </tr>
-    """
-
-    # Hardcoded Row 3
-    html += """
-    <tr>
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;">
-            09/03:56
-        </td>
-    """
-
-    for _ in cargo_availability:
-        html += """
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;"></td>
-        """
-
-    html += """
-    <td contenteditable="true"
-        style="border:1px solid #ccc;padding:8px;"></td>
-    </tr>
-    """
-
-    # Total Row
-    html += """
     <tr style="background:#f2f2f2;font-weight:bold;">
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;">
-            Total
-        </td>
-    """
-
-    for c in cargo_availability:
-
-        qty = c["at_jetty_qty"] or 0
-
-        display = ""
-
-        if float(qty) > 0:
-            display = f"{float(qty):,.0f}"
-
-        html += f"""
-        <td contenteditable="true"
-            style="border:1px solid #ccc;padding:8px;text-align:right;">
-            {display}
-        </td>
-        """
-
-    html += f"""
-    <td contenteditable="true"
-        style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;">
-        {grand_total:,.0f}
-    </td>
+        <td style="border:1px solid #ccc;padding:8px;">Total</td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_BRBF" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Orissa Fines" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Goa Fines" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_HBI" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_KDL CLO" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Jimblebar Fines" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Bacheli Fines" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Goa Clo" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Mabu" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Illavara" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Uval + Kestrel" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_MLV" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_PCI" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Antracite" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Limestone" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Bentonite" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Oliflux" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Dolomite" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_Clinker" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
+        <td contenteditable="true" data-section="cargo_avail" data-key="total_grand" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
     </tr>
-    """
 
-    html += """
+    <tr style="background:#f2f2f2;font-weight:bold;">
+
+    <tr style="background:#f2f2f2;font-weight:bold;">
+
+    <td style="border:1px solid #ccc;padding:8px;"></td>
+
+    <td colspan="5"
+        id="grand_ibrm"
+        contenteditable="true"
+        data-section="cargo_avail"
+        data-key="grand_ibrm"
+        style="border:1px solid #ccc;padding:8px;text-align:center;">
+    </td>
+
+    <td colspan="10"
+        id="grand_cbrm"
+        contenteditable="true"
+        data-section="cargo_avail"
+        data-key="grand_cbrm"
+        style="border:1px solid #ccc;padding:8px;text-align:center;">
+    </td>
+
+    <td colspan="3"
+        id="grand_fluxes"
+        contenteditable="true"
+        data-section="cargo_avail"
+        data-key="grand_fluxes"
+        style="border:1px solid #ccc;padding:8px;text-align:center;">
+    </td>
+
+    <td id="grand_slag"
+        contenteditable="true"
+        data-section="cargo_avail"
+        data-key="grand_slag"
+        style="border:1px solid #ccc;padding:8px;text-align:center;">
+    </td>
+
+    <td id="grand_clinker"
+        contenteditable="true"
+        data-section="cargo_avail"
+        data-key="grand_clinker"
+        style="border:1px solid #ccc;padding:8px;text-align:center;">
+    </td>
+
+    <td id="grand_total"
+        contenteditable="true"
+        data-section="cargo_avail"
+        data-key="grand_total"
+        style="border:1px solid #ccc;padding:8px;text-align:center;">
+    </td>
+
+</tr>
+
     </table>
     </div>
     """
@@ -5163,56 +5758,130 @@ def daily_ops_preview():
         <!-- RM STOCK DETAILS -->
         <div>
 
-            <h3 style="margin-top:0;">RM Stock Details</h3>
+    <h3 style="margin-top:0;">RM Stock Details</h3>
 
-            <table style="
-                border-collapse:collapse;
-                font-family:Arial;
-                font-size:12px;
-                width:250px;
+    <table id="rm-stock-table"
+           style="
+           border-collapse:collapse;
+           font-family:Arial;
+           font-size:12px;
+           width:250px;
+    ">
+
+        <tr style="background:#4a90d9;color:white;">
+
+            <th style="
+                border:1px solid #ccc;
+                padding:8px;
+                text-align:left;
             ">
+                Material
+            </th>
 
-                <tr style="background:#4a90d9;color:white;">
-                    <th style="border:1px solid #ccc;padding:8px;text-align:left;">
-                        Material
-                    </th>
+            <th style="
+                border:1px solid #ccc;
+                padding:8px;
+                text-align:right;
+            ">
+                Qty (LMT)
+            </th>
 
-                    <th style="border:1px solid #ccc;padding:8px;text-align:right;">
-                        Qty (LMT)
-                    </th>
-                </tr>
+        </tr>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:8px;">IBRM</td>
-                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
-                </tr>
+        <tr>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:8px;">CBRM</td>
-                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
-                </tr>
+            <td style="
+                border:1px solid #ccc;
+                padding:8px;
+            ">
+                IBRM
+            </td>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:8px;">FLUXES</td>
-                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
-                </tr>
+            <td contenteditable="true"
+                style="
+                    border:1px solid #ccc;
+                    padding:8px;
+                    text-align:right;
+                    min-width:120px;
+                ">
+            </td>
 
-                <tr style="font-weight:bold;background:#f2f2f2;">
-                    <td style="border:1px solid #ccc;padding:8px;">TOTAL</td>
-                    <td contenteditable="true" style="border:1px solid #ccc;padding:8px;text-align:right;"></td>
-                </tr>
+        </tr>
 
-            </table>
+        <tr>
 
-        </div>
+            <td style="
+                border:1px solid #ccc;
+                padding:8px;
+            ">
+                CBRM
+            </td>
 
+            <td contenteditable="true"
+                style="
+                    border:1px solid #ccc;
+                    padding:8px;
+                    text-align:right;
+                    min-width:120px;
+                ">
+            </td>
+
+        </tr>
+
+        <tr>
+
+            <td style="
+                border:1px solid #ccc;
+                padding:8px;
+            ">
+                FLUXES
+            </td>
+
+            <td contenteditable="true"
+                style="
+                    border:1px solid #ccc;
+                    padding:8px;
+                    text-align:right;
+                    min-width:120px;
+                ">
+            </td>
+
+        </tr>
+
+        <tr style="
+            font-weight:bold;
+            background:#f2f2f2;
+        ">
+
+            <td style="
+                border:1px solid #ccc;
+                padding:8px;
+            ">
+                TOTAL
+            </td>
+
+            <td contenteditable="true"
+                style="
+                    border:1px solid #ccc;
+                    padding:8px;
+                    text-align:right;
+                    min-width:120px;
+                ">
+            </td>
+
+        </tr>
+
+    </table>
+
+</div>
 
         <!-- BF PRODUCTION DETAILS -->
         <div>
 
             <h3 style="margin-top:0;">BF Production Details</h3>
 
-            <table style="
+            <table id="bf-production-table"
+                style="
                 border-collapse:collapse;
                 font-family:Arial;
                 font-size:12px;
@@ -5234,30 +5903,64 @@ def daily_ops_preview():
                 </tr>
 
                 <tr>
-                    <td style="border:1px solid #ccc;padding:8px;">BF1</td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    <td style="border:1px solid #ccc;padding:8px;">
+                        BF1
                     </td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    <td id="bf1-target"
+                        contenteditable="true"
+                        style="
+                            border:1px solid #ccc;
+                            padding:8px;
+                            text-align:right;
+                            min-width:120px;
+                        ">
                     </td>
+
+                    <td id="bf1-actual"
+                        contenteditable="true"
+                        style="
+                            border:1px solid #ccc;
+                            padding:8px;
+                            text-align:right;
+                            min-width:120px;
+                        ">
+                    </td>
+
                 </tr>
 
                 <tr>
-                    <td style="border:1px solid #ccc;padding:8px;">BF2</td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    <td style="border:1px solid #ccc;padding:8px;">
+                        BF2
                     </td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:8px;text-align:right;">
+                    <td id="bf2-target"
+                        contenteditable="true"
+                        style="
+                            border:1px solid #ccc;
+                            padding:8px;
+                            text-align:right;
+                            min-width:120px;
+                        ">
                     </td>
+
+                    <td id="bf2-actual"
+                        contenteditable="true"
+                        style="
+                            border:1px solid #ccc;
+                            padding:8px;
+                            text-align:right;
+                            min-width:120px;
+                        ">
+                    </td>
+
                 </tr>
 
             </table>
+
+        </div>
 
         </div>
 
@@ -5267,102 +5970,115 @@ def daily_ops_preview():
 
             <h3 style="margin-top:0;">Rainfall Details</h3>
 
-            <table style="
-                border-collapse:collapse;
-                font-family:Arial;
-                font-size:12px;
-                width:330px;
-            ">
+            <table id="rainfall-table"
+       style="
+           border-collapse:collapse;
+           font-family:Arial;
+           font-size:12px;
+           width:330px;
+       ">
 
-                <tr style="background:#4a90d9;color:white;">
-                    <th colspan="4"
-                        style="border:1px solid #ccc;padding:8px;text-align:center;">
-                        Rainfall Details
-                    </th>
-                </tr>
+    <tr style="background:#4a90d9;color:white;">
+        <th colspan="4"
+            style="border:1px solid #ccc;padding:8px;text-align:center;">
+            Rainfall Details
+        </th>
+    </tr>
 
-                <tr style="background:#f2f2f2;">
-                    <th style="border:1px solid #ccc;padding:6px;">Year</th>
-                    <th style="border:1px solid #ccc;padding:6px;">Period</th>
-                    <th style="border:1px solid #ccc;padding:6px;">Rainfall</th>
-                    <th style="border:1px solid #ccc;padding:6px;">Max.</th>
-                </tr>
+    <tr style="background:#f2f2f2;">
+        <th style="border:1px solid #ccc;padding:6px;">Year</th>
+        <th style="border:1px solid #ccc;padding:6px;">Period</th>
+        <th style="border:1px solid #ccc;padding:6px;">Rainfall</th>
+        <th style="border:1px solid #ccc;padding:6px;">Max.</th>
+    </tr>
 
-                <tr>
-                    <td rowspan="3" style="border:1px solid #ccc;padding:6px;text-align:center;">
-                        2025
-                    </td>
+    <!-- 2025 -->
 
-                    <td style="border:1px solid #ccc;padding:6px;">
-                        For the Day
-                    </td>
+    <tr>
+        <td rowspan="3"
+            contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:center;">
+            2025
+        </td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:right;">
-                    </td>
+        <td style="border:1px solid #ccc;padding:6px;">
+            For the Day
+        </td>
 
-                    <td rowspan="3"
-                        contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:center;">
-                    </td>
-                </tr>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:right;">
+        </td>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:6px;">MTD</td>
+        <td rowspan="3"
+            contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:center;">
+        </td>
+    </tr>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:right;">
-                    </td>
-                </tr>
+    <tr>
+        <td style="border:1px solid #ccc;padding:6px;">
+            MTD
+        </td>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:6px;font-weight:bold;">
-                        YTD
-                    </td>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:right;">
+        </td>
+    </tr>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:right;">
-                    </td>
-                </tr>
+    <tr>
+        <td style="border:1px solid #ccc;padding:6px;font-weight:bold;">
+            YTD
+        </td>
 
-                <tr>
-                    <td rowspan="3" style="border:1px solid #ccc;padding:6px;text-align:center;">
-                        2024
-                    </td>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:right;">
+        </td>
+    </tr>
 
-                    <td style="border:1px solid #ccc;padding:6px;">
-                        For the Day
-                    </td>
+    <!-- 2024 -->
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:right;">
-                    </td>
+    <tr>
+        <td rowspan="3"
+            contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:center;">
+            2024
+        </td>
 
-                    <td rowspan="3"
-                        contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:center;">
-                    </td>
-                </tr>
+        <td style="border:1px solid #ccc;padding:6px;">
+            For the Day
+        </td>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:6px;">Month</td>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:right;">
+        </td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:right;">
-                    </td>
-                </tr>
+        <td rowspan="3"
+            contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:center;">
+        </td>
+    </tr>
 
-                <tr>
-                    <td style="border:1px solid #ccc;padding:6px;font-weight:bold;">
-                        Year
-                    </td>
+    <tr>
+        <td style="border:1px solid #ccc;padding:6px;">
+            Month
+        </td>
 
-                    <td contenteditable="true"
-                        style="border:1px solid #ccc;padding:6px;text-align:right;">
-                    </td>
-                </tr>
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:right;">
+        </td>
+    </tr>
 
-            </table>
+    <tr>
+        <td style="border:1px solid #ccc;padding:6px;font-weight:bold;">
+            Year
+        </td>
+
+        <td contenteditable="true"
+            style="border:1px solid #ccc;padding:6px;text-align:right;">
+        </td>
+    </tr>
+
+</table>
 
         </div>
 
@@ -5465,41 +6181,215 @@ def daily_ops_preview():
 @bp.route('/api/module/RP01/daily-ops/download')
 @login_required
 def daily_ops_download():
-    date_str = request.args.get('report_date', date.today().strftime('%Y-%m-%d'))
+
+    date_str = request.args.get(
+        'report_date',
+        date.today().strftime('%Y-%m-%d')
+    )
+
+    editable_table = []
+
+    if request.args.get("editable_table"):
+        try:
+            editable_table = json.loads(
+                request.args.get("editable_table")
+            )
+        except Exception:
+            editable_table = []
 
     try:
-        report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        report_date = datetime.strptime(
+            date_str,
+            '%Y-%m-%d'
+        ).date()
+
     except ValueError:
-        return Response('Invalid date', status=400)
+        return Response(
+            'Invalid date',
+            status=400
+        )
 
-    vessels              = _fetch_data(report_date)
+    # =====================================
+    # FETCH DATA
+    # =====================================
+
+    vessels = _fetch_data(report_date)
+
     if not vessels:
-        return Response('No active vessels found', status=404)
+        return Response(
+            'No active vessels found',
+            status=404
+        )
 
-    day_rows, month_rows           = _fetch_cargo_handled(report_date)
-    tide_rows                      = _fetch_tide_data(report_date)
-    mbc_day_rows, mbc_month_rows, mbc_year_rows = _fetch_mbc_cargo_handling(report_date)
-    upcoming_vessels               = _fetch_upcoming_vessels(report_date)
-    discharging_mbcs               = _fetch_discharging_mbcs(report_date)
-    upcoming_mbcs                  = _fetch_upcoming_mbcs(report_date)
-    mbc_status_rows                = _fetch_mbc_status(report_date)
-    cargo_availability             = _fetch_cargo_availability(report_date)
-    cargo_type_throughput        = _fetch_cargo_type_throughput(report_date)
-    cargo_stats_day, cargo_stats_month = _fetch_cargo_statistics(report_date)
-    port_throughput         = _fetch_port_throughput(report_date)
+    day_rows, month_rows = _fetch_cargo_handled(
+        report_date
+    )
+
+    tide_rows = _fetch_tide_data(
+        report_date
+    )
+
+    mbc_day_rows, mbc_month_rows, mbc_year_rows = \
+        _fetch_mbc_cargo_handling(
+            report_date
+        )
+
+    upcoming_vessels = _fetch_upcoming_vessels(
+        report_date
+    )
+
+    discharging_mbcs = _fetch_discharging_mbcs(
+        report_date
+    )
+
+    upcoming_mbcs = _fetch_upcoming_mbcs(
+        report_date
+    )
+
+    mbc_status_rows = _fetch_mbc_status(
+        report_date
+    )
+
+    cargo_availability = [
+        {"cargo_name": "BRBF", "at_jetty_qty": ""},
+        {"cargo_name": "Orissa Fines", "at_jetty_qty": ""},
+        {"cargo_name": "Goa Fines", "at_jetty_qty": ""},
+        {"cargo_name": "HBI", "at_jetty_qty": ""},
+        {"cargo_name": "KDL CLO", "at_jetty_qty": ""},
+        {"cargo_name": "Jimblebar Fines", "at_jetty_qty": ""},
+        {"cargo_name": "Bacheli Fines", "at_jetty_qty": ""},
+        {"cargo_name": "Goa Clo", "at_jetty_qty": ""},
+        {"cargo_name": "Mabu", "at_jetty_qty": ""},
+        {"cargo_name": "Illavara", "at_jetty_qty": ""},
+        {"cargo_name": "Uval + Kestrel", "at_jetty_qty": ""},
+        {"cargo_name": "MLV", "at_jetty_qty": ""},
+        {"cargo_name": "PCI", "at_jetty_qty": ""},
+        {"cargo_name": "Antracite", "at_jetty_qty": ""},
+        {"cargo_name": "Limestone", "at_jetty_qty": ""},
+        {"cargo_name": "Bentonite", "at_jetty_qty": ""},
+        {"cargo_name": "Oliflux", "at_jetty_qty": ""},
+        {"cargo_name": "Dolomite", "at_jetty_qty": ""},
+        {"cargo_name": "Slag Loading/Unloading", "at_jetty_qty": ""},
+        {"cargo_name": "Clinker", "at_jetty_qty": ""}
+    ]
+
+    cargo_type_throughput = _fetch_cargo_type_throughput(
+        report_date
+    )
+
+    cargo_stats_day, cargo_stats_month = \
+        _fetch_cargo_statistics(
+            report_date
+        )
+
+    port_throughput = _fetch_port_throughput(
+        report_date
+    )
 
     def _mbc_rows_to_dict(rows):
-        data = {o: {ct: 0.0 for ct in _MBC_CARGO_TYPES} for o in _MBC_OWNERS}
+
+        data = {
+            o: {
+                ct: 0.0
+                for ct in _MBC_CARGO_TYPES
+            }
+            for o in _MBC_OWNERS
+        }
+
         for row in rows:
-            owner = row['owner'] if row['owner'] in _MBC_OWNERS else 'OTHERS'
+
+            owner = (
+                row['owner']
+                if row['owner'] in _MBC_OWNERS
+                else 'OTHERS'
+            )
+
             cargo_type = row['cargo_type']
+
             if cargo_type in _MBC_CARGO_TYPES:
-                data[owner][cargo_type] += float(row['qty'] or 0)
+                data[owner][cargo_type] += float(
+                    row['qty'] or 0
+                )
+
         return data
 
-    mbc_day = _mbc_rows_to_dict(mbc_day_rows)
-    mbc_month = _mbc_rows_to_dict(mbc_month_rows)
-    mbc_year = _mbc_rows_to_dict(mbc_year_rows)
+    mbc_day = _mbc_rows_to_dict(
+        mbc_day_rows
+    )
+
+    mbc_month = _mbc_rows_to_dict(
+        mbc_month_rows
+    )
+
+    mbc_year = _mbc_rows_to_dict(
+        mbc_year_rows
+    )
+
+    print("EDITABLE TABLE")
+    print(editable_table)
+
+    # =====================================
+    # RAINFALL TABLE
+    # =====================================
+
+    rainfall_table = []
+
+    if request.args.get("rainfall_table"):
+
+        try:
+
+            rainfall_table = json.loads(
+                request.args.get("rainfall_table")
+            )
+
+            print("RAINFALL TABLE")
+            print(rainfall_table)
+
+        except Exception as e:
+
+            print("RAINFALL PARSE ERROR")
+            print(e)
+
+            rainfall_table = []
+
+    # =====================================
+    # BF TABLE
+    # =====================================
+
+    bf_table = []
+
+    if request.args.get("bf_table"):
+        try:
+            bf_table = json.loads(
+                request.args.get("bf_table")
+            )
+
+            print("BF TABLE =")
+            print(bf_table)
+
+        except Exception:
+            bf_table = []
+    
+     # =====================================
+    # RM TABLE
+    # =====================================
+
+    rm_table = []
+
+    if request.args.get("rm_table"):
+        try:
+            rm_table = json.loads(
+                request.args.get("rm_table")
+            )
+
+            print("RM TABLE =")
+            print(rm_table)
+
+        except Exception:
+            rm_table = []
+    # =====================================
+    # BUILD EXCEL
+    # =====================================
 
     buf = _build_excel_a4(
         vessels,
@@ -5509,7 +6399,7 @@ def daily_ops_download():
         tide_rows=tide_rows,
         mbc_day=mbc_day,
         mbc_month=mbc_month,
-        mbc_year =mbc_year,  # Using month data for year as well since we don't have separate year data
+        mbc_year=mbc_year,
         upcoming_vessels=upcoming_vessels,
         discharging_mbcs=discharging_mbcs,
         upcoming_mbcs=upcoming_mbcs,
@@ -5522,11 +6412,19 @@ def daily_ops_download():
         cargo_stats_day=cargo_stats_day,
         cargo_stats_month=cargo_stats_month,
         port_throughput=port_throughput,
+        editable_table=editable_table,
+        rainfall_table=rainfall_table,
+        bf_table=bf_table,
+        rm_table=rm_table
     )
 
     fname = f'DailyOps_{date_str}.xlsx'
+
     return Response(
         buf.getvalue(),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={'Content-Disposition': f'attachment; filename="{fname}"'},
+        headers={
+            'Content-Disposition':
+            f'attachment; filename="{fname}"'
+        }
     )

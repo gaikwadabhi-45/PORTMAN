@@ -3,6 +3,7 @@
 {% block title %}Daily Port Operations Report — RP01{% endblock %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
     .page-header {
         display: flex;
@@ -12,7 +13,13 @@
         padding-bottom: 12px;
         border-bottom: 2px solid var(--border-color);
     }
-    .page-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+
+    .page-header h2 {
+        margin: 0;
+        font-size: 18px;
+        color: var(--text-primary);
+    }
+
     .module-badge {
         background: #4a90d9;
         color: #fff;
@@ -22,11 +29,22 @@
         font-weight: 700;
         letter-spacing: 0.5px;
     }
+
     .breadcrumb {
-        font-size: 11px; color: var(--text-secondary); margin-bottom: 14px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-bottom: 14px;
     }
-    .breadcrumb a { color: #4a90d9; text-decoration: none; }
-    .breadcrumb a:hover { text-decoration: underline; }
+
+    .breadcrumb a {
+        color: #4a90d9;
+        text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+
     .filter-bar {
         display: flex;
         flex-wrap: wrap;
@@ -38,7 +56,13 @@
         border-radius: 6px;
         padding: 12px 14px;
     }
-    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
     .filter-group label {
         font-size: 10px;
         font-weight: 600;
@@ -46,7 +70,9 @@
         text-transform: uppercase;
         letter-spacing: 0.4px;
     }
-    .filter-group input, .filter-group select {
+
+    .filter-group input,
+    .filter-group select {
         padding: 5px 9px;
         border: 1px solid var(--border-color);
         border-radius: 4px;
@@ -55,7 +81,13 @@
         color: var(--text-primary);
         height: 30px;
     }
-    .filter-group input:focus, .filter-group select:focus { outline: none; border-color: #4a90d9; }
+
+    .filter-group input:focus,
+    .filter-group select:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
+
     .filter-btn {
         padding: 0 18px;
         height: 30px;
@@ -66,11 +98,32 @@
         cursor: pointer;
         align-self: flex-end;
     }
-    .filter-btn.primary { background: #4a90d9; color: #fff; }
-    .filter-btn.primary:hover { background: #357abd; }
-    .filter-btn.primary:disabled { background: #aaa; cursor: not-allowed; }
-    .filter-btn.secondary { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); }
-    .filter-btn.secondary:hover { background: var(--bg-secondary); border-color: #4a90d9; }
+
+    .filter-btn.primary {
+        background: #4a90d9;
+        color: #fff;
+    }
+
+    .filter-btn.primary:hover {
+        background: #357abd;
+    }
+
+    .filter-btn.primary:disabled {
+        background: #aaa;
+        cursor: not-allowed;
+    }
+
+    .filter-btn.secondary {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+    }
+
+    .filter-btn.secondary:hover {
+        background: var(--bg-secondary);
+        border-color: #4a90d9;
+    }
+
     .info-text {
         font-size: 11px;
         color: var(--text-secondary);
@@ -81,23 +134,31 @@
     .modal-overlay {
         display: none;
         position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.45);
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.45);
         z-index: 9000;
         justify-content: center;
         align-items: flex-start;
         padding-top: 60px;
     }
-    .modal-overlay.open { display: flex; }
+
+    .modal-overlay.open {
+        display: flex;
+    }
+
     .modal-box {
         background: var(--bg-primary);
         border-radius: 8px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
         width: 700px;
         max-height: 80vh;
         overflow-y: auto;
         padding: 0;
     }
+
     .modal-header {
         display: flex;
         align-items: center;
@@ -105,13 +166,30 @@
         padding: 16px 20px;
         border-bottom: 1px solid var(--border-color);
     }
-    .modal-header h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
-    .modal-close {
-        background: none; border: none; font-size: 20px; cursor: pointer;
-        color: var(--text-secondary); line-height: 1;
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 15px;
+        color: var(--text-primary);
     }
-    .modal-close:hover { color: var(--text-primary); }
-    .modal-body { padding: 20px; }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 20px;
+        cursor: pointer;
+        color: var(--text-secondary);
+        line-height: 1;
+    }
+
+    .modal-close:hover {
+        color: var(--text-primary);
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
     .modal-footer {
         display: flex;
         justify-content: flex-end;
@@ -119,6 +197,7 @@
         padding: 14px 20px;
         border-top: 1px solid var(--border-color);
     }
+
     .modal-section-title {
         font-size: 12px;
         font-weight: 700;
@@ -127,18 +206,24 @@
         letter-spacing: 0.4px;
         margin: 18px 0 8px;
     }
-    .modal-section-title:first-child { margin-top: 0; }
+
+    .modal-section-title:first-child {
+        margin-top: 0;
+    }
+
     .cutoff-date-row {
         display: flex;
         align-items: center;
         gap: 10px;
         margin-bottom: 16px;
     }
+
     .cutoff-date-row label {
         font-size: 12px;
         font-weight: 600;
         color: var(--text-primary);
     }
+
     .cutoff-date-row input {
         padding: 5px 9px;
         border: 1px solid var(--border-color);
@@ -148,6 +233,7 @@
         color: var(--text-primary);
         height: 30px;
     }
+
     .cutoff-hint {
         font-size: 10px;
         color: var(--text-secondary);
@@ -161,11 +247,14 @@
         font-size: 11px;
         margin-bottom: 10px;
     }
-    .cutoff-grid th, .cutoff-grid td {
+
+    .cutoff-grid th,
+    .cutoff-grid td {
         border: 1px solid var(--border-color);
         padding: 5px 8px;
         text-align: center;
     }
+
     .cutoff-grid th {
         background: var(--bg-secondary);
         font-weight: 600;
@@ -173,12 +262,14 @@
         text-transform: uppercase;
         letter-spacing: 0.3px;
     }
+
     .cutoff-grid td:first-child {
         text-align: left;
         font-weight: 600;
         background: var(--bg-secondary);
         white-space: nowrap;
     }
+
     .cutoff-grid input[type="number"] {
         width: 80px;
         padding: 3px 6px;
@@ -189,7 +280,11 @@
         background: var(--bg-primary);
         color: var(--text-primary);
     }
-    .cutoff-grid input[type="number"]:focus { outline: none; border-color: #4a90d9; }
+
+    .cutoff-grid input[type="number"]:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
 
 
 
@@ -199,8 +294,81 @@
         border-radius: 4px;
         margin-bottom: 12px;
     }
-    .cutoff-status.saved { background: #d4edda; color: #155724; }
-    .cutoff-status.none  { background: #fff3cd; color: #856404; }
+
+    .cutoff-status.saved {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .cutoff-status.none {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .download-loader {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .25);
+
+        display: none;
+        align-items: center;
+        justify-content: center;
+
+        z-index: 999999;
+    }
+
+    .download-loader.show {
+        display: flex;
+    }
+
+    .loader-card {
+        width: 220px;
+        background: #fff;
+
+        border-radius: 10px;
+
+        padding: 30px 25px;
+
+        text-align: center;
+
+        box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
+    }
+
+    .spinner {
+        width: 42px;
+        height: 42px;
+
+        margin: 0 auto 18px;
+
+        border: 4px solid #dfe5ec;
+        border-top: 4px solid #4a90d9;
+
+        border-radius: 50%;
+
+        animation: spin .8s linear infinite;
+    }
+
+    .loader-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .loader-subtitle {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
 </style>
 {% endblock %}
 
@@ -219,9 +387,10 @@
         <input type="date" id="report-date">
     </div>
     <button type="button" class="filter-btn primary" id="preview-btn" onclick="previewReport()">
-    👁 Preview
+        👁 Preview
     </button>
-    <button type="button" class="filter-btn primary" id="dl-btn" onclick="downloadReport()">&#8595; Download Excel</button>
+    <button type="button" class="filter-btn primary" id="dl-btn" onclick="downloadReport()">&#8595; Download
+        Excel</button>
     {% if is_admin %}
     <button type="button" class="filter-btn secondary" onclick="openCutoffModal()">Cutoff Settings</button>
     {% endif %}
@@ -268,176 +437,485 @@
         </div>
     </div>
 </div>
+<div id="downloadLoader" class="download-loader">
+    <div class="loader-card">
+
+        <div class="spinner"></div>
+
+        <div class="loader-title">
+            Preparing Download...
+        </div>
+
+        <div class="loader-subtitle">
+            Fetching data...
+        </div>
+
+    </div>
+</div>
 
 <script>
-/* FY cutoff snapshot is computed server-side; no client-side grids. */
+    /* FY cutoff snapshot is computed server-side; no client-side grids. */
 
-/* Distinct cargo types from the VCG01 cargo master (vessel_cargo). */
-let masterCargoTypes = [];
+    /* Distinct cargo types from the VCG01 cargo master (vessel_cargo). */
+    let masterCargoTypes = [];
 
-document.addEventListener('DOMContentLoaded', function () {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    document.getElementById('report-date').value = `${y}-${m}-${d}`;
-    loadCutoffStatus();
-});
-
-function downloadReport() {
-    const reportDate = document.getElementById('report-date').value;
-    const btn        = document.getElementById('dl-btn');
-    if (!reportDate) { alert('Please select a report date.'); return; }
-
-    btn.disabled    = true;
-    btn.textContent = 'Preparing\u2026';
-
-    fetch(`/api/module/RP01/daily-ops/download?report_date=${reportDate}`)
-        .then(res => {
-            if (res.status === 404) throw new Error('No active (non-closed) vessels found.');
-            if (!res.ok) throw new Error('Server error ' + res.status);
-            const disposition = res.headers.get('Content-Disposition') || '';
-            const match = disposition.match(/filename="(.+?)"/);
-            const filename = match ? match[1] : `DailyOps_${reportDate}.xlsx`;
-            return res.blob().then(blob => ({ blob, filename }));
-        })
-        .then(({ blob, filename }) => {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
-        })
-        .catch(err => {
-            alert(err.message || 'Download failed. Please try again.');
-        })
-        .finally(() => {
-            btn.disabled    = false;
-            btn.textContent = '\u2193 Download Excel';
-        });
-}
-
-function previewReport() {
-
-    const reportDate =
-        document.getElementById('report-date').value;
-
-    if (!reportDate) {
-        alert('Please select report date');
-        return;
-    }
-
-    fetch(`/api/module/RP01/daily-ops/preview?report_date=${reportDate}`)
-        .then(r => r.text())
-        .then(html => {
-
-            document.getElementById(
-                'preview-content'
-            ).innerHTML = html;
-
-            document.getElementById(
-                'preview-container'
-            ).style.display = 'block';
-        })
-        .catch(err => {
-            alert(err);
-        });
-}
-
-/* ── Cutoff Modal ──────────────────────────────────────────────────────── */
-
-function loadCutoffStatus() {
-    fetch('/api/module/RP01/daily-ops/cutoff')
-        .then(r => r.json())
-        .then(data => {
-            const bar = document.getElementById('cutoff-status-bar');
-            if (data.cutoff_date) {
-                bar.innerHTML = `<div class="cutoff-status saved">Cutoff active: FY snapshot stored up to <b>${data.cutoff_date}</b>.</div>`;
-            } else {
-                bar.innerHTML = `<div class="cutoff-status none">No cutoff configured — FY values come from live database queries.</div>`;
-            }
-        })
-        .catch(() => {});
-}
-
-function openCutoffModal() {
-    document.getElementById('cutoff-modal').classList.add('open');
-    // Load the distinct cargo types from the VCG01 master and the stored
-    // cutoff snapshot together, so every master cargo type gets a column.
-    Promise.all([
-        fetch('/api/module/VCG01/types').then(r => r.json()).catch(() => []),
-        fetch('/api/module/RP01/daily-ops/cutoff').then(r => r.json()).catch(() => ({})),
-    ]).then(([types, data]) => {
-        masterCargoTypes = Array.isArray(types) ? types : [];
-        document.getElementById('cutoff-date').value = (data && data.cutoff_date) || '';
-        renderFYPreview(((data && data.cutoff_values) || {}).fy_throughput || {});
+    document.addEventListener('DOMContentLoaded', function () {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        document.getElementById('report-date').value = `${y}-${m}-${d}`;
+        loadCutoffStatus();
     });
-}
 
-function closeCutoffModal() {
-    document.getElementById('cutoff-modal').classList.remove('open');
-}
+    function downloadReport() {
 
-// Close modal on overlay click
-document.addEventListener('click', function(e) {
-    if (e.target.id === 'cutoff-modal') closeCutoffModal();
-});
 
-/* ── FY Matrix Preview ─────────────────────────────────────────────────── */
+        
 
-function getCurrentFyStart() {
-    const now = new Date();
-    return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
-}
+        const reportDate =
+            document.getElementById('report-date').value;
 
-function getCurrentFyLabel() {
-    const start = getCurrentFyStart();
-    return `${start}-${start + 1}`;
-}
+        if (!reportDate) {
+            alert('Please select a report date.');
+            return;
+        }
+        const cutoffDate = new Date('2026-05-01');
+        const selectedDate = new Date(reportDate);
 
-function parseVal(v) {
-    const x = Number(v);
-    return Number.isFinite(x) ? x : 0;
-}
+        if (selectedDate < cutoffDate) {
 
-function renderFYPreview(fyData) {
-    const host = document.getElementById('fy-cutoff-preview');
-    const currentFyLabel = getCurrentFyLabel();
-    const firstFyStart = 2012;
-    const lastFyStart = getCurrentFyStart();
+            Swal.fire({
+                icon: 'info',
+                title: 'Report Not Available',
+                html: `
+            <b>Cutoff Date:</b> 01-May-2026<br><br>
+            Reports before this date are not available.
+        `,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#4a90d9',
+                iconColor: '#44B5E6'
+            });
 
-    const typeSet = new Set();
-    // Always include every distinct cargo type from the VCG01 master.
-    masterCargoTypes.forEach(t => { if (t) typeSet.add(t); });
-    // Plus any cargo types already present in the stored snapshot.
-    Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
-    let types = Array.from(typeSet).sort();
-    if (types.length === 0) {
-        types = ['CBRM', 'CLINKER', 'FLUXES', 'IBRM', 'OTHERS'];
+            return;
+        }
+        document
+            .getElementById('downloadLoader')
+            .classList.add('show');
+
+        // =====================================
+        // CARGO AVAILABILITY TABLE
+        // =====================================
+
+        const editableTable = [];
+
+        const cargoTable =
+            document.getElementById(
+                'cargo-availability-table'
+            );
+
+        if (cargoTable) {
+
+            cargoTable.querySelectorAll('tr')
+                .forEach(tr => {
+
+                    const row = [];
+
+                    tr.querySelectorAll('th,td')
+                        .forEach(cell => {
+
+                            row.push(
+                                (cell.innerText || '')
+                                    .replace(/\n/g, ' ')
+                                    .trim()
+                            );
+
+                        });
+
+                    editableTable.push(row);
+
+                });
+        }
+
+        // =====================================
+        // RAINFALL TABLE
+        // =====================================
+
+        const rainfallTable = [];
+
+        const rt =
+            document.getElementById(
+                'rainfall-table'
+            );
+
+        if (rt) {
+
+            rt.querySelectorAll('tr')
+                .forEach(tr => {
+
+                    const row = [];
+
+                    tr.querySelectorAll('th,td')
+                        .forEach(cell => {
+
+                            row.push(
+                                (cell.innerText || '')
+                                    .replace(/\n/g, ' ')
+                                    .trim()
+                            );
+
+                        });
+
+                    rainfallTable.push(row);
+
+                });
+        }
+
+        // =====================================
+        // BF TABLE
+        // =====================================
+
+        const bfTable = [];
+
+        const bf =
+            document.getElementById(
+                'bf-production-table'
+            );
+
+        if (bf) {
+
+            bf.querySelectorAll('tr')
+                .forEach(tr => {
+
+                    const row = [];
+
+                    tr.querySelectorAll('th,td')
+                        .forEach(cell => {
+
+                            row.push(
+                                (cell.innerText || '')
+                                    .replace(/\n/g, ' ')
+                                    .trim()
+                            );
+
+                        });
+
+                    bfTable.push(row);
+
+                });
+        }
+
+        // =====================================
+        // RM STOCK TABLE
+        // =====================================
+
+        const rmTable = [];
+
+        const rm =
+            document.getElementById(
+                'rm-stock-table'
+            );
+
+        if (rm) {
+
+            rm.querySelectorAll('tr')
+                .forEach(tr => {
+
+                    const row = [];
+
+                    tr.querySelectorAll('th,td')
+                        .forEach(cell => {
+
+                            row.push(
+                                (cell.innerText || '')
+                                    .replace(/\n/g, ' ')
+                                    .trim()
+                            );
+
+                        });
+
+                    rmTable.push(row);
+
+                });
+        }
+
+        console.log(
+            'EDITABLE TABLE =',
+            editableTable
+        );
+
+        console.log(
+            'RAINFALL TABLE =',
+            rainfallTable
+        );
+
+        console.log(
+            'BF TABLE =',
+            bfTable
+        );
+
+        console.log(
+            'RM TABLE =',
+            rmTable
+        );
+
+        const downloadUrl =
+            '/api/module/RP01/daily-ops/download?' +
+            'report_date=' +
+            encodeURIComponent(reportDate) +
+
+            '&editable_table=' +
+            encodeURIComponent(
+                JSON.stringify(editableTable)
+            ) +
+
+            '&rainfall_table=' +
+            encodeURIComponent(
+                JSON.stringify(rainfallTable)
+            ) +
+
+            '&bf_table=' +
+            encodeURIComponent(
+                JSON.stringify(bfTable)
+            ) +
+
+            '&rm_table=' +
+            encodeURIComponent(
+                JSON.stringify(rmTable)
+            );
+
+        fetch(downloadUrl)
+            .then(response => {
+
+                if (!response.ok) {
+                    throw new Error('Download failed');
+                }
+
+                return response.blob();
+            })
+            .then(blob => {
+
+                document
+                    .getElementById('downloadLoader')
+                    .classList.remove('show');
+
+                const url = window.URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+
+                a.href = url;
+                a.download = 'Daily_Port_Operations_Report.xlsx';
+
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(err => {
+
+                document
+                    .getElementById('downloadLoader')
+                    .classList.remove('show');
+
+                console.error(err);
+            });
+    }
+    function previewReport() {
+
+        const reportDate =
+            document.getElementById('report-date').value;
+
+        if (!reportDate) {
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Select Report Date',
+                text: 'Please select a report date.',
+                confirmButtonColor: '#4a90d9'
+            });
+
+            return;
+        }
+
+        if (new Date(reportDate) < new Date('2026-05-01')) {
+
+            Swal.fire({
+                icon: 'info',
+                title: 'Report Not Available',
+                html: `
+                <b>Cutoff Date:</b> 01-May-2026<br><br>
+                Reports before this date are not available.
+            `,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#4a90d9'
+            });
+
+            return;
+        }
+
+        fetch(`/api/module/RP01/daily-ops/preview?report_date=${reportDate}`)
+            .then(r => r.text())
+            .then(html => {
+
+                document.getElementById(
+                    'preview-content'
+                ).innerHTML = html;
+
+                document.getElementById(
+                    'preview-container'
+                ).style.display = 'block';
+            })
+            .catch(err => {
+                alert(err);
+            });
+    }
+    const grandIBRM =
+        getNum("total_BRBF") +
+        getNum("total_Orissa Fines") +
+        getNum("total_Goa Fines") +
+        getNum("total_HBI") +
+        getNum("total_KDL CLO");
+
+    const grandCBRM =
+        getNum("total_Jimblebar Fines") +
+        getNum("total_Bacheli Fines") +
+        getNum("total_Goa Clo") +
+        getNum("total_Mabu") +
+        getNum("total_Illavara") +
+        getNum("total_Uval + Kestrel") +
+        getNum("total_MLV") +
+        getNum("total_PCI") +
+        getNum("total_Antracite") +
+        getNum("total_Limestone");
+
+    const grandFluxes =
+        getNum("total_Bentonite") +
+        getNum("total_Oliflux") +
+        getNum("total_Dolomite");
+
+    const grandSlag =
+        getNum("total_Slag Loading/Unloading");
+
+    const grandClinker =
+        getNum("total_Clinker");
+
+    document.getElementById("grand_ibrm").innerText =
+        grandIBRM.toLocaleString();
+
+    document.getElementById("grand_cbrm").innerText =
+        grandCBRM.toLocaleString();
+
+    document.getElementById("grand_fluxes").innerText =
+        grandFluxes.toLocaleString();
+
+    document.getElementById("grand_slag").innerText =
+        grandSlag.toLocaleString();
+
+    document.getElementById("grand_clinker").innerText =
+        grandClinker.toLocaleString();
+
+    document.getElementById("grand_total").innerText =
+        (
+            grandIBRM +
+            grandCBRM +
+            grandFluxes +
+            grandSlag +
+            grandClinker
+        ).toLocaleString();
+
+    /* ── Cutoff Modal ──────────────────────────────────────────────────────── */
+
+    function loadCutoffStatus() {
+        fetch('/api/module/RP01/daily-ops/cutoff')
+            .then(r => r.json())
+            .then(data => {
+                const bar = document.getElementById('cutoff-status-bar');
+                if (data.cutoff_date) {
+                    bar.innerHTML = `<div class="cutoff-status saved">Cutoff active: FY snapshot stored up to <b>${data.cutoff_date}</b>.</div>`;
+                } else {
+                    bar.innerHTML = `<div class="cutoff-status none">No cutoff configured — FY values come from live database queries.</div>`;
+                }
+            })
+            .catch(() => { });
     }
 
-    const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    function openCutoffModal() {
+        document.getElementById('cutoff-modal').classList.add('open');
+        // Load the distinct cargo types from the VCG01 master and the stored
+        // cutoff snapshot together, so every master cargo type gets a column.
+        Promise.all([
+            fetch('/api/module/VCG01/types').then(r => r.json()).catch(() => []),
+            fetch('/api/module/RP01/daily-ops/cutoff').then(r => r.json()).catch(() => ({})),
+        ]).then(([types, data]) => {
+            masterCargoTypes = Array.isArray(types) ? types : [];
+            document.getElementById('cutoff-date').value = (data && data.cutoff_date) || '';
+            renderFYPreview(((data && data.cutoff_values) || {}).fy_throughput || {});
+        });
+    }
 
-    const colTotals = {};
-    types.forEach(t => { colTotals[t] = 0; });
-    let grand = 0;
+    function closeCutoffModal() {
+        document.getElementById('cutoff-modal').classList.remove('open');
+    }
 
-    let html = '<table class="cutoff-grid"><thead><tr><th>FY</th>';
-    types.forEach(t => { html += `<th>${t}</th>`; });
-    html += '<th>Total</th></tr></thead><tbody>';
+    // Close modal on overlay click
+    document.addEventListener('click', function (e) {
+        if (e.target.id === 'cutoff-modal') closeCutoffModal();
+    });
 
-    for (let fyStart = firstFyStart; fyStart <= lastFyStart; fyStart++) {
-        const fy = `${fyStart}-${fyStart + 1}`;
-        let rowTotal = 0;
-        html += `<tr data-fy="${fy}"><td>${fy}</td>`;
+    /* ── FY Matrix Preview ─────────────────────────────────────────────────── */
 
-        types.forEach(t => {
-            const value = parseVal((fyData[fy] || {})[t]);
-            rowTotal += value;
-            colTotals[t] += value;
-            html += `\
+    function getCurrentFyStart() {
+        const now = new Date();
+        return now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+    }
+
+    function getCurrentFyLabel() {
+        const start = getCurrentFyStart();
+        return `${start}-${start + 1}`;
+    }
+
+    function parseVal(v) {
+        const x = Number(v);
+        return Number.isFinite(x) ? x : 0;
+    }
+
+    function renderFYPreview(fyData) {
+        const host = document.getElementById('fy-cutoff-preview');
+        const currentFyLabel = getCurrentFyLabel();
+        const firstFyStart = 2012;
+        const lastFyStart = getCurrentFyStart();
+
+        const typeSet = new Set();
+        // Always include every distinct cargo type from the VCG01 master.
+        masterCargoTypes.forEach(t => { if (t) typeSet.add(t); });
+        // Plus any cargo types already present in the stored snapshot.
+        Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
+        let types = Array.from(typeSet).sort();
+        if (types.length === 0) {
+            types = ['CBRM', 'CLINKER', 'FLUXES', 'IBRM', 'OTHERS'];
+        }
+
+        const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+        const colTotals = {};
+        types.forEach(t => { colTotals[t] = 0; });
+        let grand = 0;
+
+        let html = '<table class="cutoff-grid"><thead><tr><th>FY</th>';
+        types.forEach(t => { html += `<th>${t}</th>`; });
+        html += '<th>Total</th></tr></thead><tbody>';
+
+        for (let fyStart = firstFyStart; fyStart <= lastFyStart; fyStart++) {
+            const fy = `${fyStart}-${fyStart + 1}`;
+            let rowTotal = 0;
+            html += `<tr data-fy="${fy}"><td>${fy}</td>`;
+
+            types.forEach(t => {
+                const value = parseVal((fyData[fy] || {})[t]);
+                rowTotal += value;
+                colTotals[t] += value;
+                html += `\
                 <td>\
                     <input\
                         type="number"\
@@ -448,112 +926,110 @@ function renderFYPreview(fyData) {
                         value="${value ? value : ''}"\
                     />\
                 </td>`;
-        });
+            });
 
-        html += `<td style="text-align:right"><b class="fy-row-total">${fmt(rowTotal)}</b></td></tr>`;
-        grand += rowTotal;
-    }
+            html += `<td style="text-align:right"><b class="fy-row-total">${fmt(rowTotal)}</b></td></tr>`;
+            grand += rowTotal;
+        }
 
-    html += '<tr style="font-weight:bold;background:#f2f2f2"><td>Total</td>';
-    types.forEach(t => {
-        html += `<td data-total-cargo="${t}" style="text-align:right">${fmt(colTotals[t])}</td>`;
-    });
-    html += `<td data-grand-total style="text-align:right">${fmt(grand)}</td></tr>`;
-    html += '</tbody></table>';
-    host.innerHTML = html;
-
-    host.querySelectorAll('input[data-fy][data-cargo]').forEach(input => {
-        input.addEventListener('input', updateFYTotals);
-    });
-}
-
-function updateFYTotals() {
-    const host = document.getElementById('fy-cutoff-preview');
-    const headerCells = host.querySelectorAll('thead th');
-    const types = Array.from(headerCells).slice(1, -1).map(th => th.textContent);
-    const rows = host.querySelectorAll('tbody tr[data-fy]');
-
-    const colTotals = {};
-    types.forEach(t => { colTotals[t] = 0; });
-    let grand = 0;
-
-    rows.forEach(row => {
-        let rowTotal = 0;
-        const fy = row.dataset.fy;
+        html += '<tr style="font-weight:bold;background:#f2f2f2"><td>Total</td>';
         types.forEach(t => {
-            const input = row.querySelector(`input[data-fy="${fy}"][data-cargo="${t}"]`);
-            const cell = row.querySelector(`td[data-cargo="${t}"]`);
-            const value = input ? parseVal(input.value) : parseVal(cell.dataset.value);
-            rowTotal += value;
-            colTotals[t] += value;
+            html += `<td data-total-cargo="${t}" style="text-align:right">${fmt(colTotals[t])}</td>`;
+        });
+        html += `<td data-grand-total style="text-align:right">${fmt(grand)}</td></tr>`;
+        html += '</tbody></table>';
+        host.innerHTML = html;
+
+        host.querySelectorAll('input[data-fy][data-cargo]').forEach(input => {
+            input.addEventListener('input', updateFYTotals);
+        });
+    }
+
+    function updateFYTotals() {
+        const host = document.getElementById('fy-cutoff-preview');
+        const headerCells = host.querySelectorAll('thead th');
+        const types = Array.from(headerCells).slice(1, -1).map(th => th.textContent);
+        const rows = host.querySelectorAll('tbody tr[data-fy]');
+
+        const colTotals = {};
+        types.forEach(t => { colTotals[t] = 0; });
+        let grand = 0;
+
+        rows.forEach(row => {
+            let rowTotal = 0;
+            const fy = row.dataset.fy;
+            types.forEach(t => {
+                const input = row.querySelector(`input[data-fy="${fy}"][data-cargo="${t}"]`);
+                const cell = row.querySelector(`td[data-cargo="${t}"]`);
+                const value = input ? parseVal(input.value) : parseVal(cell.dataset.value);
+                rowTotal += value;
+                colTotals[t] += value;
+            });
+
+            const totalEl = row.querySelector('.fy-row-total');
+            if (totalEl) {
+                totalEl.textContent = rowTotal.toLocaleString('en-IN');
+            }
+            grand += rowTotal;
         });
 
-        const totalEl = row.querySelector('.fy-row-total');
-        if (totalEl) {
-            totalEl.textContent = rowTotal.toLocaleString('en-IN');
+        types.forEach(t => {
+            const totalCell = host.querySelector(`td[data-total-cargo="${t}"]`);
+            if (totalCell) {
+                totalCell.textContent = colTotals[t].toLocaleString('en-IN');
+            }
+        });
+        const grandCell = host.querySelector('td[data-grand-total]');
+        if (grandCell) {
+            grandCell.textContent = grand.toLocaleString('en-IN');
         }
-        grand += rowTotal;
-    });
-
-    types.forEach(t => {
-        const totalCell = host.querySelector(`td[data-total-cargo="${t}"]`);
-        if (totalCell) {
-            totalCell.textContent = colTotals[t].toLocaleString('en-IN');
-        }
-    });
-    const grandCell = host.querySelector('td[data-grand-total]');
-    if (grandCell) {
-        grandCell.textContent = grand.toLocaleString('en-IN');
-    }
-}
-
-/* ── Save ──────────────────────────────────────────────────────────────── */
-
-function saveCutoff() {
-    const cutoffDate = document.getElementById('cutoff-date').value;
-    if (!cutoffDate) {
-        alert('Please select a cutoff date.');
-        return;
     }
 
-    const editableFyValues = {};
-    document.querySelectorAll('#fy-cutoff-preview input[data-fy][data-cargo]').forEach(input => {
-        const fy = input.dataset.fy;
-        const cargo = input.dataset.cargo;
-        const value = input.value.trim();
-        if (!editableFyValues[fy]) {
-            editableFyValues[fy] = {};
+    /* ── Save ──────────────────────────────────────────────────────────────── */
+
+    function saveCutoff() {
+        const cutoffDate = document.getElementById('cutoff-date').value;
+        if (!cutoffDate) {
+            alert('Please select a cutoff date.');
+            return;
         }
-        editableFyValues[fy][cargo] = value === '' ? 0 : Number(value);
-    });
 
-    const btn = document.getElementById('save-cutoff-btn');
-    btn.disabled = true;
-    btn.textContent = 'Computing…';
+        const editableFyValues = {};
+        document.querySelectorAll('#fy-cutoff-preview input[data-fy][data-cargo]').forEach(input => {
+            const fy = input.dataset.fy;
+            const cargo = input.dataset.cargo;
+            const value = input.value.trim();
+            if (!editableFyValues[fy]) {
+                editableFyValues[fy] = {};
+            }
+            editableFyValues[fy][cargo] = value === '' ? 0 : Number(value);
+        });
 
-    fetch('/api/module/RP01/daily-ops/cutoff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cutoff_date: cutoffDate, editable_fy_values: editableFyValues })
-    })
-    .then(r => {
-        if (r.status === 403) throw new Error('Admin access required.');
-        if (!r.ok) throw new Error('Save failed');
-        return r.json();
-    })
-    .then(data => {
-        renderFYPreview(data.fy_throughput || {});
-        loadCutoffStatus();
-    })
-    .catch(err => {
-        alert(err.message || 'Failed to save cutoff settings.');
-    })
-    .finally(() => {
-        btn.disabled = false;
-        btn.textContent = 'Save';
-    });
-}
+        const btn = document.getElementById('save-cutoff-btn');
+        btn.disabled = true;
+        btn.textContent = 'Computing…';
+
+        fetch('/api/module/RP01/daily-ops/cutoff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cutoff_date: cutoffDate, editable_fy_values: editableFyValues })
+        })
+            .then(r => {
+                if (r.status === 403) throw new Error('Admin access required.');
+                if (!r.ok) throw new Error('Save failed');
+                return r.json();
+            })
+            .then(data => {
+                renderFYPreview(data.fy_throughput || {});
+                loadCutoffStatus();
+            })
+            .catch(err => {
+                alert(err.message || 'Failed to save cutoff settings.');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = 'Save';
+            });
+    }
 </script>
 {% endblock %}
-
-
