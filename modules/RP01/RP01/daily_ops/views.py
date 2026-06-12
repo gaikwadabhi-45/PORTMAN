@@ -2155,7 +2155,7 @@ def _build_excel_a4(
         f"{report_date.day}.{report_date.month}.{report_date.year}"
     )
     date_str = report_date.strftime("%d-%m-%Y")
-    ws.row_dimensions[2].height = 30
+    ws.row_dimensions[2].height = 45
 
     _merge_write(2, LABEL_START, 2, LABEL_START + 2,
                  date_str, align=_left, title=True)
@@ -2220,7 +2220,7 @@ def _build_excel_a4(
             continue
 
         # Default height
-        ws.row_dimensions[current_row].height = 30
+        ws.row_dimensions[current_row].height = 45
 
         # Large rows
         if field in (
@@ -2348,7 +2348,7 @@ def _build_excel_a4(
     c.alignment = _ctr; c.border = thick_bdr
     for cc in range(LABEL_START, LABEL_START + UV_TOTAL):
         ws.cell(current_row, cc).border = thick_bdr
-    ws.row_dimensions[current_row].height = 30
+    ws.row_dimensions[current_row].height = 45
     current_row += 1
 
     col = LABEL_START
@@ -2362,7 +2362,7 @@ def _build_excel_a4(
         for cc in range(col, col + span):
             ws.cell(current_row, cc).border = thick_bdr
         col += span
-    ws.row_dimensions[current_row].height = 30
+    ws.row_dimensions[current_row].height = 45
     current_row += 1
 
     for v in upcoming_vessels:
@@ -2386,7 +2386,7 @@ def _build_excel_a4(
             for cc in range(col, col + span):
                 ws.cell(current_row, cc).border = thick_bdr
             col += span
-        ws.row_dimensions[current_row].height = 30
+        ws.row_dimensions[current_row].height = 45
         current_row += 1
 
     current_row += 2
@@ -2585,8 +2585,8 @@ def _build_excel_a4(
     # Move table 2 columns right
     TIDE_COL = 14
 
-    ws.column_dimensions[get_column_letter(TIDE_COL)].width     = 30
-    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(TIDE_COL)].width     = 45
+    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 45
 
     safe_merge(ws, tide_start_row, TIDE_COL, tide_start_row, TIDE_COL + 1)
     for cc in range(TIDE_COL, TIDE_COL + 2):
@@ -2634,8 +2634,8 @@ def _build_excel_a4(
     PT_COL       = TIDE_COL + 3
     pt_start_row = tide_start_row - 1
 
-    ws.column_dimensions[get_column_letter(PT_COL)].width     = 30
-    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(PT_COL)].width     = 45
+    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 45
 
     safe_merge(ws, pt_start_row, PT_COL, pt_start_row, PT_COL + 1)
     for cc in range(PT_COL, PT_COL + 2):
@@ -2879,9 +2879,9 @@ def _build_excel_a4(
     for rr in range(month_s, month_e + 1):
         ws.cell(rr, CARGO_COL).border = thick_bdr
 
-    ws.column_dimensions[get_column_letter(CARGO_COL)].width     = 30
-    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 30
-    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 30
+    ws.column_dimensions[get_column_letter(CARGO_COL)].width     = 45
+    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 45
+    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 45
 
     cargo_end_row = r
 
@@ -2929,7 +2929,7 @@ def _build_excel_a4(
         c.font = _font(); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
 
     for i in range(4):
-        ws.column_dimensions[get_column_letter(THR_COL + i)].width = 30
+        ws.column_dimensions[get_column_letter(THR_COL + i)].width = 45
     for rr in range(THR_ROW, r + 1):
         for cc in range(THR_COL, THR_COL + 4):
             ws.cell(rr, cc).border = thick_bdr
@@ -2997,7 +2997,7 @@ def _build_excel_a4(
                 ws.cell(rr, cc).border = thick_bdr
 
     for i in range(4):
-        ws.column_dimensions[get_column_letter(RAINFALL_COL + i)].width = 30
+        ws.column_dimensions[get_column_letter(RAINFALL_COL + i)].width = 45
 
     # ── cargo statistics ──────────────────────────────────────────────
     STAT_COL = RAINFALL_COL + 6
@@ -3049,7 +3049,7 @@ def _build_excel_a4(
         c.font = _font(); c.fill = _fill("F2F2F2"); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
 
     for i in range(3):
-        ws.column_dimensions[get_column_letter(STAT_COL + i)].width = 30
+        ws.column_dimensions[get_column_letter(STAT_COL + i)].width = 45
     for rr in range(STAT_ROW, r + 1):
         for cc in range(STAT_COL, STAT_COL + 3):
             ws.cell(rr, cc).border = thick_bdr
@@ -3123,7 +3123,7 @@ def _build_excel_a4(
         c = safe_cell(ws, hdr_row, RM_COL + i, hdr)
         c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.row_dimensions[hdr_row].height = 30
+    ws.row_dimensions[hdr_row].height = 45
 
     rm_items = [
         ("IBRM",  1), ("CBRM", 2), ("FLUXES", 3), ("TOTAL", 4)
@@ -3175,7 +3175,7 @@ def _build_excel_a4(
     c.alignment = _ctr; c.border = thick_bdr
     for cc in range(LABEL_START, LABEL_START + MBC_TOTAL):
         ws.cell(current_row, cc).border = thick_bdr
-    ws.row_dimensions[current_row].height = 30
+    ws.row_dimensions[current_row].height = 45
     current_row += 1
 
     # Header row — one col per header, no merging
@@ -3183,7 +3183,7 @@ def _build_excel_a4(
         c = ws.cell(current_row, LABEL_START + col_i, h)
         c.font = _font(); c.fill = _fill("D9EAF7")
         c.alignment = _ctr; c.border = thick_bdr
-    ws.row_dimensions[current_row].height = 30
+    ws.row_dimensions[current_row].height = 45
     current_row += 1
 
     # Data rows
@@ -3210,7 +3210,7 @@ def _build_excel_a4(
             c = ws.cell(current_row, LABEL_START + col_i, val)
             c.font = _font(); c.fill = _fill("FFFFFF")
             c.alignment = _left; c.border = thick_bdr
-        ws.row_dimensions[current_row].height = 30
+        ws.row_dimensions[current_row].height = 45
         current_row += 1
 
     current_row += 2
@@ -3224,7 +3224,7 @@ def _build_excel_a4(
     c.font = _title_font(); c.fill = _fill("D9EAF7"); c.alignment = _ctr; c.border = thick_bdr
     for cc in range(LABEL_START, LABEL_START + MBC_TOTAL):
         ws.cell(current_row, cc).border = thick_bdr
-    ws.row_dimensions[current_row].height = 30
+    ws.row_dimensions[current_row].height = 45
     current_row += 1
 
     # MBC Name = 3 cols, Status = remaining cols (MBC_TOTAL - 3)
@@ -3239,7 +3239,7 @@ def _build_excel_a4(
         for cc in range(col, col + span):
             ws.cell(current_row, cc).border = thick_bdr
         col += span
-    ws.row_dimensions[current_row].height = 30
+    ws.row_dimensions[current_row].height = 45
     current_row += 1
 
     for row in mbc_status_rows:
@@ -3255,7 +3255,7 @@ def _build_excel_a4(
             for cc in range(col, col + span):
                 ws.cell(current_row, cc).border = thick_bdr
             col += span
-        ws.row_dimensions[current_row].height = 30
+        ws.row_dimensions[current_row].height = 45
         current_row += 1
 
     current_row += 2
