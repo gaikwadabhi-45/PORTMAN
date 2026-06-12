@@ -1996,10 +1996,20 @@ def _build_excel_a4(
     # ── page setup ────────────────────────────────────────────────────
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_view.zoomScale = 80
-    ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.50, bottom=0.50)
+    ws.sheet_properties.pageSetUpPr.fitToPage = False
+    ws.page_setup.scale = 100
+    # ws.page_setup.fitToWidth  = 1   # Force ALL columns onto ONE page width
+    # ws.page_setup.fitToHeight = 0   # Allow as many pages tall as needed
+
+    ws.page_margins = PageMargins(
+        left=0.2, right=0.2, top=0.3, bottom=0.3,
+        header=0, footer=0
+    )
+
+    ws.print_options.horizontalCentered = False
+    ws.print_options.verticalCentered   = False
+    ws.sheet_view.zoomScale = 100
+    ws.print_area = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
 
     # ── style constants ───────────────────────────────────────────────
     TITLE_SIZE   = 30   # font size for section titles
@@ -2187,71 +2197,115 @@ def _build_excel_a4(
             current_row += 1
             continue
 
+        # Default height
         ws.row_dimensions[current_row].height = 30
-        _merge_write(current_row, LABEL_START, current_row, LABEL_END,
-                     label, align=_left)
+
+        # Large rows
+        if field in (
+            "at_jetty",
+            "waiting_discharge",
+            "at_gull_loaded",
+            "under_loading"
+        ):
+            ws.row_dimensions[current_row].height = 150
+
+        _merge_write(
+            current_row,
+            LABEL_START,
+            current_row,
+            LABEL_END,
+            label,
+            align=_left
+        )
 
         for idx, vessel in enumerate(vessels):
-            raw   = vessel.get(field)
+            raw = vessel.get(field)
             value = formatter(raw) if formatter else raw
-            if field in ("at_jetty","waiting_discharge","waiting_empty_jetty",
-                         "at_gull_loaded","under_loading","waiting_loading",
-                         "in_transit_jetty_to_mv"):
-                ws.row_dimensions[current_row].height = 55
-            _merge_write(current_row, v_start(idx), current_row, v_end(idx),
-                         value, align=align)
+
+            _merge_write(
+                current_row,
+                v_start(idx),
+                current_row,
+                v_end(idx),
+                value,
+                align=align
+            )
 
         if label == "Discharge At Jetty":
             mbc_col = last_vessel_col + 2
+
             discharging_at_jetty = [
                 m for m in (discharging_mbcs or [])
                 if (m.get("status") or "") == "DISCHARGING"
             ]
+
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
                 f"Bal:{int(round(float(m.get('discharge_quantity') or 0)))} MT"
                 for m in discharging_at_jetty
             ])
+
             c = ws.cell(current_row, mbc_col, val)
-            c.font      = _font()
-            c.fill      = _fill("FFF3CD")
-            c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-            c.border    = thick_bdr
-            ws.merge_cells(start_row=current_row, start_column=mbc_col,
-               end_row=current_row,   end_column=mbc_col + 3)
+            c.font = _font()
+            c.fill = _fill("FFF3CD")
+            c.alignment = Alignment(
+                horizontal="left",
+                vertical="top",
+                wrap_text=True
+            )
+            c.border = thick_bdr
 
-            lines = max(1, len(discharging_at_jetty))
-            ws.row_dimensions[current_row].height = max(55, lines * 22)
+            ws.merge_cells(
+                start_row=current_row,
+                start_column=mbc_col,
+                end_row=current_row,
+                end_column=mbc_col + 3
+            )
 
-        if label == "Waiting For Discharge At Jetty":
+            ws.row_dimensions[current_row].height = 150
+
+        elif label == "Waiting For Discharge At Jetty":
+
             mbc_col = last_vessel_col + 2
+
             discharging_waiting = [
                 m for m in (discharging_mbcs or [])
                 if (m.get("status") or "") == "ARRIVED"
             ]
+
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
                 f"{int(round(float(m.get('bl_quantity') or 0)))} MT"
                 for m in discharging_waiting
             ])
-            c = ws.cell(current_row, mbc_col, val)
-            c.font      = _font()
-            c.fill      = _fill("F8D7DA")
-            c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-            c.border    = thick_bdr
-            ws.merge_cells(start_row=current_row, start_column=mbc_col,
-               end_row=current_row,   end_column=mbc_col + 3)
 
-            lines = max(1, len(discharging_waiting))
-            ws.row_dimensions[current_row].height = max(55, lines * 22)
+            c = ws.cell(current_row, mbc_col, val)
+            c.font = _font()
+            c.fill = _fill("F8D7DA")
+            c.alignment = Alignment(
+                horizontal="left",
+                vertical="top",
+                wrap_text=True
+            )
+            c.border = thick_bdr
+
+            ws.merge_cells(
+                start_row=current_row,
+                start_column=mbc_col,
+                end_row=current_row,
+                end_column=mbc_col + 3
+            )
+
+            ws.row_dimensions[current_row].height = 150
 
         current_row += 1
 
-    current_row += 2
-
     # ── upcoming vessels ──────────────────────────────────────────────
+    # Move Upcoming Vessels section down by 1 row
+    current_row += 1
+
     upcoming_vessels = upcoming_vessels or []
     uv_section_start_row = current_row  # ← save for Cargo Availability anchor
 
@@ -3080,6 +3134,7 @@ def _build_excel_a4(
     # ── upcoming MBCs ─────────────────────────────────────────────────
     current_row = dashboard_row
     upcoming_mbcs = upcoming_mbcs or []
+    
 
     # MBC table column widths — 1 col each, wider for name/owner/cargo/date/status
     MBC_COL_WIDTHS = [35, 25, 25, 14, 12, 12, 12, 30, 25]
@@ -3184,16 +3239,27 @@ def _build_excel_a4(
     current_row += 2
     # ── uniform row height ────────────────────────────────────────────
     for row_num in range(1, ws.max_row + 1):
-        ws.row_dimensions[row_num].height = 40
+
+        label = ws.cell(row_num, LABEL_START).value
+
+        if label in (
+            "Discharge At Jetty",
+            "Waiting For Discharge At Jetty",
+            "At Gull - Waiting (Loaded)",
+            "Under Loading"
+        ):
+            ws.row_dimensions[row_num].height = 150
+        else:
+            ws.row_dimensions[row_num].height = 40
 
     # ── page setup ────────────────────────────────────────────────────
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
 
     # Allow Excel to use 2 pages horizontally instead of shrinking everything
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_setup.fitToWidth = 2
-    ws.page_setup.fitToHeight = 1
+    # ws.sheet_properties.pageSetUpPr.fitToPage = True
+    # ws.page_setup.fitToWidth = 2
+    # ws.page_setup.fitToHeight = 1
 
     # Small margins
     ws.page_margins = PageMargins(
@@ -3205,6 +3271,21 @@ def _build_excel_a4(
         footer=0
     )
 
+    # FORCE HEIGHT FOR THESE TWO ROWS
+    for row in range(1, ws.max_row + 1):
+
+        label = ws.cell(row, LABEL_START).value
+
+        if label in (
+            "Discharge At Jetty",
+            "Waiting For Discharge At Jetty",
+            "At Gull - Waiting (Loaded)",
+            "Under Loading"
+        ):
+            ws.row_dimensions[row].height = 150
+
+        else:
+            ws.row_dimensions[row].height = 40
     # Center horizontally only
     ws.print_options.horizontalCentered = True
     ws.print_options.verticalCentered = False
