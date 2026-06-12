@@ -372,30 +372,66 @@ def _fetch_data(report_date):
     ldud_ids = [v['id'] for v in vessels]
     vcn_ids  = [v['vcn_id'] for v in vessels if v.get('vcn_id')]
 
-    bl_import, bl_export, vcn_meta = {}, {}, {}
+    bl_import, bl_export, vcn_meta, cargo_map = {}, {}, {}, {}
 
     if vcn_ids:
+
+        # Import BL Qty
         cur.execute("""
-            SELECT vcn_id, COALESCE(SUM(bl_quantity), 0) AS total
+            SELECT
+                vcn_id,
+                COALESCE(SUM(bl_quantity), 0) AS total
             FROM vcn_cargo_declaration
-            WHERE vcn_id = ANY(%s) GROUP BY vcn_id
+            WHERE vcn_id = ANY(%s)
+            GROUP BY vcn_id
         """, (vcn_ids,))
+
         for r in cur.fetchall():
             bl_import[r['vcn_id']] = float(r['total'])
 
+        # Export BL Qty
         cur.execute("""
-            SELECT vcn_id, COALESCE(SUM(bl_quantity), 0) AS total
+            SELECT
+                vcn_id,
+                COALESCE(SUM(bl_quantity), 0) AS total
             FROM vcn_export_cargo_declaration
-            WHERE vcn_id = ANY(%s) GROUP BY vcn_id
+            WHERE vcn_id = ANY(%s)
+            GROUP BY vcn_id
         """, (vcn_ids,))
+
         for r in cur.fetchall():
             bl_export[r['vcn_id']] = float(r['total'])
 
+        # Stevedore / Customer
         cur.execute("""
-            SELECT id, importer_exporter_name
-            FROM vcn_header WHERE id = ANY(%s)
+            SELECT
+                id,
+                importer_exporter_name
+            FROM vcn_header
+            WHERE id = ANY(%s)
         """, (vcn_ids,))
-        vcn_meta = {r['id']: r['importer_exporter_name'] or '' for r in cur.fetchall()}
+
+        vcn_meta = {
+            r['id']: r['importer_exporter_name'] or ''
+            for r in cur.fetchall()
+        }
+
+        # Cargo Names
+        cur.execute("""
+            SELECT
+                vcn_id,
+                STRING_AGG(
+                    DISTINCT cargo_name,
+                    ', '
+                    ORDER BY cargo_name
+                ) AS cargo_names
+            FROM vcn_cargo_declaration
+            WHERE vcn_id = ANY(%s)
+            GROUP BY vcn_id
+        """, (vcn_ids,))
+
+        for r in cur.fetchall():
+            cargo_map[r['vcn_id']] = r['cargo_names'] or ''
 
     # ops_till — total discharged from lueu_lines up to selected date
     lueu_total = {}
@@ -643,29 +679,57 @@ def _fetch_data(report_date):
         lid    = v['id']
         vid    = v.get('vcn_id')
         op     = v.get('operation_type', '')
-        bl_qty = (bl_export.get(vid, 0) if op == 'Export' else bl_import.get(vid, 0)) if vid else 0
+
+        bl_qty = (
+            bl_export.get(vid, 0)
+            if op == 'Export'
+            else bl_import.get(vid, 0)
+        ) if vid else 0
+
         actual = lueu_total.get(vid, 0)
         bs     = barge_stats.get(lid, {})
 
-        v['stevedore_group']        = vcn_meta.get(vid, '') if vid else ''
-        v['bl_qty']                 = bl_qty
-        v['ops_24h']                = ops_24h.get(lid, 0)
-        v['ops_till']               = ops_till.get(lid, 0)
-        v['balance']                = round(bl_qty - ops_till.get(lid, 0),2
-    )
-        active_statuses = ('at_jetty', 'at_gull_loaded', 'waiting_discharge', 'under_loading')
+        v['stevedore_group'] = vcn_meta.get(vid, '') if vid else ''
+        v['cargo_name']      = cargo_map.get(vid, '') if vid else ''
+
+        print(
+            "VESSEL:",
+            v['vessel_name'],
+            "VCN:",
+            vid,
+            "CARGO:",
+            v['cargo_name']
+        )
+
+        v['bl_qty'] = bl_qty
+        v['ops_24h'] = ops_24h.get(lid, 0)
+        v['ops_till'] = ops_till.get(lid, 0)
+        v['balance'] = round(
+            bl_qty - ops_till.get(lid, 0),
+            2
+        )
+
+        active_statuses = (
+            'at_jetty',
+            'at_gull_loaded',
+            'waiting_discharge',
+            'under_loading'
+        )
+
         v['num_barges'] = len({
             name.split('/')[0].strip()
             for key in active_statuses
             for name in bs.get(key, [])
         }) or ''
-        v['at_jetty']               = _make_names(bs, 'at_jetty')
-        v['waiting_discharge']      = _make_names(bs, 'waiting_discharge')
-        v['waiting_empty_jetty']    = _make_names(bs, 'waiting_empty_jetty')
-        v['at_gull_loaded']         = _make_names(bs, 'at_gull_loaded')
-        v['under_loading']          = _make_names(bs, 'under_loading')
-        v['waiting_loading']        = _make_names(bs, 'waiting_loading')
+
+        v['at_jetty'] = _make_names(bs, 'at_jetty')
+        v['waiting_discharge'] = _make_names(bs, 'waiting_discharge')
+        v['waiting_empty_jetty'] = _make_names(bs, 'waiting_empty_jetty')
+        v['at_gull_loaded'] = _make_names(bs, 'at_gull_loaded')
+        v['under_loading'] = _make_names(bs, 'under_loading')
+        v['waiting_loading'] = _make_names(bs, 'waiting_loading')
         v['in_transit_jetty_to_mv'] = _make_names(bs, 'in_transit_jetty_to_mv')
+        v['breakdown'] = _make_names(bs, 'breakdown')
 
     return vessels
 
@@ -2061,12 +2125,21 @@ def _build_excel_a4(
     _merge_write(3, LABEL_START, 3, LABEL_END, "")
 
     for idx, vessel in enumerate(vessels):
-        _merge_write(
-            3, v_start(idx), 3, v_end(idx),
-            f"Vessel {idx + 1}: {vessel['vessel_name']}",
-            align=_ctr, title=True
+
+        print(
+            "HEADER CARGO =",
+            vessel.get("cargo_name")
         )
 
+        _merge_write(
+            3,
+            v_start(idx),
+            3,
+            v_end(idx),
+            f"Vessel {idx + 1}: {vessel['vessel_name']} | {vessel.get('cargo_name','')}",
+            align=_ctr,
+            title=True
+        )
     ws.print_title_rows = "2:3"
     ws.print_options.horizontalCentered = True
 
@@ -2091,6 +2164,7 @@ def _build_excel_a4(
         ("Under Loading",                  "under_loading",          lambda x: x or "",   _left),
         ("Waiting For Loading",            "waiting_loading",        lambda x: x or "",   _left),
         ("In Transit Jetty To MV",         "in_transit_jetty_to_mv", lambda x: x or "",   _left),
+        ("Breakdown/Offhire/Costal/DD",    "breakdown",              lambda x: x or "",   _left),
     ]
 
     for label, field, formatter, align in STATUS_ROWS:
@@ -3522,6 +3596,9 @@ def daily_ops_preview():
 """
 
     for i, v in enumerate(vessels):
+
+        cargo_name = v.get('cargo_name', '')
+
         html += f"""
             <th style="
                 border:1px solid #ccc;
@@ -3532,7 +3609,11 @@ def daily_ops_preview():
                 word-wrap:break-word;
                 white-space:normal;
             ">
-                Vessel {i+1}<br>{v['vessel_name']}
+                Vessel {i+1}<br>
+                {v['vessel_name']}<br>
+                <span style="font-size:12px;font-weight:normal;color:#f5f5f5;">
+                    {cargo_name}
+                </span>
             </th>
         """
 
@@ -3554,7 +3635,8 @@ def daily_ops_preview():
     ("At Gull-waiting(Loaded)", "at_gull_loaded"),
     ("Under Loading", "under_loading"),
     ("Waiting Loading", "waiting_loading"),
-    ("In Transit Jetty To MV", "in_transit_jetty_to_mv")
+    ("In Transit Jetty To MV", "in_transit_jetty_to_mv"),
+    ("Breakdown/Offhire/Costal/DD", "breakdown")
     ]
 
     for label, field in rows:
