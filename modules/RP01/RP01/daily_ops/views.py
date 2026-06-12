@@ -1905,50 +1905,35 @@ def _fetch_port_throughput(report_date):
 
     cur.execute("""
         WITH cutoff_total AS (
+            SELECT
+                COALESCE(
+                    SUM(cargo.value::numeric),
+                    0
+                ) AS qty
+            FROM (
+                SELECT cutoff_values::jsonb AS j
+                FROM daily_ops_cutoff
+                ORDER BY cutoff_date DESC
+                LIMIT 1
+            ) d,
+            LATERAL jsonb_each(
+                d.j->'fy_throughput'
+            ) fy,
+            LATERAL jsonb_each_text(
+                fy.value
+            ) cargo
+        )
         SELECT
-            COALESCE(
-                SUM(cargo.value::numeric),
-                0
-            ) AS qty
-        FROM (
-            SELECT cutoff_values::jsonb AS j
-            FROM daily_ops_cutoff
-            ORDER BY cutoff_date DESC
-            LIMIT 1
-        ) d,
-        LATERAL jsonb_each(
-            d.j->'fy_throughput'
-        ) fy,
-        LATERAL jsonb_each_text(
-            fy.value
-        ) cargo
-    ),
-    hist_total AS (
-        SELECT
-            COALESCE(SUM(quantity), 0) AS qty,
-            COUNT(*) AS cnt
-        FROM rp01_historical_lueu
-    ),
-    lueu_total AS (
-        SELECT
-            COALESCE(SUM(quantity), 0) AS qty
-        FROM lueu_lines
-        WHERE COALESCE(is_deleted, false) = false
-    )
-    SELECT
-        cutoff_total.qty +
-        CASE
-            WHEN hist_total.cnt > 0
-                THEN hist_total.qty
-            ELSE
-                lueu_total.qty
-        END AS cumulative_qty
-    FROM cutoff_total
-    CROSS JOIN hist_total
-    CROSS JOIN lueu_total
+            cutoff_total.qty AS cumulative_qty
+        FROM cutoff_total
     """)
 
     cumulative_row = cur.fetchone()
+
+    cumulative_qty = (
+        float(cumulative_row["cumulative_qty"] or 0)
+        + float(row["year_qty"] or 0)
+    )
 
     cur.close()
     conn.close()
@@ -1957,7 +1942,7 @@ def _fetch_port_throughput(report_date):
         "day_qty": int(row["day_qty"] or 0),
         "mtd_qty": int(row["month_qty"] or 0),
         "ytd_qty": int(row["year_qty"] or 0),
-        "cumulative_qty": int(cumulative_row["cumulative_qty"] or 0),
+        "cumulative_qty": int(cumulative_qty),
         "month_tpd": float(month_tpd),
         "year_tpd": float(year_tpd)
     }
