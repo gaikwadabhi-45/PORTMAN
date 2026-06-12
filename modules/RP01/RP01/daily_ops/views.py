@@ -2463,13 +2463,15 @@ def _build_excel_a4(
         data_row = grand_total_row + 1
 
     # ── tide ──────────────────────────────────────────────────────────
-    dashboard_row  = current_row
-    # Tide/PT/MBC sections start below the UV/cargo section
-    # Use the larger of: end of cargo-avail OR end of UV rows, plus spacing
-    # Move section up by 11 rows
-    tide_section_anchor = max(data_row, current_row) - 8
+    # ── tide ──────────────────────────────────────────────────────────
 
-    tide_start_row = tide_section_anchor
+    dashboard_row = current_row
+
+    # Place Tide table BELOW Cargo Availability table
+    if cargo_availability:
+        tide_start_row = data_row + 2
+    else:
+        tide_start_row = current_row + 2
 
     # Move table 2 columns right
     TIDE_COL = 14
