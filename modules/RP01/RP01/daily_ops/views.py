@@ -1904,26 +1904,48 @@ def _fetch_port_throughput(report_date):
     # =====================================================
 
     cur.execute("""
+        WITH cutoff_total AS (
         SELECT
             COALESCE(
                 SUM(cargo.value::numeric),
                 0
-            ) AS cumulative_qty
-
+            ) AS qty
         FROM (
             SELECT cutoff_values::jsonb AS j
             FROM daily_ops_cutoff
             ORDER BY cutoff_date DESC
             LIMIT 1
         ) d,
-
         LATERAL jsonb_each(
             d.j->'fy_throughput'
         ) fy,
-
         LATERAL jsonb_each_text(
             fy.value
         ) cargo
+    ),
+    hist_total AS (
+        SELECT
+            COALESCE(SUM(quantity), 0) AS qty,
+            COUNT(*) AS cnt
+        FROM rp01_historical_lueu
+    ),
+    lueu_total AS (
+        SELECT
+            COALESCE(SUM(quantity), 0) AS qty
+        FROM lueu_lines
+        WHERE COALESCE(is_deleted, false) = false
+    )
+    SELECT
+        cutoff_total.qty +
+        CASE
+            WHEN hist_total.cnt > 0
+                THEN hist_total.qty
+            ELSE
+                lueu_total.qty
+        END AS cumulative_qty
+    FROM cutoff_total
+    CROSS JOIN hist_total
+    CROSS JOIN lueu_total
     """)
 
     cumulative_row = cur.fetchone()
@@ -2310,7 +2332,7 @@ def _build_excel_a4(
     uv_section_start_row = current_row  # ← save for Cargo Availability anchor
 
     # Explicit column widths for the UV/MBC table area (cols B..J)
-    UV_COL_WIDTHS = [30, 35, 20, 20, 22, 22, 30, 30, 35, 35, 35]
+    UV_COL_WIDTHS = [30, 45, 20, 20, 22, 22, 30, 30, 35, 35, 35]
     for i, w in enumerate(UV_COL_WIDTHS):
         ws.column_dimensions[get_column_letter(LABEL_START + i)].width = w
 
@@ -2375,7 +2397,6 @@ def _build_excel_a4(
 
     if cargo_availability:
         CA_START_COL   = LABEL_START + UV_TOTAL + 1
-        HDR_ROW_HEIGHT = 75
 
         cargo_names = (
             editable_table[0][1:-1]
@@ -2386,169 +2407,184 @@ def _build_excel_a4(
         grand_total  = sum(float(row["at_jetty_qty"] or 0) for row in cargo_availability)
         uv_start_row = uv_section_start_row
 
-        # ── Auto-fit helper: measures all cells in a column and sets width ─────
-        def _autofit_col(col_idx):
-            max_len = 0
-            col_letter = get_column_letter(col_idx)
-            for row in ws.iter_rows():
-                cell = ws.cell(row=row[0].row, column=col_idx)
-                try:
-                    if cell.value:
-                        max_len = max(max_len, len(str(cell.value)))
-                except Exception:
-                    pass
-            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-
-        # ── title ──────────────────────────────────────────────────────────────
+        # ================= TITLE =================
         last_ca_col = CA_START_COL + len(cargo_names) + 1
+
         ws.merge_cells(
-            start_row=uv_start_row, start_column=CA_START_COL,
-            end_row=uv_start_row,   end_column=last_ca_col
+            start_row=uv_start_row,
+            start_column=CA_START_COL,
+            end_row=uv_start_row,
+            end_column=last_ca_col
         )
-        c = ws.cell(uv_start_row, CA_START_COL, "Cargo Availability For The Day")
-        c.font      = _title_font()
-        c.fill      = _fill("D9EAF7")
+
+        c = ws.cell(
+            uv_start_row,
+            CA_START_COL,
+            "Cargo Availability For The Day"
+        )
+
+        c.font = _title_font()
+        c.fill = _fill("D9EAF7")
         c.alignment = _ctr
-        c.border    = thick_bdr
+        c.border = thick_bdr
+
         for cc in range(CA_START_COL, last_ca_col + 1):
             ws.cell(uv_start_row, cc).border = thick_bdr
 
-        # ── header row ─────────────────────────────────────────────────────────
+        # ================= HEADER =================
         hdr_row = uv_start_row + 1
-        col     = CA_START_COL
+        col = CA_START_COL
 
-        # Empty label column
         c = ws.cell(hdr_row, col, "")
-        c.font      = _font()
-        c.fill      = _fill("D9EAF7")
-        c.alignment = _ctr
-        c.border    = thick_bdr
+        c.font = _font()
+        c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True
+        )
+        c.border = thick_bdr
+
         col += 1
 
-        # Cargo name columns
         for cargo in cargo_names:
-            c = ws.cell(hdr_row, col, cargo)
-            c.font      = _font()
-            c.fill      = _fill("D9EAF7")
-            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            c.border    = thick_bdr
+            c = ws.cell(hdr_row, col, str(cargo))
+
+            c.font = Font(
+                name="Calibri",
+                size=18,
+                bold=True
+            )
+
+            c.fill = _fill("D9EAF7")
+
+            c.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=True
+            )
+
+            c.border = thick_bdr
+
             col += 1
 
-        # Total column
         c = ws.cell(hdr_row, col, "Total")
-        c.font      = _font()
-        c.fill      = _fill("D9EAF7")
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border    = thick_bdr
+
+        c.font = Font(
+                name="Calibri",
+                size=18,
+                bold=True
+            )
+        
+        c.fill = _fill("D9EAF7")
+        c.alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True
+        )
+        c.border = thick_bdr
+
         total_col = col
 
-        ws.row_dimensions[hdr_row].height = HDR_ROW_HEIGHT
+        # Increase header height
+        ws.row_dimensions[hdr_row].height = 60
 
-        # ── data rows ──────────────────────────────────────────────────────────
-        data_row   = hdr_row + 1
-        row_labels = ["At Jetty", "", "", "", "Total"]
+        # ================= DATA =================
+        data_row = hdr_row + 1
+
+        row_labels = [
+            "At Jetty",
+            "",
+            "",
+            "",
+            "Total"
+        ]
+
         for r, lbl in enumerate(row_labels):
             c = ws.cell(data_row + r, CA_START_COL, lbl)
-            c.font      = _font()
-            c.border    = thick_bdr
+            c.font = _font()
+            c.border = thick_bdr
             c.alignment = _left
 
         if editable_table:
-            print("EXCEL TABLE =", editable_table)
             for r_idx, row_data in enumerate(editable_table[1:]):
                 excel_row = data_row + r_idx
+
                 for c_idx, value in enumerate(row_data):
                     excel_col = CA_START_COL + c_idx
-                    c = ws.cell(excel_row, excel_col, value)
-                    c.border    = thick_bdr
+
+                    c = ws.cell(
+                        excel_row,
+                        excel_col,
+                        value
+                    )
+
+                    c.border = thick_bdr
                     c.alignment = _ctr
+
         else:
             col = CA_START_COL + 1
+
             for row in cargo_availability:
-                c = ws.cell(data_row, col, row.get("at_jetty_qty", ""))
+                c = ws.cell(
+                    data_row,
+                    col,
+                    row.get("at_jetty_qty", "")
+                )
+
                 c.alignment = _ctr
-                c.border    = thick_bdr
+                c.border = thick_bdr
+
                 col += 1
 
-        # ── total column & borders ─────────────────────────────────────────────
-        c = ws.cell(data_row + 4, total_col, int(round(grand_total)))
-        c.font      = _font()
+        # ================= TOTAL =================
+        c = ws.cell(
+            data_row + 4,
+            total_col,
+            int(round(grand_total))
+        )
+
+        c.font = _font()
         c.alignment = _ctr
-        c.border    = thick_bdr
-
-        for cc in range(CA_START_COL, total_col + 1):
-            ws.cell(data_row + 4, cc).border = thick_bdr
-        for rr in range(hdr_row, data_row + 5):
-            ws.cell(rr, total_col).border = thick_bdr
-        for rr in range(uv_start_row, data_row + 5):
-            for cc in range(CA_START_COL, total_col + 1):
-                ws.cell(rr, cc).border = thick_bdr
-
-        # ── grand total row ────────────────────────────────────────────────────
-        grand_total_row = data_row + 5
-        c = ws.cell(grand_total_row, CA_START_COL, "")
         c.border = thick_bdr
 
-        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 1,
-                    end_row=grand_total_row,   end_column=CA_START_COL + 5)
-        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 6,
-                    end_row=grand_total_row,   end_column=CA_START_COL + 15)
-        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 16,
-                    end_row=grand_total_row,   end_column=CA_START_COL + 18)
+        # ================= WIDTHS =================
 
-        grand_ibrm = grand_cbrm = grand_fluxes = ""
-        grand_slag = grand_clinker = grand_total_val = ""
-        try:
-            if editable_table and len(editable_table) > 6:
-                grand_row       = editable_table[6]
-                grand_ibrm      = grand_row[1] if len(grand_row) > 1 else ""
-                grand_cbrm      = grand_row[2] if len(grand_row) > 2 else ""
-                grand_fluxes    = grand_row[3] if len(grand_row) > 3 else ""
-                grand_slag      = grand_row[4] if len(grand_row) > 4 else ""
-                grand_clinker   = grand_row[5] if len(grand_row) > 5 else ""
-                grand_total_val = grand_row[6] if len(grand_row) > 6 else ""
-        except Exception as e:
-            print("GRAND TOTAL ERROR =", str(e))
-
-        for (col_offset, val) in [
-            (1,  grand_ibrm),
-            (6,  grand_cbrm),
-            (16, grand_fluxes),
-            (19, grand_slag),
-            (20, grand_clinker),
-        ]:
-            c = ws.cell(grand_total_row, CA_START_COL + col_offset, val)
-            c.font      = _font()
-            c.alignment = _ctr
-            c.border    = thick_bdr
-
-        c = ws.cell(grand_total_row, total_col, grand_total_val)
-        c.font      = _font()
-        c.alignment = _ctr
-        c.border    = thick_bdr
-
-        for col in range(CA_START_COL, total_col + 1):
-            cell = ws.cell(grand_total_row, col)
-            cell.border    = thick_bdr
-            cell.alignment = _ctr
-            cell.font      = _font()
-
-        # ── Auto-fit ALL cargo columns based on cargo name length ──────────────
-        # Runs at the very end so it always wins over any earlier width setting
-        ws.column_dimensions[get_column_letter(CA_START_COL)].width = 15  # label col
+        # Label column
+        ws.column_dimensions[
+            get_column_letter(CA_START_COL)
+        ].width = 18
 
         col = CA_START_COL + 1
+
         for cargo in cargo_names:
-            col_letter = get_column_letter(col)
-            # width = full cargo name length + padding, minimum 12
-            cargo_width = max(len(str(cargo)) + 4, 12)
-            ws.column_dimensions[col_letter].width = cargo_width
+
+            cargo = str(cargo)
+
+            longest_word = max(
+                [len(word) for word in cargo.split()],
+                default=len(cargo)
+            )
+
+            width = max(
+                longest_word + 6,
+                16
+            )
+
+            width = min(width, 25)
+
+            ws.column_dimensions[
+                get_column_letter(col)
+            ].width = width
+
             col += 1
 
-        # Total col
-        ws.column_dimensions[get_column_letter(col)].width = 12
+        # Total column
+        ws.column_dimensions[
+            get_column_letter(total_col)
+        ].width = 12
 
-        data_row = grand_total_row + 1
+        data_row = data_row + 5
     # ── tide ──────────────────────────────────────────────────────────
     # ── tide ──────────────────────────────────────────────────────────
 
@@ -3037,9 +3073,9 @@ def _build_excel_a4(
     BF_COL = STAT_COL
     BF_ROW = r + 3
 
-    ws.column_dimensions[get_column_letter(BF_COL)].width     = 18
-    ws.column_dimensions[get_column_letter(BF_COL + 1)].width = 32
-    ws.column_dimensions[get_column_letter(BF_COL + 2)].width = 32
+    ws.column_dimensions[get_column_letter(BF_COL)].width     = 20
+    ws.column_dimensions[get_column_letter(BF_COL + 1)].width = 70
+    ws.column_dimensions[get_column_letter(BF_COL + 2)].width = 70
 
     safe_merge(ws, BF_ROW, BF_COL, BF_ROW, BF_COL + 2)
     for cc in range(BF_COL, BF_COL + 3):
@@ -3085,7 +3121,7 @@ def _build_excel_a4(
     RM_ROW = BF_ROW
 
     ws.column_dimensions[get_column_letter(RM_COL)].width     = 22
-    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 18
+    ws.column_dimensions[get_column_letter(RM_COL + 1)].width = 40
 
     safe_merge(ws, RM_ROW, RM_COL, RM_ROW, RM_COL + 1)
     for cc in range(RM_COL, RM_COL + 2):
@@ -3137,7 +3173,7 @@ def _build_excel_a4(
     
 
     # MBC table column widths — 1 col each, wider for name/owner/cargo/date/status
-    MBC_COL_WIDTHS = [35, 25, 25, 14, 12, 12, 12, 30, 25]
+    MBC_COL_WIDTHS = [58, 41, 41, 23, 20, 20, 20, 49, 42]
     # MBC Name, Owner, Cargo, Qty, FWD, MID, AFT, Date, Status  → 9 cols
     MBC_HEADERS = ["MBC Name", "Owner", "Cargo", "Qty (MT)", "FWD", "MID", "AFT", "Date", "Status"]
     MBC_TOTAL   = len(MBC_HEADERS)  # 9
