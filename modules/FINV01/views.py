@@ -933,23 +933,11 @@ def cancel_invoice_sap():
     if invoice.get('invoice_status') not in ('Posted to SAP', 'Posted to GST'):
         return jsonify({'success': False, 'error': 'Invoice is not posted to SAP'})
 
-    # Anchor the 24h FB08 window on SAP's posting confirmation when available,
-    # falling back to posted_date (our staging push time) when the callback
-    # hasn't arrived yet.
-    posted_dt = (_parse_datetime(invoice.get('sap_posting_date'))
-                 or _parse_datetime(invoice.get('posted_date')))
-    if not posted_dt:
-        return jsonify({
-            'success': False,
-            'error': 'No SAP posting timestamp found for this invoice.',
-        }), 400
-    if datetime.now() - posted_dt > timedelta(hours=24):
-        return jsonify({
-            'success': False,
-            'error': 'FB08 reversal window (24 hours) has expired.',
-            'offer_cn': True,
-            'invoice_id': invoice_id
-        }), 400
+    # No hard 24h block here: the FB08 reversal must stay available past the
+    # window because the SAP team sometimes cancels documents manually on
+    # their side, and PORTMAN still needs to record the cancellation and
+    # unbill the cargo. The UI offers Create CN as the preferred path once
+    # the window has expired.
 
     invoice_lines = model.get_invoice_lines(invoice_id)
     payload = sap_builder.build_invoice_reversal_payload(invoice, invoice_lines)
