@@ -432,6 +432,8 @@
             </div>
         </div>
         <div class="modal-footer">
+            <button type="button" class="filter-btn secondary" id="clear-cutoff-btn" onclick="clearCutoff()"
+                style="margin-right:auto;">Clear Cutoff Settings</button>
             <button type="button" class="filter-btn secondary" onclick="closeCutoffModal()">Cancel</button>
             <button type="button" class="filter-btn primary" id="save-cutoff-btn" onclick="saveCutoff()">Save</button>
         </div>
@@ -455,6 +457,9 @@
 
 <script>
     /* FY cutoff snapshot is computed server-side; no client-side grids. */
+
+    /* Distinct cargo types from the VCG01 cargo master (vessel_cargo). */
+    let masterCargoTypes = [];
 
     document.addEventListener('DOMContentLoaded', function () {
         const today = new Date();
@@ -839,13 +844,16 @@
 
     function openCutoffModal() {
         document.getElementById('cutoff-modal').classList.add('open');
-        fetch('/api/module/RP01/daily-ops/cutoff')
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('cutoff-date').value = data.cutoff_date || '';
-                renderFYPreview((data.cutoff_values || {}).fy_throughput || {});
-            })
-            .catch(() => renderFYPreview({}));
+        // Load the distinct cargo types from the VCG01 master and the stored
+        // cutoff snapshot together, so every master cargo type gets a column.
+        Promise.all([
+            fetch('/api/module/VCG01/types').then(r => r.json()).catch(() => []),
+            fetch('/api/module/RP01/daily-ops/cutoff').then(r => r.json()).catch(() => ({})),
+        ]).then(([types, data]) => {
+            masterCargoTypes = Array.isArray(types) ? types : [];
+            document.getElementById('cutoff-date').value = (data && data.cutoff_date) || '';
+            renderFYPreview(((data && data.cutoff_values) || {}).fy_throughput || {});
+        });
     }
 
     function closeCutoffModal() {
@@ -880,12 +888,10 @@
         const firstFyStart = 2012;
         const lastFyStart = getCurrentFyStart();
 
-        const typeSet = new Set();
-        Object.keys(fyData).forEach(fy => Object.keys(fyData[fy]).forEach(t => typeSet.add(t)));
-        let types = Array.from(typeSet).sort();
-        if (types.length === 0) {
-            types = ['CBRM', 'CLINKER', 'FLUXES', 'IBRM', 'OTHERS'];
-        }
+        // Columns are strictly the distinct cargo types from the VCG01 master
+        // (in the master's own order). Nothing from the snapshot or any
+        // hardcoded fallback is added, so no synthetic "OTHERS" bucket appears.
+        const types = masterCargoTypes.filter(Boolean);
 
         const fmt = n => (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
@@ -1021,6 +1027,55 @@
                 btn.disabled = false;
                 btn.textContent = 'Save';
             });
+    }
+
+    function clearCutoff() {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Clear Cutoff Settings?',
+            html: 'This removes the stored cutoff snapshot. FY values will revert to '
+                + 'live database queries until a new cutoff is saved.',
+            showCancelButton: true,
+            confirmButtonText: 'Clear',
+            confirmButtonColor: '#d33',
+            cancelButtonText: 'Cancel'
+        }).then(result => {
+            if (!result.isConfirmed) return;
+
+            const btn = document.getElementById('clear-cutoff-btn');
+            btn.disabled = true;
+            btn.textContent = 'Clearing…';
+
+            const ensureTypes = masterCargoTypes.length
+                ? Promise.resolve(masterCargoTypes)
+                : fetch('/api/module/VCG01/types').then(r => r.json()).catch(() => []);
+
+            fetch('/api/module/RP01/daily-ops/cutoff', { method: 'DELETE' })
+                .then(r => {
+                    if (r.status === 403) throw new Error('Admin access required.');
+                    if (!r.ok) throw new Error('Clear failed');
+                    return ensureTypes;
+                })
+                .then(types => {
+                    masterCargoTypes = Array.isArray(types) ? types : [];
+                    // Reset to a blank form with every master cargo type as a column.
+                    document.getElementById('cutoff-date').value = '';
+                    renderFYPreview({});
+                    loadCutoffStatus();
+                })
+                .catch(err => {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Failed to clear',
+                        text: err.message || 'Failed to clear cutoff settings.',
+                        confirmButtonColor: '#4a90d9'
+                    });
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Clear Cutoff Settings';
+                });
+        });
     }
 </script>
 {% endblock %}
