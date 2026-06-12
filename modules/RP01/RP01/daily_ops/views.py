@@ -2016,26 +2016,41 @@ def _build_excel_a4(
     ws.title = "Daily Ops"
 
     # ── page setup ────────────────────────────────────────────────────
+    # ── page setup ────────────────────────────────────────────────────
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-    ws.sheet_properties.pageSetUpPr.fitToPage = False
-    ws.page_setup.scale = 100
-    # ws.page_setup.fitToWidth  = 1   # Force ALL columns onto ONE page width
-    # ws.page_setup.fitToHeight = 0   # Allow as many pages tall as needed
+
+    # Fit entire report on ONE page
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+
+    # Remove fixed scaling
+    ws.page_setup.scale = None
 
     ws.page_margins = PageMargins(
-        left=0.2, right=0.2, top=0.3, bottom=0.3,
-        header=0, footer=0
+        left=0.05,
+        right=0.05,
+        top=0.05,
+        bottom=0.05,
+        header=0,
+        footer=0
     )
 
-    ws.print_options.horizontalCentered = False
-    ws.print_options.verticalCentered   = False
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = False
+
+    # Excel view only (does not affect printing)
     ws.sheet_view.zoomScale = 100
-    ws.print_area = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
+
+    # Set print area after sheet is fully built
+    ws.print_area = (
+        f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
+    )
 
     # ── style constants ───────────────────────────────────────────────
-    TITLE_SIZE   = 30   # font size for section titles
-    NORMAL_SIZE  = 28   # font size for everything else
+    TITLE_SIZE   = 34   # font size for section titles
+    NORMAL_SIZE  = 32   # font size for everything else
 
     _thick = Side(style="medium")          # BOLD border side
     _thin  = Side(style="medium")          # use medium everywhere → all bold
@@ -2080,7 +2095,7 @@ def _build_excel_a4(
     V_START      = 5
     COLS_PER_V   = 4
     # CHANGE 4: constant vessel column width — never reassigned later
-    VESSEL_COL_WIDTH = 14
+    VESSEL_COL_WIDTH = 22
 
     vessel_count = len(vessels)
 
@@ -2168,7 +2183,7 @@ def _build_excel_a4(
                  "Issue Date : 01/04/2024", align=_left, title=True)
 
     # ── vessel header ─────────────────────────────────────────────────
-    ws.row_dimensions[3].height = 55
+    ws.row_dimensions[3].height = 80
     _merge_write(3, LABEL_START, 3, LABEL_END, "")
 
     for idx, vessel in enumerate(vessels):
@@ -3272,7 +3287,7 @@ def _build_excel_a4(
         ):
             ws.row_dimensions[row_num].height = 150
         else:
-            ws.row_dimensions[row_num].height = 40
+            ws.row_dimensions[row_num].height = 50
 
     # ── page setup ────────────────────────────────────────────────────
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
