@@ -3314,8 +3314,23 @@ def _build_excel_a4(
 
     # Excel view zoom
     ws.sheet_view.zoomScale = 100
-    # Print only used area
-    ws.print_area = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
+
+    # Recalculate print area AFTER entire sheet is built
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    print("MAX ROW =", max_row)
+    print("MAX COL =", max_col)
+
+    ws.print_area = (
+        f"A1:{get_column_letter(max_col)}{max_row}"
+    )
+
+    print("PRINT AREA =", ws.print_area)
+    print("MAX COL =", ws.max_column)
+    print("LAST COL =", get_column_letter(ws.max_column))
+    print("MAX ROW =", ws.max_row)
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
