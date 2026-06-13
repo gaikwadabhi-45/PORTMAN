@@ -2000,45 +2000,15 @@ def _build_excel_a4(
     ws = wb.active
     ws.title = "Daily Ops"
 
-    # ── page setup ────────────────────────────────────────────────────
-    # ── page setup ────────────────────────────────────────────────────
-    ws.page_setup.paperSize = ws.PAPERSIZE_A4
-    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-
-    # Fit entire report on ONE page
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 1
-
-    # Remove fixed scaling
-    ws.page_setup.scale = None
-
-    ws.page_margins = PageMargins(
-        left=0.05,
-        right=0.05,
-        top=0.05,
-        bottom=0.05,
-        header=0,
-        footer=0
-    )
-
-    ws.print_options.horizontalCentered = True
-    ws.print_options.verticalCentered = False
-
-    # Excel view only (does not affect printing)
-    ws.sheet_view.zoomScale = 100
-
-    # Set print area after sheet is fully built
-    ws.print_area = (
-        f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
-    )
+    # ── page setup (initial view only — print setup done at the END) ──
+    ws.sheet_view.zoomScale = 80
 
     # ── style constants ───────────────────────────────────────────────
-    TITLE_SIZE   = 34   # font size for section titles
-    NORMAL_SIZE  = 32   # font size for everything else
+    TITLE_SIZE   = 34
+    NORMAL_SIZE  = 32
 
-    _thick = Side(style="medium")          # BOLD border side
-    _thin  = Side(style="medium")          # use medium everywhere → all bold
+    _thick = Side(style="medium")
+    _thin  = Side(style="medium")
     thick_bdr = Border(
         left=_thick, right=_thick, top=_thick, bottom=_thick
     )
@@ -2047,7 +2017,6 @@ def _build_excel_a4(
     _left = Alignment(horizontal="left",   vertical="center", wrap_text=True)
 
     def _font(bold=False, size=NORMAL_SIZE):
-        # CHANGE 2: ignore bold parameter — never bold
         return Font(name="Calibri", size=size, bold=False)
 
     def _title_font():
@@ -2079,7 +2048,6 @@ def _build_excel_a4(
     LABEL_END    = 4
     V_START      = 5
     COLS_PER_V   = 4
-    # CHANGE 4: constant vessel column width — never reassigned later
     VESSEL_COL_WIDTH = 22
 
     vessel_count = len(vessels)
@@ -2097,7 +2065,6 @@ def _build_excel_a4(
     ws.column_dimensions["C"].width = 20
     ws.column_dimensions["D"].width = 20
 
-    # CHANGE 4: set vessel column widths ONCE here; never changed later
     for i in range(vessel_count):
         for dc in range(COLS_PER_V):
             col_letter = get_column_letter(v_start(i) + dc)
@@ -2155,7 +2122,7 @@ def _build_excel_a4(
         f"{report_date.day}.{report_date.month}.{report_date.year}"
     )
     date_str = report_date.strftime("%d-%m-%Y")
-    ws.row_dimensions[2].height = 45
+    ws.row_dimensions[2].height = 30
 
     _merge_write(2, LABEL_START, 2, LABEL_START + 2,
                  date_str, align=_left, title=True)
@@ -2172,12 +2139,7 @@ def _build_excel_a4(
     _merge_write(3, LABEL_START, 3, LABEL_END, "")
 
     for idx, vessel in enumerate(vessels):
-
-        print(
-            "HEADER CARGO =",
-            vessel.get("cargo_name")
-        )
-
+        print("HEADER CARGO =", vessel.get("cargo_name"))
         _merge_write(
             3,
             v_start(idx),
@@ -2219,16 +2181,9 @@ def _build_excel_a4(
             current_row += 1
             continue
 
-        # Default height
-        ws.row_dimensions[current_row].height = 45
+        ws.row_dimensions[current_row].height = 30
 
-        # Large rows
-        if field in (
-            "at_jetty",
-            "waiting_discharge",
-            "at_gull_loaded",
-            "under_loading"
-        ):
+        if field in ("at_jetty", "waiting_discharge", "at_gull_loaded", "under_loading"):
             ws.row_dimensions[current_row].height = 150
 
         _merge_write(
@@ -2243,7 +2198,6 @@ def _build_excel_a4(
         for idx, vessel in enumerate(vessels):
             raw = vessel.get(field)
             value = formatter(raw) if formatter else raw
-
             _merge_write(
                 current_row,
                 v_start(idx),
@@ -2255,91 +2209,65 @@ def _build_excel_a4(
 
         if label == "Discharge At Jetty":
             mbc_col = last_vessel_col + 2
-
             discharging_at_jetty = [
                 m for m in (discharging_mbcs or [])
                 if (m.get("status") or "") == "DISCHARGING"
             ]
-
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
                 f"Bal:{int(round(float(m.get('discharge_quantity') or 0)))} MT"
                 for m in discharging_at_jetty
             ])
-
             c = ws.cell(current_row, mbc_col, val)
             c.font = _font()
             c.fill = _fill("FFF3CD")
-            c.alignment = Alignment(
-                horizontal="left",
-                vertical="top",
-                wrap_text=True
-            )
+            c.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
             c.border = thick_bdr
-
             ws.merge_cells(
-                start_row=current_row,
-                start_column=mbc_col,
-                end_row=current_row,
-                end_column=mbc_col + 3
+                start_row=current_row, start_column=mbc_col,
+                end_row=current_row,   end_column=mbc_col + 3
             )
-
             ws.row_dimensions[current_row].height = 150
 
         elif label == "Waiting For Discharge At Jetty":
-
             mbc_col = last_vessel_col + 2
-
             discharging_waiting = [
                 m for m in (discharging_mbcs or [])
                 if (m.get("status") or "") == "ARRIVED"
             ]
-
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
                 f"{int(round(float(m.get('bl_quantity') or 0)))} MT"
                 for m in discharging_waiting
             ])
-
             c = ws.cell(current_row, mbc_col, val)
             c.font = _font()
             c.fill = _fill("F8D7DA")
-            c.alignment = Alignment(
-                horizontal="left",
-                vertical="top",
-                wrap_text=True
-            )
+            c.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
             c.border = thick_bdr
-
             ws.merge_cells(
-                start_row=current_row,
-                start_column=mbc_col,
-                end_row=current_row,
-                end_column=mbc_col + 3
+                start_row=current_row, start_column=mbc_col,
+                end_row=current_row,   end_column=mbc_col + 3
             )
-
             ws.row_dimensions[current_row].height = 150
 
         current_row += 1
 
     # ── upcoming vessels ──────────────────────────────────────────────
-    # Move Upcoming Vessels section down by 1 row
     current_row += 1
 
     upcoming_vessels = upcoming_vessels or []
-    uv_section_start_row = current_row  # ← save for Cargo Availability anchor
+    uv_section_start_row = current_row
 
-    # Explicit column widths for the UV/MBC table area (cols B..J)
     UV_COL_WIDTHS = [30, 45, 20, 20, 22, 22, 30, 30, 35, 35, 35]
     for i, w in enumerate(UV_COL_WIDTHS):
         ws.column_dimensions[get_column_letter(LABEL_START + i)].width = w
 
-    # spans: Vessel Name=3, Cargo=2, Qty=1, Agent=2, ETA/Status=2 → total=10
     uv_headers = ["Vessel Name", "Cargo", "Qty (MT)", "Agent", "ETA / Status"]
-    uv_spans   = [3, 2, 2, 2, 2]          # total = 10 cols
-    UV_TOTAL   = sum(uv_spans)             # 10
+    uv_spans   = [3, 2, 2, 2, 2]
+    UV_TOTAL   = sum(uv_spans)
 
     ws.merge_cells(start_row=current_row, start_column=LABEL_START,
                    end_row=current_row,   end_column=LABEL_START + UV_TOTAL - 1)
@@ -2348,7 +2276,7 @@ def _build_excel_a4(
     c.alignment = _ctr; c.border = thick_bdr
     for cc in range(LABEL_START, LABEL_START + UV_TOTAL):
         ws.cell(current_row, cc).border = thick_bdr
-    ws.row_dimensions[current_row].height = 45
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
     col = LABEL_START
@@ -2362,7 +2290,7 @@ def _build_excel_a4(
         for cc in range(col, col + span):
             ws.cell(current_row, cc).border = thick_bdr
         col += span
-    ws.row_dimensions[current_row].height = 45
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
     for v in upcoming_vessels:
@@ -2386,7 +2314,7 @@ def _build_excel_a4(
             for cc in range(col, col + span):
                 ws.cell(current_row, cc).border = thick_bdr
             col += span
-        ws.row_dimensions[current_row].height = 45
+        ws.row_dimensions[current_row].height = 30
         current_row += 1
 
     current_row += 2
@@ -2408,20 +2336,6 @@ def _build_excel_a4(
         grand_total  = sum(float(row["at_jetty_qty"] or 0) for row in cargo_availability)
         uv_start_row = uv_section_start_row
 
-        # ── Auto-fit helper: measures all cells in a column and sets width ─────
-        def _autofit_col(col_idx):
-            max_len = 0
-            col_letter = get_column_letter(col_idx)
-            for row in ws.iter_rows():
-                cell = ws.cell(row=row[0].row, column=col_idx)
-                try:
-                    if cell.value:
-                        max_len = max(max_len, len(str(cell.value)))
-                except Exception:
-                    pass
-            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-
-        # ── title ──────────────────────────────────────────────────────────────
         last_ca_col = CA_START_COL + len(cargo_names) + 1
         ws.merge_cells(
             start_row=uv_start_row, start_column=CA_START_COL,
@@ -2435,19 +2349,14 @@ def _build_excel_a4(
         for cc in range(CA_START_COL, last_ca_col + 1):
             ws.cell(uv_start_row, cc).border = thick_bdr
 
-        # ── header row ─────────────────────────────────────────────────────────
         hdr_row = uv_start_row + 1
         col     = CA_START_COL
 
-        # Empty label column
         c = ws.cell(hdr_row, col, "")
-        c.font      = _font()
-        c.fill      = _fill("D9EAF7")
-        c.alignment = _ctr
-        c.border    = thick_bdr
+        c.font = _font(); c.fill = _fill("D9EAF7")
+        c.alignment = _ctr; c.border = thick_bdr
         col += 1
 
-        # Cargo name columns
         for cargo in cargo_names:
             c = ws.cell(hdr_row, col, cargo)
             c.font      = _font()
@@ -2456,7 +2365,6 @@ def _build_excel_a4(
             c.border    = thick_bdr
             col += 1
 
-        # Total column
         c = ws.cell(hdr_row, col, "Total")
         c.font      = _font()
         c.fill      = _fill("D9EAF7")
@@ -2466,7 +2374,6 @@ def _build_excel_a4(
 
         ws.row_dimensions[hdr_row].height = HDR_ROW_HEIGHT
 
-        # ── data rows ──────────────────────────────────────────────────────────
         data_row   = hdr_row + 1
         row_labels = ["At Jetty", "", "", "", "Total"]
         for r, lbl in enumerate(row_labels):
@@ -2488,15 +2395,11 @@ def _build_excel_a4(
             col = CA_START_COL + 1
             for row in cargo_availability:
                 c = ws.cell(data_row, col, row.get("at_jetty_qty", ""))
-                c.alignment = _ctr
-                c.border    = thick_bdr
+                c.alignment = _ctr; c.border = thick_bdr
                 col += 1
 
-        # ── total column & borders ─────────────────────────────────────────────
         c = ws.cell(data_row + 4, total_col, int(round(grand_total)))
-        c.font      = _font()
-        c.alignment = _ctr
-        c.border    = thick_bdr
+        c.font = _font(); c.alignment = _ctr; c.border = thick_bdr
 
         for cc in range(CA_START_COL, total_col + 1):
             ws.cell(data_row + 4, cc).border = thick_bdr
@@ -2506,7 +2409,6 @@ def _build_excel_a4(
             for cc in range(CA_START_COL, total_col + 1):
                 ws.cell(rr, cc).border = thick_bdr
 
-        # ── grand total row ────────────────────────────────────────────────────
         grand_total_row = data_row + 5
         c = ws.cell(grand_total_row, CA_START_COL, "")
         c.border = thick_bdr
@@ -2540,53 +2442,40 @@ def _build_excel_a4(
             (20, grand_clinker),
         ]:
             c = ws.cell(grand_total_row, CA_START_COL + col_offset, val)
-            c.font      = _font()
-            c.alignment = _ctr
-            c.border    = thick_bdr
+            c.font = _font(); c.alignment = _ctr; c.border = thick_bdr
 
         c = ws.cell(grand_total_row, total_col, grand_total_val)
-        c.font      = _font()
-        c.alignment = _ctr
-        c.border    = thick_bdr
+        c.font = _font(); c.alignment = _ctr; c.border = thick_bdr
 
         for col in range(CA_START_COL, total_col + 1):
             cell = ws.cell(grand_total_row, col)
-            cell.border    = thick_bdr
-            cell.alignment = _ctr
-            cell.font      = _font()
+            cell.border = thick_bdr; cell.alignment = _ctr; cell.font = _font()
 
-        # ── Auto-fit ALL cargo columns based on cargo name length ──────────────
-        # Runs at the very end so it always wins over any earlier width setting
-        ws.column_dimensions[get_column_letter(CA_START_COL)].width = 15  # label col
+        ws.column_dimensions[get_column_letter(CA_START_COL)].width = 15
 
         col = CA_START_COL + 1
         for cargo in cargo_names:
             col_letter = get_column_letter(col)
-            # width = full cargo name length + padding, minimum 12
             cargo_width = max(len(str(cargo)) + 4, 12)
             ws.column_dimensions[col_letter].width = cargo_width
             col += 1
 
-        # Total col
         ws.column_dimensions[get_column_letter(col)].width = 12
 
         data_row = grand_total_row + 1
-    # ── tide ──────────────────────────────────────────────────────────
-    # ── tide ──────────────────────────────────────────────────────────
 
+    # ── tide ──────────────────────────────────────────────────────────
     dashboard_row = current_row
 
-    # Place Tide table BELOW Cargo Availability table
     if cargo_availability:
         tide_start_row = data_row + 2
     else:
         tide_start_row = current_row + 2
 
-    # Move table 2 columns right
     TIDE_COL = 14
 
-    ws.column_dimensions[get_column_letter(TIDE_COL)].width     = 45
-    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 45
+    ws.column_dimensions[get_column_letter(TIDE_COL)].width     = 30
+    ws.column_dimensions[get_column_letter(TIDE_COL + 1)].width = 30
 
     safe_merge(ws, tide_start_row, TIDE_COL, tide_start_row, TIDE_COL + 1)
     for cc in range(TIDE_COL, TIDE_COL + 2):
@@ -2601,10 +2490,9 @@ def _build_excel_a4(
     ws.row_dimensions[header_row].height = 18
     for col_off, lbl in [(0, "Time"), (1, "Tide")]:
         c = safe_cell(ws, header_row, TIDE_COL + col_off, lbl)
-        c.font      = _font()
-        c.fill      = _fill("D9EAF7")
+        c.font = _font(); c.fill = _fill("D9EAF7")
         c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border    = thick_bdr
+        c.border = thick_bdr
 
     row_no = header_row + 1
     for tide in (tide_rows or []):
@@ -2619,23 +2507,22 @@ def _build_excel_a4(
                 tide_dt = str(tide["tide_datetime"])
 
         c = safe_cell(ws, row_no, TIDE_COL, tide_dt)
-        c.font      = _font()
-        c.border    = thick_bdr
+        c.font = _font(); c.border = thick_bdr
         c.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[row_no].height = 18
 
         c = safe_cell(ws, row_no, TIDE_COL + 1, tide.get("tide_meters", ""))
-        c.font      = _font()
+        c.font = _font()
         c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border    = thick_bdr
+        c.border = thick_bdr
         row_no += 1
 
     # ── port throughput ───────────────────────────────────────────────
     PT_COL       = TIDE_COL + 3
     pt_start_row = tide_start_row - 1
 
-    ws.column_dimensions[get_column_letter(PT_COL)].width     = 45
-    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 45
+    ws.column_dimensions[get_column_letter(PT_COL)].width     = 30
+    ws.column_dimensions[get_column_letter(PT_COL + 1)].width = 30
 
     safe_merge(ws, pt_start_row, PT_COL, pt_start_row, PT_COL + 1)
     for cc in range(PT_COL, PT_COL + 2):
@@ -2658,13 +2545,11 @@ def _build_excel_a4(
     pt_row = pt_start_row + 1
     for label, value in pt_rows_data:
         c = safe_cell(ws, pt_row, PT_COL, label)
-        c.font      = _font()
-        c.border    = thick_bdr
+        c.font = _font(); c.border = thick_bdr
         c.alignment = Alignment(horizontal="left", vertical="center")
 
         c = safe_cell(ws, pt_row, PT_COL + 1, value)
-        c.font      = _font()
-        c.border    = thick_bdr
+        c.font = _font(); c.border = thick_bdr
         c.alignment = Alignment(horizontal="right", vertical="center")
         pt_row += 1
 
@@ -2713,7 +2598,6 @@ def _build_excel_a4(
     ws.column_dimensions[get_column_letter(mtd_start_col + n_cargo)].width     = 30
     ws.column_dimensions[get_column_letter(ytd_start_col)].width               = 25
 
-    # title
     safe_merge(ws, mbc_start_row, MBC_COL, mbc_start_row, MBC_COL + total_cols - 1)
     for cc in range(MBC_COL, MBC_COL + total_cols):
         ws.cell(mbc_start_row, cc).fill   = _fill("D9EAF7")
@@ -2726,7 +2610,6 @@ def _build_excel_a4(
     cargo_hdr_row = mbc_start_row + 1
     col_hdr_row   = cargo_hdr_row + 1
 
-    # owner merged header
     safe_merge(ws, cargo_hdr_row, MBC_COL, col_hdr_row, MBC_COL)
     c = safe_cell(ws, cargo_hdr_row, MBC_COL, "Owner")
     c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
@@ -2786,7 +2669,6 @@ def _build_excel_a4(
         c.border = thick_bdr; c.font = _font()
         data_start += 1
 
-    # total row
     for i, ct in enumerate(cargo_types):
         total_day = sum(day_lookup.get((o, ct), 0) for o in owners)
         c = safe_cell(ws, data_start, day_start_col + i, total_day if total_day else "")
@@ -2879,9 +2761,9 @@ def _build_excel_a4(
     for rr in range(month_s, month_e + 1):
         ws.cell(rr, CARGO_COL).border = thick_bdr
 
-    ws.column_dimensions[get_column_letter(CARGO_COL)].width     = 45
-    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 45
-    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 45
+    ws.column_dimensions[get_column_letter(CARGO_COL)].width     = 30
+    ws.column_dimensions[get_column_letter(CARGO_COL + 1)].width = 30
+    ws.column_dimensions[get_column_letter(CARGO_COL + 2)].width = 30
 
     cargo_end_row = r
 
@@ -2929,7 +2811,7 @@ def _build_excel_a4(
         c.font = _font(); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
 
     for i in range(4):
-        ws.column_dimensions[get_column_letter(THR_COL + i)].width = 45
+        ws.column_dimensions[get_column_letter(THR_COL + i)].width = 30
     for rr in range(THR_ROW, r + 1):
         for cc in range(THR_COL, THR_COL + 4):
             ws.cell(rr, cc).border = thick_bdr
@@ -2990,14 +2872,13 @@ def _build_excel_a4(
         r += 3
 
         last_row = r - 1
-
         for rr in range(RAINFALL_ROW, last_row + 1):
             for cc in range(RAINFALL_COL, RAINFALL_COL + 4):
                 ws.cell(rr, cc).font   = _font()
                 ws.cell(rr, cc).border = thick_bdr
 
     for i in range(4):
-        ws.column_dimensions[get_column_letter(RAINFALL_COL + i)].width = 45
+        ws.column_dimensions[get_column_letter(RAINFALL_COL + i)].width = 30
 
     # ── cargo statistics ──────────────────────────────────────────────
     STAT_COL = RAINFALL_COL + 6
@@ -3046,10 +2927,11 @@ def _build_excel_a4(
     c.font = _font(); c.fill = _fill("F2F2F2"); c.border = thick_bdr
     for off, tot in [(1, total_day_s), (2, total_month_s)]:
         c = safe_cell(ws, r, STAT_COL + off, int(round(tot)))
-        c.font = _font(); c.fill = _fill("F2F2F2"); c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
+        c.font = _font(); c.fill = _fill("F2F2F2")
+        c.alignment = Alignment(horizontal="right"); c.border = thick_bdr
 
     for i in range(3):
-        ws.column_dimensions[get_column_letter(STAT_COL + i)].width = 45
+        ws.column_dimensions[get_column_letter(STAT_COL + i)].width = 30
     for rr in range(STAT_ROW, r + 1):
         for cc in range(STAT_COL, STAT_COL + 3):
             ws.cell(rr, cc).border = thick_bdr
@@ -3123,11 +3005,9 @@ def _build_excel_a4(
         c = safe_cell(ws, hdr_row, RM_COL + i, hdr)
         c.font = _font(); c.fill = _fill("D9EAF7"); c.border = thick_bdr
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.row_dimensions[hdr_row].height = 45
+    ws.row_dimensions[hdr_row].height = 30
 
-    rm_items = [
-        ("IBRM",  1), ("CBRM", 2), ("FLUXES", 3), ("TOTAL", 4)
-    ]
+    rm_items = [("IBRM", 1), ("CBRM", 2), ("FLUXES", 3), ("TOTAL", 4)]
     for off, (material, tbl_idx) in enumerate(rm_items):
         rr  = hdr_row + 1 + off
         qty = ""
@@ -3156,18 +3036,14 @@ def _build_excel_a4(
     # ── upcoming MBCs ─────────────────────────────────────────────────
     current_row = dashboard_row
     upcoming_mbcs = upcoming_mbcs or []
-    
 
-    # MBC table column widths — 1 col each, wider for name/owner/cargo/date/status
     MBC_COL_WIDTHS = [58, 41, 41, 23, 20, 20, 20, 49, 42]
-    # MBC Name, Owner, Cargo, Qty, FWD, MID, AFT, Date, Status  → 9 cols
     MBC_HEADERS = ["MBC Name", "Owner", "Cargo", "Qty (MT)", "FWD", "MID", "AFT", "Date", "Status"]
-    MBC_TOTAL   = len(MBC_HEADERS)  # 9
+    MBC_TOTAL   = len(MBC_HEADERS)
 
     for i, w in enumerate(MBC_COL_WIDTHS):
         ws.column_dimensions[get_column_letter(LABEL_START + i)].width = w
 
-    # Title row
     ws.merge_cells(start_row=current_row, start_column=LABEL_START,
                    end_row=current_row,   end_column=LABEL_START + MBC_TOTAL - 1)
     c = ws.cell(current_row, LABEL_START, "Upcoming MBC's")
@@ -3175,18 +3051,16 @@ def _build_excel_a4(
     c.alignment = _ctr; c.border = thick_bdr
     for cc in range(LABEL_START, LABEL_START + MBC_TOTAL):
         ws.cell(current_row, cc).border = thick_bdr
-    ws.row_dimensions[current_row].height = 45
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
-    # Header row — one col per header, no merging
     for col_i, h in enumerate(MBC_HEADERS):
         c = ws.cell(current_row, LABEL_START + col_i, h)
         c.font = _font(); c.fill = _fill("D9EAF7")
         c.alignment = _ctr; c.border = thick_bdr
-    ws.row_dimensions[current_row].height = 45
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
-    # Data rows
     for m in upcoming_mbcs:
         event_date_fmt = ""
         if m.get("event_date"):
@@ -3210,7 +3084,7 @@ def _build_excel_a4(
             c = ws.cell(current_row, LABEL_START + col_i, val)
             c.font = _font(); c.fill = _fill("FFFFFF")
             c.alignment = _left; c.border = thick_bdr
-        ws.row_dimensions[current_row].height = 45
+        ws.row_dimensions[current_row].height = 30
         current_row += 1
 
     current_row += 2
@@ -3224,10 +3098,9 @@ def _build_excel_a4(
     c.font = _title_font(); c.fill = _fill("D9EAF7"); c.alignment = _ctr; c.border = thick_bdr
     for cc in range(LABEL_START, LABEL_START + MBC_TOTAL):
         ws.cell(current_row, cc).border = thick_bdr
-    ws.row_dimensions[current_row].height = 45
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
-    # MBC Name = 3 cols, Status = remaining cols (MBC_TOTAL - 3)
     ms_spans = [3, MBC_TOTAL - 3]
     ms_headers = ["MBC Name", "Status"]
     col = LABEL_START
@@ -3239,7 +3112,7 @@ def _build_excel_a4(
         for cc in range(col, col + span):
             ws.cell(current_row, cc).border = thick_bdr
         col += span
-    ws.row_dimensions[current_row].height = 45
+    ws.row_dimensions[current_row].height = 30
     current_row += 1
 
     for row in mbc_status_rows:
@@ -3255,81 +3128,56 @@ def _build_excel_a4(
             for cc in range(col, col + span):
                 ws.cell(current_row, cc).border = thick_bdr
             col += span
-        ws.row_dimensions[current_row].height = 45
+        ws.row_dimensions[current_row].height = 30
         current_row += 1
 
     current_row += 2
-    # ── uniform row height ────────────────────────────────────────────
+
+    # ── uniform row heights (SINGLE PASS at the very end) ────────────
+    _tall_labels = {
+        "Discharge At Jetty",
+        "Waiting For Discharge At Jetty",
+        "At Gull - Waiting (Loaded)",
+        "Under Loading",
+    }
     for row_num in range(1, ws.max_row + 1):
-
         label = ws.cell(row_num, LABEL_START).value
-
-        if label in (
-            "Discharge At Jetty",
-            "Waiting For Discharge At Jetty",
-            "At Gull - Waiting (Loaded)",
-            "Under Loading"
-        ):
+        if label in _tall_labels:
             ws.row_dimensions[row_num].height = 150
         else:
-            ws.row_dimensions[row_num].height = 50
+            ws.row_dimensions[row_num].height = 40
 
-    # ── page setup ────────────────────────────────────────────────────
-    ws.page_setup.paperSize = ws.PAPERSIZE_A4
-    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    # ── FINAL page setup (done AFTER all content is written) ─────────
+    ws.page_setup.paperSize    = ws.PAPERSIZE_A3
+    ws.page_setup.orientation  = ws.ORIENTATION_LANDSCAPE
 
-    # Allow Excel to use 2 pages horizontally instead of shrinking everything
-    # ws.sheet_properties.pageSetUpPr.fitToPage = True
-    # ws.page_setup.fitToWidth = 2
-    # ws.page_setup.fitToHeight = 1
+    # Disable fitToPage — this was causing the shrink-to-one-page problem
+    ws.sheet_properties.pageSetUpPr.fitToPage = False
+    ws.page_setup.fitToWidth  = 0   # 0 = no fit constraint
+    ws.page_setup.fitToHeight = 0   # 0 = no fit constraint
+    ws.page_setup.scale       = 62  # fixed scale; tune 55-75 per vessel count
 
-    # Small margins
     ws.page_margins = PageMargins(
-        left=0.05,
-        right=0.05,
-        top=0.05,
-        bottom=0.05,
+        left=0.15,
+        right=0.15,
+        top=0.15,
+        bottom=0.15,
         header=0,
         footer=0
     )
 
-    # FORCE HEIGHT FOR THESE TWO ROWS
-    for row in range(1, ws.max_row + 1):
-
-        label = ws.cell(row, LABEL_START).value
-
-        if label in (
-            "Discharge At Jetty",
-            "Waiting For Discharge At Jetty",
-            "At Gull - Waiting (Loaded)",
-            "Under Loading"
-        ):
-            ws.row_dimensions[row].height = 150
-
-        else:
-            ws.row_dimensions[row].height = 40
-    # Center horizontally only
     ws.print_options.horizontalCentered = True
-    ws.print_options.verticalCentered = False
+    ws.print_options.verticalCentered   = False
+    ws.sheet_view.zoomScale             = 80
 
-    # Excel view zoom
-    ws.sheet_view.zoomScale = 100
-
-    # Recalculate print area AFTER entire sheet is built
+    # Print area set LAST, after all content exists
     max_row = ws.max_row
     max_col = ws.max_column
-
-    print("MAX ROW =", max_row)
-    print("MAX COL =", max_col)
-
-    ws.print_area = (
-        f"A1:{get_column_letter(max_col)}{max_row}"
-    )
+    ws.print_area = f"A1:{get_column_letter(max_col)}{max_row}"
 
     print("PRINT AREA =", ws.print_area)
-    print("MAX COL =", ws.max_column)
-    print("LAST COL =", get_column_letter(ws.max_column))
-    print("MAX ROW =", ws.max_row)
+    print("MAX COL    =", get_column_letter(max_col))
+    print("MAX ROW    =", max_row)
 
     buf = io.BytesIO()
     wb.save(buf)
