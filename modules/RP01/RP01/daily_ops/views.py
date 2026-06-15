@@ -2371,7 +2371,7 @@ def _build_excel_a4(
             "at_gull_loaded",
             "under_loading"
         ):
-            ws.row_dimensions[current_row].height = 150
+            ws.row_dimensions[current_row].height = 750
 
         _merge_write(
             current_row,
@@ -2462,7 +2462,7 @@ def _build_excel_a4(
                 end_column=mbc_col + 3
             )
 
-            ws.row_dimensions[current_row].height = 150
+            ws.row_dimensions[current_row].height = 750
 
         elif label == "Waiting For Discharge At Jetty":
 
@@ -2497,7 +2497,7 @@ def _build_excel_a4(
                 end_column=mbc_col + 3
             )
 
-            ws.row_dimensions[current_row].height = 150
+            ws.row_dimensions[current_row].height = 750
 
         current_row += 1
 
@@ -3449,7 +3449,7 @@ def _build_excel_a4(
     
 
     # MBC table column widths — 1 col each, wider for name/owner/cargo/date/status
-    MBC_COL_WIDTHS = [58, 41, 41, 23, 20, 20, 20, 49, 42]
+    MBC_COL_WIDTHS = [58, 41, 41, 23, 20, 20, 20, 49, 52]
     # MBC Name, Owner, Cargo, Qty, FWD, MID, AFT, Date, Status  → 9 cols
     MBC_HEADERS = ["MBC Name", "Owner", "Cargo", "Qty (MT)", "FWD", "MID", "AFT", "Date", "Status"]
     MBC_TOTAL   = len(MBC_HEADERS)  # 9
@@ -3483,7 +3483,7 @@ def _build_excel_a4(
     upcoming_mbcs = sorted(
         upcoming_mbcs,
         key=lambda m: (
-            str(m.get("owner", "")).strip().upper() == "OTHER"
+            str(m.get("owner", "")).strip().upper() == "OTHERS"
         )
     )
 
@@ -3643,7 +3643,7 @@ def _build_excel_a4(
             "At Gull - Waiting (Loaded)",
             "Under Loading"
         ):
-            ws.row_dimensions[row_num].height = 150
+            ws.row_dimensions[row_num].height = 750
         else:
             ws.row_dimensions[row_num].height = 50
 
@@ -3677,7 +3677,7 @@ def _build_excel_a4(
             "At Gull - Waiting (Loaded)",
             "Under Loading"
         ):
-            ws.row_dimensions[row].height = 150
+            ws.row_dimensions[row].height = 750
 
         else:
             ws.row_dimensions[row].height = 40
