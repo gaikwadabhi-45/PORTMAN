@@ -1918,8 +1918,9 @@ def get_mbc_data():
     # ── Fetch ALL rows — no date casting in SQL to avoid corrupt data crash ──
     query = """
         SELECT DISTINCT ON (h.id)
-            h.id                          AS mbc_id,
-            h.mbc_name                    AS mbc_name,
+           h.id                          AS mbc_id,
+            CONCAT(h.mbc_name, ' / ', COALESCE(h.doc_num, '')) AS mbc_name,
+            h.mbc_name                    AS mbc_name_raw,
             h.cargo_name                  AS cargo_type,
             COALESCE(h.bl_quantity, 0)    AS qty_mt,
             (
@@ -2181,3 +2182,92 @@ def get_shift_data():
         shift_map[shift_key][equipment].append(item)
 
     return jsonify(shift_map)
+
+@bp.route('/api/module/RP01/berth-details', methods=['GET', 'POST'])
+@login_required
+def berth_details():
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    if request.method == 'POST':
+        data = request.get_json()
+
+        def to_iso(val):
+            """Convert DD-MM-YYYY HH:MM → YYYY-MM-DD HH:MM:SS for DB storage"""
+            if not val:
+                return None
+            val = str(val).strip()
+            # Already ISO format
+            if len(val) >= 10 and val[4] == '-':
+                return val
+            # DD-MM-YYYY HH:MM format
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(val, '%d-%m-%Y %H:%M')
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                return val  # return as-is if parsing fails
+
+        cur.execute("""
+            UPDATE ldud_barge_lines
+            SET
+                along_side_berth = %s,
+                commence_discharge_berth = %s,
+                completed_discharge_berth = %s,
+                cast_off_berth = %s,
+                cast_off_port = %s
+            WHERE id = %s
+        """, (
+            to_iso(data.get('along_side_berth')),
+            to_iso(data.get('commence_discharge_berth')),
+            to_iso(data.get('completed_discharge_berth')),
+            to_iso(data.get('cast_off_berth_nt')),
+            to_iso(data.get('cast_off_port')),
+            data.get('id')
+        ))
+
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    
+@bp.route('/api/module/RP01/mbc-berth-details', methods=['POST'])
+@login_required
+def mbc_berth_details():
+    conn = get_db()
+    cur = get_cursor(conn)
+
+    data = request.get_json()
+
+    def to_iso(val):
+        if not val:
+            return None
+        val = str(val).strip()
+        if len(val) >= 10 and val[4] == '-':
+            return val
+        try:
+            dt = datetime.strptime(val, '%d-%m-%Y %H:%M')
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return val
+
+    cur.execute("""
+        UPDATE mbc_discharge_port_lines
+        SET
+            unloading_commenced  = %s,
+            cleaning_commenced   = %s,
+            unloading_completed  = %s,
+            vessel_cast_off      = %s,
+            sailed_out_load_port = %s
+        WHERE mbc_id = %s
+    """, (
+        to_iso(data.get('unloading_commenced')),
+        to_iso(data.get('cleaning_commenced')),
+        to_iso(data.get('unloading_completed')),
+        to_iso(data.get('mbc_cast_off')),
+        to_iso(data.get('sailed_out_load_port')),
+        data.get('id')
+    ))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
