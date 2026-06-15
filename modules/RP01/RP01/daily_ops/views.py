@@ -688,7 +688,7 @@ def _fetch_data(report_date):
     conn.close()
 
     def _make_names(bs_dict, key):
-        return '\n\n'.join(bs_dict.get(key, []))
+        return '\n'.join(bs_dict.get(key, []))
 
     for v in vessels:
         lid    = v['id']
@@ -1535,7 +1535,7 @@ def _fetch_mbc_status(report_date):
 
             CASE
 
-                /* Empty : Waiting at Dharamtar */
+                /* Empty : Waiting at Jaigad */
                 WHEN h.id IS NULL
                 THEN 'EMPTY : WAITING AT JAIGAD'
 
@@ -1594,6 +1594,13 @@ def _fetch_mbc_status(report_date):
                     AND NULLIF(TRIM(d.unloading_completed), '') IS NULL
                 THEN
                     'UNDER DISCHARGE'
+
+                /* Empty : On the way to Jaigad */
+                WHEN
+                    NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
+                    AND d.sailed_out_load_port IS NOT NULL
+                THEN
+                    'EMPTY : ON THE WAY TO JAIGAD'
 
                 /* Empty : Waiting at Dharamtar */
                 WHEN
@@ -2371,7 +2378,7 @@ def _build_excel_a4(
             "at_gull_loaded",
             "under_loading"
         ):
-            ws.row_dimensions[current_row].height = 750
+            ws.row_dimensions[current_row].height = 400
 
         _merge_write(
             current_row,
@@ -2439,9 +2446,7 @@ def _build_excel_a4(
             ]
 
             val = "\n".join([
-                f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
-                f"({m.get('cargo_name','')}) "
-                f"Bal:{int(round(float(m.get('discharge_quantity') or 0)))} MT"
+                f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()}({m.get('cargo_name','')})-Bal:{int(round(float(m.get('discharge_quantity') or 0)))}MT"
                 for m in discharging_at_jetty
             ])
 
@@ -2462,7 +2467,7 @@ def _build_excel_a4(
                 end_column=mbc_col + 3
             )
 
-            ws.row_dimensions[current_row].height = 750
+            ws.row_dimensions[current_row].height = 400
 
         elif label == "Waiting For Discharge At Jetty":
 
@@ -2476,7 +2481,7 @@ def _build_excel_a4(
             val = "\n".join([
                 f"{(m.get('mbc_name','') or '').replace('JSW ','').strip()} "
                 f"({m.get('cargo_name','')}) "
-                f"{int(round(float(m.get('bl_quantity') or 0)))} MT"
+                f"{int(round(float(m.get('bl_quantity') or 0)))}MT"
                 for m in discharging_waiting
             ])
 
@@ -2497,7 +2502,7 @@ def _build_excel_a4(
                 end_column=mbc_col + 3
             )
 
-            ws.row_dimensions[current_row].height = 750
+            ws.row_dimensions[current_row].height = 400
 
         current_row += 1
 
@@ -3480,10 +3485,22 @@ def _build_excel_a4(
     # =====================================================
     # Move Owner='Other' records to bottom
     # =====================================================
+    # Custom status order
+    status_order = {
+        "ETA DHARAMTAR": 1,
+        "WAITING AT GULL": 2,
+        "ETA GULL": 3
+    }
+
     upcoming_mbcs = sorted(
         upcoming_mbcs,
         key=lambda m: (
-            str(m.get("owner", "")).strip().upper() == "OTHERS"
+            str(m.get("owner", "")).strip().upper() == "OTHERS",  # OTHERS always last
+            status_order.get(
+                str(m.get("status", "")).strip().upper(),
+                99
+            ),
+            str(m.get("event_date", ""))
         )
     )
 
@@ -3643,7 +3660,7 @@ def _build_excel_a4(
             "At Gull - Waiting (Loaded)",
             "Under Loading"
         ):
-            ws.row_dimensions[row_num].height = 750
+            ws.row_dimensions[row_num].height = 400
         else:
             ws.row_dimensions[row_num].height = 50
 
@@ -3677,7 +3694,7 @@ def _build_excel_a4(
             "At Gull - Waiting (Loaded)",
             "Under Loading"
         ):
-            ws.row_dimensions[row].height = 750
+            ws.row_dimensions[row].height = 400
 
         else:
             ws.row_dimensions[row].height = 40
