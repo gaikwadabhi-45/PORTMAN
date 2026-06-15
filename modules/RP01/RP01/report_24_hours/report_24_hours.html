@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+
+{% block title %}24 Hours Report - RP01{% endblock %}
+
+{% block head %}
+
+<style>
+
+/* ─────────────────────────────────────────────
+   PAGE HEADER
+───────────────────────────────────────────── */
+
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.page-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-primary);
+}
+
+.module-badge {
+    background: #4a90d9;
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.breadcrumb {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+}
+
+.breadcrumb a {
+    color: #4a90d9;
+    text-decoration: none;
+}
+
+.breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+/* ─────────────────────────────────────────────
+   FILTER SECTION
+───────────────────────────────────────────── */
+
+.filter-card {
+    background: #f8f9fb;
+    border: 1px solid #d9dee7;
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 20px;
+}
+
+.filter-row {
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.filter-group label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #667085;
+    text-transform: uppercase;
+}
+
+.filter-group input {
+    width: 180px;
+    height: 38px;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: 14px;
+    background: #ffffff;
+}
+
+.filter-btn {
+    height: 38px;
+    min-width: 90px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.filter-btn.apply {
+    background: #4a90d9;
+    color: white;
+}
+
+.filter-btn.reset {
+    background: #ffffff;
+    color: #667085;
+    border: 1px solid #d0d5dd;
+}
+
+/* ─────────────────────────────────────────────
+   REPORT CARD
+───────────────────────────────────────────── */
+
+.report-card {
+    background: #ffffff;
+    border: 1px solid #d9dee7;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.report-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #d9dee7;
+    background: #f8f9fb;
+    font-size: 16px;
+    font-weight: 700;
+    color: #344054;
+}
+
+.report-body {
+    padding: 20px;
+}
+
+.report-section {
+    margin-bottom: 24px;
+}
+
+.report-section h4 {
+    margin-bottom: 12px;
+    color: #344054;
+    font-size: 15px;
+}
+
+.report-line {
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #344054;
+}
+
+.report-list {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.report-list li {
+    margin-bottom: 8px;
+    color: #344054;
+    font-size: 14px;
+}
+
+.highlight {
+    font-weight: 700;
+    color: #1d2939;
+}
+
+.nil-text {
+    color: #98a2b3;
+    font-style: italic;
+}
+
+</style>
+
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <h2>24 Hours Report</h2>
+    <span class="module-badge">RP01</span>
+</div>
+
+<div class="breadcrumb">
+    <a href="/module/RP01/">Reports</a>
+    &rsaquo;
+    24 Hours Report
+</div>
+
+<!-- FILTER SECTION -->
+
+<div class="filter-card">
+
+    <div class="filter-row">
+
+        <div class="filter-group">
+
+            <label>Report Date</label>
+
+            <input
+                type="date"
+                id="report-date">
+
+        </div>
+
+        <button
+            id="apply-filter-btn"
+            class="filter-btn apply">
+
+            Apply
+
+        </button>
+
+        <button
+            id="reset-filter-btn"
+            class="filter-btn reset">
+
+            Reset
+
+        </button>
+
+    </div>
+
+</div>
+
+<!-- REPORT -->
+
+<div
+    id="report-container"
+    class="report-card"
+    style="display:none;">
+
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+<script>
+
+$('#apply-filter-btn').on('click', async function () {
+
+    const reportDate = $('#report-date').val();
+
+    if (!reportDate) {
+
+        alert('Please select report date');
+        return;
+
+    }
+
+    try {
+
+        const response = await fetch(`/module/RP01/api/report_24_hours?report_date=${reportDate}`
+        );
+
+        if (!response.ok) {
+
+            throw new Error(`HTTP ${response.status}`);
+
+        }
+
+        const result = await response.json();
+
+        console.log(result);
+
+        if (!result.success) {
+
+            alert(result.message);
+            return;
+
+        }
+
+        render24HoursReport(result);
+
+    } catch (error) {
+
+        console.error(error);
+
+        alert('Failed to fetch report');
+
+    }
+
+});
+
+
+$('#reset-filter-btn').on('click', function () {
+
+    $('#report-date').val('');
+
+    $('#report-container')
+        .hide()
+        .html('');
+
+});
+
+
+function render24HoursReport(data) {
+
+    let html = `
+        <div class="report-header">
+            24 Hrs M.V. Disch for ${data.fetch_date}
+        </div>
+
+        <div class="report-body">
+    `;
+
+    html += `
+        <div class="report-line">
+            24 Hrs M.V. Disch for ${data.fetch_date}.
+            <p>
+            MV Disch: ${Number(data.mv_disch).toLocaleString()} MT.
+            <p>
+            From: ${data.mv_total_days} Days.
+        </div>
+    `;
+
+    // MV Waiting
+    html += `
+        <div class="report-line">
+            <b>Note:</b> MV's Waiting for Discharge -
+            ${(data.mv_waiting_list || []).length > 0
+                ? (data.mv_waiting_list || []).length + ' Nos.'
+                : 'Nil'}
+        </div>
+    `;
+
+    if ((data.mv_waiting_list || []).length > 0) {
+
+        html += `<ol class="report-list">`;
+
+        data.mv_waiting_list.forEach(item => {
+
+            html += `<li>${item.vessel_name}</li>`;
+
+        });
+
+        html += `</ol>`;
+    }
+
+    // MBC Waiting
+    html += `
+        <div class="report-line">
+            <b>Note:</b> MBC Waiting for Discharge at Gull -
+            ${(data.mbc_waiting || []).length} Nos.
+        </div>
+    `;
+
+    if ((data.mbc_waiting || []).length > 0) {
+
+        html += `<ol class="report-list">`;
+
+        data.mbc_waiting.forEach(item => {
+
+            html += `
+                <li>
+                    ${item.mbc_name} - ${item.cargo_name}
+                </li>
+            `;
+        });
+
+        html += `</ol>`;
+    }
+
+    // Vessel List
+    if ((data.mv_discharge_list || []).length > 0) {
+
+        html += `<ol class="report-list">`;
+
+        data.mv_discharge_list.forEach(item => {
+
+            html += `
+                <li>
+                    ${item.vessel_name}
+                    -
+                    ${Number(item.cargo_quantity).toLocaleString()} MT /
+                    ${Number(item.bl_quantity).toLocaleString()} MT
+                </li>
+            `;
+        });
+
+        html += `</ol>`;
+    }
+
+    html += `
+        <div class="report-line">
+            <b>MBC's Discharging for Last 24 Hrs -</b>
+            ${Number(data.mbc_disch_total).toLocaleString()} MT.
+        </div>
+
+        <div class="report-line">
+            <b>Barges in Mumbai Lighterage Operation -</b>
+            ${data.barges_count} Nos.
+        </div>
+
+        <div class="report-line">
+            <b>Jetty Handling :</b>
+            Today / MTD / YTD
+            ${Number(data.jetty_today).toLocaleString()} MT /
+            ${Number(data.jetty_mtd).toLocaleString()} MT /
+            ${Number(data.jetty_ytd).toLocaleString()} MT.
+        </div>
+    `;
+
+    // Cargo Wise
+    if ((data.jetty_cargo_list || []).length > 0) {
+
+        html += `<ol class="report-list">`;
+
+        data.jetty_cargo_list.forEach(item => {
+
+            html += `
+                <li>
+                    ${item.cargo_name}
+                    - ${Number(item.quantity).toLocaleString()} MT.
+                </li>
+            `;
+        });
+
+        html += `</ol>`;
+    }
+
+    // Delays
+    html += `
+        <div class="report-line">
+            <b>Delays / Detention</b>
+        </div>
+    `;
+
+    if ((data.delays || []).length > 0) {
+
+        html += `<ol class="report-list">`;
+
+        data.delays.forEach(item => {
+
+            html += `
+                <li>
+                    ${item.delay_name}
+                    - ${item.hours} Hrs.
+                </li>
+            `;
+        });
+
+        html += `</ol>`;
+    }
+
+    html += `
+        </div>
+    `;
+
+    $('#report-container')
+        .html(html)
+        .show();
+}
+</script>
+
+{% endblock %}
