@@ -1274,7 +1274,8 @@
                     loaded_waiting: '#bdd7ee',
                     currently_loading: '#d9d2e9',
                     loaded_transit: '#9fc5e8',
-                    waiting_discharge: '#f9cb9c'
+                    waiting_discharge: '#f9cb9c',
+                    on_way_dharamtar: '#f6b26b'
                 };
 
                 const STATUS_LABELS = {
@@ -1283,7 +1284,8 @@
                     loaded_waiting: 'Loaded Waiting',
                     currently_loading: 'Currently Loading',
                     loaded_transit: 'Loaded & Transit',
-                    waiting_discharge: 'Waiting For Discharge'
+                    waiting_discharge: 'Waiting For Discharge',
+                    on_way_dharamtar: 'On the Way to Dharamtar'
                 };
 
                 const status = data.current_status || '';
@@ -1297,7 +1299,7 @@
                 el.dataset.status = STATUS_LABELS[status] || status;
 
                 // Browser tooltip
-            
+
 
                 // Hover effect
                 el.addEventListener('mouseenter', function () {
