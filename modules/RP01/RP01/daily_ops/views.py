@@ -820,23 +820,14 @@ def _fetch_upcoming_vessels(report_date):
 
 def _fetch_discharging_mbcs(report_date):
 
-    window_end = datetime(
+    day_start = datetime(
         report_date.year,
         report_date.month,
         report_date.day,
-        8, 0, 0
-    )
+        0, 0, 0
+    ) - timedelta(days=1)
 
-    window_start = window_end - timedelta(days=1)
-
-    completion_start = datetime(
-        report_date.year,
-        report_date.month,
-        report_date.day,
-        6, 0, 0
-    )
-
-    completion_end = datetime(
+    day_end = datetime(
         report_date.year,
         report_date.month,
         report_date.day,
@@ -867,7 +858,7 @@ SELECT
         WHEN
             NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
             AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
-            AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
+            AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp <= %s
             AND (
                 p.unloading_commenced IS NULL
                 OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
@@ -882,7 +873,7 @@ SELECT
                 OR TRIM(COALESCE(p.unloading_completed, '')) = ''
             )
             AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-            AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+            AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp <= %s
         THEN 'DISCHARGING'
 
         WHEN
@@ -914,7 +905,7 @@ WHERE
 (
     NULLIF(TRIM(p.vessel_arrival_port), '') IS NOT NULL
     AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp >= %s
-    AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp < %s
+    AND NULLIF(TRIM(p.vessel_arrival_port), '')::timestamp <= %s
     AND (
         p.unloading_commenced IS NULL
         OR TRIM(COALESCE(p.unloading_commenced, '')) = ''
@@ -931,7 +922,7 @@ OR
         OR TRIM(COALESCE(p.unloading_completed, '')) = ''
     )
     AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp >= %s
-    AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp < %s
+    AND NULLIF(TRIM(p.unloading_commenced), '')::timestamp <= %s
 )
 
 OR
@@ -973,13 +964,13 @@ ORDER BY
     ) DESC
 
 """, (
-    window_start, window_end,          # CASE ARRIVED
-    window_start, window_end,          # CASE DISCHARGING
-    completion_start, completion_end,  # CASE COMPLETED
+    day_start, day_end,   # CASE ARRIVED
+    day_start, day_end,   # CASE DISCHARGING
+    day_start, day_end,   # CASE COMPLETED
 
-    window_start, window_end,          # WHERE ARRIVED
-    window_start, window_end,          # WHERE DISCHARGING
-    completion_start, completion_end   # WHERE COMPLETED
+    day_start, day_end,   # WHERE ARRIVED
+    day_start, day_end,   # WHERE DISCHARGING
+    day_start, day_end    # WHERE COMPLETED
 ))
 
     rows = cur.fetchall()
