@@ -404,60 +404,75 @@ function render24HoursReport(data) {
         </div>
 
         <div class="report-line">
-            <b>Barges in Mumbai Lighterage Operation -</b>
-            ${data.barges_count} Nos.
-        </div>
+    <b>Barges in Mumbai Lighterage Operation -</b>
+${data.barges_count} Nos.
+<br>
 
-        <div class="report-line">
-            <b>Jetty Handling :</b>
-            Today / MTD / YTD
-            ${Number(data.jetty_today).toLocaleString()} MT /
-            ${Number(data.jetty_mtd).toLocaleString()} MT /
-            ${Number(data.jetty_ytd).toLocaleString()} MT.
-        </div>
+<span style="margin-left:20px;">
+    Cement Barges - ${data.cement_barges || 0} Nos.
+</span>
+<br>
+
+<span style="margin-left:20px;">
+    Steel Barges - ${data.steel_barges || 0} Nos.
+</span>
+<br>
+
+<span style="margin-left:20px;">
+    Cement Cargo - ${Number(data.cement_cargo || 0).toLocaleString()} MT
+</span>
+<br>
+
+<span style="margin-left:20px;">
+    Steel Cargo - ${Number(data.steel_cargo || 0).toLocaleString()} MT
+</span>
+</div>
+
+<div class="report-line">
+    <b>Jetty Handling :</b>
+    <br>
+    Today / MTD / YTD
+    <br>
+    ${Number(data.jetty_today || 0).toLocaleString()} MT /
+    ${Number(data.jetty_mtd || 0).toLocaleString()} MT /
+    ${Number(data.jetty_ytd || 0).toLocaleString()} MT
+</div>
     `;
 
-    // Cargo Wise
     if ((data.jetty_cargo_list || []).length > 0) {
 
-        html += `<ol class="report-list">`;
+    html += `<div class="report-line" style="margin-left:20px;">`;
 
-        data.jetty_cargo_list.forEach(item => {
+    data.jetty_cargo_list.forEach((item, index) => {
 
-            html += `
-                <li>
-                    ${item.cargo_name}
-                    - ${Number(item.quantity).toLocaleString()} MT.
-                </li>
-            `;
-        });
+        html += `
+            <div>
+                ${index + 1}.
+                ${item.cargo_name}
+                -
+                ${Number(item.quantity || 0).toLocaleString()} MT
+            </div>
+        `;
+    });
 
-        html += `</ol>`;
-    }
+    html += `</div>`;
+}
 
     // Delays
     html += `
-        <div class="report-line">
-            <b>Delays / Detention</b>
-        </div>
-    `;
+    <div class="report-line">
+        <b>Delays / Detention</b>
+    </div>
 
-    if ((data.delays || []).length > 0) {
-
-        html += `<ol class="report-list">`;
-
-        data.delays.forEach(item => {
-
-            html += `
-                <li>
-                    ${item.delay_name}
-                    - ${item.hours} Hrs.
-                </li>
-            `;
-        });
-
-        html += `</ol>`;
-    }
+    <ol class="report-list">
+        <li>
+            RHMS Delays - ${Number(data.rhms_delay_hours || 0).toFixed(2)} Hrs.
+        </li>
+        <li>
+            Maintenance Delays - ${Number(data.maintenance_delay_hours || 0).toFixed(2)} Hrs.
+        </li>
+    </ol>
+`;
 
     html += `
         </div>
