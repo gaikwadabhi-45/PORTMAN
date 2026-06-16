@@ -110,202 +110,92 @@ def get_24_hours_report():
         cur = get_cursor(conn)
 
         print("CURSOR CREATED")
+
         # =================================================
-        # MV DISCHARGE  
+        # MV DISCHARGE
         # =================================================
 
         try:
 
             print("\n--- FETCHING MV DISCHARGE ---")
-
             print("FETCH DATE FOR MV:", fetch_date.date())
 
-            cur.execute("""
-                SELECT
+            report_date = fetch_date.date()
 
-                    COALESCE(h.doc_num, '') AS doc_num,
-
-                    COALESCE(
-                        h.vcn_doc_num,
-                        ''
-                    ) || ' / ' || COALESCE(
-                        h.vessel_name,
-                        ''
-                    ) AS vessel_name,
-
-                    COALESCE(
-                        a.anchorage_name,
-                        ''
-                    ) AS anchorage_name,
-
-                    COALESCE(
-                        (
-                            SELECT COALESCE(SUM(vo.quantity), 0)
-                            FROM ldud_vessel_operations vo
-                            WHERE vo.ldud_id = h.id
-                            AND vo.start_time::date = %s
-                        ),
-                        0
-                    ) AS discharge_24h,
-
-                    COALESCE(
-                        (
-                            SELECT ROUND(
-                                SUM(cd.bl_quantity)::numeric,
-                                2
-                            )
-                            FROM vcn_cargo_declaration cd
-                            WHERE cd.vcn_id = h.vcn_id
-                        ),
-                        0
-                    ) AS bl_quantity,
-
-                    a.discharge_started,
-
-                    a.discharge_commenced,
-
-                    ROUND(
-                        EXTRACT(
-                            EPOCH FROM (
-                                a.discharge_commenced
-                                -
-                                a.discharge_started
-                            )
-                        ) / 3600,
-                        2
-                    ) AS total_hours,
-
-                    ROUND(
-                        EXTRACT(
-                            EPOCH FROM (
-                                a.discharge_commenced
-                                -
-                                a.discharge_started
-                            )
-                        ) / 86400,
-                        2
-                    ) AS total_days
-
-                FROM ldud_anchorage a
-
-                LEFT JOIN ldud_header h
-                    ON h.id = a.ldud_id
-
-                WHERE DATE(a.discharge_started) = %s
-
-                ORDER BY h.vessel_name
-
-            """, (
-                fetch_date.date(),
-                fetch_date.date()
-            ))
-
-            mv_rows = cur.fetchall()
-
-            print("MV ROW COUNT:", len(mv_rows))
-
+            # Initialize variables
             mv_disch = 0
             mv_total_days = 0
-
             mv_discharge_list = []
 
-            for row in mv_rows:
+            # Get LDUD IDs having discharge commenced
+            cur.execute("""
+                SELECT id
+                FROM ldud_header
+                WHERE discharge_commenced IS NOT NULL
+            """)
 
-                print("ROW DATA:", row)
+            ldud_ids = [row['id'] for row in cur.fetchall()]
 
-                qty = float(
-                    row['discharge_24h'] or 0
-                )
+            print("LDUD IDS FOUND:", len(ldud_ids))
 
-                days = float(
-                    row['total_days'] or 0
-                )
+            ops_24h = {}
 
-                mv_disch += qty
-                mv_total_days += days
+            # 24 HRS DISCHARGE
+            prev_date = report_date - timedelta(days=1)
 
-                mv_discharge_list.append({
+            if ldud_ids:
 
-                    'doc_num': str(
-                        row['doc_num']
-                    ),
+                cur.execute("""
+                    SELECT
+                        ldud_id,
+                        COALESCE(SUM(quantity), 0) AS qty
+                    FROM ldud_vessel_operations
+                    WHERE ldud_id = ANY(%s)
+                    AND start_time::date = %s
+                    GROUP BY ldud_id
+                """, (ldud_ids, prev_date))
 
-                    'vessel_name': str(
-                        row['vessel_name']
-                    ),
+                for r in cur.fetchall():
+                    ops_24h[r['ldud_id']] = float(r['qty'])
 
-                    'anchorage_name': str(
-                        row['anchorage_name']
-                    ),
+            # Total 24 Hrs Discharge
+            mv_disch = sum(ops_24h.values())
 
-                    # 24 HRS DISCHARGE
-                    'cargo_quantity': str(qty),
+            print("OPS 24H:", ops_24h)
+            print("TOTAL MV DISCH (24 HRS):", mv_disch)
 
-                    'bl_quantity': str(
-                        float(
-                            row['bl_quantity'] or 0
-                        )
-                    ),
+            # LOADED TILL DATE
+            ops_till = {}
 
-                    'discharge_started': (
-                        str(row['discharge_started'])
-                        if row['discharge_started']
-                        else ''
-                    ),
+            cutoff_date = report_date - timedelta(days=1)
 
-                    'discharge_commenced': (
-                        str(row['discharge_commenced'])
-                        if row['discharge_commenced']
-                        else ''
-                    ),
+            if ldud_ids:
 
-                    'total_hours': str(
-                        row['total_hours'] or 0
-                    ),
+                cur.execute("""
+                    SELECT
+                        ldud_id,
+                        COALESCE(SUM(quantity), 0) AS qty
+                    FROM ldud_vessel_operations
+                    WHERE ldud_id = ANY(%s)
+                    AND start_time::date <= %s
+                    GROUP BY ldud_id
+                """, (ldud_ids, cutoff_date))
 
-                    'total_days': str(
-                        row['total_days'] or 0
-                    )
+                for r in cur.fetchall():
+                    ops_till[r['ldud_id']] = float(r['qty'])
 
-                })
-
-            mv_disch = round(
-                mv_disch,
-                2
-            )
-
-            mv_total_days = round(
-                mv_total_days,
-                2
-            )
-
-            print(
-                "TOTAL MV DISCH (24 HRS):",
-                mv_disch
-            )
-
-            print(
-                "TOTAL MV DAYS:",
-                mv_total_days
-            )
-
-            print(
-                "MV DISCHARGE LIST:",
-                mv_discharge_list
-            )
+            print("OPS TILL DATE:", ops_till)
 
         except Exception as e:
 
-            print(
-                "MV DISCHARGE ERROR:",
-                str(e)
-            )
+            print("MV DISCHARGE ERROR:", str(e))
 
             mv_disch = 0
             mv_total_days = 0
             mv_discharge_list = []
+
         # =================================================
-        # MV WAITING  ← FIXED: use doc_status column
+        # MV WAITING
         # =================================================
 
         try:
@@ -314,26 +204,44 @@ def get_24_hours_report():
 
             cur.execute("""
                 SELECT
-                    COALESCE(h.vcn_doc_num, '') || ' / ' || COALESCE(h.vessel_name, '') AS vessel_name
-                FROM ldud_header h
-                WHERE h.doc_status = 'Pending'
-                ORDER BY h.vessel_name
+                    COALESCE(vcn_doc_num, '') || ' / ' || COALESCE(vessel_name, '') AS vessel_name
+                FROM ldud_header
+                WHERE nor_accepted IS NOT NULL
+                AND discharge_commenced IS NULL
+                ORDER BY vessel_name
             """)
 
             mv_waiting_rows = cur.fetchall()
 
-            mv_waiting_list = [
-                {'vessel_name': str(row['vessel_name'])}
-                for row in mv_waiting_rows
-            ]
+            if mv_waiting_rows:
+
+                mv_waiting_list = [
+                    {
+                        'vessel_name': str(row['vessel_name'])
+                    }
+                    for row in mv_waiting_rows
+                ]
+
+            else:
+
+                mv_waiting_list = [
+                    {
+                        'vessel_name': 'Nil'
+                    }
+                ]
 
             print("MV WAITING COUNT:", len(mv_waiting_list))
 
         except Exception as e:
 
             print("MV WAITING ERROR:", str(e))
-            conn.rollback()  # ← ADDED: recover transaction
-            mv_waiting_list = []
+            conn.rollback()
+
+            mv_waiting_list = [
+                {
+                    'vessel_name': 'Nil'
+                }
+            ]
 
         # =================================================
         # MBC WAITING
@@ -345,21 +253,46 @@ def get_24_hours_report():
 
             cur.execute("""
                 SELECT
-                    mbc_name,
-                    cargo_name
-                FROM mbc_header
+                    h.mbc_name,
+                    h.cargo_name
+                FROM mbc_discharge_port_lines d
+                INNER JOIN mbc_header h
+                    ON h.id = d.mbc_id
+                WHERE d.arrival_gull_island IS NOT NULL
+                AND d.vessel_arrival_port IS NULL
+                ORDER BY h.mbc_name
             """)
 
-            mbc_waiting_rows = cur.fetchall()
+            mbc_waiting_rows = [
+                {
+                    'mbc_name': row['mbc_name'],
+                    'cargo_name': row['cargo_name']
+                }
+                for row in cur.fetchall()
+            ]
 
-            print("MBC ROW COUNT:", len(mbc_waiting_rows))
+            if not mbc_waiting_rows:
+                mbc_waiting_rows = [
+                    {
+                        'mbc_name': 'Nil',
+                        'cargo_name': ''
+                    }
+                ]
+
+            print("MBC WAITING COUNT:", len(mbc_waiting_rows))
+            print("MBC WAITING:", mbc_waiting_rows)
 
         except Exception as e:
 
-            print("MBC ERROR:", str(e))
-            conn.rollback()  # ← ADDED
-            mbc_waiting_rows = []
+            print("MBC WAITING ERROR:", str(e))
+            conn.rollback()
 
+            mbc_waiting_rows = [
+                {
+                    'mbc_name': 'Nil',
+                    'cargo_name': ''
+                }
+            ]
         # =================================================
         # MBC DISCHARGING LAST 24 HRS
         # =================================================
@@ -600,7 +533,7 @@ def get_24_hours_report():
 
             'barges_count': str(barges_count),
 
-            'mbc_waiting': safe_mbc_waiting,
+            'mbc_waiting': mbc_waiting_rows,
             'mbc_disch_total': str(mbc_disch_total),   # ← ADDED
 
             'jetty_today': str(jetty_today),           # ← ADDED
