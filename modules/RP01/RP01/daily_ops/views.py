@@ -1584,7 +1584,7 @@ def _fetch_mbc_status(report_date):
                     NULLIF(TRIM(d.unloading_commenced), '') IS NOT NULL
                     AND NULLIF(TRIM(d.unloading_completed), '') IS NULL
                 THEN
-                    'UNDER DISCHARGE'
+                    'UNDER DISCHARGE AT DHARAMTAR'
 
                 /* Empty : On the way to Jaigad */
                 WHEN

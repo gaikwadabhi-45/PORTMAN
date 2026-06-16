@@ -12,7 +12,7 @@ from functools import wraps
 
 from .. import bp
 from database import get_db, get_cursor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 
 # =========================================================
@@ -124,68 +124,100 @@ def get_24_hours_report():
 
             # Initialize variables
             mv_disch = 0
+            mv_total_qty = 0
             mv_total_days = 0
             mv_discharge_list = []
 
-            # Previous day for 24 Hrs discharge
             prev_date = report_date - timedelta(days=1)
 
             # ------------------------------------
             # 24 HRS DISCHARGE
+            # Example:
+            # Report Date = 15-May-2026
+            # Fetch = 14-May-2026
             # ------------------------------------
+
             cur.execute("""
                 SELECT COALESCE(SUM(quantity), 0) AS qty
                 FROM ldud_vessel_operations
-                WHERE start_time::date = %s
+                WHERE TO_DATE(start_time, 'YYYY-MM-DD') = %s
             """, (prev_date,))
 
             row = cur.fetchone()
 
             mv_disch = float(row['qty'] or 0)
 
-            print("TOTAL MV DISCH (24 HRS):", mv_disch)
+            print("24 HRS MV DISCHARGE:", mv_disch)
 
             # ------------------------------------
-            # DISCHARGE TILL DATE
+            # DISCHARGE TILL PREVIOUS DAY
             # ------------------------------------
-            cutoff_date = report_date - timedelta(days=1)
 
             cur.execute("""
                 SELECT COALESCE(SUM(quantity), 0) AS qty
                 FROM ldud_vessel_operations
-                WHERE start_time::date <= %s
-            """, (cutoff_date,))
+                WHERE TO_DATE(start_time, 'YYYY-MM-DD') <= %s
+            """, (prev_date,))
 
             row = cur.fetchone()
 
             mv_total_qty = float(row['qty'] or 0)
 
-            print("TOTAL MV DISCH TILL DATE:", mv_total_qty)
+            print("MV DISCHARGE TILL DATE:", mv_total_qty)
 
         except Exception as e:
 
             print("MV DISCHARGE ERROR:", str(e))
 
             mv_disch = 0
+            mv_total_qty = 0
             mv_total_days = 0
             mv_discharge_list = []
 
         # =================================================
         # MV WAITING
         # =================================================
-
         try:
 
             print("\n--- FETCHING MV WAITING ---")
 
+            report_date = fetch_date.date()
+
+            # Example:
+            # Selected Date = 15-May-2026
+            # Window Start = 14-May-2026 08:00:00
+            # Window End   = 15-May-2026 08:00:00
+
+            window_start = datetime.combine(
+                report_date - timedelta(days=1),
+                time(8, 0, 0)
+            )
+
+            window_end = datetime.combine(
+                report_date,
+                time(8, 0, 0)
+            )
+
+            print("WINDOW START:", window_start)
+            print("WINDOW END:", window_end)
+
             cur.execute("""
                 SELECT
-                    COALESCE(vcn_doc_num, '') || ' / ' || COALESCE(vessel_name, '') AS vessel_name
+                    COALESCE(vcn_doc_num, '') || ' / ' ||
+                    COALESCE(vessel_name, '') AS vessel_name
                 FROM ldud_header
                 WHERE nor_accepted IS NOT NULL
                 AND discharge_commenced IS NULL
+                AND TO_TIMESTAMP(
+                        nor_accepted,
+                        'YYYY-MM-DD"T"HH24:MI'
+                    ) >= %s
+                AND TO_TIMESTAMP(
+                        nor_accepted,
+                        'YYYY-MM-DD"T"HH24:MI'
+                    ) < %s
                 ORDER BY vessel_name
-            """)
+            """, (window_start, window_end))
 
             mv_waiting_rows = cur.fetchall()
 
@@ -211,6 +243,7 @@ def get_24_hours_report():
         except Exception as e:
 
             print("MV WAITING ERROR:", str(e))
+
             conn.rollback()
 
             mv_waiting_list = [
