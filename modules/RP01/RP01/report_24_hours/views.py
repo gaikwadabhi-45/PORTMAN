@@ -127,64 +127,40 @@ def get_24_hours_report():
             mv_total_days = 0
             mv_discharge_list = []
 
-            # Get LDUD IDs having discharge commenced
-            cur.execute("""
-                SELECT id
-                FROM ldud_header
-                WHERE discharge_commenced IS NOT NULL
-            """)
-
-            ldud_ids = [row['id'] for row in cur.fetchall()]
-
-            print("LDUD IDS FOUND:", len(ldud_ids))
-
-            ops_24h = {}
-
-            # 24 HRS DISCHARGE
+            # Previous day for 24 Hrs discharge
             prev_date = report_date - timedelta(days=1)
 
-            if ldud_ids:
+            # ------------------------------------
+            # 24 HRS DISCHARGE
+            # ------------------------------------
+            cur.execute("""
+                SELECT COALESCE(SUM(quantity), 0) AS qty
+                FROM ldud_vessel_operations
+                WHERE start_time::date = %s
+            """, (prev_date,))
 
-                cur.execute("""
-                    SELECT
-                        ldud_id,
-                        COALESCE(SUM(quantity), 0) AS qty
-                    FROM ldud_vessel_operations
-                    WHERE ldud_id = ANY(%s)
-                    AND start_time::date = %s
-                    GROUP BY ldud_id
-                """, (ldud_ids, prev_date))
+            row = cur.fetchone()
 
-                for r in cur.fetchall():
-                    ops_24h[r['ldud_id']] = float(r['qty'])
+            mv_disch = float(row['qty'] or 0)
 
-            # Total 24 Hrs Discharge
-            mv_disch = sum(ops_24h.values())
-
-            print("OPS 24H:", ops_24h)
             print("TOTAL MV DISCH (24 HRS):", mv_disch)
 
-            # LOADED TILL DATE
-            ops_till = {}
-
+            # ------------------------------------
+            # DISCHARGE TILL DATE
+            # ------------------------------------
             cutoff_date = report_date - timedelta(days=1)
 
-            if ldud_ids:
+            cur.execute("""
+                SELECT COALESCE(SUM(quantity), 0) AS qty
+                FROM ldud_vessel_operations
+                WHERE start_time::date <= %s
+            """, (cutoff_date,))
 
-                cur.execute("""
-                    SELECT
-                        ldud_id,
-                        COALESCE(SUM(quantity), 0) AS qty
-                    FROM ldud_vessel_operations
-                    WHERE ldud_id = ANY(%s)
-                    AND start_time::date <= %s
-                    GROUP BY ldud_id
-                """, (ldud_ids, cutoff_date))
+            row = cur.fetchone()
 
-                for r in cur.fetchall():
-                    ops_till[r['ldud_id']] = float(r['qty'])
+            mv_total_qty = float(row['qty'] or 0)
 
-            print("OPS TILL DATE:", ops_till)
+            print("TOTAL MV DISCH TILL DATE:", mv_total_qty)
 
         except Exception as e:
 
