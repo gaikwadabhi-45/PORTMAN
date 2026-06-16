@@ -1135,12 +1135,12 @@
 
         const dd = String(d.getDate()).padStart(2, '0');
         const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const yy = String(d.getFullYear()).slice(-2);
+        const yyyy = d.getFullYear();
 
         const hh = String(d.getHours()).padStart(2, '0');
         const min = String(d.getMinutes()).padStart(2, '0');
 
-        return `${dd}-${mm}-${yy} ${hh}:${min}`;
+        return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
     }
     function buildMbcColumns() {
 
@@ -1275,7 +1275,9 @@
                     currently_loading: '#d9d2e9',
                     loaded_transit: '#9fc5e8',
                     waiting_discharge: '#f9cb9c',
-                    on_way_dharamtar: '#f6b26b'
+                    on_way_dharamtar: '#f6b26b',
+                    waiting_gull: '#f4cccc',
+                    waiting_castoff: '#c6efce'
                 };
 
                 const STATUS_LABELS = {
@@ -1523,119 +1525,101 @@
 
 
 
-    function applyFilters() {
+    let _currentController = null;
 
-
-
-        const selectedDate =
-            document.getElementById('filter-from').value;
-
-        if (selectedDate && new Date(selectedDate) < new Date('2026-05-01T00:00')) {
-
-            Swal.fire({
-                icon: 'info',
-                title: 'Report Not Available',
-                html: `<b>Cutoff Date:</b> 01-May-2026<br><br>Reports before this date are not available.`,
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#4a90d9'
-            });
-
-            return;
-        }
-        const selectedToDate =
-            document.getElementById('filter-to').value;
-
-        const selectedColumn =
-            document.getElementById('column-filter').value;
-
-        const params = new URLSearchParams();
-
-        if (selectedDate) {
-            params.set('from_date', selectedDate);
-        }
-
-        if (selectedToDate) {
-            params.set('to_date', selectedToDate);
-        }
-
-        if (selectedColumn) {
-            params.set('column_filter', selectedColumn);
-        }
-
-        const selectedFilter =
-            document.getElementById(
-                'status-filter'
-            ).value;
-
-        params.set(
-            'status_filter',
-            selectedFilter
-        );
-        params.set('view_type', currentView);
-
-        document.getElementById('row-count').textContent =
-            'Loading…';
-
-        showTableLoader();
-
-        const apiUrl =
-            currentView === 'mbc'
-                ? '/api/module/RP01/mv-barge-report/mbc-data?'
-                : '/api/module/RP01/mv-barge-report/data?';
-
-        fetch(
-            apiUrl + params.toString()
-        )
-
-            .then(r => {
-
-                if (!r.ok) {
-                    throw new Error('Server error ' + r.status);
-                }
-
-                return r.json();
-            })
-
-            .then(data => {
-                hideError();
-                hideTableLoader();
-
-                if (table) {
-                    if (currentView === 'mbc') {
-                        table.setColumns(buildMbcColumns());
-                    } else {
-                        table.setColumns(buildColumns());
-                    }
-                    table.setData(data);
-                    updateCount(data.length);
-                } else {
-                    initTable(data);
-                }
-
-                // ── Always refresh shift preview with BOTH sources ──
-                fetchAndRenderShiftPreview();
-            })
-
-            .catch(err => {
-
-                hideTableLoader();
-
-                console.error(err);
-
-                if (table) {
-                    table.clearData();
-                }
-
-                showError(
-                    currentView === 'mbc'
-                        ? '❌ Error loading MBC data.'
-                        : '❌ Error loading Barges data.'
-                );
-
-                document.getElementById('row-count').textContent =
-                    'Error loading data.';
-            });
+function applyFilters() {
+    // Cancel previous in-flight request
+    if (_currentController) {
+        _currentController.abort();
     }
+    _currentController = new AbortController();
+
+    const selectedDate = document.getElementById('filter-from').value;
+
+    if (selectedDate && new Date(selectedDate) < new Date('2026-05-01T00:00')) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Report Not Available',
+            html: `<b>Cutoff Date:</b> 01-May-2026<br><br>Reports before this date are not available.`,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#4a90d9'
+        });
+        return;
+    }
+
+    const selectedToDate = document.getElementById('filter-to').value;
+    const selectedColumn = document.getElementById('column-filter').value;
+
+    const params = new URLSearchParams();
+
+    if (selectedDate) {
+        params.set('from_date', selectedDate);
+    }
+
+    if (selectedToDate) {
+        params.set('to_date', selectedToDate);
+    }
+
+    if (selectedColumn) {
+        params.set('column_filter', selectedColumn);
+    }
+
+    const selectedFilter = document.getElementById('status-filter').value;
+    params.set('status_filter', selectedFilter);
+    params.set('view_type', currentView);
+
+    document.getElementById('row-count').textContent = 'Loading…';
+
+    showTableLoader();
+
+    const apiUrl = currentView === 'mbc'
+        ? '/api/module/RP01/mv-barge-report/mbc-data?'
+        : '/api/module/RP01/mv-barge-report/data?';
+
+    fetch(apiUrl + params.toString(), { signal: _currentController.signal })
+        .then(r => {
+            if (!r.ok) throw new Error('Server error ' + r.status);
+            return r.json();
+        })
+        .then(data => {
+            _currentController = null;
+            hideError();
+            hideTableLoader();
+
+            if (table) {
+                if (currentView === 'mbc') {
+                    table.setColumns(buildMbcColumns());
+                } else {
+                    table.setColumns(buildColumns());
+                }
+                table.setData(data);
+                updateCount(data.length);
+            } else {
+                initTable(data);
+            }
+
+            // Always refresh shift preview with BOTH sources
+            fetchAndRenderShiftPreview();
+        })
+        .catch(err => {
+            if (err.name === 'AbortError') return; // Ignore cancelled requests
+
+            hideTableLoader();
+            console.error(err);
+
+            if (table) {
+                table.clearData();
+            }
+
+            showError(
+                currentView === 'mbc'
+                    ? '❌ Error loading MBC data.'
+                    : '❌ Error loading Barges data.'
+            );
+
+            document.getElementById('row-count').textContent = 'Error loading data.';
+        });
+}
     function resetFilters() {
 
         const now = new Date();
