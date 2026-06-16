@@ -1177,12 +1177,11 @@ def mbc_master_tat_data():
 @bp.route('/api/module/RP01/mbc-master/dppl-tat-data')
 @login_required
 def mbc_master_dppl_tat_data():
-    req_from  = request.args.get('from_date', '')
-    req_to    = request.args.get('to_date', '')
+    selected_date = request.args.get('selected_date', '')
     req_month = request.args.get('month', '')
     req_fy    = request.args.get('fy', '')
 
-    rows = _fetch_dppl_tat_rows(req_from, req_to, req_month, req_fy)
+    rows = _fetch_dppl_tat_rows(selected_date, selected_date, req_month, req_fy)
 
     def _hhmm(val_hrs):
         """Decimal hours → 'H:MM' display string."""
@@ -1256,37 +1255,40 @@ def mbc_master_download():
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    req_from  = request.args.get('from_date', '')
-    req_to    = request.args.get('to_date', '')
+    selected_date = request.args.get('selected_date', '')
     req_month = request.args.get('month', '')
-    req_fy    = request.args.get('fy', '')
+    req_fy = request.args.get('fy', '')
+
+    if not selected_date:
+        selected_date = date_type.today().strftime('%Y-%m-%d')
+
+    ref_dt = datetime.strptime(
+        selected_date,
+        '%Y-%m-%d'
+    ).date()
 
     # ── Sheet 1: Master Data rows (display-formatted) ─────────────────
-    rows = _fetch_rows(req_from, req_to, req_month, req_fy)
+    rows = _fetch_rows(
+    selected_date,
+    selected_date,
+    req_month,
+    req_fy
+   )
 
     # ── Reference date for MTD / YTD ──────────────────────────────────
-    ref_date_str = req_to or date_type.today().strftime('%Y-%m-%d')
-    try:
-        ref_dt = datetime.strptime(ref_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        ref_dt = date_type.today()
+    ref_date_str = selected_date
 
     # ── Sheet 2 period data: same filter as Sheet 1 ────────────────────
-    period_raw   = _fetch_raw_trips(req_from, req_to, req_month, req_fy)
-    period_count = len(period_raw)
-    period_m     = _compute_tat_metrics(period_raw)
+    daily_raw = _fetch_raw_trips(
+        selected_date,
+        selected_date
+    )
+
+    daily_count = len(daily_raw)
+    daily_m = _compute_tat_metrics(daily_raw)
 
     # Period label
-    if req_month:
-        period_label = req_month
-    elif req_fy:
-        period_label = req_fy
-    elif req_from and req_to:
-        period_label = datetime.strptime(
-            req_to, "%Y-%m-%d"
-        ).strftime("%d-%m-%Y")
-    else:
-        period_label = 'All Periods'
+    period_label = ref_dt.strftime('%d-%m-%Y')
 
     # ── Sheet 2 MTD data ───────────────────────────────────────────────
     mtd_from_str = ref_dt.replace(day=1).strftime('%Y-%m-%d')
@@ -1308,7 +1310,12 @@ def mbc_master_download():
     # ══ Sheet 1: MBC Wise (default first sheet) ════════════════════════
     ws0 = wb.active
     ws0.title = 'MBC Wise'
-    mbc_wise_rows = _fetch_mbc_wise_rows(req_from, req_to, req_month, req_fy)
+    mbc_wise_rows = _fetch_mbc_wise_rows(
+    selected_date,
+    selected_date,
+    req_month,
+    req_fy
+    )
     _write_mbc_wise_sheet(ws0, mbc_wise_rows, period_label)
 
     # ══ Sheet 2: Master Data ═══════════════════════════════════════════
@@ -1408,14 +1415,20 @@ def mbc_master_download():
     ws2 = wb.create_sheet('MBC TAT Report')
     _write_tat_sheet(
         ws2,
-        period_label, mtd_label, ytd_label,
-        period_count, mtd_count, ytd_count,
-        period_m, mtd_m, ytd_m
+        period_label,
+        mtd_label,
+        ytd_label,
+        daily_count,
+        mtd_count,
+        ytd_count,
+        daily_m,
+        mtd_m,
+        ytd_m
     )
 
     # ══ Sheet 3: DPPL TAT ══════════════════════════════════════════════
     ws3 = wb.create_sheet('DPPL TAT')
-    dppl_rows = _fetch_dppl_tat_rows(req_from, req_to, req_month, req_fy)
+    dppl_rows = _fetch_dppl_tat_rows(selected_date, selected_date)
     _write_dppl_tat_sheet(ws3, dppl_rows, period_label)
 
     # ── Stream response ────────────────────────────────────────────────
@@ -1424,10 +1437,10 @@ def mbc_master_download():
     buf.seek(0)
 
     fname_parts = ['MBC_TAT_Report']
-    if req_from:
-        fname_parts.append(req_from)
-    if req_to:
-        fname_parts.append('to_' + req_to)
+
+    if selected_date:
+        fname_parts.append(selected_date)
+
     filename = '_'.join(fname_parts) + '.xlsx'
 
     return Response(
@@ -1440,13 +1453,17 @@ def mbc_master_download():
 @bp.route('/api/module/RP01/mbc-master/mbc-wise-data')
 @login_required
 def mbc_master_mbc_wise_data():
-    req_from  = request.args.get('from_date', '')
-    req_to    = request.args.get('to_date', '')
+
+    selected_date = request.args.get('selected_date', '')
     req_month = request.args.get('month', '')
-    req_fy    = request.args.get('fy', '')
+    req_fy = request.args.get('fy', '')
 
-    rows = _fetch_mbc_wise_rows(req_from, req_to, req_month, req_fy)
-
+    rows = _fetch_mbc_wise_rows(
+        selected_date,
+        selected_date,
+        req_month,
+        req_fy
+    )
     def _day_to_hhmm(val_day):
         if val_day is None:
             return None
@@ -1456,19 +1473,23 @@ def mbc_master_mbc_wise_data():
 
     SEG_KEYS = [
         'preberthing', 'loading', 'wait_after_load', 'total_jaigad',
-        'jaigad_to_gull', 'gull_waiting', 'gull_to_dhar', 'jaigad_to_dhar',
-        'preberthing_dhar', 'unloading', 'wait_after_unload', 'total_dharamtar',
-        'dhar_to_jaigad', 'tat',
+        'jaigad_to_gull', 'gull_waiting', 'gull_to_dhar',
+        'jaigad_to_dhar', 'preberthing_dhar', 'unloading',
+        'wait_after_unload', 'total_dharamtar',
+        'dhar_to_jaigad', 'tat'
     ]
 
     out = []
+
     for r in rows:
         entry = {
             'mbc_name': r['mbc_name'],
-            'qty':      round(r['qty']) if r['qty'] else 0,
+            'qty': round(r['qty']) if r['qty'] else 0,
         }
+
         for k in SEG_KEYS:
             entry[k] = _day_to_hhmm(r.get(k))
+
         out.append(entry)
 
     return jsonify(out)
