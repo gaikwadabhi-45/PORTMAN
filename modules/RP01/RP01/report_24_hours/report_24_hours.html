@@ -301,7 +301,7 @@ function render24HoursReport(data) {
 
     let html = `
         <div class="report-header">
-            24 Hrs M.V. Disch for ${data.fetch_date}
+            24 Hrs M.V. Disch for ${data.selected_date}
         </div>
 
         <div class="report-body">
@@ -309,7 +309,7 @@ function render24HoursReport(data) {
 
     html += `
         <div class="report-line">
-            24 Hrs M.V. Disch for ${data.fetch_date}.
+            24 Hrs M.V. Disch for ${data.selected_date}.
             <p>
             MV Disch: ${Number(data.mv_disch).toLocaleString()} MT.
             <p>
@@ -379,11 +379,8 @@ function render24HoursReport(data) {
                 -
                 ${item.cargo_name || ''}
                 -
-                BL:
-                ${Number(item.bl_quantity || 0).toLocaleString()} MT
-                /
-                Discharged:
-                ${Number(item.discharge_qty || 0).toLocaleString()} MT
+                 24 Hrs Discharge:
+                ${Number(item.discharge_24hrs || 0).toLocaleString()} MT
                 /
                 Balance:
                 ${Number(item.balance_qty || 0).toLocaleString()} MT
@@ -470,6 +467,10 @@ ${data.barges_count} Nos.
         </li>
         <li>
             Maintenance Delays - ${Number(data.maintenance_delay_hours || 0).toFixed(2)} Hrs.
+        </li>
+
+        <li>
+            No Cargo - ${Number(data.no_cargo_hours || 0).toFixed(2)} Hrs.
         </li>
     </ol>
 `;

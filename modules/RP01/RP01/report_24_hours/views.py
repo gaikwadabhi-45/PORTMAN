@@ -403,21 +403,11 @@ def get_24_hours_report():
 
                     AND (
                         last_anchor.discharge_completed IS NULL
-
                         OR last_anchor.discharge_completed >= %s
-
-                        OR EXISTS (
-                            SELECT 1
-                            FROM ldud_barge_lines b
-                            WHERE b.ldud_id = h.id
-                            AND (
-                                b.completed_discharge_berth IS NULL
-                                OR b.cast_off_berth IS NULL
-                            )
-                        )
                     )
 
-                ORDER BY h.vessel_name
+                ORDER BY
+                    h.vessel_name
 
             """, (
                 window_end,
@@ -475,7 +465,9 @@ def get_24_hours_report():
                             ) AS total_bl
 
                         FROM vcn_cargo_declaration
+
                         WHERE vcn_id = %s
+
                     """, (vcn_id,))
 
                     cargo_row = cur.fetchone()
@@ -492,11 +484,38 @@ def get_24_hours_report():
                             or 0
                         )
 
+                # Total discharged till date
                 discharge_qty = lueu_total.get(
                     vcn_id,
                     0
                 )
 
+                # 24 Hrs discharge
+                cur.execute("""
+                    SELECT
+                        COALESCE(
+                            SUM(quantity),
+                            0
+                        ) AS qty
+
+                    FROM lueu_lines
+
+                    WHERE source_type = 'VCN'
+                    AND source_id = %s
+                    AND entry_date = %s
+
+                """, (
+                    vcn_id,
+                    fetch_date.strftime('%Y-%m-%d')
+                ))
+
+                qty_row = cur.fetchone()
+
+                discharge_24hrs = float(
+                    qty_row['qty'] or 0
+                )
+
+                # Balance
                 balance_qty = max(
                     bl_qty - discharge_qty,
                     0
@@ -508,13 +527,8 @@ def get_24_hours_report():
 
                     'cargo_name': cargo_name,
 
-                    'bl_quantity': round(
-                        bl_qty,
-                        2
-                    ),
-
-                    'discharge_qty': round(
-                        discharge_qty,
+                    'discharge_24hrs': round(
+                        discharge_24hrs,
                         2
                     ),
 
@@ -994,12 +1008,13 @@ def get_24_hours_report():
         print("JETTY CARGO LIST:", jetty_cargo_list)
 
         # =================================================
-        # RHMS & MAINTENANCE DELAYS
+        # RHMS, NO CARGO & MAINTENANCE DELAYS
         # =================================================
 
         delay_rows = []
 
         rhms_delay_hours = 0
+        no_cargo_hours = 0
         maintenance_delay_hours = 0
 
         try:
@@ -1028,9 +1043,8 @@ def get_24_hours_report():
 
             for row in rows:
 
-                delay_type = (
-                    row['delay_type'] or ''
-                ).strip()
+                delay_type = (row['delay_type'] or '').strip()
+                delay_name = (row['delay_name'] or '').strip().upper()
 
                 from_t = (row['from_time'] or '').strip()
                 to_t = (row['to_time'] or '').strip()
@@ -1057,30 +1071,39 @@ def get_24_hours_report():
                     if minutes < 0:
                         minutes += (24 * 60)
 
+                    hours = minutes / 60
+
                 except Exception:
                     continue
 
-                if delay_type == 'RMHS Delays':
-                    rhms_delay_hours += (minutes / 60)
+                if delay_name == 'NO CARGO':
+
+                    no_cargo_hours += hours
+
+                elif delay_type == 'RMHS Delays':
+
+                    rhms_delay_hours += hours
 
                 elif delay_type == 'Maintenance Delays':
-                    maintenance_delay_hours += (minutes / 60)
 
-            rhms_delay_hours = round(
-                rhms_delay_hours,
-                2
-            )
+                    maintenance_delay_hours += hours
 
-            maintenance_delay_hours = round(
-                maintenance_delay_hours,
-                2
-            )
+            rhms_delay_hours = round(rhms_delay_hours, 2)
+            no_cargo_hours = round(no_cargo_hours, 2)
+            maintenance_delay_hours = round(maintenance_delay_hours, 2)
 
             delay_rows = [
+
                 {
                     'delay_name': 'RHMS Delays',
                     'total_hours': rhms_delay_hours
                 },
+
+                {
+                    'delay_name': 'No Cargo',
+                    'total_hours': no_cargo_hours
+                },
+
                 {
                     'delay_name': 'Maintenance Delays',
                     'total_hours': maintenance_delay_hours
@@ -1088,6 +1111,7 @@ def get_24_hours_report():
             ]
 
             print("RHMS DELAYS:", rhms_delay_hours)
+            print("NO CARGO:", no_cargo_hours)
             print("MAINTENANCE DELAYS:", maintenance_delay_hours)
 
         except Exception as e:
@@ -1097,13 +1121,17 @@ def get_24_hours_report():
             delay_rows = []
 
             rhms_delay_hours = 0
+            no_cargo_hours = 0
             maintenance_delay_hours = 0
 
         response = {
 
             'success': True,
 
-            'selected_date': str(selected_date),
+            'selected_date': datetime.strptime(
+                selected_date,
+                '%Y-%m-%d'
+            ).strftime('%d/%m/%Y'),
 
             'fetch_date': fetch_date.strftime('%Y-%m-%d'),
 
@@ -1129,6 +1157,7 @@ def get_24_hours_report():
 
             'rhms_delay_hours': rhms_delay_hours,
             'maintenance_delay_hours': maintenance_delay_hours,
+            'no_cargo_hours': no_cargo_hours,
         }
 
         print("\nRESPONSE CREATED SUCCESSFULLY")
