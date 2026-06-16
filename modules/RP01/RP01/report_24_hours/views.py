@@ -118,30 +118,52 @@ def get_24_hours_report():
         try:
 
             print("\n--- FETCHING MV DISCHARGE ---")
-            print("FETCH DATE FOR MV:", fetch_date.date())
 
-            report_date = fetch_date.date()
+            selected_dt = datetime.strptime(
+                selected_date,
+                '%Y-%m-%d'
+            )
 
-            # Initialize variables
+            # Reporting Window
+            window_start = (
+                selected_dt - timedelta(days=1)
+            ).replace(
+                hour=8,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+
+            window_end = selected_dt.replace(
+                hour=8,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+
+            print("WINDOW START:", window_start)
+            print("WINDOW END  :", window_end)
+
+            # Since start_time only contains dates,
+            # use previous day's date for quantity calculation
+            target_date = window_start.date()
+
+            print("TARGET DATE:", target_date)
+
             mv_disch = 0
             mv_total_qty = 0
             mv_total_days = 0
             mv_discharge_list = []
 
-            prev_date = report_date - timedelta(days=1)
-
             # ------------------------------------
             # 24 HRS DISCHARGE
-            # Example:
-            # Report Date = 15-May-2026
-            # Fetch = 14-May-2026
             # ------------------------------------
 
             cur.execute("""
                 SELECT COALESCE(SUM(quantity), 0) AS qty
                 FROM ldud_vessel_operations
                 WHERE TO_DATE(start_time, 'YYYY-MM-DD') = %s
-            """, (prev_date,))
+            """, (target_date,))
 
             row = cur.fetchone()
 
@@ -150,14 +172,14 @@ def get_24_hours_report():
             print("24 HRS MV DISCHARGE:", mv_disch)
 
             # ------------------------------------
-            # DISCHARGE TILL PREVIOUS DAY
+            # DISCHARGE TILL DATE
             # ------------------------------------
 
             cur.execute("""
                 SELECT COALESCE(SUM(quantity), 0) AS qty
                 FROM ldud_vessel_operations
                 WHERE TO_DATE(start_time, 'YYYY-MM-DD') <= %s
-            """, (prev_date,))
+            """, (target_date,))
 
             row = cur.fetchone()
 
@@ -173,7 +195,6 @@ def get_24_hours_report():
             mv_total_qty = 0
             mv_total_days = 0
             mv_discharge_list = []
-
         # =================================================
         # MV WAITING
         # =================================================
@@ -181,21 +202,32 @@ def get_24_hours_report():
 
             print("\n--- FETCHING MV WAITING ---")
 
-            report_date = fetch_date.date()
-
-            # Example:
-            # Selected Date = 15-May-2026
-            # Window Start = 14-May-2026 08:00:00
-            # Window End   = 15-May-2026 08:00:00
-
-            window_start = datetime.combine(
-                report_date - timedelta(days=1),
-                time(8, 0, 0)
+            # Use selected date directly
+            selected_dt = datetime.strptime(
+                selected_date,
+                '%Y-%m-%d'
             )
 
-            window_end = datetime.combine(
-                report_date,
-                time(8, 0, 0)
+            # Report Window
+            # Example:
+            # Selected Date = 14-May-2026
+            # Window Start = 13-May-2026 08:00 AM
+            # Window End   = 14-May-2026 08:00 AM
+
+            window_start = (
+                selected_dt - timedelta(days=1)
+            ).replace(
+                hour=8,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+
+            window_end = selected_dt.replace(
+                hour=8,
+                minute=0,
+                second=0,
+                microsecond=0
             )
 
             print("WINDOW START:", window_start)
@@ -230,15 +262,14 @@ def get_24_hours_report():
                     for row in mv_waiting_rows
                 ]
 
+                mv_waiting_count = len(mv_waiting_list)
+
             else:
 
-                mv_waiting_list = [
-                    {
-                        'vessel_name': 'Nil'
-                    }
-                ]
+                mv_waiting_list = []
+                mv_waiting_count = 0
 
-            print("MV WAITING COUNT:", len(mv_waiting_list))
+            print("MV WAITING COUNT:", mv_waiting_count)
 
         except Exception as e:
 
@@ -246,12 +277,8 @@ def get_24_hours_report():
 
             conn.rollback()
 
-            mv_waiting_list = [
-                {
-                    'vessel_name': 'Nil'
-                }
-            ]
-
+            mv_waiting_list = []
+            mv_waiting_count = 0
         # =================================================
         # MBC WAITING
         # =================================================
@@ -302,9 +329,7 @@ def get_24_hours_report():
                     'cargo_name': ''
                 }
             ]
-        # =================================================
-        # MBC DISCHARGING LAST 24 HRS
-        # =================================================
+
 
             # =================================================
         # MBC DISCHARGING LAST 24 HRS
@@ -314,26 +339,55 @@ def get_24_hours_report():
 
             print("\n--- FETCHING MBC DISCH TOTAL ---")
 
+            selected_dt = datetime.strptime(
+                selected_date,
+                '%Y-%m-%d'
+            )
+
+            # Example:
+            # Selected Date = 14-May-2026
+            # Window Start = 13-May-2026 08:00
+            # Window End   = 14-May-2026 08:00
+
+            window_start = (
+                selected_dt - timedelta(days=1)
+            ).replace(
+                hour=8,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+
+            window_end = selected_dt.replace(
+                hour=8,
+                minute=0,
+                second=0,
+                microsecond=0
+            )
+
+            print("WINDOW START:", window_start)
+            print("WINDOW END:", window_end)
+
             cur.execute("""
                 SELECT
-
                     ROUND(
                         COALESCE(
-                            SUM(
-                                COALESCE(quantity, 0)
-                            )::numeric,
+                            SUM(COALESCE(quantity, 0))::numeric,
                             0
                         ),
                         2
                     ) AS mbc_total_mt
-
                 FROM lueu_lines
-
-                WHERE TO_DATE(
-                    entry_date,
-                    'YYYY-MM-DD'
-                ) = %s
-            """, (fetch_date.date(),))
+                WHERE source_type = 'MBC'
+                AND TO_TIMESTAMP(
+                        entry_date || ' ' || from_time,
+                        'YYYY-MM-DD HH24:MI'
+                    ) >= %s
+                AND TO_TIMESTAMP(
+                        entry_date || ' ' || from_time,
+                        'YYYY-MM-DD HH24:MI'
+                    ) < %s
+            """, (window_start, window_end))
 
             mbc_disch_row = cur.fetchone()
 
