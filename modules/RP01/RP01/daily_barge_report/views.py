@@ -121,35 +121,48 @@ def _fetch_list(from_date, to_date):
     conn = get_db()
     cur = get_cursor(conn)
 
-    cur.execute(f"""
+    cur.execute("""
+    WITH discharge_sums AS (
+        -- Pre-aggregate ALL lueu_lines once — no per-row subquery
+        SELECT
+            ll.barge_name,
+            ll.source_id,
+            SUM(ll.quantity) AS discharge_done_qty
+        FROM lueu_lines ll
+        WHERE
+            ll.is_deleted IS NOT TRUE
+            AND ll.source_type = 'VCN'
+            AND TO_DATE(ll.entry_date, 'YYYY-MM-DD') <= %s::date
+        GROUP BY
+            ll.barge_name,
+            ll.source_id
+    ),
 
-    WITH all_trip_data AS (
+    shift_latest AS (
+        -- Pre-aggregate latest shift per vcn_id
+        SELECT DISTINCT ON (source_id)
+            source_id,
+            shift
+        FROM lueu_lines
+        WHERE
+            source_type = 'VCN'
+            AND is_deleted IS NOT TRUE
+        ORDER BY source_id, id DESC
+    )
 
     SELECT
-
         l.id,
-
         l.barge_name AS original_barge_name,
-
-        CONCAT(
-            l.barge_name,
-            '/',
-            COALESCE(l.trip_number::text, '1')
-        ) AS barge_name,
-
+        CONCAT(l.barge_name, '/', COALESCE(l.trip_number::text, '1')) AS barge_name,
         l.trip_number,
-
         h.vessel_name AS mother_vessel_name,
-        h.vcn_id AS vcn_id,
-
+        h.vcn_id,
         l.cargo_name AS cargo_type,
-
         l.bpt_bfl AS mbpt_pla,
-
         COALESCE(l.discharge_quantity, 0) AS qty_mt,
-
+        COALESCE(l.discharge_quantity, 0)
+            - COALESCE(ds.discharge_done_qty, 0) AS qty_balance,
         l.trip_start,
-
         l.anchored_gull_island,
         l.aweigh_gull_island,
         l.along_side_vessel,
@@ -162,99 +175,39 @@ def _fetch_list(from_date, to_date):
         l.completed_discharge_berth,
         l.anchored_gull_island_empty,
         l.aweigh_gull_island_empty,
-
         l.cast_off_berth AS cast_off_berth_nt,
-
         l.cast_off_port,
-
         l.port_crane AS unloaded_by,
-        (
-        SELECT ll.shift
-        FROM lueu_lines ll
-        WHERE
-            ll.source_type = 'VCN'
-            AND ll.source_id = h.vcn_id
-            AND ll.is_deleted IS NOT TRUE
-        ORDER BY ll.id DESC
-        LIMIT 1
-    ) AS shift
+        sl.shift
 
     FROM ldud_barge_lines l
 
     LEFT JOIN ldud_header h
         ON l.ldud_id = h.id
 
+    LEFT JOIN discharge_sums ds
+        ON ds.barge_name = CONCAT(
+            l.barge_name, ' / ', COALESCE(l.trip_number::text, '1')
+        )
+        AND ds.source_id = h.vcn_id
+
+    LEFT JOIN shift_latest sl
+        ON sl.source_id = h.vcn_id
+
     WHERE
         l.barge_name IS NOT NULL
         AND TRIM(l.barge_name) <> ''
         AND l.trip_start IS NOT NULL
         AND TRIM(l.trip_start) <> ''
-
-        
         AND l.trip_start::timestamp <= %s::timestamp
-
-        -- ✅ completed_discharge_berth:
-       
         AND (
             l.completed_discharge_berth IS NULL
             OR TRIM(l.completed_discharge_berth) = ''
             OR l.completed_discharge_berth::timestamp <= %s::timestamp
         )
 
-    ),
-
-    balance_data AS (
-
-    SELECT
-
-        *,
-
-        COALESCE(qty_mt, 0)
-        -
-        COALESCE(discharge_done_qty, 0)
-        AS qty_balance
-
-    FROM (
-
-        SELECT
-
-            atd.*,
-
-            COALESCE(
-    (
-        SELECT SUM(ll.quantity)
-        FROM lueu_lines ll
-        WHERE
-            ll.barge_name = CONCAT(
-                atd.original_barge_name,
-                ' / ',
-                COALESCE(atd.trip_number::text, '1')
-            )
-            AND ll.source_id = atd.vcn_id
-            AND ll.source_type = 'VCN'
-            AND (ll.is_deleted IS NOT TRUE)
-            AND TO_DATE(ll.entry_date,'YYYY-MM-DD')
-                <= %s::date
-    ),
-    0
-    ) AS discharge_done_qty
-
-        FROM all_trip_data atd
-
-    ) z
-
-    )
-
-    SELECT *
-
-    FROM balance_data
-
-    ORDER BY
-        trip_start,
-        id
-
+    ORDER BY l.trip_start, l.id
     """,
-    # ✅ params: to_date (trip_start filter), to_date (completed_discharge filter), to_date (balance qty date)
     (to_date, to_date, to_date))
 
     raw_rows = [dict(r) for r in cur.fetchall()]
@@ -1916,49 +1869,52 @@ def get_mbc_data():
 
 
     # ── Fetch ALL rows — no date casting in SQL to avoid corrupt data crash ──
-    query = """
-        SELECT DISTINCT ON (h.id)
-           h.id                          AS mbc_id,
-            CONCAT(h.mbc_name, ' / ', COALESCE(h.doc_num, '')) AS mbc_name,
-            h.mbc_name                    AS mbc_name_raw,
-            h.cargo_name                  AS cargo_type,
-            COALESCE(h.bl_quantity, 0)    AS qty_mt,
-            (
-                COALESCE(h.bl_quantity, 0)
-                -
-                COALESCE(
-                    (SELECT SUM(ll.quantity) FROM lueu_lines ll
-                     WHERE ll.source_type = 'MBC'
-                       AND ll.source_id   = h.id
-                       AND (ll.is_deleted IS NOT TRUE)),
-                    0
-                )
-            ) AS qty_balance,
-            lp.arrived_load_port          AS trip_start,
-            lp.alongside_berth            AS along_side_vessel,
-            lp.loading_commenced          AS commenced_loading,
-            lp.loading_completed          AS completed_loading,
-            lp.cast_off_load_port         AS cast_off_mv,
-            dp.arrival_gull_island        AS arrival_gull_island,
-            dp.departure_gull_island      AS departure_gull_island,
-            dp.vessel_arrival_port        AS mbc_arrival_port,
-            dp.vessel_all_made_fast       AS mbc_amf_unloading_berth,
-            dp.unloading_commenced        AS unloading_commenced,
-            dp.cleaning_commenced         AS cleaning_commenced,
-            dp.unloading_completed        AS unloading_completed,
-            dp.vessel_cast_off            AS mbc_cast_off,
-            dp.sailed_out_load_port       AS sailed_out_load_port,
-            dp.vessel_unloaded_by         AS vessel_unloaded_by,
-            dp.vessel_unloading_berth     AS unloaded_berth,
-            dp.cleaning_completed         AS cleaning_completed
-        FROM mbc_header h
-        LEFT JOIN mbc_load_port_lines lp    ON lp.mbc_id = h.id
-        LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
-        WHERE h.mbc_name IS NOT NULL
-        ORDER BY h.id
+    # Replace the MBC query with this version that pre-aggregates lueu_lines
+    MBC_QUERY = """
+    WITH mbc_discharge_sums AS (
+        SELECT
+            source_id,
+            SUM(quantity) AS discharged_qty
+        FROM lueu_lines
+        WHERE
+            source_type = 'MBC'
+            AND is_deleted IS NOT TRUE
+        GROUP BY source_id
+    )
+    SELECT DISTINCT ON (h.id)
+        h.id                                AS mbc_id,
+        CONCAT(h.mbc_name, ' / ', COALESCE(h.doc_num, '')) AS mbc_name,
+        h.mbc_name                          AS mbc_name_raw,
+        h.cargo_name                        AS cargo_type,
+        COALESCE(h.bl_quantity, 0)          AS qty_mt,
+        COALESCE(h.bl_quantity, 0)
+            - COALESCE(ds.discharged_qty, 0) AS qty_balance,
+        lp.arrived_load_port                AS trip_start,
+        lp.alongside_berth                  AS along_side_vessel,
+        lp.loading_commenced                AS commenced_loading,
+        lp.loading_completed                AS completed_loading,
+        lp.cast_off_load_port               AS cast_off_mv,
+        dp.arrival_gull_island,
+        dp.departure_gull_island,
+        dp.vessel_arrival_port              AS mbc_arrival_port,
+        dp.vessel_all_made_fast             AS mbc_amf_unloading_berth,
+        dp.unloading_commenced,
+        dp.cleaning_commenced,
+        dp.unloading_completed,
+        dp.vessel_cast_off                  AS mbc_cast_off,
+        dp.sailed_out_load_port,
+        dp.vessel_unloaded_by               AS vessel_unloaded_by,
+        dp.vessel_unloading_berth           AS unloaded_berth,
+        dp.cleaning_completed
+    FROM mbc_header h
+    LEFT JOIN mbc_load_port_lines lp    ON lp.mbc_id = h.id
+    LEFT JOIN mbc_discharge_port_lines dp ON dp.mbc_id = h.id
+    LEFT JOIN mbc_discharge_sums ds     ON ds.source_id = h.id
+    WHERE h.mbc_name IS NOT NULL
+    ORDER BY h.id
     """
 
-    cur.execute(query)
+    cur.execute(MBC_QUERY)
     rows = [dict(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
@@ -2253,6 +2209,8 @@ def mbc_berth_details():
     cur.execute("""
         UPDATE mbc_discharge_port_lines
         SET
+            vessel_arrival_port  = %s,
+            vessel_all_made_fast = %s,
             unloading_commenced  = %s,
             cleaning_commenced   = %s,
             unloading_completed  = %s,
@@ -2260,6 +2218,8 @@ def mbc_berth_details():
             sailed_out_load_port = %s
         WHERE mbc_id = %s
     """, (
+        to_iso(data.get('mbc_arrival_port')),       # ← new
+        to_iso(data.get('mbc_amf_unloading_berth')), # ← new
         to_iso(data.get('unloading_commenced')),
         to_iso(data.get('cleaning_commenced')),
         to_iso(data.get('unloading_completed')),
