@@ -2209,6 +2209,8 @@ def mbc_berth_details():
     cur.execute("""
         UPDATE mbc_discharge_port_lines
         SET
+            vessel_arrival_port  = %s,
+            vessel_all_made_fast = %s,
             unloading_commenced  = %s,
             cleaning_commenced   = %s,
             unloading_completed  = %s,
@@ -2216,6 +2218,8 @@ def mbc_berth_details():
             sailed_out_load_port = %s
         WHERE mbc_id = %s
     """, (
+        to_iso(data.get('mbc_arrival_port')),       # ← new
+        to_iso(data.get('mbc_amf_unloading_berth')), # ← new
         to_iso(data.get('unloading_commenced')),
         to_iso(data.get('cleaning_commenced')),
         to_iso(data.get('unloading_completed')),

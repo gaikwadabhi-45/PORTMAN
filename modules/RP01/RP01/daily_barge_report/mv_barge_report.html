@@ -1191,8 +1191,8 @@
             { title: 'Cast Off Load Port', field: 'cast_off_mv', width: 170, formatter: mbcDateFormatter },
             { title: 'Arrival Gull Island', field: 'arrival_gull_island', width: 170, formatter: mbcDateFormatter },
             { title: 'Departure Gull Island', field: 'departure_gull_island', width: 170, formatter: mbcDateFormatter },
-            { title: 'MBC Arrival Port', field: 'mbc_arrival_port', width: 170, formatter: mbcDateFormatter },
-            { title: 'MBC AMF At Unloading Berth', field: 'mbc_amf_unloading_berth', width: 190, formatter: mbcDateFormatter },
+            { title: 'MBC Arrival Port', field: 'mbc_arrival_port', width: 170, formatter: mbcDateFormatter,editor: dateTimeEditor },
+            { title: 'MBC AMF At Unloading Berth', field: 'mbc_amf_unloading_berth', width: 190, formatter: mbcDateFormatter,editor: dateTimeEditor },
             { title: 'Unloading Commenced', field: 'unloading_commenced', width: 170, formatter: mbcDateFormatter, editor: dateTimeEditor },
             { title: 'Cleaning Commenced', field: 'cleaning_commenced', width: 170, formatter: mbcDateFormatter, editor: dateTimeEditor },
             { title: 'Unloading Completed', field: 'unloading_completed', width: 170, formatter: mbcDateFormatter, editor: dateTimeEditor },
@@ -1385,6 +1385,8 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         id: row.mbc_id,
+                        mbc_arrival_port: row.mbc_arrival_port,          // ← new
+                        mbc_amf_unloading_berth: row.mbc_amf_unloading_berth, // ← new
                         unloading_commenced: row.unloading_commenced,
                         cleaning_commenced: row.cleaning_commenced,
                         unloading_completed: row.unloading_completed,
