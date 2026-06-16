@@ -1242,16 +1242,22 @@
       <tr class="hdr-period">
         <td></td>
         <td class="col-date">${d.date_label}</td>
+        <td class="col-mtd">MTD</td>
+        <td class="col-ytd">YTD</td
  
       </tr>
       <tr class="hdr-cols">
         <td>Activity</td>
         <td>${d.date_label}</td>
+        <td>${d.mtd_label}</td>
+        <td>${d.ytd_label}</td>
 
       </tr>
       <tr class="row-trips">
         <td>Trips</td>
         <td>${d.date_trips}</td>
+        <td>${d.mtd_trips}</td>
+        <td>${d.ytd_trips}</td>
 
       </tr>`;
         for (const row of d.rows) {
@@ -1259,6 +1265,8 @@
             html += `<tr class="${cls}">
           <td>${row.label}</td>
           <td>${fmtVal(row.date_val)}</td>
+          <td>${fmtVal(row.mtd_val)}</td>
+          <td>${fmtVal(row.ytd_val)}</td>
 
         </tr>`;
         }

@@ -259,9 +259,12 @@ def _compute_tat_metrics(rows):
     return {k: _avg_dur(v) for k, v in buckets.items()}
 
 
-def _write_tat_sheet(ws, period_label,
-                     period_count,
-                     period_m):
+def _write_tat_sheet(
+    ws,
+    period_label, mtd_label, ytd_label,
+    period_count, mtd_count, ytd_count,
+    period_m, mtd_m, ytd_m
+    ):
     """
     Write the MBC TAT Report sheet into an openpyxl Worksheet `ws`.
     Colours match the reference image exactly.
@@ -294,6 +297,8 @@ def _write_tat_sheet(ws, period_label,
     # ── column widths ────────────────────────────────────────────────
     ws.column_dimensions['A'].width = 62
     ws.column_dimensions['B'].width = 14
+    ws.column_dimensions['C'].width = 14
+    ws.column_dimensions['D'].width = 14
 
     
 
@@ -301,17 +306,23 @@ def _write_tat_sheet(ws, period_label,
     ws.row_dimensions[1].height = 18
     _cell(1, 1, '',              fnt(),                         C_GREEN, ctr)
     _cell(1, 2, period_label,    fnt(bold=True, color='CC0000'), C_GREEN, ctr)
+    _cell(1, 3, 'MTD', fnt(bold=True, color='CC0000'), C_GREEN, ctr)
+    _cell(1, 4, 'YTD', fnt(bold=True, color='CC6600'), C_GREEN, ctr)
 
 
     # ── Row 2: column headers ────────────────────────────────────────
     ws.row_dimensions[2].height = 22
-    for ci, val in enumerate(['Activity', period_label], 1):
-     _cell(2, ci, val, fnt(bold=True), C_GREEN, ctr)
+    for ci, val in enumerate(
+      ['Activity', period_label, mtd_label, ytd_label], 1
+       ):
+       _cell(2, ci, val, fnt(bold=True), C_GREEN, ctr)
 
     # ── Row 3: Trips ─────────────────────────────────────────────────
     ws.row_dimensions[3].height = 18
-    for ci, val in enumerate(['Trips', period_count], 1):
-     _cell(3, ci, val, fnt(bold=True, size=12), C_YELLOW, ctr)
+    for ci, val in enumerate(
+      ['Trips', period_count, mtd_count, ytd_count], 1
+        ):
+      _cell(3, ci, val, fnt(bold=True, size=12), C_YELLOW, ctr)
 
     # ── Activity rows definition ─────────────────────────────────────
     # (label, metric_key, row_style)
@@ -342,9 +353,10 @@ def _write_tat_sheet(ws, period_label,
         is_bold = STYLE_BOLD[style]
         fnt_row = fnt(bold=is_bold, size=11)
         vals = [
-            (1, label,               left),
+            (1, label, left),
             (2, period_m.get(key, '—'), ctr),
-
+            (3, mtd_m.get(key, '—'), ctr),
+            (4, ytd_m.get(key, '—'), ctr),
         ]
         for ci, val, aln in vals:
             _cell(ri, ci, val, fnt_row, bg, aln)
@@ -359,7 +371,7 @@ def _write_tat_sheet(ws, period_label,
     for i, fn in enumerate(footnotes):
         r = fn_start + i
         ws.row_dimensions[r].height = 28
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
         c = ws.cell(r, 1, fn)
         c.font      = fnt(italic=True, size=9, color='444444')
         c.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
@@ -1102,8 +1114,8 @@ def mbc_master_tat_data():
             'label':    label,
             'style':    style,
             'date_val': period_m.get(key, '—'),
-            # 'mtd_val':  mtd_m.get(key, '—'),
-            # 'ytd_val':  ytd_m.get(key, '—'),
+            'mtd_val':  mtd_m.get(key, '—'),
+            'ytd_val':  ytd_m.get(key, '—'),
         }
         for label, key, style in _TAT_ACTIVITIES
     ]
@@ -1350,10 +1362,10 @@ def mbc_master_download():
     # ══ Sheet 2: MBC TAT Report ════════════════════════════════════════
     ws2 = wb.create_sheet('MBC TAT Report')
     _write_tat_sheet(
-      ws2,
-    period_label,
-    period_count,
-    period_m  
+        ws2,
+        period_label, mtd_label, ytd_label,
+        period_count, mtd_count, ytd_count,
+        period_m, mtd_m, ytd_m
     )
 
     # ══ Sheet 3: DPPL TAT ══════════════════════════════════════════════
