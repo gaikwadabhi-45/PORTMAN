@@ -365,25 +365,38 @@ function render24HoursReport(data) {
     }
 
     // Vessel List
-    if ((data.mv_discharge_list || []).length > 0) {
+   if ((data.mv_discharge_list || []).length > 0) {
 
-        html += `<ol class="report-list">`;
+    html += `<div style="margin-top:25px;"></div>`;
 
-        data.mv_discharge_list.forEach(item => {
+    html += `<ol class="report-list">`;
 
-            html += `
-                <li>
-                    ${item.vessel_name}
-                    -
-                    ${Number(item.cargo_quantity).toLocaleString()} MT /
-                    ${Number(item.bl_quantity).toLocaleString()} MT
-                </li>
-            `;
-        });
+    data.mv_discharge_list.forEach(item => {
 
-        html += `</ol>`;
-    }
+        html += `
+            <li>
+                ${item.vessel_name}
+                -
+                ${item.cargo_name || ''}
+                -
+                BL:
+                ${Number(item.bl_quantity || 0).toLocaleString()} MT
+                /
+                Discharged:
+                ${Number(item.discharge_qty || 0).toLocaleString()} MT
+                /
+                Balance:
+                ${Number(item.balance_qty || 0).toLocaleString()} MT
+                /
+                ${item.discharge_completed ? 'Completed' : 'Still Discharging'}
+            </li>
+        `;
+    });
 
+    html += `</ol>`;
+
+    html += `<div style="height:25px;"></div>`;
+}
     html += `
         <div class="report-line">
             <b>MBC's Discharging for Last 24 Hrs -</b>

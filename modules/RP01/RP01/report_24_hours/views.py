@@ -330,32 +330,17 @@ def get_24_hours_report():
                 }
             ]
 
-
-            # =================================================
-        # MBC DISCHARGING LAST 24 HRS
+        # =================================================
+        # MV DISCHARGING / COMPLETED IN LAST 24 HRS
         # =================================================
 
-        try:
+        mv_discharge_list = []
 
-            print("\n--- FETCHING MBC DISCH TOTAL ---")
+        try:
 
             selected_dt = datetime.strptime(
                 selected_date,
                 '%Y-%m-%d'
-            )
-
-            # Example:
-            # Selected Date = 14-May-2026
-            # Window Start = 13-May-2026 08:00
-            # Window End   = 14-May-2026 08:00
-
-            window_start = (
-                selected_dt - timedelta(days=1)
-            ).replace(
-                hour=8,
-                minute=0,
-                second=0,
-                microsecond=0
             )
 
             window_end = selected_dt.replace(
@@ -365,8 +350,219 @@ def get_24_hours_report():
                 microsecond=0
             )
 
-            print("WINDOW START:", window_start)
-            print("WINDOW END:", window_end)
+            window_start = window_end - timedelta(hours=24)
+
+            print("MV WINDOW START:", window_start)
+            print("MV WINDOW END  :", window_end)
+
+            cur.execute("""
+                SELECT DISTINCT
+
+                    h.id,
+                    h.vcn_id,
+                    h.vessel_name,
+
+                    first_anchor.discharge_started
+                        AS discharge_commenced,
+
+                    last_anchor.discharge_completed
+                        AS discharge_completed
+
+                FROM ldud_header h
+
+                LEFT JOIN LATERAL (
+                    SELECT
+                        MIN(a1.discharge_started)
+                            AS discharge_started
+                    FROM ldud_anchorage a1
+                    WHERE a1.ldud_id = h.id
+                    AND a1.discharge_started IS NOT NULL
+                ) first_anchor ON TRUE
+
+                LEFT JOIN LATERAL (
+                    SELECT
+                        CASE
+                            WHEN EXISTS (
+                                SELECT 1
+                                FROM ldud_anchorage x
+                                WHERE x.ldud_id = h.id
+                                AND x.discharge_started IS NOT NULL
+                                AND x.discharge_commenced IS NULL
+                            )
+                            THEN NULL
+                            ELSE MAX(a2.discharge_commenced)
+                        END AS discharge_completed
+                    FROM ldud_anchorage a2
+                    WHERE a2.ldud_id = h.id
+                ) last_anchor ON TRUE
+
+                WHERE
+
+                    first_anchor.discharge_started IS NOT NULL
+
+                    AND first_anchor.discharge_started < %s
+
+                    AND (
+                        last_anchor.discharge_completed IS NULL
+
+                        OR last_anchor.discharge_completed >= %s
+
+                        OR EXISTS (
+                            SELECT 1
+                            FROM ldud_barge_lines b
+                            WHERE b.ldud_id = h.id
+                            AND (
+                                b.completed_discharge_berth IS NULL
+                                OR b.cast_off_berth IS NULL
+                            )
+                        )
+                    )
+
+                ORDER BY h.vessel_name
+
+            """, (
+                window_end,
+                window_start
+            ))
+
+            rows = cur.fetchall()
+
+            print("MV ROWS FOUND:", len(rows))
+
+            # ------------------------------------
+            # DISCHARGED QTY TILL REPORT DATE
+            # ------------------------------------
+
+            lueu_total = {}
+
+            cur.execute("""
+                SELECT
+                    source_id,
+                    COALESCE(SUM(quantity), 0) AS qty
+                FROM lueu_lines
+                WHERE source_type = 'VCN'
+                GROUP BY source_id
+            """)
+
+            for r in cur.fetchall():
+
+                lueu_total[r['source_id']] = float(
+                    r['qty'] or 0
+                )
+
+            # ------------------------------------
+            # PROCESS VESSELS
+            # ------------------------------------
+
+            for row in rows:
+
+                vcn_id = row['vcn_id']
+
+                cargo_name = ''
+                bl_qty = 0
+
+                if vcn_id:
+
+                    cur.execute("""
+                        SELECT
+                            STRING_AGG(
+                                DISTINCT cargo_name,
+                                ', '
+                            ) AS cargo_names,
+
+                            COALESCE(
+                                SUM(bl_quantity),
+                                0
+                            ) AS total_bl
+
+                        FROM vcn_cargo_declaration
+                        WHERE vcn_id = %s
+                    """, (vcn_id,))
+
+                    cargo_row = cur.fetchone()
+
+                    if cargo_row:
+
+                        cargo_name = (
+                            cargo_row['cargo_names']
+                            or ''
+                        )
+
+                        bl_qty = float(
+                            cargo_row['total_bl']
+                            or 0
+                        )
+
+                discharge_qty = lueu_total.get(
+                    vcn_id,
+                    0
+                )
+
+                balance_qty = max(
+                    bl_qty - discharge_qty,
+                    0
+                )
+
+                mv_discharge_list.append({
+
+                    'vessel_name': row['vessel_name'],
+
+                    'cargo_name': cargo_name,
+
+                    'bl_quantity': round(
+                        bl_qty,
+                        2
+                    ),
+
+                    'discharge_qty': round(
+                        discharge_qty,
+                        2
+                    ),
+
+                    'balance_qty': round(
+                        balance_qty,
+                        2
+                    ),
+
+                    'status': (
+                        'Still Discharging'
+                        if row['discharge_completed'] is None
+                        else 'Completed'
+                    )
+
+                })
+
+            print(
+                "MV DISCHARGE LIST COUNT:",
+                len(mv_discharge_list)
+            )
+
+            print(
+                "MV DISCHARGE LIST:",
+                mv_discharge_list
+            )
+
+        except Exception as e:
+
+            print(
+                "MV DISCHARGE LIST ERROR:",
+                str(e)
+            )
+
+            conn.rollback()
+
+            mv_discharge_list = []
+            # =================================================
+        # MBC DISCHARGING LAST 24 HRS
+        # =================================================
+
+        try:
+
+            print("\n--- FETCHING MBC DISCH TOTAL ---")
+
+            target_date = fetch_date.date()
+
+            print("TARGET DATE:", target_date)
 
             cur.execute("""
                 SELECT
@@ -379,15 +575,11 @@ def get_24_hours_report():
                     ) AS mbc_total_mt
                 FROM lueu_lines
                 WHERE source_type = 'MBC'
-                AND TO_TIMESTAMP(
-                        entry_date || ' ' || from_time,
-                        'YYYY-MM-DD HH24:MI'
-                    ) >= %s
-                AND TO_TIMESTAMP(
-                        entry_date || ' ' || from_time,
-                        'YYYY-MM-DD HH24:MI'
-                    ) < %s
-            """, (window_start, window_end))
+                AND TO_DATE(
+                        entry_date,
+                        'YYYY-MM-DD'
+                    ) = %s
+            """, (target_date,))
 
             mbc_disch_row = cur.fetchone()
 
@@ -404,35 +596,70 @@ def get_24_hours_report():
             conn.rollback()
 
             mbc_disch_total = 0
-
         # =================================================
-        # BARGES COUNT
+        # BARGES COUNT FOR REPORT WINDOW
         # =================================================
 
         try:
 
-            print("\n--- FETCHING BARGES COUNT ---")
+            barges_count = 0
 
-            cur.execute("""
-                SELECT
-                    COUNT(DISTINCT barge_name)
-                FROM ldud_barge_lines
-            """)
+            active_ldud_ids = [
+                r['id']
+                for r in rows
+            ]
 
-            barge_row = cur.fetchone()
+            if active_ldud_ids:
 
-            barges_count = (
-                barge_row[0]
-                if barge_row
-                else 0
+                cur.execute("""
+                    SELECT
+                        COUNT(DISTINCT
+                            TRIM(barge_name)
+                        ) AS total
+
+                    FROM ldud_barge_lines
+
+                    WHERE ldud_id = ANY(%s)
+
+                    AND (
+                        (commence_discharge_berth IS NOT NULL
+                        AND cast_off_berth IS NULL)
+
+                        OR
+
+                        (along_side_berth IS NOT NULL
+                        AND commence_discharge_berth IS NULL)
+
+                        OR
+
+                        (cast_off_mv IS NOT NULL
+                        AND along_side_berth IS NULL)
+
+                        OR
+
+                        (commenced_loading IS NOT NULL
+                        AND completed_loading IS NULL)
+                    )
+                """, (active_ldud_ids,))
+
+                row = cur.fetchone()
+
+                barges_count = int(
+                    row['total'] or 0
+                )
+
+            print(
+                "REPORT WINDOW BARGES:",
+                barges_count
             )
-
-            print("BARGES COUNT:", barges_count)
 
         except Exception as e:
 
-            print("BARGE ERROR:", str(e))
-            conn.rollback()  # ← ADDED
+            print(
+                "BARGE ERROR:",
+                str(e)
+            )
+
             barges_count = 0
 
         # =================================================
