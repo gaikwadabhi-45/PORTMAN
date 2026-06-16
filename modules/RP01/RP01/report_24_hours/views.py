@@ -123,10 +123,7 @@ def get_24_hours_report():
             cur.execute("""
                 SELECT
 
-                    COALESCE(
-                        h.doc_num,
-                        ''
-                    ) AS doc_num,
+                    COALESCE(h.doc_num, '') AS doc_num,
 
                     COALESCE(
                         h.vcn_doc_num,
@@ -142,14 +139,21 @@ def get_24_hours_report():
                     ) AS anchorage_name,
 
                     COALESCE(
-                        a.cargo_quantity,
+                        (
+                            SELECT COALESCE(SUM(vo.quantity), 0)
+                            FROM ldud_vessel_operations vo
+                            WHERE vo.ldud_id = h.id
+                            AND vo.start_time::date = %s
+                        ),
                         0
-                    ) AS cargo_quantity,
+                    ) AS discharge_24h,
 
-                    -- ← ADDED: B/L quantity from vcn_cargo_declaration
                     COALESCE(
                         (
-                            SELECT ROUND(SUM(cd.bl_quantity)::numeric, 2)
+                            SELECT ROUND(
+                                SUM(cd.bl_quantity)::numeric,
+                                2
+                            )
                             FROM vcn_cargo_declaration cd
                             WHERE cd.vcn_id = h.vcn_id
                         ),
@@ -190,14 +194,18 @@ def get_24_hours_report():
                 WHERE DATE(a.discharge_started) = %s
 
                 ORDER BY h.vessel_name
-            """, (fetch_date.date(),))
+
+            """, (
+                fetch_date.date(),
+                fetch_date.date()
+            ))
 
             mv_rows = cur.fetchall()
 
             print("MV ROW COUNT:", len(mv_rows))
 
             mv_disch = 0
-            mv_total_days = 0  # ← ADDED
+            mv_total_days = 0
 
             mv_discharge_list = []
 
@@ -205,24 +213,38 @@ def get_24_hours_report():
 
                 print("ROW DATA:", row)
 
-                qty = float(row['cargo_quantity'] or 0)
-                days = float(row['total_days'] or 0)  # ← ADDED
+                qty = float(
+                    row['discharge_24h'] or 0
+                )
+
+                days = float(
+                    row['total_days'] or 0
+                )
 
                 mv_disch += qty
-                mv_total_days += days  # ← ADDED
+                mv_total_days += days
 
                 mv_discharge_list.append({
 
-                    'doc_num': str(row['doc_num']),
+                    'doc_num': str(
+                        row['doc_num']
+                    ),
 
-                    'vessel_name': str(row['vessel_name']),
+                    'vessel_name': str(
+                        row['vessel_name']
+                    ),
 
-                    'anchorage_name': str(row['anchorage_name']),
+                    'anchorage_name': str(
+                        row['anchorage_name']
+                    ),
 
+                    # 24 HRS DISCHARGE
                     'cargo_quantity': str(qty),
 
-                    'bl_quantity': str(              # ← ADDED
-                        float(row['bl_quantity'] or 0)
+                    'bl_quantity': str(
+                        float(
+                            row['bl_quantity'] or 0
+                        )
                     ),
 
                     'discharge_started': (
@@ -247,20 +269,41 @@ def get_24_hours_report():
 
                 })
 
-            mv_total_days = round(mv_total_days, 2)  # ← ADDED
+            mv_disch = round(
+                mv_disch,
+                2
+            )
 
-            print("TOTAL MV DISCH:", mv_disch)
-            print("TOTAL MV DAYS:", mv_total_days)  # ← ADDED
-            print("MV DISCHARGE LIST:", mv_discharge_list)
+            mv_total_days = round(
+                mv_total_days,
+                2
+            )
+
+            print(
+                "TOTAL MV DISCH (24 HRS):",
+                mv_disch
+            )
+
+            print(
+                "TOTAL MV DAYS:",
+                mv_total_days
+            )
+
+            print(
+                "MV DISCHARGE LIST:",
+                mv_discharge_list
+            )
 
         except Exception as e:
 
-            print("MV DISCHARGE ERROR:", str(e))
+            print(
+                "MV DISCHARGE ERROR:",
+                str(e)
+            )
 
             mv_disch = 0
-            mv_total_days = 0  # ← ADDED
+            mv_total_days = 0
             mv_discharge_list = []
-
         # =================================================
         # MV WAITING  ← FIXED: use doc_status column
         # =================================================
