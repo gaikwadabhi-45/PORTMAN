@@ -12,8 +12,7 @@ from functools import wraps
 
 from .. import bp
 from database import get_db, get_cursor
-from datetime import datetime, timedelta, time
-
+from datetime import datetime, timedelta, date
 
 # =========================================================
 # LOGIN REQUIRED
@@ -597,31 +596,37 @@ def get_24_hours_report():
 
             mbc_disch_total = 0
         # =================================================
-        # BARGES COUNT FOR REPORT WINDOW
+        # BARGE SUMMARY
         # =================================================
+
+        total_barges = 0
+        cement_barges = 0
+        steel_barges = 0
+        barges_count = 0
 
         try:
 
-            barges_count = 0
-
-            active_ldud_ids = [
-                r['id']
-                for r in rows
-            ]
+            active_ldud_ids = [r['id'] for r in rows]
 
             if active_ldud_ids:
 
                 cur.execute("""
-                    SELECT
-                        COUNT(DISTINCT
-                            TRIM(barge_name)
-                        ) AS total
+                    SELECT DISTINCT
+
+                        TRIM(barge_name) AS barge_name,
+
+                        TRIM(
+                            UPPER(
+                                COALESCE(cargo_name, '')
+                            )
+                        ) AS cargo_name
 
                     FROM ldud_barge_lines
 
                     WHERE ldud_id = ANY(%s)
 
                     AND (
+
                         (commence_discharge_berth IS NOT NULL
                         AND cast_off_berth IS NULL)
 
@@ -639,28 +644,175 @@ def get_24_hours_report():
 
                         (commenced_loading IS NOT NULL
                         AND completed_loading IS NULL)
+
                     )
+
+                    ORDER BY barge_name
+
                 """, (active_ldud_ids,))
 
-                row = cur.fetchone()
+                barge_rows = cur.fetchall()
 
-                barges_count = int(
-                    row['total'] or 0
+                print("\n========== ACTIVE BARGES ==========")
+
+                total_barges = len(barge_rows)
+
+                for r in barge_rows:
+
+                    barge_name = r['barge_name'] or ''
+                    cargo = (r['cargo_name'] or '').strip().upper()
+
+                    print(
+                        f"BARGE: {barge_name} | CARGO: {cargo}"
+                    )
+
+                    if (
+                        cargo.startswith('CLINKER')
+                        or cargo.startswith('LIMESTONE')
+                        or cargo.startswith('CEMENT')
+                    ):
+                        cement_barges += 1
+
+                print("========== END ACTIVE BARGES ==========\n")
+
+                steel_barges = total_barges - cement_barges
+
+                barges_count = total_barges
+
+            print("TOTAL BARGES :", total_barges)
+            print("CEMENT BARGES:", cement_barges)
+            print("STEEL BARGES :", steel_barges)
+
+        except Exception as e:
+
+            print("BARGE ERROR:", str(e))
+
+            conn.rollback()
+
+            total_barges = 0
+            cement_barges = 0
+            steel_barges = 0
+            barges_count = 0
+
+        # =================================================
+        # STEEL / CEMENT CARGO TOTAL
+        # =================================================
+
+        steel_cargo = 0
+        cement_cargo = 0
+
+        try:
+
+            fetch_date = (
+                datetime.strptime(
+                    selected_date,
+                    '%Y-%m-%d'
+                ).date()
+                - timedelta(days=1)
+            )
+
+            cur.execute("""
+                SELECT
+
+                    COALESCE(
+                        vc.cargo_type,
+                        'OTHERS'
+                    ) AS cargo_type,
+
+                    COALESCE(
+                        SUM(l.quantity),
+                        0
+                    ) AS qty
+
+                FROM lueu_lines l
+
+                LEFT JOIN vessel_cargo vc
+                    ON UPPER(TRIM(vc.cargo_name))
+                    = UPPER(TRIM(l.cargo_name))
+
+                WHERE
+                    l.is_deleted = false
+                    AND TO_DATE(
+                        l.entry_date,
+                        'YYYY-MM-DD'
+                    ) = %s
+
+                GROUP BY
+                    COALESCE(
+                        vc.cargo_type,
+                        'OTHERS'
+                    )
+
+            """, (fetch_date,))
+
+            cargo_rows = cur.fetchall()
+
+            total_qty = 0
+            clinker_qty = 0
+            slag_qty = 0
+
+            for r in cargo_rows:
+
+                cargo_type = (
+                    r['cargo_type']
+                    or ''
+                ).upper()
+
+                qty = float(
+                    r['qty']
+                    or 0
                 )
 
+                total_qty += qty
+
+                if cargo_type == 'CLINKER':
+                    clinker_qty += qty
+
+                elif cargo_type == 'SLAG':
+                    slag_qty += qty
+
+            # Same logic as throughput report
+
+            cement_cargo = (
+                clinker_qty
+                + slag_qty
+            )
+
+            steel_cargo = (
+                total_qty
+                - clinker_qty
+                - slag_qty
+            )
+
             print(
-                "REPORT WINDOW BARGES:",
-                barges_count
+                "CLINKER QTY:",
+                clinker_qty
+            )
+
+            print(
+                "SLAG QTY:",
+                slag_qty
+            )
+
+            print(
+                "CEMENT CARGO:",
+                cement_cargo
+            )
+
+            print(
+                "STEEL CARGO:",
+                steel_cargo
             )
 
         except Exception as e:
 
             print(
-                "BARGE ERROR:",
+                "CARGO TOTAL ERROR:",
                 str(e)
             )
 
-            barges_count = 0
+            cement_cargo = 0
+            steel_cargo = 0
 
         # =================================================
         # JETTY HANDLING
@@ -670,98 +822,273 @@ def get_24_hours_report():
 
             print("\n--- FETCHING JETTY HANDLING ---")
 
-            # Today
+            target_date = fetch_date
+
+            print("TARGET DATE:", target_date)
+
+            month_start = date(
+                target_date.year,
+                target_date.month,
+                1
+            )
+
+            if target_date.month >= 4:
+                fy_start = date(
+                    target_date.year,
+                    4,
+                    1
+                )
+            else:
+                fy_start = date(
+                    target_date.year - 1,
+                    4,
+                    1
+                )
+
             cur.execute("""
-                SELECT COALESCE(SUM(quantity), 0) AS total
-                FROM jetty_handling
-                WHERE DATE(handling_date) = %s
-            """, (fetch_date.date(),))
+                WITH hist AS (
 
-            row = cur.fetchone()
-            jetty_today = float(row['total'] or 0) if row else 0
+                    SELECT
+                        entry_date,
+                        SUM(quantity) qty
+                    FROM rp01_historical_lueu
+                    WHERE cargo_name IS NOT NULL
+                    GROUP BY entry_date
 
-            # MTD
-            cur.execute("""
-                SELECT COALESCE(SUM(quantity), 0) AS total
-                FROM jetty_handling
-                WHERE DATE_TRUNC('month', handling_date) = DATE_TRUNC('month', %s::date)
-                  AND handling_date <= %s
-            """, (fetch_date.date(), fetch_date.date()))
+                ),
 
-            row = cur.fetchone()
-            jetty_mtd = float(row['total'] or 0) if row else 0
+                live AS (
 
-            # YTD
-            cur.execute("""
-                SELECT COALESCE(SUM(quantity), 0) AS total
-                FROM jetty_handling
-                WHERE DATE_TRUNC('year', handling_date) = DATE_TRUNC('year', %s::date)
-                  AND handling_date <= %s
-            """, (fetch_date.date(), fetch_date.date()))
+                    SELECT
+                        TO_DATE(entry_date,'YYYY-MM-DD') AS entry_date,
+                        SUM(quantity) qty
+                    FROM lueu_lines
+                    WHERE is_deleted = false
+                    AND cargo_name IS NOT NULL
+                    GROUP BY TO_DATE(entry_date,'YYYY-MM-DD')
 
-            row = cur.fetchone()
-            jetty_ytd = float(row['total'] or 0) if row else 0
+                ),
 
-            # Cargo-wise breakdown for Today
-            cur.execute("""
+                throughput AS (
+
+                    SELECT
+                        h.entry_date,
+                        h.qty
+                    FROM hist h
+
+                    UNION ALL
+
+                    SELECT
+                        l.entry_date,
+                        l.qty
+                    FROM live l
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM hist h
+                        WHERE h.entry_date = l.entry_date
+                    )
+                )
+
                 SELECT
-                    cargo_name,
-                    COALESCE(SUM(quantity), 0) AS total
-                FROM jetty_handling
-                WHERE DATE(handling_date) = %s
-                GROUP BY cargo_name
-                ORDER BY total DESC
-            """, (fetch_date.date(),))
 
-            jetty_cargo_list = [
-                {
-                    'cargo_name': str(row['cargo_name']),
-                    'quantity': str(float(row['total'] or 0))
-                }
-                for row in cur.fetchall()
-            ]
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN entry_date = %s
+                                THEN qty
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS day_qty,
 
-            print("JETTY TODAY:", jetty_today)
-            print("JETTY MTD:", jetty_mtd)
-            print("JETTY YTD:", jetty_ytd)
-            print("JETTY CARGO LIST:", jetty_cargo_list)
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN entry_date BETWEEN %s AND %s
+                                THEN qty
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS month_qty,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN entry_date BETWEEN %s AND %s
+                                THEN qty
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS year_qty
+
+                FROM throughput
+
+            """, (
+                target_date,
+                month_start,
+                target_date,
+                fy_start,
+                target_date
+            ))
+
+            row = cur.fetchone()
+
+            jetty_today = float(row['day_qty'] or 0)
+            jetty_mtd = float(row['month_qty'] or 0)
+            jetty_ytd = float(row['year_qty'] or 0)
+
+            print("DAY QTY   :", jetty_today)
+            print("MONTH QTY :", jetty_mtd)
+            print("YEAR QTY  :", jetty_ytd)
 
         except Exception as e:
 
             print("JETTY ERROR:", str(e))
-            conn.rollback()  # ← ADDED
+
+            conn.rollback()
+
             jetty_today = 0
             jetty_mtd = 0
             jetty_ytd = 0
-            jetty_cargo_list = []
+
+            # -----------------------------------------
+        # JETTY CARGO BREAKDOWN
+        # -----------------------------------------
+
+        # Previous day's data
+        target_date = datetime.strptime(
+            selected_date,
+            '%Y-%m-%d'
+        ).date() - timedelta(days=1)
+
+        cur.execute("""
+            SELECT
+                l.cargo_name,
+                COALESCE(SUM(l.quantity), 0) AS qty
+
+            FROM lueu_lines l
+
+            WHERE l.entry_date = %s
+            AND l.quantity > 0
+            AND l.cargo_name IS NOT NULL
+            AND l.cargo_name != ''
+
+            GROUP BY l.cargo_name
+
+            ORDER BY qty DESC
+
+        """, (target_date.strftime('%Y-%m-%d'),))
+
+        jetty_cargo_list = [
+            {
+                'cargo_name': r['cargo_name'],
+                'quantity': float(r['qty'] or 0)
+            }
+            for r in cur.fetchall()
+        ]
+
+        print("TARGET DATE:", target_date)
+        print("JETTY CARGO LIST:", jetty_cargo_list)
 
         # =================================================
-        # DELAYS
+        # RHMS & MAINTENANCE DELAYS
         # =================================================
+
+        delay_rows = []
+
+        rhms_delay_hours = 0
+        maintenance_delay_hours = 0
 
         try:
 
             print("\n--- FETCHING DELAYS ---")
 
-            # ← CHANGED: SUM(delay_hours) instead of COUNT(*),
-            #             added date filter on delay_date
             cur.execute("""
                 SELECT
-                    delay_name,
-                    ROUND(
-                        COALESCE(SUM(delay_hours), 0),
-                        2
-                    ) AS total_hours
-                FROM lueu_lines
-                WHERE delay_name IS NOT NULL
-                  AND DATE(delay_date) = %s
-                GROUP BY delay_name
-                ORDER BY total_hours DESC
-            """, (fetch_date.date(),))
+                    COALESCE(d.type, 'Other') AS delay_type,
+                    l.delay_name,
+                    l.from_time,
+                    l.to_time
 
-            delay_rows = cur.fetchall()
+                FROM lueu_lines l
 
-            print("DELAY ROW COUNT:", len(delay_rows))
+                LEFT JOIN port_delay_types d
+                    ON d.name = l.delay_name
+
+                WHERE l.entry_date = %s
+                AND l.delay_name IS NOT NULL
+                AND l.delay_name != ''
+
+            """, (fetch_date.strftime('%Y-%m-%d'),))
+
+            rows = cur.fetchall()
+
+            for row in rows:
+
+                delay_type = (
+                    row['delay_type'] or ''
+                ).strip()
+
+                from_t = (row['from_time'] or '').strip()
+                to_t = (row['to_time'] or '').strip()
+
+                if not from_t or not to_t:
+                    continue
+
+                try:
+
+                    start = datetime.strptime(
+                        from_t,
+                        '%H:%M'
+                    )
+
+                    end = datetime.strptime(
+                        to_t,
+                        '%H:%M'
+                    )
+
+                    minutes = (
+                        end - start
+                    ).total_seconds() / 60
+
+                    if minutes < 0:
+                        minutes += (24 * 60)
+
+                except Exception:
+                    continue
+
+                if delay_type == 'RMHS Delays':
+                    rhms_delay_hours += (minutes / 60)
+
+                elif delay_type == 'Maintenance Delays':
+                    maintenance_delay_hours += (minutes / 60)
+
+            rhms_delay_hours = round(
+                rhms_delay_hours,
+                2
+            )
+
+            maintenance_delay_hours = round(
+                maintenance_delay_hours,
+                2
+            )
+
+            delay_rows = [
+                {
+                    'delay_name': 'RHMS Delays',
+                    'total_hours': rhms_delay_hours
+                },
+                {
+                    'delay_name': 'Maintenance Delays',
+                    'total_hours': maintenance_delay_hours
+                }
+            ]
+
+            print("RHMS DELAYS:", rhms_delay_hours)
+            print("MAINTENANCE DELAYS:", maintenance_delay_hours)
 
         except Exception as e:
 
@@ -769,44 +1096,8 @@ def get_24_hours_report():
 
             delay_rows = []
 
-        # =================================================
-        # SAFE RESPONSE
-        # =================================================
-
-        safe_mbc_waiting = []
-
-        for row in mbc_waiting_rows:
-
-            try:
-
-                safe_mbc_waiting.append({
-
-                    'mbc_name': str(row[0]) if row[0] else '',
-                    'cargo_name': str(row[1]) if row[1] else ''
-
-                })
-
-            except Exception as e:
-
-                print("MBC ROW ERROR:", str(e))
-
-        safe_delays = []
-
-        for row in delay_rows:
-
-            try:
-
-                # ← CHANGED: key is now 'delay_name'/'total_hours' (dict row)
-                safe_delays.append({
-
-                    'delay_name': str(row['delay_name']) if row['delay_name'] else '',
-                    'hours': str(row['total_hours']) if row['total_hours'] else '0'
-
-                })
-
-            except Exception as e:
-
-                print("DELAY ROW ERROR:", str(e))
+            rhms_delay_hours = 0
+            maintenance_delay_hours = 0
 
         response = {
 
@@ -822,16 +1113,22 @@ def get_24_hours_report():
             'mv_waiting_list': mv_waiting_list,        # ← ADDED
 
             'barges_count': str(barges_count),
+            'cement_barges': cement_barges,
+            'steel_barges': steel_barges,
+            'cement_cargo': round(cement_cargo, 2),
+            'steel_cargo': round(steel_cargo, 2),
 
             'mbc_waiting': mbc_waiting_rows,
             'mbc_disch_total': str(mbc_disch_total),   # ← ADDED
 
-            'jetty_today': str(jetty_today),           # ← ADDED
-            'jetty_mtd': str(jetty_mtd),               # ← ADDED
-            'jetty_ytd': str(jetty_ytd),               # ← ADDED
-            'jetty_cargo_list': jetty_cargo_list,      # ← ADDED
+            'jetty_today': str(jetty_today),
+            'jetty_mtd': str(jetty_mtd),
+            'jetty_ytd': str(jetty_ytd),
+            
+            'jetty_cargo_list': jetty_cargo_list, 
 
-            'delays': safe_delays
+            'rhms_delay_hours': rhms_delay_hours,
+            'maintenance_delay_hours': maintenance_delay_hours,
         }
 
         print("\nRESPONSE CREATED SUCCESSFULLY")
