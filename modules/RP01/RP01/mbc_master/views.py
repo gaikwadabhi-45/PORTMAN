@@ -169,16 +169,29 @@ def _fetch_raw_trips(from_date='', to_date='', month_filter='', fy_filter=''):
 
     where_clauses = ["h.operation_type = 'Import'"]
     params = []
+    from datetime import datetime, timedelta
+
     if from_date == to_date and from_date:
-        where_clauses.append("DATE(h.doc_date) = %s")
-        params.append(from_date)
+        start_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(
+            hour=6,
+            minute=0,
+            second=0
+        )
+
+        end_dt = start_dt + timedelta(days=1)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp >= %s")
+        params.append(start_dt)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp < %s")
+        params.append(end_dt)
     else:
         if from_date:
-            where_clauses.append("DATE(h.doc_date) >= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) >= %s")
             params.append(from_date)
 
         if to_date:
-            where_clauses.append("DATE(h.doc_date) <= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) >= %s")
             params.append(to_date)
 
     cur.execute(f"""
@@ -203,9 +216,9 @@ def _fetch_raw_trips(from_date='', to_date='', month_filter='', fy_filter=''):
     if month_filter or fy_filter:
         filtered = []
         for r in rows:
-            if month_filter and _month_label(r.get('doc_date', '')) != month_filter:
+            if month_filter and _month_label(r.get('unloading_completed', '')) != month_filter:
                 continue
-            if fy_filter and _fy(r.get('doc_date', '')) != fy_filter:
+            if fy_filter and _fy(r.get('unloading_completed', '')) != fy_filter:
                 continue
             filtered.append(r)
         return filtered
@@ -397,16 +410,29 @@ def _fetch_rows(from_date, to_date, month_filter, fy_filter):
 
     where_clauses = ["h.operation_type = 'Import'"]
     params = []
+    from datetime import datetime, timedelta
+
     if from_date == to_date and from_date:
-        where_clauses.append("DATE(h.doc_date) = %s")
-        params.append(from_date)
+        start_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(
+            hour=6,
+            minute=0,
+            second=0
+        )
+
+        end_dt = start_dt + timedelta(days=1)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp>= %s")
+        params.append(start_dt)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp < %s")
+        params.append(end_dt)
     else:
         if from_date:
-            where_clauses.append("DATE(h.doc_date) >= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) >= %s")
             params.append(from_date)
 
         if to_date:
-            where_clauses.append("DATE(h.doc_date) <= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) <= %s")
             params.append(to_date)
 
     cur.execute(f"""
@@ -430,8 +456,8 @@ def _fetch_rows(from_date, to_date, month_filter, fy_filter):
     result = []
     sr = 1
     for r in rows:
-        month = _month_label(r['doc_date'])
-        fy    = _fy(r['doc_date'])
+        month = _month_label(r['unloading_completed'])
+        fy = _fy(r['unloading_completed'])
         if month_filter and month != month_filter:
             continue
         if fy_filter and fy != fy_filter:
@@ -500,16 +526,29 @@ def _fetch_dppl_tat_rows(from_date='', to_date='', month_filter='', fy_filter=''
 
     where_clauses = ["h.operation_type = 'Import'"]
     params = []
+    from datetime import datetime, timedelta
+
     if from_date == to_date and from_date:
-        where_clauses.append("DATE(h.doc_date) = %s")
-        params.append(from_date)
+        start_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(
+            hour=6,
+            minute=0,
+            second=0
+        )
+
+        end_dt = start_dt + timedelta(days=1)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp >= %s")
+        params.append(start_dt)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp < %s")
+        params.append(end_dt)
     else:
         if from_date:
-            where_clauses.append("DATE(h.doc_date) >= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) >= %s")
             params.append(from_date)
 
         if to_date:
-            where_clauses.append("DATE(h.doc_date) <= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) <= %s")
             params.append(to_date)
 
     cur.execute(f"""
@@ -534,9 +573,9 @@ def _fetch_dppl_tat_rows(from_date='', to_date='', month_filter='', fy_filter=''
     if month_filter or fy_filter:
         filtered = []
         for r in rows:
-            if month_filter and _month_label(r.get('doc_date', '')) != month_filter:
+            if month_filter and _month_label(r.get('unloading_completed', '')) != month_filter:
                 continue
-            if fy_filter and _fy(r.get('doc_date', '')) != fy_filter:
+            if fy_filter and _fy(r.get('unloading_completed', '')) != fy_filter:
                 continue
             filtered.append(r)
         rows = filtered
@@ -752,16 +791,29 @@ def _fetch_mbc_wise_rows(from_date='', to_date='', month_filter='', fy_filter=''
 
     where_clauses = ["h.operation_type = 'Import'"]
     params = []
+    from datetime import datetime, timedelta
+
     if from_date == to_date and from_date:
-        where_clauses.append("DATE(h.doc_date) = %s")
-        params.append(from_date)
+        start_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(
+            hour=6,
+            minute=0,
+            second=0
+        )
+
+        end_dt = start_dt + timedelta(days=1)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp >= %s")
+        params.append(start_dt)
+
+        where_clauses.append("NULLIF(dp.unloading_completed, '')::timestamp < %s")
+        params.append(end_dt)
     else:
         if from_date:
-            where_clauses.append("DATE(h.doc_date) >= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) >= %s")
             params.append(from_date)
 
         if to_date:
-            where_clauses.append("DATE(h.doc_date) <= %s")
+            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) <= %s")
             params.append(to_date)
 
     cur.execute(f"""
@@ -785,9 +837,9 @@ def _fetch_mbc_wise_rows(from_date='', to_date='', month_filter='', fy_filter=''
     if month_filter or fy_filter:
         filtered = []
         for r in rows:
-            if month_filter and _month_label(r.get('doc_date', '')) != month_filter:
+            if month_filter and _month_label(r.get('unloading_completed', '')) != month_filter:
                 continue
-            if fy_filter and _fy(r.get('doc_date', '')) != fy_filter:
+            if fy_filter and _fy(r.get('unloading_completed', '')) != fy_filter:
                 continue
             filtered.append(r)
         rows = filtered
