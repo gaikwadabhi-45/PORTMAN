@@ -191,7 +191,9 @@ def _fetch_raw_trips(from_date='', to_date='', month_filter='', fy_filter=''):
             params.append(from_date)
 
         if to_date:
-            where_clauses.append("DATE(NULLIF(dp.unloading_completed, '')::timestamp) >= %s")
+            where_clauses.append(
+                "DATE(NULLIF(dp.unloading_completed, '')::timestamp) <= %s"
+            )
             params.append(to_date)
 
     cur.execute(f"""
