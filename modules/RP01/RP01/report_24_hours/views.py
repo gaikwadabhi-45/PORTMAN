@@ -538,6 +538,8 @@ def get_24_hours_report():
                 # ------------------------------------
 
                 delay_text = ''
+                discharge_start_date = ''
+                discharge_end_date = ''
 
                 window_start = (
                     selected_dt - timedelta(days=1)
@@ -555,6 +557,64 @@ def get_24_hours_report():
                     microsecond=0
                 )
 
+                # ── Fetch discharge start/end from ldud_anchorage ──
+                cur.execute("""
+                    SELECT
+                        MIN(discharge_started) AS discharge_start,
+                        CASE
+                            WHEN MAX(discharge_commenced) >= MIN(discharge_started)
+                            THEN MAX(discharge_commenced)
+                            ELSE NULL
+                        END AS discharge_end
+                    FROM ldud_anchorage
+                    WHERE ldud_id = %s
+                    AND discharge_started IS NOT NULL
+                    AND (
+                        discharge_commenced IS NULL
+                        OR discharge_commenced >= discharge_started
+                    )
+                """, (ldud_id,))
+
+                anchorage_row = cur.fetchone()
+
+                if anchorage_row:
+
+                    raw_start = anchorage_row['discharge_start']
+                    raw_end = anchorage_row['discharge_end']
+
+                    # Show start only if it falls within the window
+                    if (
+                        raw_start
+                        and window_start <= raw_start < window_end
+                    ):
+                        discharge_start_date = raw_start.strftime(
+                            '%d-%b-%Y %H:%M'
+                        )
+
+                    # Show end only if it falls within the window
+                    if (
+                        raw_end
+                        and window_start <= raw_end < window_end
+                    ):
+                        discharge_end_date = raw_end.strftime(
+                            '%d-%b-%Y %H:%M'
+                        )
+
+                print(
+                    "ANCHORAGE ROW:",
+                    anchorage_row,
+                    "LDUD ID:",
+                    ldud_id
+                )
+
+                print(
+                    "DISCHARGE START DATE:",
+                    discharge_start_date,
+                    "DISCHARGE END DATE:",
+                    discharge_end_date
+                )
+
+                # ── Fetch delays within window ──
                 cur.execute("""
                     SELECT
                         delay_name,
@@ -660,22 +720,28 @@ def get_24_hours_report():
                             2
                         ),
 
+                    'discharge_start_date':
+                        discharge_start_date,
+
+                    'discharge_end_date':
+                        discharge_end_date,
+
                     'delay_name':
                         delay_text
 
                 })
 
-            print(
-                "MV DISCHARGE LIST COUNT:",
-                len(
+                print(
+                    "MV DISCHARGE LIST COUNT:",
+                    len(
+                        mv_discharge_list
+                    )
+                )
+
+                print(
+                    "MV DISCHARGE LIST:",
                     mv_discharge_list
                 )
-            )
-
-            print(
-                "MV DISCHARGE LIST:",
-                mv_discharge_list
-            )
 
         except Exception as e:
 
@@ -735,6 +801,10 @@ def get_24_hours_report():
         # BARGE SUMMARY
         # =================================================
 
+        # =================================================
+        # BARGE SUMMARY
+        # =================================================
+
         total_barges = 0
         cement_barges = 0
         steel_barges = 0
@@ -752,92 +822,61 @@ def get_24_hours_report():
                 cur.execute("""
                     SELECT DISTINCT
                         TRIM(barge_name) AS barge_name,
-                        TRIM(
-                            UPPER(
-                                COALESCE(cargo_name, '')
-                            )
+                        UPPER(
+                            COALESCE(cargo_name, '')
                         ) AS cargo_name
                     FROM ldud_barge_lines
                     WHERE ldud_id = ANY(%s)
-                    AND (
-                        (
-                            commence_discharge_berth IS NOT NULL
-                            AND cast_off_berth IS NULL
-                        )
-                        OR
-                        (
-                            along_side_berth IS NOT NULL
-                            AND commence_discharge_berth IS NULL
-                        )
-                        OR
-                        (
-                            cast_off_mv IS NOT NULL
-                            AND along_side_berth IS NULL
-                        )
-                        OR
-                        (
-                            commenced_loading IS NOT NULL
-                            AND completed_loading IS NULL
-                        )
-                    )
                     ORDER BY barge_name
                 """, (active_ldud_ids,))
 
                 barge_rows = cur.fetchall()
 
                 print(
-                    "ACTIVE BARGE ROWS COUNT:",
+                    "TOTAL DISTINCT BARGES:",
                     len(barge_rows)
                 )
-
-                print("\n========== ACTIVE BARGES ==========")
 
                 total_barges = len(barge_rows)
 
                 for r in barge_rows:
 
-                    barge_name = r['barge_name'] or ''
-
-                    cargo = (
+                    cargo_name = (
                         r['cargo_name'] or ''
                     ).strip().upper()
 
-                    print(
-                        f"BARGE: {barge_name} | CARGO: {cargo}"
-                    )
-
-                    # Cement Barges = CLINKER + SLAG only
                     if (
-                        'CLINKER' in cargo
-                        or 'SLAG' in cargo
+                        'CLINKER' in cargo_name
+                        or 'SLAG' in cargo_name
                     ):
                         cement_barges += 1
 
-                print("========== END ACTIVE BARGES ==========\n")
-
                 steel_barges = (
-                    total_barges - cement_barges
+                    total_barges -
+                    cement_barges
                 )
 
-                barges_count = total_barges
+                # If you want cement barges added again
+                barges_count = (
+                    total_barges +
+                    cement_barges
+                )
 
-            print("TOTAL BARGES :", total_barges)
-            print("CEMENT BARGES:", cement_barges)
-            print("STEEL BARGES :", steel_barges)
-
-            print("========== END BARGE DEBUG ==========")
+            print("\n========== ACTIVE BARGE SUMMARY ==========")
+            print("TOTAL BARGES      :", total_barges)
+            print("CEMENT BARGES     :", cement_barges)
+            print("STEEL BARGES      :", steel_barges)
+            print("FINAL BARGE COUNT :", barges_count)
+            print("========== END BARGE DEBUG ==========\n")
 
         except Exception as e:
 
             print("BARGE ERROR:", str(e))
 
-            conn.rollback()
-
             total_barges = 0
             cement_barges = 0
             steel_barges = 0
             barges_count = 0
-
         # =================================================
         # STEEL / CEMENT CARGO TOTAL
         # =================================================
