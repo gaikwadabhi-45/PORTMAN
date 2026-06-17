@@ -539,26 +539,48 @@ def get_24_hours_report():
 
                 delay_text = ''
 
-                prev_date = selected_dt.date() - timedelta(days=1)
+                window_start = (
+                    selected_dt - timedelta(days=1)
+                ).replace(
+                    hour=8,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+                window_end = selected_dt.replace(
+                    hour=8,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
 
                 cur.execute("""
                     SELECT
                         delay_name,
+                        COUNT(
+                            DISTINCT crane_number
+                        ) AS crane_count,
                         COALESCE(
                             SUM(total_time_mins),
                             0
                         ) AS total_mins
                     FROM ldud_delays
                     WHERE ldud_id = %s
-                    AND TO_DATE(
-                        LEFT(start_datetime, 10),
-                        'YYYY-MM-DD'
-                    ) = %s
+                    AND TO_TIMESTAMP(
+                        start_datetime,
+                        'YYYY-MM-DD"T"HH24:MI'
+                    ) >= %s
+                    AND TO_TIMESTAMP(
+                        start_datetime,
+                        'YYYY-MM-DD"T"HH24:MI'
+                    ) < %s
                     GROUP BY delay_name
                     ORDER BY delay_name
                 """, (
                     ldud_id,
-                    prev_date
+                    window_start,
+                    window_end
                 ))
 
                 delay_rows = cur.fetchall()
@@ -567,55 +589,87 @@ def get_24_hours_report():
 
                 for d in delay_rows:
 
-                    delay_name = d['delay_name'] or ''
+                    delay_name = (
+                        d['delay_name']
+                        or ''
+                    )
 
-                    calculated_hrs = round(
-                        float(
-                            d['total_mins'] or 0
-                        ) / 60,
+                    total_mins = float(
+                        d['total_mins']
+                        or 0
+                    )
+
+                    crane_count = int(
+                        d['crane_count']
+                        or 0
+                    )
+
+                    if crane_count <= 0:
+                        crane_count = 1
+
+                    if crane_count > 4:
+                        crane_count = 4
+
+                    adjusted_mins = (
+                        total_mins / 4
+                    ) * crane_count
+
+                    adjusted_hrs = round(
+                        adjusted_mins / 60,
                         2
                     )
 
                     delay_parts.append(
-                        f"{delay_name} - {calculated_hrs} Hrs"
+                        f"{delay_name} - {adjusted_hrs} Hrs"
                     )
 
-                delay_text = ", ".join(delay_parts)
+                delay_text = ", ".join(
+                    delay_parts
+                )
 
                 print(
                     "VESSEL:",
                     row['vessel_name'],
                     "LDUD:",
                     ldud_id,
-                    "PREVIOUS DATE:",
-                    prev_date,
+                    "WINDOW:",
+                    window_start,
+                    "TO",
+                    window_end,
                     "DELAYS:",
                     delay_text
                 )
 
                 mv_discharge_list.append({
 
-                    'vessel_name': row['vessel_name'],
+                    'vessel_name':
+                        row['vessel_name'],
 
-                    'cargo_name': cargo_name,
+                    'cargo_name':
+                        cargo_name,
 
-                    'discharge_24hrs': round(
-                        discharge_24hrs,
-                        2
-                    ),
+                    'discharge_24hrs':
+                        round(
+                            discharge_24hrs,
+                            2
+                        ),
 
-                    'balance_qty': round(
-                        balance_qty,
-                        2
-                    ),
+                    'balance_qty':
+                        round(
+                            balance_qty,
+                            2
+                        ),
 
-                    'delay_name': delay_text
+                    'delay_name':
+                        delay_text
 
                 })
 
             print(
                 "MV DISCHARGE LIST COUNT:",
-                len(mv_discharge_list)
+                len(
+                    mv_discharge_list
+                )
             )
 
             print(
