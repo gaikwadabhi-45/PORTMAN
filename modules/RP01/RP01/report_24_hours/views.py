@@ -536,8 +536,11 @@ def get_24_hours_report():
                 # DELAYS
                 # ------------------------------------
 
-                delay_name = ''
-                calculated_hrs = 0
+                # ------------------------------------
+                # ALL DELAYS FOR VESSEL
+                # ------------------------------------
+
+                delay_text = ''
 
                 cur.execute("""
                     SELECT
@@ -549,26 +552,35 @@ def get_24_hours_report():
                     FROM ldud_delays
                     WHERE ldud_id = %s
                     GROUP BY delay_name
-                    ORDER BY total_mins DESC
-                    LIMIT 1
+                    ORDER BY delay_name
                 """, (ldud_id,))
 
-                delay_row = cur.fetchone()
+                delay_rows = cur.fetchall()
 
-                if delay_row:
+                delay_parts = []
 
-                    delay_name = (
-                        delay_row['delay_name']
-                        or ''
-                    )
+                for d in delay_rows:
+
+                    delay_name = d['delay_name'] or ''
 
                     calculated_hrs = round(
                         float(
-                            delay_row['total_mins']
-                            or 0
+                            d['total_mins'] or 0
                         ) / 60,
                         2
                     )
+
+                    delay_parts.append(
+                        f"{delay_name} - {calculated_hrs} Hrs"
+                    )
+
+                delay_text = ", ".join(delay_parts)
+
+                print(
+                    row['vessel_name'],
+                    "DELAYS:",
+                    delay_text
+                )
 
                 mv_discharge_list.append({
 
@@ -586,9 +598,7 @@ def get_24_hours_report():
                         2
                     ),
 
-                    'delay_name': delay_name,
-
-                    'calculated_hrs': calculated_hrs
+                    'delay_name': delay_text
 
                 })
 
@@ -734,8 +744,8 @@ def get_24_hours_report():
 
                     # ONLY CLINKER & SLAG ARE CEMENT BARGES
                     if (
-                        cargo.startswith('CLINKER')
-                        or cargo.startswith('SLAG')
+                        cargo.startswith('Clinker')
+                        or cargo.startswith('Slag')
                     ):
                         cement_barges += 1
 
@@ -839,10 +849,10 @@ def get_24_hours_report():
 
                 total_qty += qty
 
-                if cargo_type == 'CLINKER':
+                if cargo_type == 'Clinker':
                     clinker_qty += qty
 
-                elif cargo_type == 'SLAG':
+                elif cargo_type == 'Slag':
                     slag_qty += qty
 
             # Same logic as throughput report
