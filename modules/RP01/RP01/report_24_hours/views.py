@@ -532,15 +532,14 @@ def get_24_hours_report():
                     0
                 )
 
-                # ------------------------------------
-                # DELAYS
-                # ------------------------------------
 
                 # ------------------------------------
-                # ALL DELAYS FOR VESSEL
+                # PREVIOUS DAY DELAYS FOR SAME VESSEL
                 # ------------------------------------
 
                 delay_text = ''
+
+                prev_date = selected_dt.date() - timedelta(days=1)
 
                 cur.execute("""
                     SELECT
@@ -551,9 +550,16 @@ def get_24_hours_report():
                         ) AS total_mins
                     FROM ldud_delays
                     WHERE ldud_id = %s
+                    AND TO_DATE(
+                        LEFT(start_datetime, 10),
+                        'YYYY-MM-DD'
+                    ) = %s
                     GROUP BY delay_name
                     ORDER BY delay_name
-                """, (ldud_id,))
+                """, (
+                    ldud_id,
+                    prev_date
+                ))
 
                 delay_rows = cur.fetchall()
 
@@ -577,7 +583,12 @@ def get_24_hours_report():
                 delay_text = ", ".join(delay_parts)
 
                 print(
+                    "VESSEL:",
                     row['vessel_name'],
+                    "LDUD:",
+                    ldud_id,
+                    "PREVIOUS DATE:",
+                    prev_date,
                     "DELAYS:",
                     delay_text
                 )
@@ -686,48 +697,44 @@ def get_24_hours_report():
 
                 cur.execute("""
                     SELECT DISTINCT
-
                         TRIM(barge_name) AS barge_name,
-
                         TRIM(
                             UPPER(
                                 COALESCE(cargo_name, '')
                             )
                         ) AS cargo_name
-
                     FROM ldud_barge_lines
-
                     WHERE ldud_id = ANY(%s)
-
                     AND (
-
-                        (commence_discharge_berth IS NOT NULL
-                        AND cast_off_berth IS NULL)
-
+                        (
+                            commence_discharge_berth IS NOT NULL
+                            AND cast_off_berth IS NULL
+                        )
                         OR
-
-                        (along_side_berth IS NOT NULL
-                        AND commence_discharge_berth IS NULL)
-
+                        (
+                            along_side_berth IS NOT NULL
+                            AND commence_discharge_berth IS NULL
+                        )
                         OR
-
-                        (cast_off_mv IS NOT NULL
-                        AND along_side_berth IS NULL)
-
+                        (
+                            cast_off_mv IS NOT NULL
+                            AND along_side_berth IS NULL
+                        )
                         OR
-
-                        (commenced_loading IS NOT NULL
-                        AND completed_loading IS NULL)
-
+                        (
+                            commenced_loading IS NOT NULL
+                            AND completed_loading IS NULL
+                        )
                     )
-
                     ORDER BY barge_name
-
                 """, (active_ldud_ids,))
 
                 barge_rows = cur.fetchall()
 
-                print("ACTIVE BARGE ROWS COUNT:", len(barge_rows))
+                print(
+                    "ACTIVE BARGE ROWS COUNT:",
+                    len(barge_rows)
+                )
 
                 print("\n========== ACTIVE BARGES ==========")
 
@@ -735,41 +742,42 @@ def get_24_hours_report():
 
                 for r in barge_rows:
 
-                    barge_name = (r.get('barge_name') or '').strip()
-                    cargo = (r.get('cargo_name') or '').strip().upper()
+                    barge_name = r['barge_name'] or ''
+
+                    cargo = (
+                        r['cargo_name'] or ''
+                    ).strip().upper()
 
                     print(
                         f"BARGE: {barge_name} | CARGO: {cargo}"
                     )
 
-                    # ONLY CLINKER & SLAG ARE CEMENT BARGES
+                    # Cement Barges = Clinker + Slag only
                     if (
-                        cargo.startswith('Clinker')
-                        or cargo.startswith('Slag')
+                        'CLINKER' in cargo
+                        or 'SLAG' in cargo
                     ):
                         cement_barges += 1
 
-                print("========== END ACTIVE BARGES ==========\n")
+                print(
+                    "========== END ACTIVE BARGES ==========\n"
+                )
 
-                steel_barges = total_barges - cement_barges
+                steel_barges = (
+                    total_barges - cement_barges
+                )
+
                 barges_count = total_barges
-
-            else:
-
-                print("NO ACTIVE LDUD IDS FOUND")
 
             print("TOTAL BARGES :", total_barges)
             print("CEMENT BARGES:", cement_barges)
             print("STEEL BARGES :", steel_barges)
 
-            print("========== END BARGE DEBUG ==========\n")
+            print("========== END BARGE DEBUG ==========")
 
         except Exception as e:
 
             print("BARGE ERROR:", str(e))
-
-            import traceback
-            traceback.print_exc()
 
             conn.rollback()
 
