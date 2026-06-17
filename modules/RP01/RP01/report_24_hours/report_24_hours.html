@@ -373,6 +373,14 @@ if ((data.mv_discharge_list || []).length > 0) {
 
     data.mv_discharge_list.forEach(item => {
 
+        const startText = item.discharge_start_date
+            ? ` / Discharge Started: ${item.discharge_start_date}`
+            : '';
+
+        const endText = item.discharge_end_date
+            ? ` / Discharge Completed: ${item.discharge_end_date}`
+            : '';
+
         html += `
             <li>
                 ${item.vessel_name}
@@ -384,14 +392,15 @@ if ((data.mv_discharge_list || []).length > 0) {
                 /
                 Balance:
                 ${Number(item.balance_qty || 0).toLocaleString()} MT
-                /
-                ${item.delay_name || ''}
-              
+                ${item.delay_name ? ` / ${item.delay_name}` : ''}
+                ${startText}
+                ${endText}
             </li>
         `;
     });
 
     html += `</ol>`;
+
 
     html += `<div style="height:25px;"></div>`;
 }
