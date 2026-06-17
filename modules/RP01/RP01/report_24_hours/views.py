@@ -752,16 +752,14 @@ def get_24_hours_report():
                         f"BARGE: {barge_name} | CARGO: {cargo}"
                     )
 
-                    # Cement Barges = Clinker + Slag only
+                    # Cement Barges = CLINKER + SLAG only
                     if (
                         'CLINKER' in cargo
                         or 'SLAG' in cargo
                     ):
                         cement_barges += 1
 
-                print(
-                    "========== END ACTIVE BARGES ==========\n"
-                )
+                print("========== END ACTIVE BARGES ==========\n")
 
                 steel_barges = (
                     total_barges - cement_barges
