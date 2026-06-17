@@ -1522,7 +1522,12 @@ def _fetch_mbc_status(report_date):
 
     cur.execute("""
         SELECT
-            m.mbc_name,
+
+            CASE
+                WHEN COALESCE(NULLIF(TRIM(h.cargo_name), ''), '') <> ''
+                THEN TRIM(m.mbc_name) || ' (' || TRIM(h.cargo_name) || ')'
+                ELSE TRIM(m.mbc_name)
+            END AS mbc_name,
 
             CASE
 
