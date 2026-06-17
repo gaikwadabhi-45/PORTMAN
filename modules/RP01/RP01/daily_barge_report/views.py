@@ -2167,11 +2167,12 @@ def berth_details():
         cur.execute("""
             UPDATE ldud_barge_lines
             SET
-                along_side_berth = %s,
-                commence_discharge_berth = %s,
+                along_side_berth          = %s,
+                commence_discharge_berth  = %s,
                 completed_discharge_berth = %s,
-                cast_off_berth = %s,
-                cast_off_port = %s
+                cast_off_berth            = %s,
+                cast_off_port             = %s,
+                port_crane                = %s
             WHERE id = %s
         """, (
             to_iso(data.get('along_side_berth')),
@@ -2179,6 +2180,7 @@ def berth_details():
             to_iso(data.get('completed_discharge_berth')),
             to_iso(data.get('cast_off_berth_nt')),
             to_iso(data.get('cast_off_port')),
+            data.get('unloaded_by'),
             data.get('id')
         ))
 
@@ -2209,22 +2211,26 @@ def mbc_berth_details():
     cur.execute("""
         UPDATE mbc_discharge_port_lines
         SET
-            vessel_arrival_port  = %s,
-            vessel_all_made_fast = %s,
-            unloading_commenced  = %s,
-            cleaning_commenced   = %s,
-            unloading_completed  = %s,
-            vessel_cast_off      = %s,
-            sailed_out_load_port = %s
+            vessel_arrival_port    = %s,
+            vessel_all_made_fast   = %s,
+            unloading_commenced    = %s,
+            cleaning_commenced     = %s,
+            unloading_completed    = %s,
+            vessel_cast_off        = %s,
+            sailed_out_load_port   = %s,
+            vessel_unloaded_by     = %s,
+            vessel_unloading_berth = %s
         WHERE mbc_id = %s
     """, (
-        to_iso(data.get('mbc_arrival_port')),       # ← new
-        to_iso(data.get('mbc_amf_unloading_berth')), # ← new
+        to_iso(data.get('mbc_arrival_port')),
+        to_iso(data.get('mbc_amf_unloading_berth')),
         to_iso(data.get('unloading_commenced')),
         to_iso(data.get('cleaning_commenced')),
         to_iso(data.get('unloading_completed')),
         to_iso(data.get('mbc_cast_off')),
         to_iso(data.get('sailed_out_load_port')),
+        data.get('vessel_unloaded_by'),
+        data.get('unloaded_berth'),
         data.get('id')
     ))
 

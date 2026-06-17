@@ -814,6 +814,146 @@
 </div>
 <div id="error-box" style="display:none;"></div>
 <script>
+    /* ── Multi-select dropdown editor (same as MBC01) ───────────────────── */
+    function makeMultiSelectEditor(optionsList) {
+        return function(cell, onRendered, success, cancel) {
+            var currentVal = cell.getValue() || '';
+            var selected   = currentVal
+                ? currentVal.split(',').map(s => s.trim()).filter(Boolean)
+                : [];
+
+            var wrapper = document.createElement('div');
+            wrapper.style.cssText = 'width:100%;height:100%;padding:4px;box-sizing:border-box;font-size:11px;cursor:pointer;';
+            wrapper.textContent = currentVal || 'Select...';
+
+            var dropdown = document.createElement('div');
+            dropdown.style.cssText = [
+                'position:fixed','z-index:99999',
+                'background:white',
+                'border:1px solid #cbd5e0',
+                'border-radius:6px',
+                'box-shadow:0 4px 12px rgba(0,0,0,0.18)',
+                'padding:8px',
+                'min-width:190px',
+                'max-height:280px',
+                'overflow-y:auto',
+                'display:none'
+            ].join(';');
+
+            // Search box inside dropdown
+            var searchBox = document.createElement('input');
+            searchBox.type        = 'text';
+            searchBox.placeholder = 'Search...';
+            searchBox.style.cssText = 'width:100%;box-sizing:border-box;padding:4px 6px;margin-bottom:6px;border:1px solid #cbd5e0;border-radius:4px;font-size:12px;';
+            dropdown.appendChild(searchBox);
+
+            var listContainer = document.createElement('div');
+            dropdown.appendChild(listContainer);
+
+            function renderOptions(filter) {
+                listContainer.innerHTML = '';
+                (optionsList || [])
+                    .filter(item => !filter || item.toLowerCase().includes(filter.toLowerCase()))
+                    .forEach(function(item) {
+                        var label = document.createElement('label');
+                        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 6px;font-size:12px;cursor:pointer;border-radius:4px;';
+                        label.addEventListener('mouseenter', function() { label.style.background = '#f1f5f9'; });
+                        label.addEventListener('mouseleave', function() { label.style.background = 'none'; });
+
+                        var cb = document.createElement('input');
+                        cb.type    = 'checkbox';
+                        cb.value   = item;
+                        cb.checked = selected.includes(item);
+                        cb.style.cssText = 'margin:0;cursor:pointer;width:14px;height:14px;accent-color:#4a90d9;';
+                        cb.addEventListener('change', function() {
+                            if (cb.checked) {
+                                if (!selected.includes(item)) selected.push(item);
+                            } else {
+                                selected = selected.filter(s => s !== item);
+                            }
+                        });
+
+                        label.appendChild(cb);
+                        label.appendChild(document.createTextNode(item));
+                        listContainer.appendChild(label);
+                    });
+            }
+
+            renderOptions('');
+            searchBox.addEventListener('input', function() { renderOptions(searchBox.value); });
+
+            // Apply / Cancel buttons
+            var btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;';
+
+            var applyBtn = document.createElement('button');
+            applyBtn.textContent = 'Apply';
+            applyBtn.style.cssText = 'flex:1;padding:5px 8px;font-size:12px;background:#4a90d9;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;';
+            applyBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                cleanup();
+                success(selected.join(', '));
+            });
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.style.cssText = 'flex:1;padding:5px 8px;font-size:12px;background:#e2e8f0;color:#374151;border:none;border-radius:4px;cursor:pointer;font-weight:600;';
+            cancelBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                cleanup();
+                cancel();
+            });
+
+            btnRow.appendChild(applyBtn);
+            btnRow.appendChild(cancelBtn);
+            dropdown.appendChild(btnRow);
+            document.body.appendChild(dropdown);
+
+            function cleanup() {
+                if (dropdown.parentNode) dropdown.parentNode.removeChild(dropdown);
+                document.removeEventListener('mousedown', outsideClick);
+            }
+
+            function outsideClick(e) {
+                if (!dropdown.contains(e.target) && !wrapper.contains(e.target)) {
+                    cleanup();
+                    cancel();
+                }
+            }
+
+            onRendered(function() {
+                var rect = cell.getElement().getBoundingClientRect();
+                dropdown.style.left    = rect.left + 'px';
+                dropdown.style.top     = (rect.bottom + 2) + 'px';
+                dropdown.style.display = 'block';
+                searchBox.focus();
+                setTimeout(function() {
+                    document.addEventListener('mousedown', outsideClick);
+                }, 10);
+            });
+
+            wrapper.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') { cleanup(); cancel(); }
+                if (e.key === 'Enter')  { cleanup(); success(selected.join(', ')); }
+            });
+
+            return wrapper;
+        };
+    }
+
+    // Renders comma-separated values as coloured badge pills
+    function multiBadgeFormatter(color) {
+        return function(cell) {
+            var val = cell.getValue();
+            if (!val) return '<span style="color:var(--text-secondary)">—</span>';
+            return val.split(',')
+                .map(v => v.trim()).filter(Boolean)
+                .map(v =>
+                    `<span style="background:${color};color:white;padding:1px 7px;` +
+                    `border-radius:3px;font-size:10px;margin-right:3px;display:inline-block;">${v}</span>`
+                ).join('');
+        };
+    }
     /* ── Formatters ──────────────────────────────────────── */
     function dtFormatter(cell) {
 
@@ -1103,12 +1243,17 @@
                 formatter: dtFormatter,
                 editor: dateTimeEditor
             },
-            {
+{
                 title: 'Unloaded By',
                 field: 'unloaded_by',
-                width: 140,
+                width: 220,
                 headerHozAlign: 'center',
+                editor: function(cell, onRendered, success, cancel) {
+                    return makeMultiSelectEditor(EQUIPMENT_LIST)(cell, onRendered, success, cancel);
+                },
+                formatter: multiBadgeFormatter('#3182ce'),
             },
+
             {
                 title: 'TAT',
                 field: 'tat',
@@ -1198,8 +1343,26 @@
             { title: 'Unloading Completed', field: 'unloading_completed', width: 170, formatter: mbcDateFormatter, editor: dateTimeEditor },
             { title: 'MBC Cast Off', field: 'mbc_cast_off', width: 160, formatter: mbcDateFormatter, editor: dateTimeEditor },
             { title: 'Sailed Out Load Port', field: 'sailed_out_load_port', width: 170, formatter: mbcDateFormatter, editor: dateTimeEditor },
-            { title: 'Unloaded By', field: 'vessel_unloaded_by', width: 150 },
-            { title: 'Unloaded Berth', field: 'unloaded_berth', width: 150 },
+{
+                title: 'Unloaded By',
+                field: 'vessel_unloaded_by',
+                width: 220,
+                headerHozAlign: 'center',
+                editor: function(cell, onRendered, success, cancel) {
+                    return makeMultiSelectEditor(EQUIPMENT_LIST)(cell, onRendered, success, cancel);
+                },
+                formatter: multiBadgeFormatter('#3182ce'),
+            },
+            {
+                title: 'Unloaded Berth',
+                field: 'unloaded_berth',
+                width: 220,
+                headerHozAlign: 'center',
+                editor: function(cell, onRendered, success, cancel) {
+                    return makeMultiSelectEditor(BERTH_LIST)(cell, onRendered, success, cancel);
+                },
+                formatter: multiBadgeFormatter('#38a169'),
+            },
             { title: 'TAT', field: 'tat', width: 100 }
         ];
     }
@@ -1385,13 +1548,15 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         id: row.mbc_id,
-                        mbc_arrival_port: row.mbc_arrival_port,          // ← new
-                        mbc_amf_unloading_berth: row.mbc_amf_unloading_berth, // ← new
+                        mbc_arrival_port: row.mbc_arrival_port,
+                        mbc_amf_unloading_berth: row.mbc_amf_unloading_berth,
                         unloading_commenced: row.unloading_commenced,
                         cleaning_commenced: row.cleaning_commenced,
                         unloading_completed: row.unloading_completed,
                         mbc_cast_off: row.mbc_cast_off,
-                        sailed_out_load_port: row.sailed_out_load_port
+                        sailed_out_load_port: row.sailed_out_load_port,
+                        vessel_unloaded_by: row.vessel_unloaded_by,
+                        unloaded_berth: row.unloaded_berth
                     })
                 })
                     .then(r => r.json())
@@ -1414,7 +1579,8 @@
                         commence_discharge_berth: row.commence_discharge_berth,
                         completed_discharge_berth: row.completed_discharge_berth,
                         cast_off_berth_nt: row.cast_off_berth_nt,
-                        cast_off_port: row.cast_off_port
+                        cast_off_port: row.cast_off_port,
+                        unloaded_by: row.unloaded_by,
                     })
                 })
                     .then(r => r.json())
@@ -2321,13 +2487,30 @@ function applyFilters() {
     }
 
     /* ── On load — auto-fetch current month ──────────────── */
-    document.addEventListener('DOMContentLoaded', function () {
+// ── Dynamic Equipment & Berth lists ──────────────────────────────────
+    let EQUIPMENT_LIST = [];
+    let BERTH_LIST = [];
+
+    async function loadEquipmentAndBerth() {
+        try {
+            const [eqRes, berthRes] = await Promise.all([
+                fetch('/api/module/VEM01/all'),
+                fetch('/api/module/PBM01/all')
+            ]);
+            const eqData    = await eqRes.json();
+            const berthData = await berthRes.json();
+            // Handle both plain string arrays AND object arrays
+            EQUIPMENT_LIST = eqData.map(x => typeof x === 'string' ? x : (x.name || x.equipment_name || String(x)));
+            BERTH_LIST     = berthData.map(x => typeof x === 'string' ? x : (x.name || x.berth_name || String(x)));
+        } catch(e) {
+            console.error('Failed to load equipment/berth lists', e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', async function () {
         swapStatusFilterOptions('barges');
-
+        await loadEquipmentAndBerth();
         applyFilters();
-
-
-
     });
     let filterIndex = 0;
 
