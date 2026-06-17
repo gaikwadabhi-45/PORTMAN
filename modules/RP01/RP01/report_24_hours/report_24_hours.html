@@ -365,7 +365,7 @@ function render24HoursReport(data) {
     }
 
     // Vessel List
-   if ((data.mv_discharge_list || []).length > 0) {
+if ((data.mv_discharge_list || []).length > 0) {
 
     html += `<div style="margin-top:25px;"></div>`;
 
@@ -379,13 +379,15 @@ function render24HoursReport(data) {
                 -
                 ${item.cargo_name || ''}
                 -
-                 24 Hrs Discharge:
+                24 Hrs Discharge:
                 ${Number(item.discharge_24hrs || 0).toLocaleString()} MT
                 /
                 Balance:
                 ${Number(item.balance_qty || 0).toLocaleString()} MT
                 /
-                ${item.discharge_completed ? 'Completed' : 'Still Discharging'}
+                ${item.delay_name || ''}
+                -
+                ${Number(item.calculated_hrs || 0).toFixed(2)} Hrs
             </li>
         `;
     });
