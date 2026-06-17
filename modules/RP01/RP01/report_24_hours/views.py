@@ -419,25 +419,49 @@ def get_24_hours_report():
             print("MV ROWS FOUND:", len(rows))
 
             # ------------------------------------
-            # DISCHARGED QTY TILL REPORT DATE
+            # SAME LOGIC AS ops_24h / ops_till
             # ------------------------------------
 
-            lueu_total = {}
+            ops_24h = {}
+            ops_till = {}
 
-            cur.execute("""
-                SELECT
-                    source_id,
-                    COALESCE(SUM(quantity), 0) AS qty
-                FROM lueu_lines
-                WHERE source_type = 'VCN'
-                GROUP BY source_id
-            """)
+            ldud_ids = [r['id'] for r in rows]
 
-            for r in cur.fetchall():
+            prev_date = selected_dt.date() - timedelta(days=1)
 
-                lueu_total[r['source_id']] = float(
-                    r['qty'] or 0
-                )
+            if ldud_ids:
+
+                cur.execute("""
+                    SELECT
+                        ldud_id,
+                        COALESCE(SUM(quantity), 0) AS qty
+                    FROM ldud_vessel_operations
+                    WHERE ldud_id = ANY(%s)
+                    AND TO_DATE(start_time, 'YYYY-MM-DD') = %s
+                    GROUP BY ldud_id
+                """, (ldud_ids, prev_date))
+
+                for r in cur.fetchall():
+
+                    ops_24h[r['ldud_id']] = float(
+                        r['qty'] or 0
+                    )
+
+                cur.execute("""
+                    SELECT
+                        ldud_id,
+                        COALESCE(SUM(quantity), 0) AS qty
+                    FROM ldud_vessel_operations
+                    WHERE ldud_id = ANY(%s)
+                    AND TO_DATE(start_time, 'YYYY-MM-DD') <= %s
+                    GROUP BY ldud_id
+                """, (ldud_ids, prev_date))
+
+                for r in cur.fetchall():
+
+                    ops_till[r['ldud_id']] = float(
+                        r['qty'] or 0
+                    )
 
             # ------------------------------------
             # PROCESS VESSELS
@@ -445,6 +469,7 @@ def get_24_hours_report():
 
             for row in rows:
 
+                ldud_id = row['id']
                 vcn_id = row['vcn_id']
 
                 cargo_name = ''
@@ -484,42 +509,66 @@ def get_24_hours_report():
                             or 0
                         )
 
-                # Total discharged till date
-                discharge_qty = lueu_total.get(
-                    vcn_id,
+                # ------------------------------------
+                # SAME AS ops_24h
+                # ------------------------------------
+
+                discharge_24hrs = ops_24h.get(
+                    ldud_id,
                     0
                 )
 
-                # 24 Hrs discharge
-                cur.execute("""
-                    SELECT
-                        COALESCE(
-                            SUM(quantity),
-                            0
-                        ) AS qty
+                # ------------------------------------
+                # SAME AS ops_till
+                # ------------------------------------
 
-                    FROM lueu_lines
-
-                    WHERE source_type = 'VCN'
-                    AND source_id = %s
-                    AND entry_date = %s
-
-                """, (
-                    vcn_id,
-                    fetch_date.strftime('%Y-%m-%d')
-                ))
-
-                qty_row = cur.fetchone()
-
-                discharge_24hrs = float(
-                    qty_row['qty'] or 0
+                discharge_qty = ops_till.get(
+                    ldud_id,
+                    0
                 )
 
-                # Balance
                 balance_qty = max(
                     bl_qty - discharge_qty,
                     0
                 )
+
+                # ------------------------------------
+                # DELAYS
+                # ------------------------------------
+
+                delay_name = ''
+                calculated_hrs = 0
+
+                cur.execute("""
+                    SELECT
+                        delay_name,
+                        COALESCE(
+                            SUM(total_time_mins),
+                            0
+                        ) AS total_mins
+                    FROM ldud_delays
+                    WHERE ldud_id = %s
+                    GROUP BY delay_name
+                    ORDER BY total_mins DESC
+                    LIMIT 1
+                """, (ldud_id,))
+
+                delay_row = cur.fetchone()
+
+                if delay_row:
+
+                    delay_name = (
+                        delay_row['delay_name']
+                        or ''
+                    )
+
+                    calculated_hrs = round(
+                        float(
+                            delay_row['total_mins']
+                            or 0
+                        ) / 60,
+                        2
+                    )
 
                 mv_discharge_list.append({
 
@@ -537,11 +586,9 @@ def get_24_hours_report():
                         2
                     ),
 
-                    'status': (
-                        'Still Discharging'
-                        if row['discharge_completed'] is None
-                        else 'Completed'
-                    )
+                    'delay_name': delay_name,
+
+                    'calculated_hrs': calculated_hrs
 
                 })
 
@@ -565,7 +612,7 @@ def get_24_hours_report():
             conn.rollback()
 
             mv_discharge_list = []
-            # =================================================
+        # =================================================
         # MBC DISCHARGING LAST 24 HRS
         # =================================================
 
@@ -622,6 +669,9 @@ def get_24_hours_report():
 
             active_ldud_ids = [r['id'] for r in rows]
 
+            print("\n========== BARGE DEBUG ==========")
+            print("ACTIVE LDUD IDS:", active_ldud_ids)
+
             if active_ldud_ids:
 
                 cur.execute("""
@@ -667,39 +717,49 @@ def get_24_hours_report():
 
                 barge_rows = cur.fetchall()
 
+                print("ACTIVE BARGE ROWS COUNT:", len(barge_rows))
+
                 print("\n========== ACTIVE BARGES ==========")
 
                 total_barges = len(barge_rows)
 
                 for r in barge_rows:
 
-                    barge_name = r['barge_name'] or ''
-                    cargo = (r['cargo_name'] or '').strip().upper()
+                    barge_name = (r.get('barge_name') or '').strip()
+                    cargo = (r.get('cargo_name') or '').strip().upper()
 
                     print(
                         f"BARGE: {barge_name} | CARGO: {cargo}"
                     )
 
+                    # ONLY CLINKER & SLAG ARE CEMENT BARGES
                     if (
                         cargo.startswith('CLINKER')
-                        or cargo.startswith('LIMESTONE')
-                        or cargo.startswith('CEMENT')
+                        or cargo.startswith('SLAG')
                     ):
                         cement_barges += 1
 
                 print("========== END ACTIVE BARGES ==========\n")
 
                 steel_barges = total_barges - cement_barges
-
                 barges_count = total_barges
+
+            else:
+
+                print("NO ACTIVE LDUD IDS FOUND")
 
             print("TOTAL BARGES :", total_barges)
             print("CEMENT BARGES:", cement_barges)
             print("STEEL BARGES :", steel_barges)
 
+            print("========== END BARGE DEBUG ==========\n")
+
         except Exception as e:
 
             print("BARGE ERROR:", str(e))
+
+            import traceback
+            traceback.print_exc()
 
             conn.rollback()
 
