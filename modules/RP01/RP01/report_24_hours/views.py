@@ -579,7 +579,7 @@ def get_24_hours_report():
                 # DAYS CALCULATION
                 # ------------------------------------
 
-                days_factor = 1
+                days_factor = 1.00
 
                 raw_start = anchorage_row['discharge_start']
                 raw_end = anchorage_row['discharge_end']
@@ -607,26 +607,33 @@ def get_24_hours_report():
                 # No start/end shown on UI
                 else:
 
-                    days_factor = 1
+                    days_factor = 1.00
 
-                days_factor = round(days_factor, 4)
+                days_factor = round(
+                    days_factor,
+                    2
+                )
 
                 print(
                     "VESSEL:",
                     row['vessel_name'],
                     "DAYS FACTOR:",
-                    days_factor
+                    f"{days_factor:.2f}"
                 )
+
                 # ------------------------------------
                 # ADD TO TOTAL DAYS
                 # ------------------------------------
 
-                mv_total_days += days_factor
+                mv_total_days = round(
+                    mv_total_days + days_factor,
+                    2
+                )
 
                 print(
                     "TOTAL DAYS SO FAR:",
-                    mv_total_days
-)
+                    f"{mv_total_days:.2f}"
+                )
 
                 if anchorage_row:
 
