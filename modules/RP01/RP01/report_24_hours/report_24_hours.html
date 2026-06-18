@@ -318,24 +318,24 @@ function buildWhatsAppText(data) {
     if (mvList.length > 0) {
         mvList.forEach((item, i) => {
 
-            let line = `${i + 1}. ${item.vessel_name} - ${item.cargo_name || ''}`;
-            line += ` - 24 Hrs Discharge: ${Number(item.discharge_24hrs || 0).toLocaleString()} MT`;
-            line += ` / Balance: ${Number(item.balance_qty || 0).toLocaleString()} MT`;
+    let line = `${i + 1}. ${item.vessel_name} - ${item.cargo_name || ''}`;
+    line += ` - 24 Hrs Discharge: ${Number(item.discharge_24hrs || 0).toLocaleString()} MT`;
+    line += ` / Balance: ${Number(item.balance_qty || 0).toLocaleString()} MT`;
 
-            if (item.delay_name) {
-                line += ` / ${item.delay_name}`;
-            }
-            if (item.discharge_start_date) {
-                line += ` / Discharge Started: ${item.discharge_start_date}`;
-            }
-            if (item.discharge_end_date) {
-                line += ` / Discharge Completed: ${item.discharge_end_date}`;
-            }
+    if (item.delay_name) {
+        line += ` / ${item.delay_name}`;
+    }
 
-            lines.push(line);
-        });
+    if (item.discharge_start_date) {
+        line += ` / Discharge Started: ${item.discharge_start_date}`;
+    }
 
-        lines.push('');
+    if (item.discharge_end_date) {
+        line += ` / Discharge Completed: ${item.discharge_end_date}`;
+    }
+
+    lines.push(line + '\n');
+});
     }
 
     // MBC Discharging
@@ -344,8 +344,10 @@ function buildWhatsAppText(data) {
 
     // Barges
     lines.push(`*Barges in Mumbai Lighterage Operation* - ${data.barges_count} Nos.`);
-    lines.push(`  Cement Barges - ${data.cement_barges || 0} Nos.`);
-    lines.push(`  Steel Barges  - ${data.steel_barges || 0} Nos.`);
+    lines.push(
+    `(Cement Barges - ${data.cement_barges || 0} Nos.) ` +
+    `(Steel Barges - ${data.steel_barges || 0} Nos.)`
+);
     lines.push(`  Cement Cargo  - ${Number(data.cement_cargo || 0).toLocaleString()} MT`);
     lines.push(`  Steel Cargo   - ${Number(data.steel_cargo || 0).toLocaleString()} MT`);
     lines.push('');
@@ -583,17 +585,22 @@ function render24HoursReport(data) {
         </div>
 
         <div class="report-line">
-            <b>Barges in Mumbai Lighterage Operation -</b>
-            ${data.barges_count} Nos.
-            <br>
-            <span style="margin-left:20px;">Cement Barges - ${data.cement_barges || 0} Nos.</span>
-            <br>
-            <span style="margin-left:20px;">Steel Barges - ${data.steel_barges || 0} Nos.</span>
-            <br>
-            <span style="margin-left:20px;">Cement Cargo - ${Number(data.cement_cargo || 0).toLocaleString()} MT</span>
-            <br>
-            <span style="margin-left:20px;">Steel Cargo - ${Number(data.steel_cargo || 0).toLocaleString()} MT</span>
-        </div>
+    <b>Barges in Mumbai Lighterage Operation -</b>
+    ${data.barges_count} Nos.
+    <br>
+    <span style="margin-left:20px;">
+        (Cement Barges - ${data.cement_barges || 0} Nos.)
+        (Steel Barges - ${data.steel_barges || 0} Nos.)
+    </span>
+    <br>
+    <span style="margin-left:20px;">
+        Cement Cargo - ${Number(data.cement_cargo || 0).toLocaleString()} MT
+    </span>
+    <br>
+    <span style="margin-left:20px;">
+        Steel Cargo - ${Number(data.steel_cargo || 0).toLocaleString()} MT
+    </span>
+</div>
 
         <div class="report-line">
             <b>Jetty Handling :</b>
