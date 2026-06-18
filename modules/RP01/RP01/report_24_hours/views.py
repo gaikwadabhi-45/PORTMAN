@@ -537,6 +537,10 @@ def get_24_hours_report():
                 # PREVIOUS DAY DELAYS FOR SAME VESSEL
                 # ------------------------------------
 
+                                # ------------------------------------
+                # PREVIOUS DAY DELAYS FOR SAME VESSEL
+                # ------------------------------------
+
                 delay_text = ''
                 discharge_start_date = ''
                 discharge_end_date = ''
@@ -557,7 +561,10 @@ def get_24_hours_report():
                     microsecond=0
                 )
 
-                # ── Fetch discharge start/end from ldud_anchorage ──
+                # ------------------------------------
+                # FETCH DISCHARGE START / END
+                # ------------------------------------
+
                 cur.execute("""
                     SELECT
                         MIN(discharge_started) AS discharge_start,
@@ -582,20 +589,14 @@ def get_24_hours_report():
                     raw_start = anchorage_row['discharge_start']
                     raw_end = anchorage_row['discharge_end']
 
-                    # Show start only if it falls within the window
-                    if (
-                        raw_start
-                        and window_start <= raw_start < window_end
-                    ):
+                    if raw_start:
+
                         discharge_start_date = raw_start.strftime(
                             '%d-%b-%Y %H:%M'
                         )
 
-                    # Show end only if it falls within the window
-                    if (
-                        raw_end
-                        and window_start <= raw_end < window_end
-                    ):
+                    if raw_end:
+
                         discharge_end_date = raw_end.strftime(
                             '%d-%b-%Y %H:%M'
                         )
@@ -614,7 +615,10 @@ def get_24_hours_report():
                     discharge_end_date
                 )
 
-                # ── Fetch delays within window ──
+                # ------------------------------------
+                # FETCH DELAYS WITHIN REPORT WINDOW
+                # ------------------------------------
+
                 cur.execute("""
                     SELECT
                         delay_name,
@@ -670,13 +674,46 @@ def get_24_hours_report():
                     if crane_count > 4:
                         crane_count = 4
 
-                    adjusted_mins = (
-                        total_mins / 4
-                    ) * crane_count
+                    # ------------------------------------
+                    # CRANE-WISE DELAY CALCULATION
+                    # ------------------------------------
+
+                    if crane_count == 1:
+
+                        adjusted_mins = (
+                            total_mins / 4
+                        )
+
+                    elif crane_count == 2:
+
+                        adjusted_mins = (
+                            total_mins / 2
+                        )
+
+                    elif crane_count == 3:
+
+                        adjusted_mins = (
+                            total_mins / 4
+                        ) * 3
+
+                    else:
+
+                        adjusted_mins = total_mins
 
                     adjusted_hrs = round(
                         adjusted_mins / 60,
                         2
+                    )
+
+                    print(
+                        "DELAY:",
+                        delay_name,
+                        "TOTAL MINS:",
+                        total_mins,
+                        "CRANES:",
+                        crane_count,
+                        "ADJUSTED HRS:",
+                        adjusted_hrs
                     )
 
                     delay_parts.append(
@@ -698,6 +735,11 @@ def get_24_hours_report():
                     window_end,
                     "DELAYS:",
                     delay_text
+                )
+
+                print(
+                    "APPENDING MV:",
+                    row['vessel_name']
                 )
 
                 mv_discharge_list.append({
@@ -801,10 +843,6 @@ def get_24_hours_report():
         # BARGE SUMMARY
         # =================================================
 
-        # =================================================
-        # BARGE SUMMARY
-        # =================================================
-
         total_barges = 0
         cement_barges = 0
         steel_barges = 0
@@ -812,66 +850,135 @@ def get_24_hours_report():
 
         try:
 
-            active_ldud_ids = [r['id'] for r in rows]
+            selected_dt = datetime.strptime(
+                selected_date,
+                '%Y-%m-%d'
+            )
 
-            print("\n========== BARGE DEBUG ==========")
-            print("ACTIVE LDUD IDS:", active_ldud_ids)
+            window_start = (
+                selected_dt - timedelta(days=1)
+            ).strftime('%Y-%m-%dT08:00')
 
-            if active_ldud_ids:
+            window_end = selected_dt.strftime(
+                '%Y-%m-%dT08:00'
+            )
 
-                cur.execute("""
-                    SELECT DISTINCT
-                        TRIM(barge_name) AS barge_name,
-                        UPPER(
-                            COALESCE(cargo_name, '')
-                        ) AS cargo_name
-                    FROM ldud_barge_lines
-                    WHERE ldud_id = ANY(%s)
-                    ORDER BY barge_name
-                """, (active_ldud_ids,))
+            cur.execute("""
+                SELECT DISTINCT
+                    TRIM(barge_name) AS barge_name,
 
-                barge_rows = cur.fetchall()
+                    along_side_berth,
+                    commence_discharge_berth,
+                    completed_discharge_berth,
 
-                print(
-                    "TOTAL DISTINCT BARGES:",
-                    len(barge_rows)
+                    cast_off_mv,
+                    commenced_loading,
+                    completed_loading,
+
+                    UPPER(
+                        COALESCE(cargo_name,'')
+                    ) AS cargo_name
+
+                FROM ldud_barge_lines
+
+                WHERE
+                    commence_discharge_berth IS NOT NULL
+
+                    AND commence_discharge_berth >= %s
+                    AND commence_discharge_berth < %s
+
+                ORDER BY barge_name
+            """, (
+                window_start,
+                window_end
+            ))
+
+            barge_rows = cur.fetchall()
+
+            active_barges = set()
+            cement_barge_set = set()
+
+            for r in barge_rows:
+
+                barge_name = (
+                    r['barge_name']
+                    or ''
+                ).strip().upper()
+
+                cargo_name = (
+                    r['cargo_name']
+                    or ''
+                ).strip().upper()
+
+                if not barge_name:
+                    continue
+
+                active_barges.add(
+                    barge_name
                 )
 
-                total_barges = len(barge_rows)
+                if (
+                    'CLINKER' in cargo_name
+                    or 'SLAG' in cargo_name
+                ):
+                    cement_barge_set.add(
+                        barge_name
+                    )
 
-                for r in barge_rows:
+            total_barges = len(
+                active_barges
+            )
 
-                    cargo_name = (
-                        r['cargo_name'] or ''
-                    ).strip().upper()
+            cement_barges = len(
+                cement_barge_set
+            )
 
-                    if (
-                        'CLINKER' in cargo_name
-                        or 'SLAG' in cargo_name
-                    ):
-                        cement_barges += 1
+            steel_barges = (
+                total_barges
+                - cement_barges
+            )
 
-                steel_barges = (
-                    total_barges -
-                    cement_barges
-                )
+            barges_count = total_barges
 
-                # If you want cement barges added again
-                barges_count = (
-                    total_barges +
-                    cement_barges
-                )
+            print("\n========== BARGE SUMMARY ==========")
 
-            print("\n========== ACTIVE BARGE SUMMARY ==========")
-            print("TOTAL BARGES      :", total_barges)
-            print("CEMENT BARGES     :", cement_barges)
-            print("STEEL BARGES      :", steel_barges)
-            print("FINAL BARGE COUNT :", barges_count)
-            print("========== END BARGE DEBUG ==========\n")
+            for b in sorted(active_barges):
+                print("BARGE:", b)
+
+            print(
+                "TOTAL BARGES      :",
+                total_barges
+            )
+
+            print(
+                "CEMENT BARGES     :",
+                cement_barges
+            )
+
+            print(
+                "STEEL BARGES      :",
+                steel_barges
+            )
+
+            print(
+                "FINAL BARGE COUNT :",
+                barges_count
+            )
+
+            print(
+                "===================================\n"
+            )
 
         except Exception as e:
 
-            print("BARGE ERROR:", str(e))
+            import traceback
+
+            print(
+                "BARGE ERROR:",
+                str(e)
+            )
+
+            traceback.print_exc()
 
             total_barges = 0
             cement_barges = 0
@@ -926,9 +1033,13 @@ def get_24_hours_report():
                         'OTHERS'
                     )
 
+                ORDER BY 1
+
             """, (fetch_date,))
 
             cargo_rows = cur.fetchall()
+
+            print("\n===== CARGO ROWS =====")
 
             total_qty = 0
             clinker_qty = 0
@@ -936,25 +1047,30 @@ def get_24_hours_report():
 
             for r in cargo_rows:
 
-                cargo_type = (
+                cargo_type = str(
                     r['cargo_type']
                     or ''
-                ).upper()
+                ).strip().upper()
 
                 qty = float(
                     r['qty']
                     or 0
                 )
 
+                print(
+                    "CARGO TYPE:",
+                    cargo_type,
+                    "QTY:",
+                    qty
+                )
+
                 total_qty += qty
 
-                if cargo_type == 'Clinker':
+                if cargo_type == 'CLINKER':
                     clinker_qty += qty
 
-                elif cargo_type == 'Slag':
+                elif cargo_type == 'SLAG':
                     slag_qty += qty
-
-            # Same logic as throughput report
 
             cement_cargo = (
                 clinker_qty
@@ -965,6 +1081,13 @@ def get_24_hours_report():
                 total_qty
                 - clinker_qty
                 - slag_qty
+            )
+
+            print("========================")
+
+            print(
+                "TOTAL QTY:",
+                total_qty
             )
 
             print(
@@ -993,6 +1116,9 @@ def get_24_hours_report():
                 "CARGO TOTAL ERROR:",
                 str(e)
             )
+
+            import traceback
+            traceback.print_exc()
 
             cement_cargo = 0
             steel_cargo = 0
@@ -1137,7 +1263,7 @@ def get_24_hours_report():
             jetty_mtd = 0
             jetty_ytd = 0
 
-            # -----------------------------------------
+        # -----------------------------------------
         # JETTY CARGO BREAKDOWN
         # -----------------------------------------
 
