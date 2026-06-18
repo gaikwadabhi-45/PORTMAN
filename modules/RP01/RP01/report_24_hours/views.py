@@ -580,17 +580,18 @@ def get_24_hours_report():
                     raw_start = anchorage_row['discharge_start']
                     raw_end = anchorage_row['discharge_end']
 
+                    # Only show if date falls within the report window
                     if raw_start:
-
-                        discharge_start_date = raw_start.strftime(
-                            '%d-%b-%Y %H:%M'
-                        )
+                        if delay_window_start <= raw_start < delay_window_end:
+                            discharge_start_date = raw_start.strftime(
+                                '%d-%b-%Y %H:%M'
+                            )
 
                     if raw_end:
-
-                        discharge_end_date = raw_end.strftime(
-                            '%d-%b-%Y %H:%M'
-                        )
+                        if delay_window_start <= raw_end < delay_window_end:
+                            discharge_end_date = raw_end.strftime(
+                                '%d-%b-%Y %H:%M'
+                            )
 
                 print(
                     "ANCHORAGE ROW:",
@@ -639,6 +640,20 @@ def get_24_hours_report():
                 ))
 
                 delay_rows = cur.fetchall()
+
+                # ── Debug: print raw delay rows ──
+                print("\n========== RAW DELAY ROWS ==========")
+                print(f"VESSEL: {row['vessel_name']} | LDUD: {ldud_id}")
+                print(f"WINDOW: {delay_window_start} TO {delay_window_end}")
+                print(f"Total delay rows: {len(delay_rows)}")
+                for d in delay_rows:
+                    print(
+                        f"  DELAY: {d['delay_name']!r:30s} | "
+                        f"CRANE COUNT: {d['crane_count']} | "
+                        f"TOTAL HRS: {d['total_hrs']}"
+                    )
+                print("=====================================\n")
+
 
                 delay_parts = []
 
