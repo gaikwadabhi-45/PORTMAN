@@ -575,6 +575,59 @@ def get_24_hours_report():
 
                 anchorage_row = cur.fetchone()
 
+                # ------------------------------------
+                # DAYS CALCULATION
+                # ------------------------------------
+
+                days_factor = 1
+
+                raw_start = anchorage_row['discharge_start']
+                raw_end = anchorage_row['discharge_end']
+
+                # Vessel completed within report window
+                if raw_end and window_start <= raw_end < window_end:
+
+                    completion_hrs = (
+                        raw_end - window_start
+                    ).total_seconds() / 3600
+
+                    days_factor = completion_hrs / 24
+
+                # Vessel started within report window
+                elif raw_start and window_start <= raw_start < window_end:
+
+                    lost_hrs = (
+                        raw_start - window_start
+                    ).total_seconds() / 3600
+
+                    days_factor = (
+                        24 - lost_hrs
+                    ) / 24
+
+                # No start/end shown on UI
+                else:
+
+                    days_factor = 1
+
+                days_factor = round(days_factor, 4)
+
+                print(
+                    "VESSEL:",
+                    row['vessel_name'],
+                    "DAYS FACTOR:",
+                    days_factor
+                )
+                # ------------------------------------
+                # ADD TO TOTAL DAYS
+                # ------------------------------------
+
+                mv_total_days += days_factor
+
+                print(
+                    "TOTAL DAYS SO FAR:",
+                    mv_total_days
+)
+
                 if anchorage_row:
 
                     raw_start = anchorage_row['discharge_start']
@@ -614,25 +667,35 @@ def get_24_hours_report():
                 cur.execute("""
                     SELECT
                         delay_name,
-                        COUNT(
-                            DISTINCT crane_number
-                        ) AS crane_count,
+
+                        STRING_AGG(
+                            COALESCE(crane_number, ''),
+                            ','
+                        ) AS crane_numbers,
+
                         COALESCE(
                             SUM(total_time_hrs),
                             0
                         ) AS total_hrs
+
                     FROM ldud_delays
+
                     WHERE ldud_id = %s
+
                     AND TO_TIMESTAMP(
                         start_datetime,
                         'YYYY-MM-DD"T"HH24:MI'
                     ) >= %s
+
                     AND TO_TIMESTAMP(
                         start_datetime,
                         'YYYY-MM-DD"T"HH24:MI'
                     ) < %s
+
                     GROUP BY delay_name
+
                     ORDER BY delay_name
+
                 """, (
                     ldud_id,
                     delay_window_start,
@@ -641,19 +704,10 @@ def get_24_hours_report():
 
                 delay_rows = cur.fetchall()
 
-                # ── Debug: print raw delay rows ──
                 print("\n========== RAW DELAY ROWS ==========")
                 print(f"VESSEL: {row['vessel_name']} | LDUD: {ldud_id}")
                 print(f"WINDOW: {delay_window_start} TO {delay_window_end}")
                 print(f"Total delay rows: {len(delay_rows)}")
-                for d in delay_rows:
-                    print(
-                        f"  DELAY: {d['delay_name']!r:30s} | "
-                        f"CRANE COUNT: {d['crane_count']} | "
-                        f"TOTAL HRS: {d['total_hrs']}"
-                    )
-                print("=====================================\n")
-
 
                 delay_parts = []
 
@@ -669,34 +723,42 @@ def get_24_hours_report():
                         or 0
                     )
 
-                    crane_count = int(
-                        d['crane_count']
-                        or 0
+                    crane_text = (
+                        d['crane_numbers']
+                        or ''
                     )
 
-                    if crane_count <= 0:
-                        crane_count = 1
+                    cranes = set()
 
-                    if crane_count > 4:
-                        crane_count = 4
+                    for part in crane_text.replace(',', ' ').split():
+
+                        part = part.strip()
+
+                        if part:
+                            cranes.add(part)
+
+                    total_cranes = len(cranes)
+
+                    if total_cranes <= 0:
+                        total_cranes = 1
 
                     # ------------------------------------
                     # CRANE-WISE DELAY CALCULATION
                     # ------------------------------------
 
-                    if crane_count == 1:
+                    if total_cranes == 1:
 
                         adjusted_hrs = (
                             total_hrs / 4
                         )
 
-                    elif crane_count == 2:
+                    elif total_cranes == 2:
 
                         adjusted_hrs = (
                             total_hrs / 2
                         )
 
-                    elif crane_count == 3:
+                    elif total_cranes == 3:
 
                         adjusted_hrs = (
                             total_hrs / 4
@@ -714,17 +776,21 @@ def get_24_hours_report():
                     print(
                         "DELAY:",
                         delay_name,
-                        "TOTAL HRS:",
+                        "| TOTAL HRS:",
                         total_hrs,
-                        "CRANES:",
-                        crane_count,
-                        "ADJUSTED HRS:",
-                        adjusted_hrs
+                        "| TOTAL CRANES:",
+                        total_cranes,
+                        "| ADJUSTED HRS:",
+                        adjusted_hrs,
+                        "| CRANES:",
+                        sorted(cranes)
                     )
 
                     delay_parts.append(
                         f"{delay_name} - {adjusted_hrs} Hrs"
                     )
+
+                print("=====================================\n")
 
                 delay_text = ", ".join(
                     delay_parts
