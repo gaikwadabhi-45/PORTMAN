@@ -1524,9 +1524,36 @@ def _fetch_mbc_status(report_date):
         SELECT
 
             CASE
+
+                /* Empty : Waiting at Jaigad */
+                WHEN h.id IS NULL
+                THEN TRIM(m.mbc_name)
+
+                /* Empty : Waiting at Load Port */
+                WHEN
+                    NULLIF(TRIM(l.arrived_load_port), '') IS NOT NULL
+                    AND NULLIF(TRIM(l.loading_commenced), '') IS NULL
+                THEN TRIM(m.mbc_name)
+
+                /* Empty : On the way to Jaigad */
+                WHEN
+                    NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
+                    AND d.sailed_out_load_port IS NOT NULL
+                THEN TRIM(m.mbc_name)
+
+                /* Empty : Waiting at Dharamtar */
+                WHEN
+                    NULLIF(TRIM(d.unloading_completed), '') IS NOT NULL
+                THEN TRIM(m.mbc_name)
+
+                /* Show cargo only for loaded / loading MBCs */
                 WHEN COALESCE(NULLIF(TRIM(h.cargo_name), ''), '') <> ''
-                THEN TRIM(m.mbc_name) || ' (' || TRIM(h.cargo_name) || ')'
-                ELSE TRIM(m.mbc_name)
+                THEN
+                    TRIM(m.mbc_name) || ' (' || TRIM(h.cargo_name) || ')'
+
+                ELSE
+                    TRIM(m.mbc_name)
+
             END AS mbc_name,
 
             CASE
