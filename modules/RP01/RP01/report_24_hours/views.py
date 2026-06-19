@@ -718,12 +718,29 @@ def get_24_hours_report():
 
                 delay_parts = []
 
+                excluded_delays = {
+                    'crane idle due to hold completion',
+                    'barge approaching'
+                }
+
                 for d in delay_rows:
 
                     delay_name = (
                         d['delay_name']
                         or ''
-                    )
+                    ).strip()
+
+                    # ------------------------------------
+                    # SKIP DELAYS NOT REQUIRED IN UI
+                    # ------------------------------------
+                    if delay_name.lower() in excluded_delays:
+
+                        print(
+                            "SKIPPING DELAY:",
+                            delay_name
+                        )
+
+                        continue
 
                     total_hrs = float(
                         d['total_hrs']
