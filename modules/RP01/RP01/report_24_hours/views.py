@@ -666,6 +666,30 @@ def get_24_hours_report():
                     "DISCHARGE END DATE:",
                     discharge_end_date
                 )
+                # ------------------------------------
+                # DELAY WINDOW (08:00 AM TO 08:00 AM)
+                # ------------------------------------
+
+                delay_window_start = (
+                    selected_dt - timedelta(days=1)
+                ).replace(
+                    hour=8,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+                delay_window_end = selected_dt.replace(
+                    hour=8,
+                    minute=0,
+                    second=0,
+                    microsecond=0
+                )
+
+                print(
+                    f"\nDELAY WINDOW: "
+                    f"{delay_window_start} TO {delay_window_end}"
+                )
 
                 # ------------------------------------
                 # FETCH DELAYS WITHIN REPORT WINDOW
