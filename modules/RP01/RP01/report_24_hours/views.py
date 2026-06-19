@@ -698,16 +698,8 @@ def get_24_hours_report():
                 cur.execute("""
                     SELECT
                         delay_name,
-
-                        STRING_AGG(
-                            COALESCE(crane_number, ''),
-                            ','
-                        ) AS crane_numbers,
-
-                        COALESCE(
-                            SUM(total_time_hrs),
-                            0
-                        ) AS total_hrs
+                        crane_number,
+                        COALESCE(total_time_hrs, 0) AS total_hrs
 
                     FROM ldud_delays
 
@@ -722,8 +714,6 @@ def get_24_hours_report():
                         start_datetime,
                         'YYYY-MM-DD"T"HH24:MI'
                     ) < %s
-
-                    GROUP BY delay_name
 
                     ORDER BY delay_name
 
@@ -740,23 +730,30 @@ def get_24_hours_report():
                 print(f"WINDOW: {delay_window_start} TO {delay_window_end}")
                 print(f"Total delay rows: {len(delay_rows)}")
 
-                delay_parts = []
-
                 excluded_delays = {
                     'crane idle due to hold completion',
                     'barge approaching'
                 }
 
+                delay_totals = {}
+
                 for d in delay_rows:
+
+                    delay_name_mapping = {
+                        'Different Type of Cargo': 'DTC',
+                        'Want of Barge': 'WOB',
+                        'Bad Weather / Heavy Rain': 'Bad Weather',
+                        'Bad Weather/ Rain': 'Bad Weather',
+                        'VTMS Permission': 'VTMS'
+                    }
 
                     delay_name = (
                         d['delay_name']
                         or ''
                     ).strip()
 
-                    # ------------------------------------
-                    # SKIP DELAYS NOT REQUIRED IN UI
-                    # ------------------------------------
+                    delay_name = delay_name_mapping.get(delay_name, delay_name)
+
                     if delay_name.lower() in excluded_delays:
 
                         print(
@@ -772,7 +769,7 @@ def get_24_hours_report():
                     )
 
                     crane_text = (
-                        d['crane_numbers']
+                        d['crane_number']
                         or ''
                     )
 
@@ -794,32 +791,23 @@ def get_24_hours_report():
                     # CRANE-WISE DELAY CALCULATION
                     # ------------------------------------
 
-                    if total_cranes == 1:
-
-                        adjusted_hrs = (
-                            total_hrs / 4
-                        )
-
-                    elif total_cranes == 2:
-
-                        adjusted_hrs = (
-                            total_hrs / 2
-                        )
-
-                    elif total_cranes == 3:
-
-                        adjusted_hrs = (
-                            total_hrs / 4
-                        ) * 3
-
-                    else:
-
-                        adjusted_hrs = total_hrs
+                    adjusted_hrs = (
+                        total_hrs * total_cranes
+                    ) / 4
 
                     adjusted_hrs = round(
                         adjusted_hrs,
                         2
                     )
+
+                    delay_totals.setdefault(
+                        delay_name,
+                        0
+                    )
+
+                    delay_totals[
+                        delay_name
+                    ] += adjusted_hrs
 
                     print(
                         "DELAY:",
@@ -834,8 +822,24 @@ def get_24_hours_report():
                         sorted(cranes)
                     )
 
+                delay_parts = []
+
+                for delay_name, total_delay_hrs in delay_totals.items():
+
+                    total_delay_hrs = round(
+                        total_delay_hrs,
+                        2
+                    )
+
+                    print(
+                        "FINAL DELAY:",
+                        delay_name,
+                        "| TOTAL ADJUSTED HRS:",
+                        total_delay_hrs
+                    )
+
                     delay_parts.append(
-                        f"{delay_name} - {adjusted_hrs} Hrs"
+                        f"{delay_name} - {total_delay_hrs} Hrs"
                     )
 
                 print("=====================================\n")
@@ -856,7 +860,6 @@ def get_24_hours_report():
                     "DELAYS:",
                     delay_text
                 )
-
                 print(
                     "APPENDING MV:",
                     row['vessel_name']
