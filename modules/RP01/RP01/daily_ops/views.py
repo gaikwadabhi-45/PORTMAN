@@ -563,10 +563,16 @@ def _fetch_data(report_date):
     barge_stats = {}
 
     _STATUS_KEYS = (
-        'at_jetty', 'waiting_discharge', 'waiting_empty_jetty',
-        'at_gull_loaded', 'under_loading', 'waiting_loading',
-        'in_transit_jetty_to_mv', 'Non-Operational',
-    )
+    'at_jetty',
+    'waiting_discharge',
+    'waiting_empty_jetty',
+    'at_gull_loaded',
+    'under_loading',
+    'waiting_loading',
+    'in_transit_jetty_to_mv',
+    'breakdown',
+    'Non-Operational',
+)
 
     if ldud_ids:
         cur.execute("""
@@ -704,6 +710,7 @@ def _fetch_data(report_date):
         actual = lueu_total.get(vid, 0)
         bs     = barge_stats.get(lid, {})
 
+        
         v['stevedore_group'] = vcn_meta.get(vid, '') if vid else ''
         v['cargo_name']      = cargo_map.get(vid, '') if vid else ''
 
@@ -2382,9 +2389,9 @@ def _build_excel_a4(
         ("Waiting Empty At Jetty",         "waiting_empty_jetty",    lambda x: x or "",   _left),
         ("At Gull - Waiting (Loaded)",     "at_gull_loaded",         lambda x: x or "",   _left),
         ("Under Loading",                  "under_loading",          lambda x: x or "",   _left),
-        ("Waiting For Loading",            "waiting_loading",        lambda x: x or "",   _left),
-        ("In Transit Jetty To MV",         "in_transit_jetty_to_mv", lambda x: x or "",   _left),
-        ("Breakdown/Offhire/Costal/DD",    "breakdown",              lambda x: x or "",   _left),
+        ("Waiting For Loading", "waiting_loading", lambda x: x or "", _left),
+        ("In Transit Jetty To MV", "in_transit_jetty_to_mv", lambda x: x or "", _left),
+        ("Breakdown/Offhire/Costal/DD", "breakdown", lambda x: x or "", _left),
     ]
 
     for label, field, formatter, align in STATUS_ROWS:
@@ -2417,6 +2424,7 @@ def _build_excel_a4(
         for idx, vessel in enumerate(vessels):
 
             raw = vessel.get(field)
+
             value = formatter(raw) if formatter else raw
 
             _merge_write(
@@ -2691,7 +2699,7 @@ def _build_excel_a4(
 
         # ── data rows ──────────────────────────────────────────────────────────
         data_row   = hdr_row + 1
-        row_labels = ["At Jetty", "", "", "", "Total"]
+        row_labels = ["At Jetty", "", "","Total"]
         for r, lbl in enumerate(row_labels):
             c = ws.cell(data_row + r, CA_START_COL, lbl)
             c.font      = _font()
@@ -2707,6 +2715,11 @@ def _build_excel_a4(
                     c = ws.cell(excel_row, excel_col, value)
                     c.border    = thick_bdr
                     c.alignment = _ctr
+                    c.font = Font(
+                        name='Calibri',
+                        size=21,
+                        bold=True
+                    )
         else:
             col = CA_START_COL + 1
             for row in cargo_availability:
@@ -2723,61 +2736,152 @@ def _build_excel_a4(
 
         for cc in range(CA_START_COL, total_col + 1):
             ws.cell(data_row + 4, cc).border = thick_bdr
-        for rr in range(hdr_row, data_row + 5):
+        for rr in range(hdr_row, data_row + 4):
             ws.cell(rr, total_col).border = thick_bdr
-        for rr in range(uv_start_row, data_row + 5):
+        for rr in range(uv_start_row, data_row + 4):
             for cc in range(CA_START_COL, total_col + 1):
                 ws.cell(rr, cc).border = thick_bdr
 
         # ── grand total row ────────────────────────────────────────────────────
-        grand_total_row = data_row + 5
+        # ── grand total row ────────────────────────────────────────────────────
+        grand_total_row = data_row + 4
+
         c = ws.cell(grand_total_row, CA_START_COL, "")
         c.border = thick_bdr
 
-        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 1,
-                    end_row=grand_total_row,   end_column=CA_START_COL + 5)
-        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 6,
-                    end_row=grand_total_row,   end_column=CA_START_COL + 15)
-        ws.merge_cells(start_row=grand_total_row, start_column=CA_START_COL + 16,
-                    end_row=grand_total_row,   end_column=CA_START_COL + 18)
+        ws.merge_cells(
+            start_row=grand_total_row,
+            start_column=CA_START_COL + 1,
+            end_row=grand_total_row,
+            end_column=CA_START_COL + 5
+        )
 
-        grand_ibrm = grand_cbrm = grand_fluxes = ""
-        grand_slag = grand_clinker = grand_total_val = ""
+        ws.merge_cells(
+            start_row=grand_total_row,
+            start_column=CA_START_COL + 6,
+            end_row=grand_total_row,
+            end_column=CA_START_COL + 15
+        )
+
+        ws.merge_cells(
+            start_row=grand_total_row,
+            start_column=CA_START_COL + 16,
+            end_row=grand_total_row,
+            end_column=CA_START_COL + 18
+        )
+
+        grand_ibrm = ""
+        grand_cbrm = ""
+        grand_fluxes = ""
+        grand_slag = ""
+        grand_clinker = ""
+        grand_total_val = ""
+
         try:
-            if editable_table and len(editable_table) > 6:
-                grand_row       = editable_table[6]
-                grand_ibrm      = grand_row[1] if len(grand_row) > 1 else ""
-                grand_cbrm      = grand_row[2] if len(grand_row) > 2 else ""
-                grand_fluxes    = grand_row[3] if len(grand_row) > 3 else ""
-                grand_slag      = grand_row[4] if len(grand_row) > 4 else ""
-                grand_clinker   = grand_row[5] if len(grand_row) > 5 else ""
-                grand_total_val = grand_row[6] if len(grand_row) > 6 else ""
+
+            print("EDITABLE TABLE =", editable_table)
+
+            # Header + At Jetty + Row2 + Row3 + Total + Grand Total
+            if editable_table and len(editable_table) > 5:
+
+                grand_row = editable_table[5]
+
+                print("GRAND ROW =", grand_row)
+
+                grand_ibrm = (
+                    grand_row[1]
+                    if len(grand_row) > 1 else ""
+                )
+
+                grand_cbrm = (
+                    grand_row[2]
+                    if len(grand_row) > 2 else ""
+                )
+
+                grand_fluxes = (
+                    grand_row[3]
+                    if len(grand_row) > 3 else ""
+                )
+
+                grand_slag = (
+                    grand_row[4]
+                    if len(grand_row) > 4 else ""
+                )
+
+                grand_clinker = (
+                    grand_row[5]
+                    if len(grand_row) > 5 else ""
+                )
+
+                grand_total_val = (
+                    grand_row[6]
+                    if len(grand_row) > 6 else ""
+                )
+
         except Exception as e:
-            print("GRAND TOTAL ERROR =", str(e))
+
+            print(
+                "GRAND TOTAL ERROR =",
+                str(e)
+            )
 
         for (col_offset, val) in [
-            (1,  grand_ibrm),
-            (6,  grand_cbrm),
+
+            (1, grand_ibrm),
+            (6, grand_cbrm),
             (16, grand_fluxes),
             (19, grand_slag),
-            (20, grand_clinker),
+            (20, grand_clinker)
+
         ]:
-            c = ws.cell(grand_total_row, CA_START_COL + col_offset, val)
-            c.font      = _font()
+
+            c = ws.cell(
+                grand_total_row,
+                CA_START_COL + col_offset,
+                val
+            )
+
+            c.font = Font(
+                name='Calibri',
+                size=21,
+                bold=True
+            )
+
             c.alignment = _ctr
-            c.border    = thick_bdr
+            c.border = thick_bdr
 
-        c = ws.cell(grand_total_row, total_col, grand_total_val)
-        c.font      = _font()
+        c = ws.cell(
+            grand_total_row,
+            total_col,
+            grand_total_val
+        )
+
+        c.font = Font(
+            name='Calibri',
+            size=21,
+            bold=True
+        )
+
         c.alignment = _ctr
-        c.border    = thick_bdr
+        c.border = thick_bdr
 
-        for col in range(CA_START_COL, total_col + 1):
-            cell = ws.cell(grand_total_row, col)
-            cell.border    = thick_bdr
+        for col in range(
+            CA_START_COL,
+            total_col + 1
+        ):
+
+            cell = ws.cell(
+                grand_total_row,
+                col
+            )
+
+            cell.border = thick_bdr
             cell.alignment = _ctr
-            cell.font      = _font()
-
+            cell.font = Font(
+                name='Calibri',
+                size=21,
+                bold=True
+            )
         # ── Auto-fit ALL cargo columns based on cargo name length ──────────────
         # Runs at the very end so it always wins over any earlier width setting
         ws.column_dimensions[get_column_letter(CA_START_COL)].width = 15  # label col
@@ -4241,7 +4345,25 @@ def daily_ops_preview():
 
         for v in vessels:
 
-            value = v.get(field, '')
+            if field in (
+                'waiting_loading',
+                'in_transit_jetty_to_mv',
+                'breakdown'
+            ):
+                value = f"""
+                <div contenteditable="true"
+                    data-vessel="{v['id']}"
+                    data-field="{field}"
+                    style="
+                        min-height:60px;
+                        padding:4px;
+                        outline:none;
+                    ">
+                    {v.get(field,'')}
+                </div>
+                """
+            else:
+                value = v.get(field, '')
 
             if field in (
                 'nor_tendered',
@@ -4478,7 +4600,9 @@ def daily_ops_preview():
         <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Dolomite" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
         <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
         <td contenteditable="true" data-section="cargo_avail" data-key="at_jetty_Clinker" style="border:1px solid #ccc;padding:8px;text-align:right;min-width:80px;"></td>
-        <td id="cargo-avail-total" style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;min-width:80px;"></td>
+        <td id="row1_total"
+    style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;min-width:80px;">
+</td>
     </tr>
     <tr>
         <td contenteditable="true" data-section="cargo_avail" data-key="row2_label" style="border:1px solid #ccc;padding:8px;min-width:100px;"></td>
@@ -4502,7 +4626,9 @@ def daily_ops_preview():
         <td contenteditable="true" data-section="cargo_avail" data-key="row2_Dolomite" style="border:1px solid #ccc;padding:8px;"></td>
         <td contenteditable="true" data-section="cargo_avail" data-key="row2_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;"></td>
         <td contenteditable="true" data-section="cargo_avail" data-key="row2_Clinker" style="border:1px solid #ccc;padding:8px;"></td>
-        <td style="border:1px solid #ccc;padding:8px;"></td>
+        <td id="row2_total"
+    style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;">
+</td>
     </tr>
     <tr>
         <td contenteditable="true" data-section="cargo_avail" data-key="row3_label" style="border:1px solid #ccc;padding:8px;min-width:100px;"></td>
@@ -4526,7 +4652,9 @@ def daily_ops_preview():
         <td contenteditable="true" data-section="cargo_avail" data-key="row3_Dolomite" style="border:1px solid #ccc;padding:8px;"></td>
         <td contenteditable="true" data-section="cargo_avail" data-key="row3_Slag Loading/Unloading" style="border:1px solid #ccc;padding:8px;"></td>
         <td contenteditable="true" data-section="cargo_avail" data-key="row3_Clinker" style="border:1px solid #ccc;padding:8px;"></td>
-        <td style="border:1px solid #ccc;padding:8px;"></td>
+        <td id="row3_total"
+    style="border:1px solid #ccc;padding:8px;text-align:right;font-weight:bold;">
+</td>
     </tr>
     <tr style="background:#f2f2f2;font-weight:bold;">
         <td style="border:1px solid #ccc;padding:8px;">Total</td>
@@ -4555,7 +4683,7 @@ def daily_ops_preview():
 
     <tr style="background:#f2f2f2;font-weight:bold;">
 
-    <tr style="background:#f2f2f2;font-weight:bold;">
+    
 
     <td style="border:1px solid #ccc;padding:8px;"></td>
 
@@ -5156,8 +5284,8 @@ def daily_ops_preview():
         width:100%;
     ">
 
-        <!-- RM STOCK DETAILS -->
-        <div>
+<!-- RM STOCK DETAILS -->
+<div>
 
     <h3 style="margin-top:0;">RM Stock Details</h3>
 
@@ -5198,7 +5326,8 @@ def daily_ops_preview():
                 IBRM
             </td>
 
-            <td contenteditable="true"
+            <td id="rm_ibrm"
+                contenteditable="true"
                 style="
                     border:1px solid #ccc;
                     padding:8px;
@@ -5218,7 +5347,8 @@ def daily_ops_preview():
                 CBRM
             </td>
 
-            <td contenteditable="true"
+            <td id="rm_cbrm"
+                contenteditable="true"
                 style="
                     border:1px solid #ccc;
                     padding:8px;
@@ -5238,7 +5368,8 @@ def daily_ops_preview():
                 FLUXES
             </td>
 
-            <td contenteditable="true"
+            <td id="rm_fluxes"
+                contenteditable="true"
                 style="
                     border:1px solid #ccc;
                     padding:8px;
@@ -5261,7 +5392,7 @@ def daily_ops_preview():
                 TOTAL
             </td>
 
-            <td contenteditable="true"
+            <td id="rm_total"
                 style="
                     border:1px solid #ccc;
                     padding:8px;
@@ -5588,6 +5719,10 @@ def daily_ops_download():
         date.today().strftime('%Y-%m-%d')
     )
 
+    # =====================================
+    # CARGO AVAILABILITY TABLE
+    # =====================================
+
     editable_table = []
 
     if request.args.get("editable_table"):
@@ -5597,6 +5732,23 @@ def daily_ops_download():
             )
         except Exception:
             editable_table = []
+
+    # =====================================
+    # VESSEL EDITABLE DATA
+    # =====================================
+
+    vessel_edits = []
+
+    if request.args.get("vessel_edits"):
+        try:
+            vessel_edits = json.loads(
+                request.args.get("vessel_edits")
+            )
+        except Exception:
+            vessel_edits = []
+
+    print("VESSEL EDITS")
+    print(vessel_edits)
 
     try:
         report_date = datetime.strptime(
@@ -5615,6 +5767,82 @@ def daily_ops_download():
     # =====================================
 
     vessels = _fetch_data(report_date)
+
+
+    # =====================================
+    # APPLY EDITED VALUES
+    # =====================================
+
+    for edit in vessel_edits:
+
+        vessel_id = str(
+            edit.get("vessel_id", "")
+        )
+
+        field = edit.get(
+            "field", ""
+        )
+
+        value = edit.get(
+            "value", ""
+        )
+
+        for v in vessels:
+
+            if str(v.get("id")) == vessel_id:
+
+                if field == "waiting_loading":
+                    v["waiting_loading"] = value
+
+                elif field == "in_transit_jetty_to_mv":
+                    v["in_transit_jetty_to_mv"] = value
+
+                elif field == "breakdown":
+                    v["breakdown"] = value
+
+    if not vessels:
+        return Response(
+            'No active vessels found',
+            status=404
+        )
+
+    # =====================================
+    # FETCH DATA
+    # =====================================
+
+    vessels = _fetch_data(report_date)
+
+    print("VESSEL EDITS =", vessel_edits)
+
+    for edit in vessel_edits:
+
+        vessel_id = str(edit.get("vessel_id", ""))
+        field = edit.get("field", "")
+        value = edit.get("value", "")
+
+        print("EDIT =", vessel_id, field, value)
+
+        for v in vessels:
+
+            if str(v.get("id")) == vessel_id:
+
+                print("MATCH FOUND =", vessel_id)
+
+                if field == "waiting_loading":
+                    v["waiting_loading"] = value
+
+                elif field == "in_transit_jetty_to_mv":
+                    v["in_transit_jetty_to_mv"] = value
+
+                elif field == "breakdown":
+                    v["breakdown"] = value
+
+                print(
+                    "UPDATED =>",
+                    v["waiting_loading"],
+                    v["in_transit_jetty_to_mv"],
+                    v["breakdown"]
+                )
 
     if not vessels:
         return Response(
