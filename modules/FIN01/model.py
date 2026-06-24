@@ -113,6 +113,42 @@ def _unmark_cargo_source_billed(cur, cargo_source_type, cargo_source_id, bill_qt
     ''', [bill_qty, bill_qty, bill_qty, cargo_source_id])
 
 
+def unbill_invoice_sources(cur, invoice_id):
+    """Fully unbill everything behind a cancelled invoice, down to cargo level.
+
+    For each bill linked via invoice_bill_mapping: reverse cargo declaration
+    tracking (billed_quantity / is_billed), unmark service records, and set the
+    bill itself to 'Cancelled' (kept for audit, not deleted) so the cargo can be
+    re-billed and re-invoiced under a fresh invoice number.
+
+    Runs inside the caller's transaction — takes a cursor and does NOT commit.
+    Returns the list of affected bill numbers for the cancellation remark."""
+    cur.execute('''SELECT ibm.bill_id, ibm.bill_number
+        FROM invoice_bill_mapping ibm
+        WHERE ibm.invoice_id = %s''', [invoice_id])
+    bills = [dict(r) for r in cur.fetchall()]
+
+    for bill in bills:
+        bill_id = bill['bill_id']
+        cur.execute('''
+            SELECT cargo_source_type, cargo_source_id, quantity
+            FROM bill_lines
+            WHERE bill_id = %s AND cargo_source_type IS NOT NULL AND cargo_source_id IS NOT NULL
+        ''', [bill_id])
+        for row in cur.fetchall():
+            _unmark_cargo_source_billed(
+                cur,
+                row['cargo_source_type'],
+                row['cargo_source_id'],
+                float(row['quantity'] or 0)
+            )
+        cur.execute('''UPDATE service_records SET is_billed=0, bill_id=NULL
+            WHERE bill_id = %s''', [bill_id])
+        cur.execute("UPDATE bill_header SET bill_status='Cancelled' WHERE id=%s", [bill_id])
+
+    return [b['bill_number'] for b in bills]
+
+
 # ===== BILL FUNCTIONS =====
 
 def get_next_bill_number():

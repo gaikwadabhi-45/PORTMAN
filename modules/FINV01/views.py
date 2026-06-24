@@ -157,10 +157,11 @@ def invoices():
 
     now = datetime.now()
     for row in data:
-        # 24h FB08 window is anchored to sap_posting_date — set by /api/sap/callback
-        # when SAP confirms the posting. No fallback to posted_date / created_date,
-        # otherwise the Cancel button would appear before SAP has acknowledged.
-        posted_dt = _parse_datetime(row.get('sap_posting_date'))
+        # 24h FB08 window anchors on sap_posting_date (set by /api/sap/callback
+        # when SAP confirms the posting), falling back to posted_date (our staging
+        # push time) so Cancel is available before SAP has acknowledged.
+        posted_dt = (_parse_datetime(row.get('sap_posting_date'))
+                     or _parse_datetime(row.get('posted_date')))
         row['within_cancel_window'] = bool(
             posted_dt and (now - posted_dt) <= timedelta(hours=24)
         )
@@ -922,29 +923,21 @@ def cancel_invoice_sap():
     if not invoice:
         return jsonify({'success': False, 'error': 'Invoice not found'}), 404
 
-    if not invoice.get('sap_document_number'):
-        return jsonify({'success': False, 'error': 'Invoice is not posted to SAP'})
-
     if invoice.get('invoice_status') == 'Cancelled':
         return jsonify({'success': False, 'error': 'Invoice is already cancelled'})
 
-    # Anchor the 24h FB08 window on SAP's posting confirmation only.
-    # sap_posting_date is stamped by /api/sap/callback when SAP acknowledges
-    # the document — using posted_date / created_date here would let users
-    # cancel before SAP has actually confirmed the posting.
-    posted_dt = _parse_datetime(invoice.get('sap_posting_date'))
-    if not posted_dt:
-        return jsonify({
-            'success': False,
-            'error': 'SAP has not yet confirmed this invoice posting. Cancellation window starts after SAP callback.',
-        }), 400
-    if datetime.now() - posted_dt > timedelta(hours=24):
-        return jsonify({
-            'success': False,
-            'error': 'FB08 reversal window (24 hours) has expired.',
-            'offer_cn': True,
-            'invoice_id': invoice_id
-        }), 400
+    # The SAP push is a staging push — sap_document_number arrives later via
+    # /api/sap/callback. Gate on invoice_status instead so cancellation works
+    # even before SAP has acknowledged; SAP matches the reversal by Reference
+    # (invoice number), not by document number.
+    if invoice.get('invoice_status') not in ('Posted to SAP', 'Posted to GST'):
+        return jsonify({'success': False, 'error': 'Invoice is not posted to SAP'})
+
+    # No hard 24h block here: the FB08 reversal must stay available past the
+    # window because the SAP team sometimes cancels documents manually on
+    # their side, and PORTMAN still needs to record the cancellation and
+    # unbill the cargo. The UI offers Create CN as the preferred path once
+    # the window has expired.
 
     invoice_lines = model.get_invoice_lines(invoice_id)
     payload = sap_builder.build_invoice_reversal_payload(invoice, invoice_lines)
@@ -960,6 +953,9 @@ def cancel_invoice_sap():
         reversal_note = f"SAP FB08 reversal posted. Original: {original_doc}; Reversal: {reversal_doc}"
         conn = get_db()
         cur = get_cursor(conn)
+        unbilled_bills = model.unbill_invoice_sources(cur, invoice_id)
+        if unbilled_bills:
+            reversal_note += f". Bills unbilled: {', '.join(unbilled_bills)}"
         cur.execute('''UPDATE invoice_header
             SET invoice_status='Cancelled',
                 posted_by=%s,
@@ -1014,7 +1010,9 @@ def create_cancellation_cn():
     if invoice.get('invoice_status') == 'Cancelled':
         return jsonify({'success': False, 'error': 'Invoice is already cancelled'})
 
-    if not invoice.get('sap_document_number'):
+    # Gate on invoice_status (not sap_document_number) — the staging push
+    # leaves sap_document_number empty until the SAP callback arrives.
+    if invoice.get('invoice_status') not in ('Posted to SAP', 'Posted to GST'):
         return jsonify({'success': False, 'error': 'Invoice not posted to SAP — use direct cancellation instead'})
 
     # Block duplicate cancellation CN against the same invoice.
@@ -1080,13 +1078,17 @@ def create_cancellation_cn():
     if sap_doc:
         fdcn_model.update_sap_details(fdcn_id, sap_doc, username)
 
-    # 3. Mark the original invoice as Cancelled, with cross-reference to the CN.
+    # 3. Mark the original invoice as Cancelled, with cross-reference to the CN,
+    #    and fully unbill the underlying bills/cargo so they can be re-invoiced.
     now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     original_sap_doc = invoice.get('sap_document_number') or ''
     cn_note = (f"Cancelled via CN {cn_doc_number}. "
                f"SAP original: {original_sap_doc}; SAP CN: {sap_doc}")
     conn = get_db()
     cur = get_cursor(conn)
+    unbilled_bills = model.unbill_invoice_sources(cur, invoice_id)
+    if unbilled_bills:
+        cn_note += f". Bills unbilled: {', '.join(unbilled_bills)}"
     cur.execute('''UPDATE invoice_header
         SET invoice_status='Cancelled',
             posted_by=%s,
